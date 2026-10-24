@@ -7,7 +7,7 @@
  * re-read a list that is now wrong.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BATCH_MAX_UIDS, MessageOperationsService } from '../src/services/message-operations';
+import { BATCH_MAX_UIDS, MessageOperationsService, MissingUploadsError } from '../src/services/message-operations';
 import { messageSync } from '../src/services/message-sync';
 
 const json = (status: number, body?: unknown) =>
@@ -121,6 +121,8 @@ describe('deleting', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'DELETE' });
     expect(sync).toHaveBeenCalledTimes(1);
+    // Not a refresh: the server dropped what the delete changed.
+    expect(sync).toHaveBeenCalledWith();
   });
 
   it('re-reads after a refusal only if an earlier chunk had committed', async () => {
@@ -131,6 +133,9 @@ describe('deleting', () => {
     fetchMock.mockResolvedValueOnce(json(200, {})).mockResolvedValueOnce(json(500, {}));
     await ops.deleteMessagesResult('Trash', uids(BATCH_MAX_UIDS + 1));
     expect(sync).toHaveBeenCalledTimes(1);
+    // A refresh: what the refused chunk did is unknown, and the server
+    // dropped nothing for it.
+    expect(sync).toHaveBeenCalledWith({ refresh: true });
   });
 
   it('keeps the boolean form a boolean, so a failure can never read as truthy', async () => {
@@ -173,10 +178,39 @@ describe('saving and sending', () => {
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', body: form });
   });
 
+  it('reads the stored Bcc back as pills, preserving names and an explicitly empty field', async () => {
+    fetchMock.mockResolvedValueOnce(json(200, { draft_uid: '7', draft_mailbox: 'Drafts', draft_bcc: [
+      { Name: 'Hopper, Grace', Address: 'grace@example.com' },
+      { Name: 'Chloé', Address: 'chloe@example.com' },
+      { Name: '', Address: '"a;b"@example.com' },
+    ] }));
+    expect(await ops.saveDraft(new FormData())).toMatchObject({
+      bcc: ['"Hopper, Grace" <grace@example.com>', 'Chloé <chloe@example.com>', '"a;b"@example.com'],
+    });
+    fetchMock.mockResolvedValueOnce(json(200, { draft_uid: '8', draft_mailbox: 'Drafts', draft_bcc: [] }));
+    expect(await ops.saveDraft(new FormData())).toMatchObject({ bcc: [] });
+  });
+
+  it("reads the saved draft's structure back, which a composer shows its quote's images from", async () => {
+    const structure = { Children: [{ Type: 'text', Subtype: 'html' }, { ID: '<chart@remote.test>' }] };
+    fetchMock.mockResolvedValueOnce(json(200, { draft_uid: '7', draft_mailbox: 'Drafts', draft_structure: structure }));
+    expect(await ops.saveDraft(new FormData())).toMatchObject({ uid: '7', structure });
+  });
+
   it('answers null for a draft that was not saved, for whatever reason', async () => {
     fetchMock.mockResolvedValueOnce(json(401)).mockResolvedValueOnce(json(500, {})).mockRejectedValueOnce(new TypeError('offline'));
     expect(await ops.saveDraft(new FormData())).toBeNull();
     expect(await ops.saveDraft(new FormData())).toBeNull();
+    expect(await ops.saveDraft(new FormData())).toBeNull();
+  });
+
+  it('names the uploads the server no longer holds, so a save or a send can go again without them', async () => {
+    const refusal = () => json(409, { error: 'unable to retrieve message attachment u1', missing_attachments: ['u1'] });
+    fetchMock.mockResolvedValueOnce(refusal()).mockResolvedValueOnce(refusal());
+    await expect(ops.saveDraft(new FormData())).rejects.toMatchObject({ name: 'MissingUploadsError', uuids: ['u1'] });
+    await expect(ops.sendDraft(new FormData())).rejects.toBeInstanceOf(MissingUploadsError);
+    // A 409 that names none is an ordinary refusal.
+    fetchMock.mockResolvedValueOnce(json(409, { error: 'conflict' }));
     expect(await ops.saveDraft(new FormData())).toBeNull();
   });
 

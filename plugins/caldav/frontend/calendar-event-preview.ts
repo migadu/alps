@@ -8,6 +8,7 @@ import { isAllDayEvent } from './calendar-service';
 import { dueOf, type TaskData } from './tasks-service';
 import { statusKey } from './calendar-invitation-banner';
 import '../../../frontend/src/components/alps-button';
+import { isolatedCaption } from '../../../frontend/src/utils/bidi';
 
 @customElement('calendar-event-preview')
 export class CalendarEventPreview extends LitElement {
@@ -59,7 +60,6 @@ export class CalendarEventPreview extends LitElement {
         }
 
         .edit-btn {
-            --icon-size: 16px;
             color: var(--text-secondary, #6b7280);
             margin-left: 12px;
             flex-shrink: 0;
@@ -258,7 +258,9 @@ export class CalendarEventPreview extends LitElement {
     private renderMeeting(e: EventData) {
         if (!e.organizer && !e.attendees?.length) return '';
         const t = (key: string) => this.i18nStore?.t(key);
-        const name = (p: { name?: string; email: string }) => p.name || p.email;
+        // An iCalendar CN is the organizer's text, and isolated so an override
+        // in it cannot reverse the answer shown after it.
+        const name = (p: { name?: string; email: string }) => isolatedCaption(p.name, p.email);
         const answer = (status: string, label: string) => html`
             <alps-button
                 class="answer-${status}"

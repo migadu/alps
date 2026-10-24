@@ -34,6 +34,26 @@ for (const path in pluginEnLocales) {
 
 export const en = combinedEn as TranslationDictionary;
 
+/**
+ * The BCP-47 tag for one of alps's language codes. Everything that tells the
+ * browser or a screen reader which language text is in (the document's
+ * `lang`, `Intl`, a language option's `lang`) needs the tag, and takes it
+ * from here.
+ *
+ * The two Serbian codes are alps's OWN, and they are the opposite way round
+ * from what the tag names suggest: settings-window offers `rs` under the label
+ * `serbian` ("Српски (ћирилица)") and `sr` under `serbianLatin` ("Srpski
+ * (latinica)"), and the dictionaries match: rs.ts is Cyrillic, sr.ts Latin.
+ * Mapped the other way, `sr-Latn` would be stamped on the Cyrillic dictionary
+ * and `sr-Cyrl` on the Latin one, telling a screen reader to read Cyrillic
+ * text with Latin rules.
+ */
+export function intlTag(code: string): string {
+  if (code === 'rs') return 'sr-Cyrl';
+  if (code === 'sr') return 'sr-Latn';
+  return code;
+}
+
 export class I18nStore extends EventTarget {
   private language: string = 'en';
   private dictionary: TranslationDictionary = en;
@@ -130,24 +150,9 @@ export class I18nStore extends EventTarget {
     return this.language;
   }
 
-  /**
-   * The BCP-47 tag for the active language.
-   *
-   * The two Serbian codes are alps's OWN, and they are the opposite way round
-   * from what the tag names suggest: settings-page offers `rs` under the label
-   * `serbian` ("Српски") and `sr` under `serbianLatin` ("Srpski (Latinica)"),
-   * and the dictionaries match — rs.ts is 96% Cyrillic, sr.ts is 99% Latin.
-   *
-   * This mapped them the other way, which cost nothing while the method had no
-   * callers. Wiring it to `<html lang>` and `Intl.PluralRules` is what made it
-   * matter: it would have stamped `sr-Latn` on the Cyrillic dictionary and
-   * `sr-Cyrl` on the Latin one, telling a screen reader to read Cyrillic text
-   * with Latin rules.
-   */
+  /** The BCP-47 tag for the active language; see intlTag. */
   getIntlLanguage() {
-    if (this.language === 'rs') return 'sr-Cyrl';
-    if (this.language === 'sr') return 'sr-Latn';
-    return this.language;
+    return intlTag(this.language);
   }
 
   /**

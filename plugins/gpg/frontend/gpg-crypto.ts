@@ -2,7 +2,8 @@ import { html } from 'lit';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { contactsService } from '../../carddav/frontend/contacts-service';
 import { fetchWithTimeout } from '../../../frontend/src/utils/fetch-utils';
-import { readUserSettings } from '../../../frontend/src/store/settings-store';
+import { ownAddress, readUserSettings } from '../../../frontend/src/store/settings-store';
+import { parseWrittenAddress } from '../../../frontend/src/utils/address-display';
 import '../../../frontend/src/components/ui-prompt';
 
 function promptForPassphrase(errorMsg?: string, i18nStore?: any): Promise<string | null> {
@@ -48,22 +49,44 @@ function promptForPassphrase(errorMsg?: string, i18nStore?: any): Promise<string
 // storage, nullifying the passphrase protection on the at-rest key.
 let cachedPrivateKey: any = null;
 
+// Moves when the key is forgotten or the session ends. A read or unlock
+// already underway must not restore the key that was just discarded.
+let keyEpoch = 0;
+
 // clearCachedPrivateKey forgets the in-memory decrypted key (used by "purge"
 // and lock actions). Also drops any legacy value persisted by older versions.
 export function clearCachedPrivateKey(): void {
+    keyEpoch++;
     cachedPrivateKey = null;
     try {
         sessionStorage.removeItem('gpg_private_key');
     } catch (e) { /* ignore */ }
 }
 
+// Signing out does not reload the page, and the unlocked key outlived it: the
+// next user to sign in on the same tab had their encrypted mail signed with
+// the previous user's key and encrypted to it as well, and their reader
+// decrypted with it. Their own key is asked for, and unlocked, afresh.
+window.addEventListener('session-cleared', () => {
+    clearCachedPrivateKey();
+});
+
+function remember(key: any, epoch: number): any {
+    if (epoch === keyEpoch) cachedPrivateKey = key;
+    return key;
+}
+
 async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
     if (cachedPrivateKey) return cachedPrivateKey;
+    const epoch = keyEpoch;
 
     // Fetch from server
     const res = await fetchWithTimeout('/gpg/keys');
     if (!res.ok) throw new Error('Failed to fetch GPG keyring.');
     const keyring = await res.json();
+    // A keyring replaced or read for a session that has since ended is not
+    // unlocked or kept for a later operation.
+    if (epoch !== keyEpoch) throw new Error('The keyring changed.');
     
     if (!keyring.encrypted_private_key) {
         throw new Error('No private key found on server. Please generate one in Settings.');
@@ -80,8 +103,7 @@ async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
                     privateKey,
                     passphrase: pass
                 });
-                cachedPrivateKey = decryptedKey;
-                return cachedPrivateKey;
+                return remember(decryptedKey, epoch);
             } catch (e: any) {
                 errorMsg = 'Incorrect passphrase: ' + e.message;
                 pass = await promptForPassphrase(errorMsg, i18nStore);
@@ -90,9 +112,16 @@ async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
         throw new Error('Passphrase prompt cancelled.');
     } else {
         // Key was already decrypted (unlikely if securely stored)
-        cachedPrivateKey = privateKey;
-        return cachedPrivateKey;
+        return remember(privateKey, epoch);
     }
+}
+
+/** Whether `address` is one of a card's addresses, the first or another, compared bare and in any case. */
+function cardHasAddress(card: { email?: string; emails?: { value?: string }[] }, address: string): boolean {
+    const bare = (value: string) => (parseWrittenAddress(value).email || value).trim().toLowerCase();
+    const wanted = bare(address);
+    return [card.email, ...(card.emails ?? []).map((e) => e.value)]
+        .some((value) => !!value && bare(value) === wanted);
 }
 
 export async function handlePresend(payload: any) {
@@ -147,24 +176,32 @@ export async function handlePresend(payload: any) {
         // pointing it at the right key would not have made it produce anything.
         // Linked accounts are NOT that feature: they are separate logins to
         // switch between, not alternate sending identities for one session.
-        const userEmails: string[] = [];
-        const ownSettings = readUserSettings();
-        if (ownSettings.loginUsername) userEmails.push(ownSettings.loginUsername);
+        // A bare login is not the full address resolved by the server. Match
+        // its address with the same case normalization as other self checks.
+        const ownEmail = ownAddress(readUserSettings()).trim().toLowerCase();
 
         for (const email of recipients) {
-            // Very simple extraction if email is like "Name <email@host.com>"
-            const cleanEmail = email.includes('<') ? email.split('<')[1].split('>')[0].trim() : email.trim();
+            // The address of a pill like `Name <email@host.com>` is in its LAST
+            // pair of angle brackets: a quoted name may hold brackets of its
+            // own, and `"Ada <Countess>" <ada@example.com>` was looked up as
+            // "Countess", which has no key, so the send was refused.
+            const cleanEmail = parseWrittenAddress(email).email || email.trim();
             
-            if (userEmails.includes(cleanEmail)) {
+            if (ownEmail && ownEmail === cleanEmail.toLowerCase()) {
                 // We encrypt to ourselves anyway below, so we can skip CardDAV lookup
                 continue;
             }
 
+            // The search matches text anywhere in a card's name or addresses,
+            // so its answer holds every card that CONTAINS the address. The
+            // first of those with a key was taken: a message to
+            // bob@example.com was encrypted to superbob@example.com, whom the
+            // recipient is not. Only a card the address is one of qualifies.
             const result = await contactsService.fetchContacts(cleanEmail);
             const contactsList = result.contacts || [];
             let keyFound = false;
             for (const c of contactsList) {
-                if (c.public_key) {
+                if (c.public_key && cardHasAddress(c, cleanEmail)) {
                     const key = await openpgp.readKey({ armoredKey: c.public_key });
                     publicKeys.push(key);
                     keyFound = true;

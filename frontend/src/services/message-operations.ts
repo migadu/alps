@@ -3,6 +3,7 @@ import { fetchWithTimeout } from '../utils/fetch-utils';
 import { FLAG_SEEN } from '../utils/flags';
 import { encodeMailboxPath } from '../utils/folders';
 import { Logger } from '../utils/logger';
+import { writtenAddress } from '../utils/address-display';
 
 /**
  * The largest UID list a single request may carry.
@@ -37,6 +38,30 @@ async function readErrorBody(res: Response): Promise<Record<string, any>> {
   } catch {
     return {};
   }
+}
+
+/**
+ * A draft save or a send the server refused because it no longer holds some
+ * of the uploads the request named: the session they were uploaded in has
+ * ended, or the server let them go. Nothing was stored or sent, and the other
+ * uploads are still there, so the request can go again without these.
+ */
+export class MissingUploadsError extends Error {
+  readonly uuids: string[];
+
+  constructor(uuids: string[]) {
+    super(`unable to retrieve message attachment ${uuids.join(', ')}`);
+    this.name = 'MissingUploadsError';
+    this.uuids = uuids;
+  }
+}
+
+/** The refusal of a request that named uploads the server does not hold, if
+ * this answer is one. */
+function missingUploads(res: Response, body: Record<string, any>): MissingUploadsError | null {
+  const ids = body.missing_attachments;
+  if (res.status !== 409 || !Array.isArray(ids) || ids.length === 0) return null;
+  return new MissingUploadsError(ids.map(String));
 }
 
 /**
@@ -237,8 +262,11 @@ export class MessageOperationsService {
         if (!res.ok) {
           Logger.error('Failed to delete messages', res.status, await readErrorBody(res));
           // A mid-walk failure follows chunks that ALREADY committed, so the
-          // list on screen is wrong either way and has to be re-read.
-          if (deleted > 0) messageSync.sync();
+          // list on screen is wrong either way and has to be re-read. In full,
+          // here and on the other failures below: what the refused or
+          // abandoned request did is unknown, and the server dropped nothing
+          // for it.
+          if (deleted > 0) messageSync.sync({ refresh: true });
           return { ok: false, reason: 'failed' };
         }
         deleted += chunk.length;
@@ -247,7 +275,7 @@ export class MessageOperationsService {
       return { ok: true };
     } catch (err) {
       Logger.error('Failed to delete messages', err);
-      if (deleted > 0) messageSync.sync();
+      if (deleted > 0) messageSync.sync({ refresh: true });
       return { ok: false, reason: 'failed' };
     }
   }
@@ -281,7 +309,7 @@ export class MessageOperationsService {
         if (this.isAuthError(res)) return { success: false, reason: 'auth' };
         if (!res.ok) {
           Logger.error('Failed to move messages', res.status, await readErrorBody(res));
-          if (moved > 0) messageSync.sync();
+          if (moved > 0) messageSync.sync({ refresh: true });
           return { success: false, reason: 'failed' };
         }
         // Read the body BEFORE the sync. The sync used to be kicked off first,
@@ -295,7 +323,7 @@ export class MessageOperationsService {
       return { success: true, uidMapping };
     } catch (err) {
       Logger.error('Failed to move messages', err);
-      if (moved > 0) messageSync.sync();
+      if (moved > 0) messageSync.sync({ refresh: true });
       return { success: false, reason: 'failed' };
     }
   }
@@ -316,7 +344,7 @@ export class MessageOperationsService {
         if (this.isAuthError(res)) return { success: false, reason: 'auth' };
         if (!res.ok) {
           Logger.error('Failed to copy messages', res.status, await readErrorBody(res));
-          if (copied > 0) messageSync.sync();
+          if (copied > 0) messageSync.sync({ refresh: true });
           return { success: false, reason: 'failed' };
         }
         copied += chunk.length;
@@ -325,7 +353,7 @@ export class MessageOperationsService {
       return { success: true };
     } catch (err) {
       Logger.error('Failed to copy messages', err);
-      if (copied > 0) messageSync.sync();
+      if (copied > 0) messageSync.sync({ refresh: true });
       return { success: false, reason: 'failed' };
     }
   }
@@ -350,8 +378,12 @@ export class MessageOperationsService {
 
   /**
    * Saves a composer instance as a draft on the server.
+   *
+   * Answers null for a draft that was not saved, and throws a
+   * {@link MissingUploadsError} for one refused over uploads the server no
+   * longer holds, which the caller can save again without them.
    */
-  async saveDraft(formData: FormData): Promise<{ uid: string; mailbox: string; size?: number; attachments?: any[] } | null> {
+  async saveDraft(formData: FormData): Promise<{ uid: string; mailbox: string; size?: number; attachments?: any[]; bcc?: string[]; structure?: unknown } | null> {
     try {
       const res = await fetchWithTimeout('/messages', {
         method: 'POST',
@@ -363,11 +395,25 @@ export class MessageOperationsService {
       }
       if (res.ok) {
         const data = await res.json();
-        return { uid: data.draft_uid, mailbox: data.draft_mailbox, size: data.draft_size, attachments: data.attachments };
+        return {
+          uid: data.draft_uid, mailbox: data.draft_mailbox, size: data.draft_size, attachments: data.attachments,
+          // The stored draft's structure, which a composer editing the draft
+          // shows its quote's images from. Absent on older servers.
+          ...(data.draft_structure ? { structure: data.draft_structure } : {}),
+          // Absent on older servers. An explicit empty list means Bcc was
+          // empty or unreadable and was stored without recipients.
+          ...(Array.isArray(data.draft_bcc) ? {
+            bcc: data.draft_bcc.map((a: { Name: string; Address: string }) => writtenAddress(a.Name, a.Address)),
+          } : {}),
+        };
       }
-      Logger.error('Failed to save draft:', res.status, await readErrorBody(res));
+      const body = await readErrorBody(res);
+      const missing = missingUploads(res, body);
+      if (missing) throw missing;
+      Logger.error('Failed to save draft:', res.status, body);
       return null;
     } catch (err) {
+      if (err instanceof MissingUploadsError) throw err;
       Logger.error('Failed to save draft:', err);
       return null;
     }
@@ -394,7 +440,7 @@ export class MessageOperationsService {
       // that the catch below rethrew, so the user was shown "Unexpected token
       // '<'" in place of whatever actually went wrong.
       const body = await readErrorBody(res);
-      throw new Error(body.error || `Failed to send message (${res.status})`);
+      throw missingUploads(res, body) || new Error(body.error || `Failed to send message (${res.status})`);
     } catch (err: any) {
       Logger.error('Failed to send message:', err);
       throw err;

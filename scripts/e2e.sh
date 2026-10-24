@@ -274,6 +274,15 @@ cat >"$STATE/alps.toml" <<EOF
 [server]
 addr = "127.0.0.1:$ALPS_PORT"
 temp_dir = "$STATE/alps-tmp"
+# On, unlike a deployment's default, so that every spec runs with the server's
+# change numbers (CONDSTORE); e2e/condstore.spec.ts is about them.
+condstore = true
+
+# On, unlike a deployment's default, so that every spec runs with the pages'
+# event stream open and the IDLE behind it; e2e/push.spec.ts is about them.
+push_new_mail = true
+# And with the news of the subscribed folders, which sora tells of (NOTIFY).
+push_subscribed_folders = true
 
 # Off: every sign-in comes from one address, and the suite signs in more
 # often than the production limits allow. The limiter has its own unit tests.
@@ -284,6 +293,12 @@ enabled = false
 output = "stderr"
 format = "console"
 level = "info"
+
+# The tests that register a security key reach alps as localhost: a key is
+# bound to a hostname, and the browser takes no IP address as one.
+[webauthn]
+rpid = "localhost"
+origins = ["http://localhost:$ALPS_PORT"]
 
 [provider]
 type = "imap"

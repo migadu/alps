@@ -178,7 +178,7 @@ describe('the contacts service', () => {
       [`/contacts/${encodePathParam('/book/a.vcf')}/categories`, { categories: ['Work'] }],
       [`/contacts/${encodePathParam('/book/b.vcf')}/categories`, { categories: [] }],
     ]);
-    expect(outcome).toEqual({ total: 2, done: 2, failed: 0, etags: { '/book/a.vcf': 'a2' } });
+    expect(outcome).toEqual({ total: 2, done: 2, failed: 0, uncertain: 0, etags: { '/book/a.vcf': 'a2' } });
   });
 
   it('keeps the status of a refused save', async () => {

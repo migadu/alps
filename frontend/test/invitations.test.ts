@@ -8,7 +8,7 @@ import '../../plugins/caldav/frontend/calendar-event-preview';
 import '../../plugins/caldav/frontend/calendar-page';
 import { calendarService } from '../../plugins/caldav/frontend/calendar-service';
 import { registry } from '../src/plugin-registry';
-import { hasCalendarPart, invitationService, type InvitationView } from '../../plugins/caldav/frontend/invitation-service';
+import { hasCalendarPart, invitationService, type InvitationView, type SavedInvitation } from '../../plugins/caldav/frontend/invitation-service';
 import { HttpStatusError } from '../src/utils/fetch-utils';
 import { cleanup, click, flush, mount, record, shadow, shadowAll, text, waitFor } from './helpers/dom';
 
@@ -110,7 +110,7 @@ describe('the invitation banner', () => {
         const el = await banner();
 
         expect(text(el)).toContain('Compiler review');
-        expect(text(el)).toContain('invitations.organizer: Grace Hopper');
+        expect(text(el)).toContain('invitations.organizerIs {"name":"Grace Hopper"}');
         expect(text(el)).toContain('invitations.noConflicts');
         expect(shadowAll(el, '.sender')).toHaveLength(0);
 
@@ -127,7 +127,7 @@ describe('the invitation banner', () => {
         expect(respond).toHaveBeenCalledWith({ mailbox: 'INBOX', uid: '42', status: 'accepted', calendarPath: '/cal/home/', lang: 'de' });
         expect(text(el, '.notice')).toBe('invitations.sent');
         expect(shadow(el, '.answer-accepted').getAttribute('aria-pressed')).toBe('true');
-        expect(text(el)).toContain('invitations.yourAnswer: invitations.statuses.accepted');
+        expect(text(el)).toContain('invitations.yourAnswerIs {"status":"invitations.statuses.accepted"}');
         // Answered, there is a copy: no picker.
         expect(shadowAll(el, 'alps-select')).toHaveLength(0);
     });
@@ -213,7 +213,7 @@ describe('the invitation banner', () => {
         }));
         const el = await banner();
         expect(text(el, '.state')).toBe('invitations.states.ended');
-        expect(text(el, '.answer')).toBe('invitations.yourAnswer: invitations.statuses.accepted');
+        expect(text(el, '.answer')).toBe('invitations.yourAnswerIs {"status":"invitations.statuses.accepted"}');
         expect(shadowAll(el, 'alps-button')).toHaveLength(0);
         expect(shadowAll(el, '.clashes')).toHaveLength(0);
         expect(shadowAll(el, '.sender')).toHaveLength(0);
@@ -255,6 +255,118 @@ describe('the invitation banner', () => {
         await flush();
         await el.updateComplete;
         expect(el.shadowRoot!.querySelector('.card')).toBeNull();
+    });
+});
+
+/**
+ * The reader keeps one banner and hands it each message it opens, so an answer
+ * or an update can come back while the banner shows another message, or the
+ * same message opened again. What it says, and the buttons it holds disabled,
+ * belong to the visit that asked.
+ */
+describe('answers that come back after the reader moved on', () => {
+    const disabled = (el: El, selector: string) => shadow(el, selector).hasAttribute('disabled');
+
+    /** Every answer is held until released, in the order they were asked. */
+    function holdWrites(method: 'respond' | 'apply') {
+        const pending: Array<{ resolve: (saved: SavedInvitation) => void; reject: (err: unknown) => void }> = [];
+        vi.spyOn(invitationService, method).mockImplementation(() => new Promise((resolve, reject) => { pending.push({ resolve, reject }); }));
+        return pending;
+    }
+
+    function readsBySummary() {
+        return vi.spyOn(invitationService, 'fetchInvitation').mockImplementation(async (_mailbox, uid) =>
+            view({ summary: uid === '2' ? 'Second' : 'First' }));
+    }
+
+    async function moveTo(el: El, uid: string, summary: string) {
+        el.uid = uid;
+        await waitFor(() => text(el, '.title') === summary, `message ${uid}`);
+    }
+
+    async function settle(el: El) {
+        await flush();
+        await el.updateComplete;
+        await flush();
+        await el.updateComplete;
+    }
+
+    it("keeps an answer to the last message off the next one, whose buttons stay answerable", async () => {
+        readsBySummary();
+        const answers = holdWrites('respond');
+        const el = await banner({ uid: '1' });
+        await click(shadow(el, '.answer-accepted'));
+        expect(disabled(el, '.answer-declined')).toBe(true);
+
+        await moveTo(el, '2', 'Second');
+        expect(disabled(el, '.answer-declined'), "the next message's own buttons").toBe(false);
+
+        answers[0].resolve({ sent: true });
+        await settle(el);
+        expect(text(el, '.title')).toBe('Second');
+        expect(shadowAll(el, '.notice')).toHaveLength(0);
+    });
+
+    it('says nothing on the next message when an answer to the last one is refused', async () => {
+        readsBySummary();
+        const answers = holdWrites('respond');
+        const el = await banner({ uid: '1' });
+        await click(shadow(el, '.answer-accepted'));
+        await moveTo(el, '2', 'Second');
+
+        answers[0].reject(new HttpStatusError(403, 'forbidden'));
+        await settle(el);
+        expect(shadowAll(el, '.notice')).toHaveLength(0);
+    });
+
+    it('keeps an answer from an earlier visit off the same message opened again', async () => {
+        const reads = readsBySummary();
+        const answers = holdWrites('respond');
+        const el = await banner({ uid: '1' });
+        await click(shadow(el, '.answer-accepted'));
+        await moveTo(el, '2', 'Second');
+        await moveTo(el, '1', 'First');
+        const readsBefore = reads.mock.calls.length;
+
+        answers[0].resolve({ sent: true });
+        await settle(el);
+        expect(shadowAll(el, '.notice')).toHaveLength(0);
+        expect(disabled(el, '.answer-accepted')).toBe(false);
+        expect(reads.mock.calls.length, 'no reread for a visit that is over').toBe(readsBefore);
+    });
+
+    it('lets an old answer release none of the next message\'s buttons', async () => {
+        readsBySummary();
+        const answers = holdWrites('respond');
+        const el = await banner({ uid: '1' });
+        await click(shadow(el, '.answer-accepted'));
+        await moveTo(el, '2', 'Second');
+        await click(shadow(el, '.answer-tentative'));
+        expect(answers).toHaveLength(2);
+
+        answers[0].resolve({ sent: true });
+        await settle(el);
+        expect(disabled(el, '.answer-accepted'), 'still waiting on its own answer').toBe(true);
+
+        answers[1].resolve({ sent: true });
+        await waitFor(() => text(el, '.notice') === 'invitations.sent', 'the second answer');
+        expect(disabled(el, '.answer-accepted')).toBe(false);
+    });
+
+    it('keeps an update applied to the last message off the next one', async () => {
+        vi.spyOn(invitationService, 'fetchInvitation').mockImplementation(async (_mailbox, uid) => view({
+            summary: uid === '2' ? 'Second' : 'First', state: 'update', autoApply: false, senderVerified: false, sender: 'mallory@example.net',
+            copy: { path: '/cal/work/x.ics', calendarPath: '/cal/work/' },
+        }));
+        const applies = holdWrites('apply');
+        const el = await banner({ uid: '1' });
+        await click(shadow(el, '.apply'));
+        await moveTo(el, '2', 'Second');
+        expect(disabled(el, '.apply')).toBe(false);
+
+        applies[0].resolve({ sent: false });
+        await settle(el);
+        expect(shadowAll(el, '.notice')).toHaveLength(0);
     });
 });
 

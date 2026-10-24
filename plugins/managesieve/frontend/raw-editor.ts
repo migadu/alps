@@ -3,8 +3,9 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
-import { managesieveService } from './managesieve-service';
+import { managesieveService, TwoVacationsError } from './managesieve-service';
 import '../../../frontend/src/components/alps-button';
+import { MessageCache } from '../../../frontend/src/utils/message-cache';
 
 @customElement('alps-raw-editor')
 export class RawEditor extends LitElement {
@@ -22,6 +23,12 @@ export class RawEditor extends LitElement {
 	@property({ type: String }) stored = '';
 	@state() private isValidating = false;
 	@state() private isSaving = false;
+
+	get hasUnsavedChanges(): boolean {
+		// Typing back to the old value while a different value is being saved
+		// still needs retaining: that pending write becomes the new baseline.
+		return this.script !== this.stored || this.isSaving;
+	}
 
 	static styles = css`
 		.editor-container {
@@ -151,10 +158,10 @@ export class RawEditor extends LitElement {
 		try {
 			await managesieveService.validateScript(sent);
 			if (this.script !== sent) return;
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t('managesieve.toast.valid'), timeout: 3000 } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t('managesieve.toast.valid'), duration: 3000 } }));
 		} catch (e: any) {
 			if (this.script !== sent) return;
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), timeout: 5000, type: 'error' } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), duration: 5000, type: 'error' } }));
 		} finally {
 			this.isValidating = false;
 		}
@@ -162,18 +169,26 @@ export class RawEditor extends LitElement {
 
 	private async save() {
 		this.isSaving = true;
+		const session = MessageCache.generation();
 		// What was SENT, captured before the round trip. Recording this.script once
 		// the PUT landed marked anything typed while it was in flight as saved: Save
 		// went back to disabled, and those characters never reached the server.
 		const sent = this.script;
 		try {
-			await managesieveService.saveScript(sent, 'PUT');
+			const { autoReplyOn } = await managesieveService.saveScript(sent, 'PUT');
+			if (session !== MessageCache.generation()) return;
 			this.stored = sent;
 			this.dispatchEvent(new CustomEvent('script-saved', { detail: { script: sent } }));
-			const msgKey = sent.trim() === '' ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), timeout: 3000 } }));
+			// As on the visual editor's save: an empty script is switched off,
+			// unless an auto-reply that is on goes on running in it.
+			const msgKey = sent.trim() === '' && !autoReplyOn ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), duration: 3000 } }));
 		} catch (e: any) {
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), timeout: 5000, type: 'error' } }));
+			if (session !== MessageCache.generation()) return;
+			const message = e instanceof TwoVacationsError
+				? this.i18nStore.t('managesieve.toast.autoReplyOn')
+				: e.message || this.i18nStore.t('managesieve.toast.networkError');
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, duration: 5000, type: 'error' } }));
 		} finally {
 			this.isSaving = false;
 		}
@@ -184,7 +199,8 @@ export class RawEditor extends LitElement {
 			<div class="editor-container">
 				<div class="code-area">
 					<div class="highlight-layer">${this.highlight(this.script)}</div>
-					<textarea .value=${this.script} @input=${this.handleInput} @scroll=${this.handleScroll} spellcheck="false"></textarea>
+					<!-- Named by what it holds: nothing else on the page labels it. -->
+					<textarea aria-label=${this.i18nStore?.t('managesieve.raw.script') ?? ''} .value=${this.script} @input=${this.handleInput} @scroll=${this.handleScroll} spellcheck="false"></textarea>
 				</div>
 				<div class="actions">
 					<alps-button variant="text" ?spinning=${this.isValidating} ?disabled=${this.isSaving} @click=${this.validate}>

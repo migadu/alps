@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -45,6 +47,7 @@ type Config struct {
 	provider    *ProviderConfig
 	SMTP        SMTPConfig              `toml:"smtp"`
 	WebAuthn    WebAuthnConfig          `toml:"webauthn"`
+	Branding    BrandingConfig          `toml:"branding"`
 	Cluster     ClusterConfig           `toml:"cluster"`
 	Plugin      map[string]PluginConfig `toml:"plugin"`
 }
@@ -118,6 +121,10 @@ type ServerConfig struct {
 	IdleTimeoutSec          int             `toml:"idle_timeout_sec"`           // HTTP idle timeout in seconds (default: 120)
 	IMAPTimeoutSec          int             `toml:"imap_timeout_sec"`           // IMAP operation timeout in seconds (default: 30)
 	SMTPTimeoutSec          int             `toml:"smtp_timeout_sec"`           // SMTP operation timeout in seconds (default: 30)
+	BackgroundConnection    *bool           `toml:"background_connection"`      // A second mail connection per session for background work (default: true)
+	PushNewMail             bool            `toml:"push_new_mail"`              // Wait on that connection for news of the Inbox (IMAP IDLE) and push it to the pages (default: false)
+	CondStore               bool            `toml:"condstore"`                  // Have the IMAP server number its changes (CONDSTORE) and patch listings with the flags that changed (default: false)
+	PushSubscribedFolders   bool            `toml:"push_subscribed_folders"`    // With push_new_mail, news of the subscribed folders too, where the mail server has NOTIFY (default: false)
 }
 
 type RateLimitConfig struct {
@@ -132,6 +139,9 @@ type RateLimitConfig struct {
 
 type CacheConfig struct {
 	TTLMinutes int `toml:"ttl_minutes"`
+	// The largest message part, in KiB, the session cache keeps (default
+	// 1024). See alps.Options.CacheMaxPartBytes.
+	MaxPartKiB int `toml:"max_part_kib"`
 	// A pointer so that leaving it out is not the same as saying false: the
 	// session cache is on unless a config turns it off.
 	Enabled *bool `toml:"enabled"`
@@ -141,6 +151,8 @@ type LoggingConfig struct {
 	Output string `toml:"output"` // "stderr", "stdout", "syslog", or file path
 	Format string `toml:"format"` // "json" or "console"
 	Level  string `toml:"level"`  // "debug", "info", "warn", "error"
+	// One line per request. A pointer so that leaving it out keeps it on.
+	Access *bool `toml:"access"`
 }
 
 type ProviderConfig struct {
@@ -189,6 +201,62 @@ type WebAuthnConfig struct {
 	RPID          string   `toml:"rpid"`
 	RPDisplayName string   `toml:"display_name"`
 	RPOrigins     []string `toml:"origins"`
+}
+
+// BrandingConfig is what a deployment changes about how alps looks. Left out,
+// alps looks as it ships.
+type BrandingConfig struct {
+	DefaultTheme string `toml:"default_theme"` // Colour theme for anyone who has not picked one (default: alps)
+	Logo         string `toml:"logo"`          // A built-in logo by name, or a folder holding a favicon package (default: the default theme's own logo, else the edelweiss)
+}
+
+// maxIconBytes keeps a wrong folder, of photos or disk images, out of memory.
+const maxIconBytes = 1 << 20
+
+func (b BrandingConfig) toOptions() (alps.BrandingOptions, error) {
+	var opts alps.BrandingOptions
+	if theme := strings.ToLower(strings.TrimSpace(b.DefaultTheme)); theme != "" {
+		if !slices.Contains(alps.Themes, theme) {
+			return opts, newConfigError("branding.default_theme", "unknown theme %q, expected one of %s",
+				b.DefaultTheme, strings.Join(alps.Themes, ", "))
+		}
+		opts.DefaultTheme = theme
+	}
+	logo := strings.TrimSpace(b.Logo)
+	if logo == "" && slices.Contains(alps.BuiltinLogos, opts.DefaultTheme) {
+		// A deployment in the Migadu theme signs in under the Migadu logo,
+		// unless logo names another.
+		logo = opts.DefaultTheme
+	}
+	if name := strings.ToLower(logo); slices.Contains(alps.BuiltinLogos, name) {
+		// The edelweiss is what alps shows without one.
+		if name != "alps" {
+			opts.LogoBuiltin = name
+		}
+		return opts, nil
+	}
+	if logo == "" {
+		return opts, nil
+	}
+	if info, err := os.Stat(logo); err != nil || !info.IsDir() {
+		return opts, newConfigError("branding.logo", "%q is neither a built-in logo (%s) nor a folder holding a favicon package",
+			logo, strings.Join(alps.BuiltinLogos, ", "))
+	}
+	opts.LogoPackage = make(map[string][]byte, len(alps.IconFiles))
+	for _, name := range alps.IconFiles {
+		path := filepath.Join(logo, name)
+		info, err := os.Stat(path)
+		if err != nil {
+			return opts, newConfigError("branding.logo", "the favicon package has no %s: %v", name, err)
+		}
+		if info.Size() > maxIconBytes {
+			return opts, newConfigError("branding.logo", "%q is %d bytes, more than the %d an icon may be", path, info.Size(), maxIconBytes)
+		}
+		if opts.LogoPackage[name], err = os.ReadFile(path); err != nil {
+			return opts, newConfigError("branding.logo", "%v", err)
+		}
+	}
+	return opts, nil
 }
 
 type PluginConfig struct {
@@ -307,6 +375,12 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		RPOrigins:     c.WebAuthn.RPOrigins,
 	}
 
+	branding, err := c.Branding.toOptions()
+	if err != nil {
+		return options, err
+	}
+	options.Branding = branding
+
 	if c.provider == nil {
 		return options, fmt.Errorf("provider configuration is missing")
 	}
@@ -375,9 +449,11 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	// comment here and the example config alike, and every page of every
 	// mailbox was then re-threaded from IMAP on every read.
 	options.CacheEnabled = c.Cache.Enabled == nil || *c.Cache.Enabled
+	options.AccessLog = c.Logging.Access == nil || *c.Logging.Access
 	if c.Cache.TTLMinutes > 0 {
 		options.CacheTTL = time.Duration(c.Cache.TTLMinutes) * time.Minute
 	}
+	options.CacheMaxPartKiB = c.Cache.MaxPartKiB
 
 	// Set session duration config
 	if c.Server.SessionMinutes > 0 {
@@ -425,6 +501,12 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	if c.Server.SMTPTimeoutSec > 0 {
 		options.SMTPTimeout = time.Duration(c.Server.SMTPTimeoutSec) * time.Second
 	}
+	// On unless the config turns it off, so a pointer: leaving it out is not
+	// saying false.
+	options.DisableBackgroundConnection = c.Server.BackgroundConnection != nil && !*c.Server.BackgroundConnection
+	options.PushNewMail = c.Server.PushNewMail
+	options.CondStore = c.Server.CondStore
+	options.PushSubscribedFolders = c.Server.PushSubscribedFolders
 
 	// Override rate limiting config from config file
 	if c.Server.RateLimit.Enabled != nil && !*c.Server.RateLimit.Enabled {

@@ -13,7 +13,48 @@ export interface CachedMessage {
 const CACHE_PREFIX = 'alps_msg_';
 const TTL_MS = 30 * 60 * 1000; // 30 minutes
 
+/**
+ * Moves every time the cache is emptied for a session that ended.
+ *
+ * The keys name a mailbox and a UID and no user, so a body is only safe to
+ * write while the session that read it is still the current one. A reader
+ * still waiting on the server when its user signs out gets the answer
+ * afterwards, and writing it then put the previous user's message back into
+ * a cache the next person to sign in on this tab opens from. A reader takes
+ * the generation before it asks, and writes only if it has not moved.
+ *
+ * Moved on `session-cleared` as well as by `clear()`, because an expired
+ * session empties sessionStorage wholesale and never calls `clear()`.
+ */
+let generation = 0;
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('session-cleared', () => {
+    generation++;
+  });
+}
+
+function removeAll() {
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith(CACHE_PREFIX)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => sessionStorage.removeItem(k));
+  } catch (e) {
+    Logger.error('Failed to clear message cache', e);
+  }
+}
+
 export const MessageCache = {
+  /** See {@link generation}. */
+  generation(): number {
+    return generation;
+  },
+
   get(mailbox: string, uid: string, preferredView: string = 'html'): CachedMessage | null {
     try {
       const key = `${CACHE_PREFIX}${mailbox}_${uid}_${preferredView}`;
@@ -53,7 +94,8 @@ export const MessageCache = {
       if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22)) {
         // If quota exceeded, clear old cache and try one more time
         console.warn('Session storage quota exceeded, clearing cache and retrying...');
-        this.clear();
+        // Room, not a new session: the reads in flight are still this user's.
+        removeAll();
         try {
           const key = `${CACHE_PREFIX}${mailbox}_${uid}_${preferredView}`;
           const item: CachedMessage = { ...data, timestamp: Date.now() };
@@ -68,17 +110,7 @@ export const MessageCache = {
   },
 
   clear() {
-    try {
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const key = sessionStorage.key(i);
-        if (key && key.startsWith(CACHE_PREFIX)) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach(k => sessionStorage.removeItem(k));
-    } catch (e) {
-      Logger.error('Failed to clear message cache', e);
-    }
+    generation++;
+    removeAll();
   }
 };

@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"log"
+	"net"
+	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,17 +39,63 @@ type IMAPProvider struct {
 	store       provider.Store
 	debug       bool
 	authservIDs []string
+	// specialMailboxes remembers the folder FindMailboxByType found for each
+	// type on this connection.
+	specialMailboxes map[provider.MailboxType]provider.Mailbox
 
-	// selectedUIDValidity is the UIDVALIDITY the selected mailbox was
-	// selected with; ensureMailboxSelected is the only place that selects.
+	// selected is the mailbox selected, as the SELECT that selected it
+	// answered, or nil when none is: see selectMailbox and selectedMailbox.
+	// selectedUIDValidity is the UIDVALIDITY it was selected with;
+	// selectMailbox is the only place that selects. selectedUIDNext is its
+	// UIDNEXT then, or 0 when the server did not say (see
+	// arrivedSinceSelect).
+	selected            *imapclient.SelectedMailbox
 	selectedUIDValidity uint32
-	verdictLock         sync.Mutex
-	verdicts            map[string]*mailboxVerdicts
-	dateCache           map[string]map[uint32]time.Time
+	selectedUIDNext     imap.UID
+	verdicts            *provider.VerdictCache // the session's, once it is shared: see ShareVerdicts
+	dateCache           map[string]*mailboxDates
+	threads             map[string]*threadCache
+	// sorts are the mailboxes' messages in date order, for listing them flat
+	// (see sortedMailboxUIDs).
+	sorts map[string]*sortCache
+	// threadUses counts uses of the kept conversations and orders, to tell
+	// which were used least recently. It is guarded by cacheLock.
+	threadUses uint64
 	// threadFallbacks names the mailboxes already reported as listing flat,
 	// so a server that refuses THREAD is logged once per session per mailbox.
 	threadFallbacks map[string]bool
-	cacheLock       sync.RWMutex
+	// listReturnRefused records that the server answered LIST's RETURN form
+	// with BAD although it advertises it, so later listings go straight to a
+	// plain LIST instead of paying for the refusal each time.
+	listReturnRefused bool
+	cacheLock         sync.RWMutex
+
+	// news passes on what the server says unasked; nil for a connection made
+	// without it (see Idle). idled is what the mailbox the last IDLE waited
+	// on was as it ended (see Idle).
+	news  *mailboxNews
+	idled idledMailbox
+	// selects counts the mailboxes selected, to tell whether the one
+	// selected now was selected again since the last IDLE (see Idle).
+	selects uint64
+	// responseTimeout bounds the wait for the server's answer to DONE.
+	responseTimeout time.Duration
+	// condstore says that the server numbers the changes to the mailboxes'
+	// messages for this connection (see TrackChanges). kept is the status
+	// of the mailbox selected, as the last STATUS of it answered (see
+	// selectedStatus).
+	condstore bool
+	kept      *keptStatus
+
+	// lsub signs in again to read the subscriptions a plain LIST does not
+	// say (see markSubscriptions); nil for a provider made without the
+	// session's credentials. subscribed is what it read, nil when unknown,
+	// as at subscribedAt; both are guarded by cacheLock. lsubLock makes one
+	// read at a time.
+	lsub         *lsubLogin
+	lsubLock     sync.Mutex
+	subscribed   map[string]bool
+	subscribedAt time.Time
 }
 
 func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
@@ -59,8 +107,31 @@ func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
 		client:    client,
 		store:     store,
 		debug:     debug,
-		dateCache: make(map[string]map[uint32]time.Time),
+		verdicts:  &provider.VerdictCache{},
+		dateCache: make(map[string]*mailboxDates),
 	}
+}
+
+// mailboxDates are the dates sortGroups sorted a mailbox's conversations by,
+// by UID, with the UIDVALIDITY the UIDs were read under. A mailbox deleted and
+// made again, here or in another program, numbers its messages from 1 again
+// under a new UIDVALIDITY, and taken by UID alone, the old messages' dates
+// ordered the new ones.
+type mailboxDates struct {
+	uidValidity uint32
+	dates       map[uint32]time.Time
+}
+
+// forgetMailbox drops what this connection keeps of a mailbox it deleted or
+// renamed away: the dates its conversations were sorted by, the
+// conversations, and its messages' order. None would be taken for a new
+// mailbox's, whose UIDVALIDITY is another, but they would be kept for nothing.
+func (p *IMAPProvider) forgetMailbox(name string) {
+	p.cacheLock.Lock()
+	defer p.cacheLock.Unlock()
+	delete(p.dateCache, name)
+	delete(p.threads, name)
+	delete(p.sorts, name)
 }
 
 // GetStore returns the per-user store for this provider
@@ -84,26 +155,67 @@ func (p *IMAPProvider) Close() error {
 
 // ListMailboxes returns all mailboxes
 func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
-	var options imap.ListOptions
-	options.ReturnSubscribed = true
-	if p.client.Caps().Has(imap.CapListStatus) {
-		options.ReturnStatus = &imap.StatusOptions{
-			NumMessages: true,
-			UIDValidity: true,
-			NumUnseen:   true,
+	// RETURN is LIST-EXTENDED syntax (RFC 5258), which IMAP4rev2 includes and
+	// CapSet.Has counts for it. LIST-STATUS (RFC 5819) is a RETURN option, so
+	// a server that offers it takes the RETURN form too, even where it does
+	// not advertise LIST-EXTENDED on its own. To an IMAP4rev1 server with
+	// neither, RETURN is two extra arguments to a two-argument command
+	// (RFC 3501 §6.3.8), which it may answer with BAD, so such a server is
+	// asked a plain LIST.
+	caps := p.client.Caps()
+	var options *imap.ListOptions
+	if (caps.Has(imap.CapListExtended) || caps.Has(imap.CapListStatus)) && !p.refusedListReturn() {
+		options = &imap.ListOptions{ReturnSubscribed: true}
+		if caps.Has(imap.CapListStatus) {
+			// The same items GetMailboxStatus asks for, so that the counts a
+			// listing reads and the ones a check for new mail reads compare.
+			options.ReturnStatus = p.statusItems()
 		}
 	}
 
+	mailboxes, err := p.listMailboxes(options)
+	var imapErr *imap.Error
+	if options != nil && errors.As(err, &imapErr) && imapErr.Type == imap.StatusResponseTypeBad {
+		// A server that advertises the RETURN form and still refuses it is
+		// asked once more without it, rather than leaving the user with no
+		// folders at all, and is not asked for it again in this session.
+		log.Printf("alps/provider: IMAP server refused LIST with RETURN options, listing without them from now on: %v", err)
+		p.noteListReturnRefused()
+		mailboxes, err = p.listMailboxes(nil)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to list mailboxes: %v", err)
+	}
+	return mailboxes, nil
+}
+
+func (p *IMAPProvider) refusedListReturn() bool {
+	p.cacheLock.RLock()
+	defer p.cacheLock.RUnlock()
+	return p.listReturnRefused
+}
+
+func (p *IMAPProvider) noteListReturnRefused() {
+	p.cacheLock.Lock()
+	defer p.cacheLock.Unlock()
+	p.listReturnRefused = true
+}
+
+// listMailboxes lists every folder with one LIST "" "*", sending the given
+// RETURN options or, when they are nil, a plain LIST, whose subscriptions are
+// then read with LSUB (see markSubscriptions).
+func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mailbox, error) {
 	var mailboxes []provider.Mailbox
-	list := p.client.List("", "*", &options)
+	list := p.client.List("", "*", options)
 	for {
 		data := list.Next()
 		if data == nil {
 			break
 		}
 
-		// Check if mailbox has \Subscribed attribute
-		subscribed := false
+		// A plain LIST says nothing about subscriptions: every folder counts
+		// as subscribed until markSubscriptions reads them below.
+		subscribed := options == nil
 		for _, attr := range data.Attrs {
 			if string(attr) == "\\Subscribed" {
 				subscribed = true
@@ -125,11 +237,17 @@ func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 		if data.Status != nil {
 			mbox.Unseen = int(*data.Status.NumUnseen)
 			mbox.Total = int(*data.Status.NumMessages)
+			mbox.UIDValidity = data.Status.UIDValidity
+			mbox.UIDNext = uint32(data.Status.UIDNext)
+			mbox.HighestModSeq = data.Status.HighestModSeq
 		}
 		mailboxes = append(mailboxes, mbox)
 	}
 	if err := list.Close(); err != nil {
-		return nil, fmt.Errorf("failed to list mailboxes: %v", err)
+		return nil, err
+	}
+	if options == nil {
+		p.markSubscriptions(mailboxes)
 	}
 
 	sort.Slice(mailboxes, func(i, j int) bool {
@@ -144,26 +262,129 @@ func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 	return mailboxes, nil
 }
 
+// mailboxStatusItems is what a STATUS asks for. The client only reads it.
+var mailboxStatusItems = &imap.StatusOptions{
+	NumMessages: true,
+	UIDValidity: true,
+	UIDNext:     true,
+	NumUnseen:   true,
+}
+
 // GetMailboxStatus returns status for a specific mailbox
+//
+// UIDNEXT costs nothing more in the same STATUS, and it tells a message that
+// arrived as another went from no change at all, which the two counts cannot.
+//
+// Where changes are numbered, the mailbox selected on the connection is asked
+// with a NOOP instead, while nothing changed in it (see selectedStatus).
 func (p *IMAPProvider) GetMailboxStatus(name string) (*provider.MailboxStatus, error) {
-	status, err := p.client.Status(name, &imap.StatusOptions{
-		NumMessages: true,
-		UIDValidity: true,
-		NumUnseen:   true,
-	}).Wait()
+	if status, ok := p.selectedStatus(name); ok {
+		return status, nil
+	}
+	return p.statusOf(name)
+}
+
+// GetMailboxStatuses asks for several mailboxes' status at once. Every STATUS
+// is sent before the first answer is awaited, so the answers arrive in one
+// round trip rather than one each: on a server without LIST-STATUS, that is
+// what the folder list's counts cost.
+//
+// The mailbox selected on the connection is asked as GetMailboxStatus asks
+// it: where changes are numbered, with a NOOP and a FETCH while nothing
+// changed in it, sent with the others' STATUS, and with a STATUS kept for the
+// next check otherwise. The check for new mail asks for its folders this way,
+// the Inbox on screen among them.
+func (p *IMAPProvider) GetMailboxStatuses(names []string) ([]*provider.MailboxStatus, []error) {
+	var check *selectedCheck
+	checked := -1
+	sent := make([]*sentStatus, len(names))
+	for i, name := range names {
+		if check == nil {
+			if check = p.sendSelectedCheck(name); check != nil {
+				checked = i
+				continue
+			}
+		}
+		sent[i] = p.sendStatus(name)
+	}
+	statuses := make([]*provider.MailboxStatus, len(names))
+	errs := make([]error, len(names))
+	for i, name := range names {
+		if i != checked {
+			statuses[i], errs[i] = p.waitStatus(sent[i])
+			continue
+		}
+		var ok bool
+		if statuses[i], ok = p.waitSelectedCheck(check); !ok {
+			// Something changed, or the check could not tell: a STATUS, as
+			// GetMailboxStatus sends then, behind the others still out.
+			statuses[i], errs[i] = p.statusOf(name)
+		}
+	}
+	return statuses, errs
+}
+
+func mailboxStatusOf(cmd *imapclient.StatusCommand) (*provider.MailboxStatus, error) {
+	status, err := cmd.Wait()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mailbox status: %v", err)
 	}
 	return &provider.MailboxStatus{
-		Name:        status.Mailbox,
-		NumMessages: *status.NumMessages,
-		NumUnseen:   *status.NumUnseen,
-		UIDValidity: status.UIDValidity,
+		Name:          status.Mailbox,
+		NumMessages:   *status.NumMessages,
+		NumUnseen:     *status.NumUnseen,
+		UIDValidity:   status.UIDValidity,
+		UIDNext:       uint32(status.UIDNext),
+		HighestModSeq: status.HighestModSeq,
 	}, nil
 }
 
 // FindMailboxByType finds a mailbox by its type (Sent, Drafts, etc.)
+//
+// The answer is remembered for the connection. Which folder is Drafts or Sent
+// does not change from one save to the next, and every send and every draft
+// autosave, seconds after typing stops, asked the server again. Creating,
+// renaming or deleting a folder here forgets it, and an append that finds the
+// remembered folder gone looks it up again (see AppendMessage).
 func (p *IMAPProvider) FindMailboxByType(mboxType provider.MailboxType) (*provider.Mailbox, error) {
+	mbox, _, err := p.findMailboxByType(mboxType)
+	return mbox, err
+}
+
+// findMailboxByType is FindMailboxByType, and reports whether the answer was
+// remembered rather than listed.
+func (p *IMAPProvider) findMailboxByType(mboxType provider.MailboxType) (*provider.Mailbox, bool, error) {
+	p.cacheLock.RLock()
+	known, ok := p.specialMailboxes[mboxType]
+	p.cacheLock.RUnlock()
+	if ok {
+		return &known, true, nil
+	}
+
+	mbox, err := p.listMailboxByType(mboxType)
+	if err != nil || mbox == nil {
+		// No such folder is not remembered: one may be created elsewhere.
+		return mbox, false, err
+	}
+	p.cacheLock.Lock()
+	if p.specialMailboxes == nil {
+		p.specialMailboxes = make(map[provider.MailboxType]provider.Mailbox)
+	}
+	p.specialMailboxes[mboxType] = *mbox
+	p.cacheLock.Unlock()
+	return mbox, false, nil
+}
+
+// forgetSpecialMailboxes drops what FindMailboxByType remembered, for a change
+// to which folders exist.
+func (p *IMAPProvider) forgetSpecialMailboxes() {
+	p.cacheLock.Lock()
+	p.specialMailboxes = nil
+	p.cacheLock.Unlock()
+}
+
+// listMailboxByType asks the server which top-level folder has the type.
+func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provider.Mailbox, error) {
 	var attr imap.MailboxAttr
 	var fallbackNames []string
 
@@ -234,14 +455,31 @@ func (p *IMAPProvider) FindMailboxByType(mboxType provider.MailboxType) (*provid
 	return result, nil
 }
 
-// CreateMailbox creates a new mailbox
+// CreateMailbox creates a new mailbox and subscribes to it.
+//
+// IMAP leaves the two apart, and many servers do not subscribe a mailbox on
+// CREATE: a folder made here was then missing from every client that shows
+// subscribed folders only. Subscribing is what a mail client's New Folder
+// does. A refused
+// SUBSCRIBE does not undo or fail the create, since the folder exists either
+// way and saying it could not be created would be untrue.
 func (p *IMAPProvider) CreateMailbox(name string) error {
-	cmd := p.client.Create(name, nil)
-	return cmd.Wait()
+	defer p.forgetSpecialMailboxes()
+	if err := p.client.Create(name, nil).Wait(); err != nil {
+		return err
+	}
+	if err := p.client.Subscribe(name).Wait(); err != nil {
+		log.Printf("alps/provider: created %q, but the server refused to subscribe to it: %v", name, err)
+	} else {
+		p.noteSubscribed(name, true)
+	}
+	return nil
 }
 
 // DeleteMailbox deletes a mailbox
 func (p *IMAPProvider) DeleteMailbox(name string) error {
+	defer p.forgetSpecialMailboxes()
+	defer p.forgetMailbox(name)
 	cmd := p.client.Delete(name)
 	return cmd.Wait()
 }
@@ -258,11 +496,10 @@ func (p *IMAPProvider) DeleteMailbox(name string) error {
 // of mail. A re-SELECT of the mailbox already selected is one cheap round trip,
 // and it is the only way to know the answer is current.
 func (p *IMAPProvider) EmptyMailbox(name string) (int, error) {
-	data, err := p.client.Select(name, nil).Wait()
+	data, err := p.selectMailbox(name)
 	if err != nil {
-		return 0, fmt.Errorf("failed to select mailbox: %v", err)
+		return 0, err
 	}
-	p.selectedUIDValidity = data.UIDValidity
 
 	if data.NumMessages == 0 {
 		return 0, nil
@@ -288,32 +525,127 @@ func (p *IMAPProvider) EmptyMailbox(name string) (int, error) {
 
 // RenameMailbox renames a mailbox
 func (p *IMAPProvider) RenameMailbox(oldName, newName string) error {
+	defer p.forgetSpecialMailboxes()
+	defer p.forgetMailbox(oldName)
 	cmd := p.client.Rename(oldName, newName, nil)
 	return cmd.Wait()
 }
 
 // SubscribeMailbox subscribes to a mailbox
 func (p *IMAPProvider) SubscribeMailbox(name string) error {
-	cmd := p.client.Subscribe(name)
-	return cmd.Wait()
+	if err := p.client.Subscribe(name).Wait(); err != nil {
+		return err
+	}
+	p.noteSubscribed(name, true)
+	return nil
 }
 
 // UnsubscribeMailbox unsubscribes from a mailbox
 func (p *IMAPProvider) UnsubscribeMailbox(name string) error {
-	cmd := p.client.Unsubscribe(name)
-	return cmd.Wait()
+	if err := p.client.Unsubscribe(name).Wait(); err != nil {
+		return err
+	}
+	p.noteSubscribed(name, false)
+	return nil
 }
 
-// ensureMailboxSelected ensures the mailbox is selected
+// ensureMailboxSelected ensures the mailbox is selected. It selects it unless
+// both the record of the last SELECT (see selectMailbox) and the client say
+// it is: the client's may lag behind a SELECT just answered, which then costs
+// one SELECT more, never one fewer.
 func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
-	if mbox := p.client.Mailbox(); mbox == nil || mbox.Name != mboxName {
-		data, err := p.client.Select(mboxName, nil).Wait()
-		if err != nil {
-			return fmt.Errorf("failed to select mailbox: %v", err)
+	if p.selected != nil && p.selected.Name == mboxName {
+		if mbox := p.client.Mailbox(); mbox == nil || mbox.Name == mboxName {
+			return nil
 		}
-		p.selectedUIDValidity = data.UIDValidity
 	}
-	return nil
+	_, err := p.selectMailbox(mboxName)
+	return err
+}
+
+// selectMailbox selects mailbox, and records it as selected from the
+// SELECT's own answer.
+//
+// Not from the client's record of it: the go-imap client releases a SELECT's
+// waiter before it records the mailbox as selected, so straight after the
+// SELECT it can still show the mailbox selected before, or none at all when
+// the server answered the switch with [CLOSED]. Taken for the one selected,
+// it had the next SELECT, of that earlier mailbox, skipped, and the commands
+// after it ran in the wrong mailbox; counted, it gave the earlier mailbox's
+// count. Nor does the client record that
+// a SELECT the server refused leaves no mailbox selected (RFC 3501 §6.3.1):
+// it goes on showing the one before.
+func (p *IMAPProvider) selectMailbox(mailbox string) (*imap.SelectData, error) {
+	if was := p.selectedMailbox(); was != nil && was.Name != mailbox && p.news != nil {
+		uidNext := p.selectedUIDNext
+		if snapshot := p.idled; snapshot.known && snapshot.mailbox == was.Name && snapshot.selects == p.selects {
+			uidNext = snapshot.uidNext
+		}
+		// Unsolicited selected changes can advance UIDNEXT beyond either
+		// snapshot. Do not mistake the first later STATUS for a baseline.
+		if p.news.heard.Load() {
+			uidNext = 0
+		}
+		p.news.folders.left(was.Name, was.NumMessages, p.selectedUIDValidity, uidNext)
+	}
+	data, err := p.client.Select(mailbox, nil).Wait()
+	if err != nil {
+		p.selected = nil
+		return nil, fmt.Errorf("failed to select mailbox: %v", err)
+	}
+	p.selected = &imapclient.SelectedMailbox{
+		Name:           mailbox,
+		NumMessages:    data.NumMessages,
+		Flags:          data.Flags,
+		PermanentFlags: data.PermanentFlags,
+	}
+	p.selectedUIDValidity = data.UIDValidity
+	p.selectedUIDNext = data.UIDNext
+	p.selects++
+	// A reselect of the same name can leave an older count in the client
+	// until its reader finishes publishing this SELECT. Names alone cannot
+	// distinguish those snapshots. A following command's answer is a
+	// barrier; only this ambiguous disagreement needs the extra round trip.
+	if current := p.client.Mailbox(); current != nil && current.Name == mailbox && current.NumMessages != data.NumMessages {
+		if err := p.answeredWithin("mailbox state after SELECT", func() error { return p.client.Noop().Wait() }); err != nil {
+			p.selected = nil
+			return nil, err
+		}
+	}
+	return data, nil
+}
+
+// selectedMailbox is the mailbox selected and what it holds, or nil when
+// none is. It is the client's record of it, which follows the messages that
+// arrive and go, once the client has recorded the SELECT; until then, the
+// SELECT's own answer (see selectMailbox). The client records it as it reads
+// the answer, so it has by the time the next command is answered.
+func (p *IMAPProvider) selectedMailbox() *imapclient.SelectedMailbox {
+	if p.selected == nil {
+		return nil
+	}
+	if mbox := p.client.Mailbox(); mbox != nil && mbox.Name == p.selected.Name {
+		return mbox
+	}
+	return p.selected
+}
+
+// SelectedUIDValidity is the UIDVALIDITY under which the last part was read.
+// Another selected mailbox, or an unknown UIDVALIDITY, is reported as zero.
+func (p *IMAPProvider) SelectedUIDValidity(mailbox string) uint32 {
+	if p.selected == nil || p.selected.Name != mailbox {
+		return 0
+	}
+	return p.selectedUIDValidity
+}
+
+// arrivedSinceSelect reports whether uid may name a message that came into
+// the selected mailbox after it was selected. Such a message may not be
+// announced to this session yet, and a UID FETCH that misses it is worth
+// asking again after a NOOP. Any other message that is still there is in the
+// session's view, so a UID FETCH that does not answer it means it is gone.
+func (p *IMAPProvider) arrivedSinceSelect(uid imap.UID) bool {
+	return p.selectedUIDNext == 0 || uid >= p.selectedUIDNext
 }
 
 type ThreadGroup struct {
@@ -321,11 +653,9 @@ type ThreadGroup struct {
 	UIDs   []uint32
 }
 
-func (p *IMAPProvider) sortGroups(mailbox string, groups []ThreadGroup, sortOrder string) error {
-	if len(groups) == 0 {
-		return nil
-	}
-
+// messageSortCriteria is what the user's settings order a listing by: "date",
+// the default, or the order mail was filed in.
+func (p *IMAPProvider) messageSortCriteria() string {
 	var s struct {
 		MessageSortCriteria string `json:"message_sort_criteria"`
 	}
@@ -335,7 +665,15 @@ func (p *IMAPProvider) sortGroups(mailbox string, groups []ThreadGroup, sortOrde
 			sortCriteria = s.MessageSortCriteria
 		}
 	}
+	return sortCriteria
+}
 
+func (p *IMAPProvider) sortGroups(mailbox string, groups []ThreadGroup, sortOrder string) error {
+	if len(groups) == 0 {
+		return nil
+	}
+
+	sortCriteria := p.messageSortCriteria()
 	if sortCriteria == "date" {
 		// 1. Sort all groups by RepUID first (filing date / sequential proxy)
 		if sortOrder == "asc" {
@@ -374,16 +712,16 @@ func (p *IMAPProvider) sortGroups(mailbox string, groups []ThreadGroup, sortOrde
 		// 3. Initialize cache
 		p.cacheLock.Lock()
 		if p.dateCache == nil {
-			p.dateCache = make(map[string]map[uint32]time.Time)
+			p.dateCache = make(map[string]*mailboxDates)
 		}
-		mboxCache := p.dateCache[mailbox]
-		if mboxCache == nil {
-			mboxCache = make(map[uint32]time.Time)
-			p.dateCache[mailbox] = mboxCache
-		} else if len(mboxCache) > 10000 {
-			mboxCache = make(map[uint32]time.Time)
-			p.dateCache[mailbox] = mboxCache
+		// The mailbox is the selected one, and its UIDs are read under the
+		// UIDVALIDITY it was selected with.
+		kept := p.dateCache[mailbox]
+		if kept == nil || kept.uidValidity != p.selectedUIDValidity || len(kept.dates) > 10000 {
+			kept = &mailboxDates{uidValidity: p.selectedUIDValidity, dates: make(map[uint32]time.Time)}
+			p.dateCache[mailbox] = kept
 		}
+		mboxCache := kept.dates
 		p.cacheLock.Unlock()
 
 		// 4. Batch-fetch only for uncached UIDs in the window
@@ -556,6 +894,246 @@ func (p *IMAPProvider) fetchThreadGroups(criteria *imap.SearchCriteria) ([]Threa
 	return groups, nil
 }
 
+// mailboxShape is what a mailbox's conversations depend on: which messages it
+// holds. A message's headers never change, so neither does the conversation it
+// belongs to, and a flag change moves nothing between conversations. Within one
+// UIDVALIDITY a message that arrives takes a UID above every other, so the
+// highest UID moves whenever one does, and one that goes without another
+// arriving lowers the count. The same count and highest UID are the same
+// messages.
+//
+// UIDNEXT would serve as well, but for the selected mailbox it is known only
+// from its SELECT, which new mail leaves behind, and RFC 9051 asks clients not
+// to send STATUS for the selected mailbox.
+type mailboxShape struct {
+	uidValidity uint32
+	messages    uint32
+	lastUID     imap.UID
+}
+
+// threadCache is one mailbox's conversations as THREAD answered them for the
+// whole mailbox, in the order a page last asked for, while the mailbox has the
+// shape they were answered for.
+type threadCache struct {
+	shape  mailboxShape
+	groups []ThreadGroup
+	// order is the sortOrderKey the groups are sorted by, or "" for THREAD's
+	// own order. One order is kept: sortGroups orders by RepUID before
+	// anything else, so what it answers does not depend on the order it was
+	// given, and a page in another order sorts a copy and keeps that.
+	order string
+	// used is the provider's threadUses when the entry was last used; the
+	// least recent goes first.
+	used uint64
+}
+
+// maxThreadCaches bounds how many mailboxes' conversations a session keeps.
+const maxThreadCaches = 8
+
+// currentShape asks the server what the selected mailbox holds now. A NOOP
+// brings the message count up to date, unless fresh says one has just been
+// answered for it, and once it has finished, a FETCH of the last message by
+// its number reads that message's UID. UIDVALIDITY is the one the mailbox was
+// selected with.
+//
+// The two are not sent together, though that would save a round trip. A
+// FETCH by number takes the first FETCH response for that number as its
+// answer, and the NOOP's updates can carry one. When another client flags the
+// last message, removes an earlier one and files a new one, the flag update
+// names the old last message by the number the new one ends up with, and is
+// taken for the answer: the folder looks unchanged. RFC 9051 §5.5 asks a
+// client to wait for a command such as NOOP to finish before it sends one
+// that names messages by number, for this reason.
+func (p *IMAPProvider) currentShape(fresh bool) (mailboxShape, error) {
+	if !fresh {
+		if err := p.client.Noop().Wait(); err != nil {
+			return mailboxShape{}, err
+		}
+	}
+	mbox := p.selectedMailbox()
+	if mbox == nil {
+		return mailboxShape{}, errors.New("no mailbox selected")
+	}
+
+	shape := mailboxShape{uidValidity: p.selectedUIDValidity, messages: mbox.NumMessages}
+	if shape.messages == 0 {
+		return shape, nil
+	}
+	msgs, err := p.client.Fetch(imap.SeqSetNum(shape.messages), &imap.FetchOptions{UID: true}).Collect()
+	if err != nil {
+		return mailboxShape{}, err
+	}
+	for _, msg := range msgs {
+		if msg.UID > shape.lastUID {
+			shape.lastUID = msg.UID
+		}
+	}
+	if shape.lastUID == 0 {
+		return mailboxShape{}, errors.New("the server named no UID for the last message")
+	}
+	return shape, nil
+}
+
+// mailboxThreads answers the selected mailbox's conversations, as THREAD
+// answers them for the whole mailbox, threading it only when its messages are
+// not the ones it was last threaded with.
+//
+// THREAD is answered over the whole mailbox, so its cost is the mailbox's size
+// rather than a page's, and it was sent again for every page, for every
+// listing after a cached page was dropped, and for a conversation opened
+// without its members at hand. A server that rate-limits it then refused it,
+// and the folder was listed without grouping.
+//
+// The cache entry is returned with the groups, for the order kept with them,
+// or nil when the mailbox's shape could not be told and nothing was kept. The
+// groups are shared: callers must not change them. fresh is currentShape's.
+func (p *IMAPProvider) mailboxThreads(mailbox string, fresh bool) (*threadCache, []ThreadGroup, error) {
+	shape, shapeErr := p.currentShape(fresh)
+	if shapeErr == nil {
+		p.cacheLock.Lock()
+		entry := p.threads[mailbox]
+		if entry != nil && entry.shape == shape {
+			p.threadUses++
+			entry.used = p.threadUses
+			p.cacheLock.Unlock()
+			return entry, entry.groups, nil
+		}
+		p.cacheLock.Unlock()
+	} else if p.debug {
+		fmt.Printf("thread cache: cannot tell what %s holds, threading it: %v\n", mailbox, shapeErr)
+	}
+
+	groups, err := p.fetchThreadGroups(&imap.SearchCriteria{})
+	if err != nil {
+		return nil, nil, err
+	}
+	if shapeErr != nil {
+		return nil, groups, nil
+	}
+
+	p.cacheLock.Lock()
+	defer p.cacheLock.Unlock()
+	p.threadUses++
+	entry := &threadCache{shape: shape, groups: groups, used: p.threadUses}
+	if p.threads == nil {
+		p.threads = make(map[string]*threadCache)
+	}
+	if _, ok := p.threads[mailbox]; !ok && len(p.threads) >= maxThreadCaches {
+		var oldest string
+		for name, e := range p.threads {
+			if oldest == "" || e.used < p.threads[oldest].used {
+				oldest = name
+			}
+		}
+		delete(p.threads, oldest)
+	}
+	p.threads[mailbox] = entry
+	return entry, groups, nil
+}
+
+// sortCache is one mailbox's UIDs in date order, as SORT answered them for
+// the whole mailbox, while the mailbox has the shape they were answered for.
+type sortCache struct {
+	shape   mailboxShape
+	reverse bool
+	uids    []imap.UID
+	used    uint64
+}
+
+// sortedMailboxUIDs answers the selected mailbox's UIDs in date order, newest
+// first when reverse, sorting them only when the mailbox's messages are not
+// the ones they were last sorted with, in that order.
+//
+// SORT is answered over the whole mailbox, as THREAD is (see mailboxThreads),
+// and a folder listed flat in date order was sorted again for every page and
+// every listing after a cached page was dropped. Its messages' dates are their
+// Date headers, which never change, so only another message moves the order.
+// One order is kept per mailbox: a page in the other sorts again. The UIDs are
+// shared: callers must not change them.
+func (p *IMAPProvider) sortedMailboxUIDs(mailbox string, reverse, fresh bool) ([]imap.UID, error) {
+	shape, shapeErr := p.currentShape(fresh)
+	if shapeErr == nil {
+		p.cacheLock.Lock()
+		entry := p.sorts[mailbox]
+		if entry != nil && entry.shape == shape && entry.reverse == reverse {
+			p.threadUses++
+			entry.used = p.threadUses
+			p.cacheLock.Unlock()
+			return entry.uids, nil
+		}
+		p.cacheLock.Unlock()
+	} else if p.debug {
+		fmt.Printf("sort cache: cannot tell what %s holds, sorting it: %v\n", mailbox, shapeErr)
+	}
+
+	data, err := p.client.UIDSort(&imapclient.SortOptions{
+		SearchCriteria: &imap.SearchCriteria{},
+		SortCriteria:   []imap.SortCriterion{{Key: imap.SortKeyDate, Reverse: reverse}},
+	}).Wait()
+	if err != nil {
+		return nil, err
+	}
+	if shapeErr != nil {
+		return data.UIDs, nil
+	}
+
+	p.cacheLock.Lock()
+	defer p.cacheLock.Unlock()
+	p.threadUses++
+	if p.sorts == nil {
+		p.sorts = make(map[string]*sortCache)
+	}
+	if _, ok := p.sorts[mailbox]; !ok && len(p.sorts) >= maxThreadCaches {
+		var oldest string
+		for name, e := range p.sorts {
+			if oldest == "" || e.used < p.sorts[oldest].used {
+				oldest = name
+			}
+		}
+		delete(p.sorts, oldest)
+	}
+	p.sorts[mailbox] = &sortCache{shape: shape, reverse: reverse, uids: data.UIDs, used: p.threadUses}
+	return data.UIDs, nil
+}
+
+// sortOrderKey names an order of a mailbox's conversations: the user's sort
+// setting and the direction.
+func sortOrderKey(sortCriteria, sortOrder string) string {
+	return sortCriteria + " " + sortOrder
+}
+
+// sortedMailboxThreads answers the selected mailbox's conversations in the
+// order a page shows them, sorting them only when they are not sorted that way
+// already. With the date order a server with SORT is asked to sort them, which
+// is another command over the mailbox.
+func (p *IMAPProvider) sortedMailboxThreads(mailbox, sortOrder string, fresh bool) ([]ThreadGroup, error) {
+	entry, groups, err := p.mailboxThreads(mailbox, fresh)
+	if err != nil {
+		return nil, err
+	}
+	key := sortOrderKey(p.messageSortCriteria(), sortOrder)
+	if entry != nil {
+		p.cacheLock.RLock()
+		kept, order := entry.groups, entry.order
+		p.cacheLock.RUnlock()
+		if order == key {
+			return kept, nil
+		}
+		groups = kept
+	}
+
+	sorted := append([]ThreadGroup(nil), groups...)
+	if err := p.sortGroups(mailbox, sorted, sortOrder); err != nil {
+		return nil, fmt.Errorf("failed to sort thread groups: %w", err)
+	}
+	if entry != nil {
+		p.cacheLock.Lock()
+		entry.groups, entry.order = sorted, key
+		p.cacheLock.Unlock()
+	}
+	return sorted, nil
+}
+
 // refusedByServer reports whether err is the server declining a command with a
 // tagged NO or BAD, rather than the connection or the client giving out.
 //
@@ -563,6 +1141,40 @@ func (p *IMAPProvider) fetchThreadGroups(criteria *imap.SearchCriteria) ([]Threa
 // socket, a malformed response — will fail the next command on this connection
 // too, and the caller is better served by the original error than by a second
 // one from a fallback that never had a chance.
+// searchFailed is the error of a search the server refused. A refusal for one
+// of its limits (RFC 5530 [LIMIT]) is a provider.LimitError, with the wait
+// the server named when it named one: Sora refuses every search, SORT and
+// THREAD with NO [LIMIT] once the account's search budget is used up, and
+// says "please wait 42s". The page can then say the server asked to slow
+// down, rather than that the folder could not be read. A listing without a
+// query is not refused this way: it lists by number instead (see
+// SearchMessages).
+func searchFailed(command string, err error) error {
+	var imapErr *imap.Error
+	if errors.As(err, &imapErr) && imapErr.Code == imap.ResponseCodeLimit {
+		return &provider.LimitError{RetryAfter: waitNamedIn(imapErr.Text), Cause: fmt.Errorf("%s refused: %w", command, err)}
+	}
+	return fmt.Errorf("%s failed: %v", command, err)
+}
+
+// waitAsked is "wait", then a duration as Go writes one ("42s", "1m5s"): how
+// Sora's refusal says how long to wait. RFC 5530 gives [LIMIT] no time of its
+// own, so a refusal that says none, or says it otherwise, names none.
+var waitAsked = regexp.MustCompile(`(?i)\bwait ((?:\d+(?:\.\d+)?(?:ns|us|µs|ms|s|m|h))+)\b`)
+
+// waitNamedIn is the wait text names, or 0 for none.
+func waitNamedIn(text string) time.Duration {
+	m := waitAsked.FindStringSubmatch(text)
+	if m == nil {
+		return 0
+	}
+	wait, err := time.ParseDuration(m[1])
+	if err != nil || wait < 0 {
+		return 0
+	}
+	return wait
+}
+
 func refusedByServer(err error) bool {
 	var imapErr *imap.Error
 	if !errors.As(err, &imapErr) {
@@ -591,20 +1203,31 @@ func (p *IMAPProvider) noteThreadFallback(mailbox string) bool {
 // threadedPage paints one page of a THREADed message list: group the mailbox
 // into conversations, order the groups, then fetch and convert just the page's
 // messages. ListMessages and SearchMessages share it — they differ only in the
-// criteria they thread over.
+// criteria they thread over. whole says the criteria pick out every message,
+// and then the conversations are kept for the next page (see mailboxThreads);
+// fresh says a NOOP has just been answered for the mailbox (see currentShape).
 //
 // Its error is RECOVERABLE by design. Nothing here touches session state, so a
 // caller that gets one can simply carry on down its own unthreaded path, which
 // is what both of them do.
-func (p *IMAPProvider) threadedPage(mailbox string, criteria *imap.SearchCriteria, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
-	groups, err := p.fetchThreadGroups(criteria)
-	if err != nil {
-		return nil, 0, err
-	}
+func (p *IMAPProvider) threadedPage(mailbox string, criteria *imap.SearchCriteria, whole, fresh bool, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+	var groups []ThreadGroup
+	var err error
+	if whole {
+		groups, err = p.sortedMailboxThreads(mailbox, sortOrder, fresh)
+		if err != nil {
+			return nil, 0, err
+		}
+	} else {
+		groups, err = p.fetchThreadGroups(criteria)
+		if err != nil {
+			return nil, 0, err
+		}
 
-	// Sort groups based on criteria and sortOrder
-	if err := p.sortGroups(mailbox, groups, sortOrder); err != nil {
-		return nil, 0, fmt.Errorf("failed to sort thread groups: %w", err)
+		// Sort groups based on criteria and sortOrder
+		if err := p.sortGroups(mailbox, groups, sortOrder); err != nil {
+			return nil, 0, fmt.Errorf("failed to sort thread groups: %w", err)
+		}
 	}
 
 	total := len(groups)
@@ -618,31 +1241,59 @@ func (p *IMAPProvider) threadedPage(mailbox string, criteria *imap.SearchCriteri
 	}
 	paginatedGroups := groups[from:to]
 
-	var allUIDs []uint32
+	// A row's message is fetched with its structure, which its row and the
+	// reader opened from it use. The other messages of its conversation are
+	// fetched with what the list shows of them, their flags and envelope:
+	// a page of a few long conversations fetched hundreds of structures. The
+	// two FETCHes go out together, and the answers are told apart by UID.
+	var repSet, memberSet imap.UIDSet
 	for _, g := range paginatedGroups {
-		allUIDs = append(allUIDs, g.UIDs...)
+		for _, uid := range g.UIDs {
+			if uid == g.RepUID {
+				repSet.AddNum(imap.UID(uid))
+			} else {
+				memberSet.AddNum(imap.UID(uid))
+			}
+		}
 	}
 
-	var uidSet imap.UIDSet
-	for _, uid := range allUIDs {
-		uidSet.AddNum(imap.UID(uid))
-	}
-
-	fetchOptions := imap.FetchOptions{
+	repCmd := p.client.Fetch(repSet, &imap.FetchOptions{
 		Flags:         true,
 		Envelope:      true,
 		UID:           true,
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+	})
+	type fetched struct {
+		msgs []*imapclient.FetchMessageBuffer
+		err  error
 	}
-
-	imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
+	members := make(chan fetched, 1)
+	if len(memberSet) > 0 {
+		memberCmd := p.client.Fetch(memberSet, &imap.FetchOptions{
+			Flags:      true,
+			Envelope:   true,
+			UID:        true,
+			RFC822Size: true,
+		})
+		go func() {
+			msgs, err := memberCmd.Collect()
+			members <- fetched{msgs, err}
+		}()
+	} else {
+		members <- fetched{}
+	}
+	imapMsgs, err := repCmd.Collect()
+	memberMsgs := <-members
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch representative messages: %w", err)
 	}
+	if memberMsgs.err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch the conversations' other messages: %w", memberMsgs.err)
+	}
 
 	msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
-	for _, msg := range imapMsgs {
+	for _, msg := range append(imapMsgs, memberMsgs.msgs...) {
 		msgMap[uint32(msg.UID)] = msg
 	}
 
@@ -659,13 +1310,15 @@ func (p *IMAPProvider) threadedPage(mailbox string, criteria *imap.SearchCriteri
 			converted.ThreadUIDs[idx] = strconv.FormatUint(uint64(u), 10)
 		}
 
-		// Sort sub-messages in ascending order (chronological) and assign them
-		sort.Slice(g.UIDs, func(i, j int) bool {
-			return g.UIDs[i] < g.UIDs[j]
+		// Sort sub-messages in ascending order (chronological) and assign them.
+		// A copy: the groups may be the ones kept for the next page.
+		members := append([]uint32(nil), g.UIDs...)
+		sort.Slice(members, func(i, j int) bool {
+			return members[i] < members[j]
 		})
 
 		var subMessages []provider.Message
-		for _, uid := range g.UIDs {
+		for _, uid := range members {
 			if uid == g.RepUID {
 				continue
 			}
@@ -706,13 +1359,14 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 		}
 	}
 
-	mbox := p.client.Mailbox()
+	mbox := p.selectedMailbox()
 	if isMailboxMassive(mbox) {
 		enableThreading = false
 	}
 
 	if enableThreading && p.HasThreadCapability() {
-		msgs, total, err := p.threadedPage(mailbox, &imap.SearchCriteria{}, sortOrder, page, pageSize)
+		// The NOOP above has brought the mailbox's count up to date.
+		msgs, total, err := p.threadedPage(mailbox, &imap.SearchCriteria{}, true, true, sortOrder, page, pageSize)
 		if err == nil {
 			return msgs, provider.PageInfo{Total: total, Threaded: true}, nil
 		}
@@ -721,7 +1375,18 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 		}
 	}
 
-	mbox = p.client.Mailbox()
+	return p.listByNumber(mailbox, sortOrder, page, pageSize)
+}
+
+// listByNumber lists a page of the selected mailbox by message number, the
+// order mail arrived in, newest first unless sortOrder is "asc". It searches
+// for nothing, so a server that refuses searches still answers it. Each row is
+// a thread of its own, so the reader opened from it does not thread either.
+func (p *IMAPProvider) listByNumber(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
+	mbox := p.selectedMailbox()
+	if mbox == nil {
+		return nil, provider.PageInfo{}, errors.New("no mailbox selected")
+	}
 	total := int(mbox.NumMessages)
 
 	var from, to int
@@ -818,15 +1483,26 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		mailbox = "INBOX"
 	}
 
+	// A NOOP, as ListMessages sends, for mail that arrived since the mailbox
+	// was selected. A check for new mail reads the counts on the session's
+	// other connection, and this one is told of the arrival only by a command
+	// that lets the server say so. Without it, the listing that followed the
+	// check went without the new mail, unless something else had been asked
+	// on this connection first, as the folder list was when every change
+	// dropped it.
+	noop := p.client.Noop()
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
 		return nil, provider.PageInfo{}, err
 	}
+	if err := noop.Wait(); err != nil {
+		return nil, provider.PageInfo{}, err
+	}
 
-	mbox := p.client.Mailbox()
+	mbox := p.selectedMailbox()
 	if isMailboxMassive(mbox) && query == "" {
 		// Fast path for massive mailboxes without a search query.
 		// Avoid the massive IMAP SORT response by falling back to sequential listing.
-		return p.ListMessages(mailbox, sortOrder, page, pageSize)
+		return p.listByNumber(mailbox, sortOrder, page, pageSize)
 	}
 
 	searchCriteria := prepareIMAPSearch(query)
@@ -843,13 +1519,13 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		}
 	}
 
-	mbox = p.client.Mailbox()
+	mbox = p.selectedMailbox()
 	if isMailboxMassive(mbox) {
 		enableThreading = false
 	}
 
 	if enableThreading && p.HasThreadCapability() {
-		msgs, total, err := p.threadedPage(mailbox, searchCriteria, sortOrder, page, pageSize)
+		msgs, total, err := p.threadedPage(mailbox, searchCriteria, query == "", true, sortOrder, page, pageSize)
 		if err == nil {
 			return msgs, provider.PageInfo{Total: total, Threaded: true}, nil
 		}
@@ -867,54 +1543,79 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		}
 	}
 
-	var nums []uint32
+	// Without a query the listing is the whole folder, and message numbers
+	// list all of it, in the order mail arrived. When the server refuses the
+	// SORT or SEARCH asked for below, the folder is listed by number instead.
+	// A server that rations searches refuses them once it has refused THREAD:
+	// Sora charges THREAD, SORT and SEARCH to one budget per account. That
+	// costs at most the date order, not the folder. A search with a query has
+	// no such answer, since only the server knows what matches, and fails as
+	// before.
+	// The initial NOOP has already brought the selected mailbox up to date.
+	byNumber := func(command string, refusal error) ([]provider.Message, provider.PageInfo, error) {
+		if p.debug {
+			fmt.Printf("flat list: %s refused, listing by number instead: %v\n", command, refusal)
+		}
+		return p.listByNumber(mailbox, sortOrder, page, pageSize)
+	}
+
+	reverse := sortOrder == "desc" || sortOrder == ""
+	var uids []imap.UID
 	if !p.client.Caps().Has(imap.CapSort) {
-		data, err := p.client.Search(searchCriteria, nil).Wait()
+		data, err := p.client.UIDSearch(searchCriteria, nil).Wait()
 		if err != nil {
-			return nil, provider.PageInfo{}, fmt.Errorf("SEARCH failed: %v", err)
+			if query == "" && refusedByServer(err) {
+				return byNumber("SEARCH", err)
+			}
+			return nil, provider.PageInfo{}, searchFailed("SEARCH", err)
 		}
 		if data != nil {
-			nums = data.AllSeqNums()
+			uids = data.AllUIDs()
 		}
-		if sortOrder == "desc" || sortOrder == "" {
-			for i := len(nums)/2 - 1; i >= 0; i-- {
-				opp := len(nums) - 1 - i
-				nums[i], nums[opp] = nums[opp], nums[i]
+		if reverse {
+			slices.Reverse(uids)
+		}
+	} else if query == "" {
+		// The whole folder: its order is kept (see sortedMailboxUIDs).
+		var err error
+		uids, err = p.sortedMailboxUIDs(mailbox, reverse, true)
+		if err != nil {
+			if refusedByServer(err) {
+				return byNumber("SORT", err)
 			}
+			return nil, provider.PageInfo{}, searchFailed("SORT", err)
 		}
 	} else {
 		sortOptions := &imapclient.SortOptions{
 			SearchCriteria: searchCriteria,
 			SortCriteria: []imap.SortCriterion{
-				{Key: imap.SortKeyDate, Reverse: sortOrder == "desc" || sortOrder == ""},
+				{Key: imap.SortKeyDate, Reverse: reverse},
 			},
 		}
-		var err error
-		sortData, err := p.client.Sort(sortOptions).Wait()
+		sortData, err := p.client.UIDSort(sortOptions).Wait()
 		if err != nil {
-			return nil, provider.PageInfo{}, fmt.Errorf("SORT failed: %v", err)
+			return nil, provider.PageInfo{}, searchFailed("SORT", err)
 		}
-		nums = sortData.SeqNums
+		uids = sortData.UIDs
 	}
 
-	total := len(nums)
+	total := len(uids)
 
 	from := page * pageSize
 	to := from + pageSize
-	if from >= len(nums) {
+	if from >= len(uids) {
 		return nil, provider.PageInfo{Total: total}, nil
 	}
-	if to > len(nums) {
-		to = len(nums)
+	if to > len(uids) {
+		to = len(uids)
 	}
-	nums = nums[from:to]
+	uids = uids[from:to]
 
-	indexes := make(map[uint32]int)
-	for i, num := range nums {
-		indexes[num] = i
+	indexes := make(map[imap.UID]int)
+	for i, uid := range uids {
+		indexes[uid] = i
 	}
 
-	seqSet := imap.SeqSetNum(nums...)
 	options := imap.FetchOptions{
 		Envelope:      true,
 		Flags:         true,
@@ -922,14 +1623,14 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
 	}
-	results, err := p.client.Fetch(seqSet, &options).Collect()
+	results, err := p.client.Fetch(imap.UIDSetNum(uids...), &options).Collect()
 	if err != nil {
 		return nil, provider.PageInfo{}, fmt.Errorf("failed to fetch message list: %v", err)
 	}
 
-	msgs := make([]provider.Message, len(nums))
+	msgs := make([]provider.Message, len(uids))
 	for _, msg := range results {
-		i, ok := indexes[msg.SeqNum]
+		i, ok := indexes[msg.UID]
 		if !ok {
 			continue
 		}
@@ -976,11 +1677,14 @@ func (p *IMAPProvider) GetMessageMetadata(mailbox string, id provider.MessageID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch message metadata: %v", err)
 	} else if len(msgs) == 0 {
-		// Try syncing state with NOOP and fetching again
-		if err := p.client.Noop().Wait(); err == nil {
-			msgs, err = p.client.Fetch(imap.UIDSetNum(imap.UID(uid)), &options).Collect()
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch message metadata after NOOP: %v", err)
+		// Try syncing state with NOOP and fetching again, for a message the
+		// session may not have been told about yet. Any other is gone.
+		if p.arrivedSinceSelect(imap.UID(uid)) {
+			if err := p.client.Noop().Wait(); err == nil {
+				msgs, err = p.client.Fetch(imap.UIDSetNum(imap.UID(uid)), &options).Collect()
+				if err != nil {
+					return nil, fmt.Errorf("failed to fetch message metadata after NOOP: %v", err)
+				}
 			}
 		}
 		if len(msgs) == 0 {
@@ -1014,6 +1718,40 @@ func (p *IMAPProvider) GetMessagePartRaw(mailbox string, id provider.MessageID, 
 	return &converted, headerBuf, bodyBuf, nil
 }
 
+// GetMessagePartForReader reads a part of a message with what the reader
+// shows beside it, in one FETCH: the envelope, flags and structure, the
+// part's MIME header, and the Authentication-Results and References fields.
+//
+// A listing row has the structure to choose the part from, but not the two
+// fields, so a listed message opens with this one read. Without it the
+// reader read the message twice: its metadata, for those fields and the
+// structure, and then the part.
+func (p *IMAPProvider) GetMessagePartForReader(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, []byte, []byte, error) {
+	msg, headerBuf, bodyBuf, _, _, err := p.GetMessagePartForReaderWithParts(mailbox, id, partPath, nil)
+	return msg, headerBuf, bodyBuf, err
+}
+
+// GetMessagePartForReaderWithParts is GetMessagePartForReader, reading in the
+// same FETCH the parts at also, each with its MIME header: an HTML body's
+// images, which the page asks for as soon as it shows the body. A part the
+// server did not send is nil in the answers, which are in the order of also.
+func (p *IMAPProvider) GetMessagePartForReaderWithParts(mailbox string, id provider.MessageID, partPath []int, also [][]int) (*provider.Message, []byte, []byte, [][]byte, [][]byte, error) {
+	uid := id.(IMAPUID)
+	references := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"References"},
+		Peek:         true,
+	}
+	msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, err := p.getMessagePartRawWith(mailbox, imap.UID(uid), partPath, 0, also, authResultsSection(), references)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	// The verdict and the References are read out of the fields here, as for
+	// any FETCH that carries them.
+	converted := p.convertIMAPMessage(msg, mailbox)
+	return &converted, headerBuf, bodyBuf, alsoHeaders, alsoBodies, nil
+}
+
 // GetMessagePartWithData fetches a message part with both entity and raw data
 func (p *IMAPProvider) GetMessagePartWithData(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, *message.Entity, []byte, []byte, error) {
 	uid := id.(IMAPUID)
@@ -1025,11 +1763,41 @@ func (p *IMAPProvider) GetMessagePartWithData(mailbox string, id provider.Messag
 	return &converted, part, headerBuf, bodyBuf, nil
 }
 
-func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath []int, limit int64) (*imapclient.FetchMessageBuffer, []byte, []byte, error) {
+// getMessagePartRaw fetches a part and its MIME header, and any extra
+// sections asked for beside them in the same FETCH.
+func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath []int, limit int64, extra ...*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, error) {
+	msg, headerBuf, bodyBuf, _, _, err := p.getMessagePartRawWith(mailbox, uid, partPath, limit, nil, extra...)
+	return msg, headerBuf, bodyBuf, err
+}
+
+// getMessagePartRawWith is getMessagePartRaw, reading the parts at also
+// beside the part, each with its MIME header, in the same FETCH.
+func (p *IMAPProvider) getMessagePartRawWith(mailbox string, uid imap.UID, partPath []int, limit int64, also [][]int, extra ...*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, [][]byte, [][]byte, error) {
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 
+	// A part, where the server can undo its transfer encoding itself (BINARY,
+	// RFC 3516), is asked for as BINARY.PEEK: its bytes as they are, without
+	// the third more that base64 sends, and without alps decoding it again.
+	// A server may still refuse a part, as one under a transfer encoding it
+	// does not know ([UNKNOWN-CTE]); that part is read as stored. The whole
+	// message is always read as stored: it is what a download of it gives.
+	if len(partPath) > 0 && p.client.Caps().Has(imap.CapBinary) {
+		msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, err := p.fetchPart(uid, partPath, limit, true, also, extra)
+		if err == nil || errors.Is(err, provider.ErrMessageNotFound) {
+			return msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, err
+		}
+	}
+	return p.fetchPart(uid, partPath, limit, false, also, extra)
+}
+
+// fetchPart is one FETCH of a part and its MIME header, and of the parts at
+// also with theirs, with the extra sections asked for beside them; the parts
+// as BINARY.PEEK where binary says. A part read as BINARY comes with
+// "Content-Transfer-Encoding: binary" in its header, which is what its bytes
+// now are.
+func (p *IMAPProvider) fetchPart(uid imap.UID, partPath []int, limit int64, binary bool, also [][]int, extra []*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, [][]byte, [][]byte, error) {
 	headerItem := &imap.FetchItemBodySection{
 		Peek: true,
 		Part: partPath,
@@ -1040,7 +1808,14 @@ func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath 
 		headerItem.Specifier = imap.PartSpecifierHeader
 	}
 
+	// PEEK, like the header: a plain BODY[] fetch sets \Seen on the server as
+	// a side effect (RFC 3501, 6.4.5). A read of a message goes through here
+	// or through getMessagePartWithData — the reader opening it, an inline
+	// image, an attachment, a printout — and none of them is the user saying
+	// the message was read. The client sets \Seen itself, when the "Mark as
+	// read" setting says to.
 	bodyItem := &imap.FetchItemBodySection{
+		Peek: true,
 		Part: partPath,
 	}
 	if len(partPath) > 0 {
@@ -1048,8 +1823,10 @@ func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath 
 	} else {
 		bodyItem.Specifier = imap.PartSpecifierText
 	}
+	binaryItem := &imap.FetchItemBinarySection{Peek: true, Part: partPath}
 	if limit > 0 {
 		bodyItem.Partial = &imap.SectionPartial{Offset: 0, Size: limit}
+		binaryItem.Partial = &imap.SectionPartial{Offset: 0, Size: limit}
 	}
 
 	options := imap.FetchOptions{
@@ -1058,33 +1835,104 @@ func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath 
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
 		Flags:         true,
 		RFC822Size:    true,
-		BodySection:   []*imap.FetchItemBodySection{headerItem, bodyItem},
+		BodySection:   append([]*imap.FetchItemBodySection{headerItem, bodyItem}, extra...),
+	}
+	if binary {
+		options.BodySection = append([]*imap.FetchItemBodySection{headerItem}, extra...)
+		options.BinarySection = []*imap.FetchItemBinarySection{binaryItem}
+	}
+	type alsoItems struct {
+		header, body *imap.FetchItemBodySection
+		binary       *imap.FetchItemBinarySection
+	}
+	alsoSections := make([]alsoItems, len(also))
+	for i, path := range also {
+		alsoSections[i].header = &imap.FetchItemBodySection{Specifier: imap.PartSpecifierMIME, Part: path, Peek: true}
+		options.BodySection = append(options.BodySection, alsoSections[i].header)
+		if binary {
+			alsoSections[i].binary = &imap.FetchItemBinarySection{Part: path, Peek: true}
+			options.BinarySection = append(options.BinarySection, alsoSections[i].binary)
+		} else {
+			alsoSections[i].body = &imap.FetchItemBodySection{Specifier: imap.PartSpecifierNone, Part: path, Peek: true}
+			options.BodySection = append(options.BodySection, alsoSections[i].body)
+		}
 	}
 
 	msgs, err := p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to fetch message: %v", err)
+		return nil, nil, nil, nil, nil, fmt.Errorf("failed to fetch message: %v", err)
 	} else if len(msgs) == 0 {
-		// Try syncing state with NOOP and fetching again
-		if err := p.client.Noop().Wait(); err == nil {
-			msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("failed to fetch message after NOOP: %v", err)
+		// Try syncing state with NOOP and fetching again, for a message the
+		// session may not have been told about yet. Any other is gone.
+		if p.arrivedSinceSelect(uid) {
+			if err := p.client.Noop().Wait(); err == nil {
+				msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
+				if err != nil {
+					return nil, nil, nil, nil, nil, fmt.Errorf("failed to fetch message after NOOP: %v", err)
+				}
 			}
 		}
 		if len(msgs) == 0 {
-			return nil, nil, nil, fmt.Errorf("UID %d: %w", uid, provider.ErrMessageNotFound)
+			return nil, nil, nil, nil, nil, fmt.Errorf("UID %d: %w", uid, provider.ErrMessageNotFound)
 		}
 	}
 	msg := msgs[0]
 
 	headerBuf := msg.FindBodySection(headerItem)
-	bodyBuf := msg.FindBodySection(bodyItem)
+	var bodyBuf []byte
+	if binary {
+		bodyBuf = msg.FindBinarySection(binaryItem)
+	} else {
+		bodyBuf = msg.FindBodySection(bodyItem)
+	}
 	if headerBuf == nil || bodyBuf == nil {
-		return nil, nil, nil, fmt.Errorf("server didn't return header and body")
+		return nil, nil, nil, nil, nil, fmt.Errorf("server didn't return header and body")
+	}
+	if binary {
+		if headerBuf, err = binaryHeader(headerBuf); err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
 	}
 
-	return msg, headerBuf, bodyBuf, nil
+	var alsoHeaders, alsoBodies [][]byte
+	if len(also) > 0 {
+		alsoHeaders, alsoBodies = make([][]byte, len(also)), make([][]byte, len(also))
+		for i, items := range alsoSections {
+			header := msg.FindBodySection(items.header)
+			var body []byte
+			if binary {
+				body = msg.FindBinarySection(items.binary)
+			} else {
+				body = msg.FindBodySection(items.body)
+			}
+			if header == nil || body == nil {
+				continue
+			}
+			if binary {
+				if header, err = binaryHeader(header); err != nil {
+					continue
+				}
+			}
+			alsoHeaders[i], alsoBodies[i] = header, body
+		}
+	}
+
+	return msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, nil
+}
+
+// binaryHeader is a part's MIME header saying
+// "Content-Transfer-Encoding: binary", for the part's bytes read as BINARY.
+func binaryHeader(headerBuf []byte) ([]byte, error) {
+	h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerBuf)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read part header: %v", err)
+	}
+	h.Set("Content-Transfer-Encoding", "binary")
+	var rewritten bytes.Buffer
+	if err := textproto.WriteHeader(&rewritten, h); err != nil {
+		return nil, err
+	}
+	return rewritten.Bytes(), nil
 }
 
 func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, partPath []int) (*imapclient.FetchMessageBuffer, *message.Entity, []byte, []byte, error) {
@@ -1102,7 +1950,9 @@ func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, part
 		headerItem.Specifier = imap.PartSpecifierHeader
 	}
 
+	// PEEK, for the reason getMessagePartRaw gives.
 	bodyItem := &imap.FetchItemBodySection{
+		Peek: true,
 		Part: partPath,
 	}
 	if len(partPath) > 0 {
@@ -1124,11 +1974,14 @@ func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, part
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("failed to fetch message: %v", err)
 	} else if len(msgs) == 0 {
-		// Try syncing state with NOOP and fetching again
-		if err := p.client.Noop().Wait(); err == nil {
-			msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
-			if err != nil {
-				return nil, nil, nil, nil, fmt.Errorf("failed to fetch message after NOOP: %v", err)
+		// Try syncing state with NOOP and fetching again, for a message the
+		// session may not have been told about yet. Any other is gone.
+		if p.arrivedSinceSelect(uid) {
+			if err := p.client.Noop().Wait(); err == nil {
+				msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
+				if err != nil {
+					return nil, nil, nil, nil, fmt.Errorf("failed to fetch message after NOOP: %v", err)
+				}
 			}
 		}
 		if len(msgs) == 0 {
@@ -1148,12 +2001,79 @@ func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, part
 		return nil, nil, nil, nil, fmt.Errorf("failed to read part header: %v", err)
 	}
 
-	part, err := message.New(message.Header{Header: h}, bytes.NewReader(bodyBuf))
-	if err != nil {
+	// A charset alps does not know leaves the part's text as it is stored,
+	// its transfer encoding undone: as it must be kept by a draft that
+	// carries the part forward, and as good as can be had for any other read.
+	part, err := provider.DecodePart(message.Header{Header: h}, bodyBuf)
+	if err != nil && !message.IsUnknownCharset(err) {
 		return nil, nil, nil, nil, fmt.Errorf("failed to create message reader: %v", err)
 	}
 
 	return msg, part, headerBuf, bodyBuf, nil
+}
+
+// GetMessagePartsRaw reads several parts of one message as they are stored,
+// each with its MIME header, in one FETCH, and returns the headers and the
+// bodies in the order of paths.
+//
+// A draft save carries the parts of the message it forwards, or of the draft
+// saved before it, and reads them all on every save. Read one at a time with
+// GetMessagePartWithData, that was a round trip per part, and each one also
+// fetched the message's envelope and structure, which the save does not use.
+// The parts are peeked at, so reading them does not mark the message seen.
+//
+// As stored, not decoded: the caller decodes them, and needs to know whether
+// a text was converted to UTF-8, which a part decoded here left it to guess.
+func (p *IMAPProvider) GetMessagePartsRaw(mailbox string, id provider.MessageID, paths [][]int) (headers, bodies [][]byte, err error) {
+	if err := p.ensureMailboxSelected(mailbox); err != nil {
+		return nil, nil, err
+	}
+	uid := imap.UID(id.(IMAPUID))
+
+	type partItems struct{ header, body *imap.FetchItemBodySection }
+	items := make([]partItems, len(paths))
+	var sections []*imap.FetchItemBodySection
+	for i, path := range paths {
+		header := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierMIME, Part: path, Peek: true}
+		body := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierNone, Part: path, Peek: true}
+		if len(path) == 0 {
+			header.Specifier = imap.PartSpecifierHeader
+			body.Specifier = imap.PartSpecifierText
+		}
+		items[i] = partItems{header, body}
+		sections = append(sections, header, body)
+	}
+	options := imap.FetchOptions{UID: true, BodySection: sections}
+
+	msgs, err := p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to fetch message parts: %v", err)
+	} else if len(msgs) == 0 {
+		// As in GetMessageMetadata, for a message the session may not have
+		// been told about yet.
+		if p.arrivedSinceSelect(uid) {
+			if err := p.client.Noop().Wait(); err == nil {
+				msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to fetch message parts after NOOP: %v", err)
+				}
+			}
+		}
+		if len(msgs) == 0 {
+			return nil, nil, fmt.Errorf("UID %d: %w", uid, provider.ErrMessageNotFound)
+		}
+	}
+	msg := msgs[0]
+
+	headers, bodies = make([][]byte, len(paths)), make([][]byte, len(paths))
+	for i, item := range items {
+		headers[i] = msg.FindBodySection(item.header)
+		bodies[i] = msg.FindBodySection(item.body)
+		if headers[i] == nil || bodies[i] == nil {
+			return nil, nil, fmt.Errorf("server didn't return header and body of part %v", paths[i])
+		}
+	}
+	return headers, bodies, nil
 }
 
 // SetMessagesFlags sets flags for multiple messages
@@ -1209,52 +2129,179 @@ func (p *IMAPProvider) MarkAnswered(mailbox string, id provider.MessageID) error
 
 // AppendMessage appends a message to a mailbox and returns the UID
 func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessageWriter, mboxType provider.MailboxType) (*provider.Mailbox, provider.MessageID, uint32, error) {
-	mbox, err := p.FindMailboxByType(mboxType)
+	mbox, remembered, err := p.findMailboxByType(mboxType)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 	}
 	if mbox == nil {
-		return nil, nil, 0, fmt.Errorf("unable to resolve mailbox")
+		return nil, nil, 0, fmt.Errorf("%w: unable to resolve mailbox", provider.ErrAppendNotStarted)
 	}
 
 	// IMAP needs to know in advance the final size of the message
 	var buf bytes.Buffer
 	if _, err := msg.WriteTo(&buf); err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 	}
 	size := uint32(buf.Len())
+	select {
+	case <-p.client.Closed():
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, net.ErrClosed)
+	default:
+	}
 
 	flags := []imap.Flag{imap.FlagSeen}
 	if mboxType == provider.MailboxTypeDrafts {
 		flags = append(flags, imap.FlagDraft)
 	}
 	options := imap.AppendOptions{Flags: flags}
-	appendCmd := p.client.Append(mbox.Name, int64(buf.Len()), &options)
-	if _, err := io.Copy(appendCmd, &buf); err != nil {
-		appendCmd.Close()
-		return nil, nil, 0, err
+	uidNext, err := p.uidNextWithoutUIDPlus(mbox.Name)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 	}
-	if err := appendCmd.Close(); err != nil {
-		return nil, nil, 0, err
+	appendData, err := p.appendTo(mbox.Name, buf.Bytes(), &options)
+	var imapErr *imap.Error
+	if remembered && errors.As(err, &imapErr) && imapErr.Code == imap.ResponseCodeTryCreate {
+		// The remembered folder is gone, renamed or deleted by another
+		// client: look it up again, once.
+		p.forgetSpecialMailboxes()
+		if mbox, _, err = p.findMailboxByType(mboxType); err == nil && mbox == nil {
+			err = fmt.Errorf("unable to resolve mailbox")
+		}
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
+		}
+		uidNext, err = p.uidNextWithoutUIDPlus(mbox.Name)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
+		}
+		appendData, err = p.appendTo(mbox.Name, buf.Bytes(), &options)
 	}
-
-	appendData, err := appendCmd.Wait()
 	if err != nil {
 		return nil, nil, 0, err
 	}
 
-	// Try to get UID from APPENDUID response
+	// Try to get UID from APPENDUID response. No NOOP is needed after it: an
+	// append to the selected mailbox is announced to it with EXISTS.
 	var uid provider.MessageID
 	if appendData != nil && appendData.UID != 0 {
 		uid = IMAPUID(appendData.UID)
-	}
-
-	// Force synchronization of mailbox state if the destination mailbox is currently selected
-	if currentMbox := p.client.Mailbox(); currentMbox != nil && currentMbox.Name == mbox.Name {
-		p.client.Noop().Wait()
+	} else if uidNext != 0 {
+		uid = p.storedUID(mbox.Name, uidNext, buf.Bytes())
 	}
 
 	return mbox, uid, size, nil
+}
+
+// uidNextWithoutUIDPlus reads the UID mailbox gives the next message stored
+// in it, from a server without UIDPLUS, which will not say which UID it gave
+// a message appended to it; 0 from one with UIDPLUS, or when it cannot be
+// read. See storedUID.
+func (p *IMAPProvider) uidNextWithoutUIDPlus(mailbox string) (imap.UID, error) {
+	if p.client.Caps().Has(imap.CapUIDPlus) {
+		return 0, nil
+	}
+	var status *imap.StatusData
+	err := p.answeredWithin("STATUS before APPEND", func() (err error) {
+		status, err = p.client.Status(mailbox, &imap.StatusOptions{UIDNext: true}).Wait()
+		return err
+	})
+	if err != nil {
+		var refused *imap.Error
+		if errors.As(err, &refused) && (refused.Type == imap.StatusResponseTypeNo || refused.Type == imap.StatusResponseTypeBad) {
+			return 0, nil
+		}
+		p.client.Close()
+		return 0, p.lostIf(err)
+	}
+	return status.UIDNext, nil
+}
+
+// storedUID finds the UID of message, which a server without UIDPLUS has
+// just stored in mailbox, by its Message-ID; nil when it cannot be told.
+//
+// Every save of a draft has the draft's Message-ID, and earlier copies of it
+// may be in the mailbox, left by saves that could not name theirs. UIDs only
+// grow, so a copy stored since uidNext was read has uidNext or one above it,
+// and an earlier copy does not. Only when exactly one copy is so is it this
+// message: two would mean another client stored one meanwhile, and either
+// could be this one.
+func (p *IMAPProvider) storedUID(mailbox string, uidNext imap.UID, message []byte) provider.MessageID {
+	h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(message)))
+	if err != nil {
+		return nil
+	}
+	ids := provider.MessageIDs(h.Get("Message-Id"))
+	if len(ids) != 1 {
+		return nil
+	}
+	var stored provider.MessageID
+	err = p.answeredWithin("UID lookup after APPEND", func() error {
+		if err := p.ensureMailboxSelected(mailbox); err != nil {
+			return err
+		}
+		var since imap.UIDSet
+		since.AddRange(uidNext, 0)
+		data, err := p.client.UIDSearch(&imap.SearchCriteria{
+			UID:    []imap.UIDSet{since},
+			Header: []imap.SearchCriteriaHeaderField{{Key: "Message-Id", Value: ids[0]}},
+		}, nil).Wait()
+		if err != nil {
+			return err
+		}
+		// uidNext:* also names the last message if no UID reaches uidNext.
+		var candidates imap.UIDSet
+		for _, uid := range data.AllUIDs() {
+			if uid >= uidNext {
+				candidates.AddNum(uid)
+			}
+		}
+		if len(candidates) == 0 {
+			return nil
+		}
+		messages, err := p.client.Fetch(candidates, &imap.FetchOptions{UID: true, Envelope: true}).Collect()
+		if err != nil {
+			return err
+		}
+		var found []imap.UID
+		for _, message := range messages {
+			if message.Envelope == nil || message.UID < uidNext {
+				continue
+			}
+			// HEADER SEARCH is a substring match: only the complete parsed
+			// Message-ID can distinguish this draft from a similar ID.
+			own := provider.MessageIDs(message.Envelope.MessageID)
+			if len(own) == 1 && own[0] == ids[0] {
+				found = append(found, message.UID)
+			}
+		}
+		if len(found) == 1 {
+			stored = IMAPUID(found[0])
+		}
+		return nil
+	})
+	if err != nil {
+		// APPEND has already succeeded: a failed auxiliary read leaves its
+		// UID unknown and must never authorize repeating the stored write.
+		var refused *imap.Error
+		if !errors.As(err, &refused) || (refused.Type != imap.StatusResponseTypeNo && refused.Type != imap.StatusResponseTypeBad) {
+			p.client.Close()
+		}
+		return nil
+	}
+	return stored
+}
+
+// appendTo stores one message in the named mailbox.
+func (p *IMAPProvider) appendTo(name string, message []byte, options *imap.AppendOptions) (*imap.AppendData, error) {
+	appendCmd := p.client.Append(name, int64(len(message)), options)
+	if _, err := appendCmd.Write(message); err != nil {
+		appendCmd.Close()
+		return nil, err
+	}
+	if err := appendCmd.Close(); err != nil {
+		return nil, err
+	}
+	return appendCmd.Wait()
 }
 
 // DeleteMessages deletes multiple messages
@@ -1281,16 +2328,18 @@ func (p *IMAPProvider) DeleteMessages(mailbox string, ids []provider.MessageID) 
 		return err
 	}
 
-	err = p.client.Expunge().Close()
-	if err != nil {
-		return err
+	// A plain EXPUNGE removes every message in the mailbox flagged \Deleted,
+	// including those another client marked for deletion and has not
+	// expunged, which its user can still undelete there. UID EXPUNGE (RFC
+	// 4315, part of IMAP4rev2) removes only the messages named. A server
+	// without it has only the plain EXPUNGE.
+	//
+	// Either way the server's EXPUNGE responses bring the client's view of
+	// the mailbox up to date, so no NOOP is needed after it.
+	if p.client.Caps().Has(imap.CapUIDPlus) {
+		return p.client.UIDExpunge(uidSet).Close()
 	}
-
-	// Force synchronization of mailbox state if the current mailbox is selected
-	if mbox := p.client.Mailbox(); mbox != nil && mbox.Name == mailbox {
-		p.client.Noop().Wait()
-	}
-	return nil
+	return p.client.Expunge().Close()
 }
 
 // MoveMessages moves multiple messages between mailboxes
@@ -1309,6 +2358,13 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 	}
 
 	if p.client.Caps().Has(imap.CapMove) {
+		any, err := p.batchHasMessages(uidSet)
+		if err != nil {
+			return nil, err
+		}
+		if !any {
+			return map[provider.MessageID]provider.MessageID{}, nil
+		}
 		moveCmd := p.client.Move(uidSet, destMailbox)
 		moveData, err := moveCmd.Wait()
 		if err != nil {
@@ -1316,7 +2372,8 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 		}
 
 		uidMapping := make(map[provider.MessageID]provider.MessageID)
-		if moveData != nil && moveData.SourceUIDs != nil && moveData.DestUIDs != nil {
+		sawCopyUID := moveData != nil && moveData.SourceUIDs != nil && moveData.DestUIDs != nil
+		if sawCopyUID {
 			if srcUidSet, ok1 := moveData.SourceUIDs.(imap.UIDSet); ok1 {
 				if dstUidSet, ok2 := moveData.DestUIDs.(imap.UIDSet); ok2 {
 					srcNums, _ := srcUidSet.Nums()
@@ -1328,6 +2385,12 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 					}
 				}
 			}
+		}
+
+		// MOVE is atomic (RFC 6851), and a COPYUID answer names the messages
+		// that moved, so they are not searched for in the source again.
+		if len(uidMapping) > 0 {
+			return uidMapping, nil
 		}
 
 		// Robust fallback: Some IMAP servers (or specific mailboxes) might copy but not expunge immediately on MOVE.
@@ -1342,13 +2405,18 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 			_ = p.DeleteMessages(sourceMailbox, remainingIDs)
 		}
 
-		return uidMapping, nil
+		return nil, nil
 	}
 
 	// Fallback: copy then delete
 	uidMapping, err := p.CopyMessages(sourceMailbox, destMailbox, ids)
 	if err != nil {
 		return nil, err
+	}
+	if uidMapping != nil && len(uidMapping) == 0 {
+		// A known-empty copy must not delete: without UIDPLUS even an
+		// absent UID would expunge unrelated mail already marked Deleted.
+		return uidMapping, nil
 	}
 
 	err = p.DeleteMessages(sourceMailbox, ids)
@@ -1357,6 +2425,9 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 
 // CopyMessages copies messages to another mailbox
 func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
+	if len(ids) == 0 {
+		return map[provider.MessageID]provider.MessageID{}, nil
+	}
 	if err := p.ensureMailboxSelected(sourceMailbox); err != nil {
 		return nil, err
 	}
@@ -1367,6 +2438,13 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 		uidSet.AddNum(imap.UID(uid))
 	}
 
+	any, err := p.batchHasMessages(uidSet)
+	if err != nil {
+		return nil, err
+	}
+	if !any {
+		return map[provider.MessageID]provider.MessageID{}, nil
+	}
 	copyCmd := p.client.Copy(uidSet, destMailbox)
 	copyData, err := copyCmd.Wait()
 	if err != nil {
@@ -1374,7 +2452,8 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 	}
 
 	uidMapping := make(map[provider.MessageID]provider.MessageID)
-	if copyData != nil && len(copyData.SourceUIDs) > 0 && len(copyData.DestUIDs) > 0 {
+	sawCopyUID := copyData != nil && len(copyData.SourceUIDs) > 0 && len(copyData.DestUIDs) > 0
+	if sawCopyUID {
 		srcNums, _ := copyData.SourceUIDs.Nums()
 		dstNums, _ := copyData.DestUIDs.Nums()
 		if len(srcNums) == len(dstNums) {
@@ -1383,8 +2462,25 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 			}
 		}
 	}
+	if len(uidMapping) == 0 {
+		return nil, nil
+	}
 
 	return uidMapping, nil
+}
+
+// An absent COPYUID is ambiguous even with UIDPLUS: RFC4315 permits its
+// omission for UIDNOTSTICKY and write-only destinations. Establish a wholly
+// stale batch from the selected source before filing it instead. A later
+// successful command without a mapping retains the existing unknown-count
+// behavior; its absent mapping never proves that nothing was copied. A
+// UID-only FETCH also avoids charging the server's SEARCH allowance.
+func (p *IMAPProvider) batchHasMessages(uids imap.UIDSet) (bool, error) {
+	data, err := p.client.Fetch(uids, &imap.FetchOptions{UID: true}).Collect()
+	if err != nil {
+		return false, err
+	}
+	return len(data) > 0, nil
 }
 
 // authResultsSection fetches the Authentication-Results fields.
@@ -1395,17 +2491,6 @@ func authResultsSection() *imap.FetchItemBodySection {
 		Peek:         true,
 	}
 }
-
-// mailboxVerdicts caches one mailbox's verdicts for the session. A message's
-// headers never change under one UIDVALIDITY, so an entry holds until the
-// mailbox's UIDVALIDITY does.
-type mailboxVerdicts struct {
-	uidValidity uint32
-	byUID       map[imap.UID]provider.AuthVerdict
-}
-
-// maxCachedVerdicts bounds one mailbox's cache; past it the cache starts over.
-const maxCachedVerdicts = 10000
 
 // AuthVerdicts returns the verdicts of the messages among ids in mailbox:
 // from the session cache where it has them, and from one fetch of the rest's
@@ -1422,15 +2507,6 @@ func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (m
 	}
 	scope := strconv.FormatUint(uint64(p.selectedUIDValidity), 10)
 
-	p.verdictLock.Lock()
-	if p.verdicts == nil {
-		p.verdicts = make(map[string]*mailboxVerdicts)
-	}
-	cache := p.verdicts[mailbox]
-	if cache == nil || cache.uidValidity != p.selectedUIDValidity || len(cache.byUID) > maxCachedVerdicts {
-		cache = &mailboxVerdicts{uidValidity: p.selectedUIDValidity, byUID: make(map[imap.UID]provider.AuthVerdict)}
-		p.verdicts[mailbox] = cache
-	}
 	verdicts := make(map[string]provider.AuthVerdict, len(ids))
 	var missing imap.UIDSet
 	for _, id := range ids {
@@ -1438,13 +2514,12 @@ func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (m
 		if !ok {
 			continue
 		}
-		if v, ok := cache.byUID[imap.UID(uid)]; ok {
+		if v, ok := p.verdicts.Get(mailbox, scope, uid.String()); ok {
 			verdicts[uid.String()] = v
 		} else {
 			missing.AddNum(imap.UID(uid))
 		}
 	}
-	p.verdictLock.Unlock()
 	if len(missing) == 0 {
 		return verdicts, scope, nil
 	}
@@ -1456,17 +2531,37 @@ func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (m
 	if err != nil {
 		return verdicts, scope, err
 	}
-	p.verdictLock.Lock()
-	defer p.verdictLock.Unlock()
 	for _, f := range fetched {
 		var v provider.AuthVerdict
 		if b := f.FindBodySection(authResultsSection()); b != nil {
 			v.BimiPotential, v.BimiFailed = authVerdict(b, p.authservIDs)
 		}
-		cache.byUID[f.UID] = v
-		verdicts[IMAPUID(f.UID).String()] = v
+		id := IMAPUID(f.UID).String()
+		p.verdicts.Put(mailbox, scope, id, v)
+		verdicts[id] = v
 	}
 	return verdicts, scope, nil
+}
+
+// ShareVerdicts has the provider keep the verdicts it reads in c, the
+// session's cache, rather than in one of its own: see provider.VerdictCache.
+func (p *IMAPProvider) ShareVerdicts(c *provider.VerdictCache) {
+	p.verdicts = c
+}
+
+// rememberVerdict records the verdict of a message whose
+// Authentication-Results another fetch read (a message opened, the members of
+// a conversation, a page of a search across every mailbox), so that the
+// list's request for it is answered without reading them again. Only while
+// mailbox is the one selected: the UIDVALIDITY known is that mailbox's.
+func (p *IMAPProvider) rememberVerdict(mailbox string, uid imap.UID, v provider.AuthVerdict) {
+	if uid == 0 || p.client == nil {
+		return
+	}
+	if p.selected == nil || p.selected.Name != mailbox {
+		return
+	}
+	p.verdicts.Put(mailbox, strconv.FormatUint(uint64(p.selectedUIDValidity), 10), IMAPUID(uid).String(), v)
 }
 
 // WithAuthservIDs sets the authserv-ids of the receiving mail servers whose
@@ -1602,6 +2697,10 @@ func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, ma
 			fmt.Printf("BIMI debug: Auth-Results for %d: %q\n", msg.UID, string(b))
 		}
 		converted.BimiPotential, converted.BimiFailed = authVerdict(b, p.authservIDs)
+		p.rememberVerdict(mailbox, msg.UID, provider.AuthVerdict{
+			BimiPotential: converted.BimiPotential,
+			BimiFailed:    converted.BimiFailed,
+		})
 	}
 
 	refSection := &imap.FetchItemBodySection{
@@ -1705,52 +2804,27 @@ func (p *IMAPProvider) GetMessageThread(mailbox string, targetUID provider.Messa
 		return nil, err
 	}
 
-	var algo imap.ThreadAlgorithm
-	if p.client != nil && p.client.Caps() != nil {
-		if p.client.Caps().Has(imap.Cap("THREAD=REFS")) {
-			algo = imap.ThreadAlgorithm("REFS")
-		} else if p.client.Caps().Has(imap.Cap("THREAD=REFERENCES")) {
-			algo = imap.ThreadReferences
-		} else if p.client.Caps().Has(imap.Cap("THREAD=ORDEREDSUBJECT")) {
-			algo = imap.ThreadOrderedSubject
-		}
-	}
-	if isMailboxMassive(p.client.Mailbox()) {
-		// ListMessages does not thread a mailbox this big, and neither does this.
-		algo = ""
-	}
+	// ListMessages does not thread a mailbox this big, and neither does this.
+	threading := p.HasThreadCapability() && !isMailboxMassive(p.selectedMailbox())
 
-	if algo != "" {
-		options := imapclient.ThreadOptions{
-			Algorithm:      algo,
-			SearchCriteria: &imap.SearchCriteria{},
-		}
-		threadTrees, err := p.client.UIDThread(&options).Wait()
+	if threading {
+		// The conversations a listing threaded, while the mailbox still holds
+		// the same messages.
+		_, groups, err := p.mailboxThreads(mailbox, false)
 		if err == nil {
-			var collect func(*imap.ThreadData) []uint32
-			collect = func(t *imap.ThreadData) []uint32 {
-				var uids []uint32
-				uids = append(uids, t.Chain...)
-				for i := range t.SubThreads {
-					uids = append(uids, collect(&t.SubThreads[i])...)
-				}
-				return uids
-			}
-
 			targetUIDNum, parseErr := strconv.ParseUint(targetUID.String(), 10, 32)
 			if parseErr == nil {
 				var targetUIDs []uint32
-				for i := range threadTrees {
-					uids := collect(&threadTrees[i])
+				for _, g := range groups {
 					found := false
-					for _, u := range uids {
+					for _, u := range g.UIDs {
 						if u == uint32(targetUIDNum) {
 							found = true
 							break
 						}
 					}
 					if found {
-						targetUIDs = uids
+						targetUIDs = g.UIDs
 						break
 					}
 				}
@@ -1904,7 +2978,7 @@ func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, pag
 	// 2. Perform ESEARCH
 	results, err := p.client.MultiSearch(source, searchCriteria, nil).Wait()
 	if err != nil {
-		return nil, provider.PageInfo{}, fmt.Errorf("ESEARCH failed: %v", err)
+		return nil, provider.PageInfo{}, searchFailed("ESEARCH", err)
 	}
 
 	var candidates []searchCandidate

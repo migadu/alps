@@ -1,8 +1,12 @@
-import { fetchWithTimeout, encodePathParam, HttpStatusError } from '../../../frontend/src/utils/fetch-utils';
+import { fetchWithTimeout, encodePathParam, HttpStatusError, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
 
 export interface ContactProperty {
   value: string;
   type?: string;
+  /** Local editor identity, retained across queued saves and reordering. */
+  id?: string;
+  /** Position in the last successfully saved list; -1 creates a new copy. */
+  source_index?: number;
 }
 
 export interface ContactPayload {
@@ -22,6 +26,10 @@ export interface ContactPayload {
   path?: string;
   /** The version the card was opened at; see ContactsService.updateContact. */
   etag?: string;
+  /** Single-copy fields changed since the last successful form save. */
+  changed_fields?: string[];
+  /** What the page held for each of those before the change. */
+  changed_from?: Record<string, string>;
   [key: string]: any;
 }
 
@@ -39,19 +47,27 @@ export interface BulkOutcome {
   /** How many were written; with `failed`, tells a refusal of every card from a partial run. */
   done: number;
   failed: number;
+  /** How many of `failed` may have been written anyway (a timeout, a lost
+   * connection, a 5xx). A rollback is the truth only for the rest. */
+  uncertain: number;
   /** The version each card that took the change is now at, by path. */
   etags?: Record<string, string>;
+  /** The cards a delete removed. The counts say how many, and a caller that
+   * acts on one card (the open one) needs to know whether it was that one. */
+  deletedPaths?: string[];
 }
 
 function summarize(settled: PromiseSettledResult<unknown>[]): BulkOutcome {
   let failed = 0;
+  let uncertain = 0;
   for (const outcome of settled) {
     if (outcome.status === 'rejected') {
       failed += 1;
+      if (outcomeUnknown(outcome.reason)) uncertain += 1;
       console.error('Bulk contact operation failed for one item', outcome.reason);
     }
   }
-  return { total: settled.length, done: settled.length - failed, failed };
+  return { total: settled.length, done: settled.length - failed, failed, uncertain };
 }
 
 class ContactsService {
@@ -128,7 +144,9 @@ class ContactsService {
       method: 'DELETE'
     });
     if (!res.ok) {
-      throw new Error(`Failed to delete contact: ${res.statusText}`);
+      // With its status, so a refusal is told from a failure that may have
+      // deleted the card anyway (see outcomeUnknown).
+      throw new HttpStatusError(res.status, `Failed to delete contact: ${res.statusText}`);
     }
   }
 
@@ -159,7 +177,8 @@ class ContactsService {
 
   async bulkDeleteContacts(paths: string[]): Promise<BulkOutcome> {
     const settled = await Promise.allSettled(paths.map(path => this.deleteContact(path)));
-    return summarize(settled);
+    const deletedPaths = paths.filter((_, i) => settled[i].status === 'fulfilled');
+    return { ...summarize(settled), deletedPaths };
   }
 }
 

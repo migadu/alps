@@ -28,6 +28,9 @@ type Logger interface {
 	// Reopen closes and reopens the log file after a rotation tool such as
 	// newsyslog has moved it aside. A no-op when the output is not a file.
 	Reopen() error
+	// Slog is the structured logger underneath, for lines whose parts are
+	// fields to search by (who signed in, from where) rather than a sentence.
+	Slog() *slog.Logger
 }
 
 type logger struct {
@@ -192,6 +195,10 @@ func (l *logger) Reopen() error {
 	return l.file.reopen()
 }
 
+func (l *logger) Slog() *slog.Logger {
+	return l.slog
+}
+
 func (l *logger) Print(i ...interface{}) {
 	l.slog.Info(fmt.Sprint(i...))
 }
@@ -279,3 +286,4 @@ func (discardLogger) Fatal(i ...interface{})                    {}
 func (discardLogger) Fatalf(format string, args ...interface{}) {}
 func (discardLogger) SetLevel(level slog.Level)                 {}
 func (discardLogger) Reopen() error                             { return nil }
+func (discardLogger) Slog() *slog.Logger                        { return slog.New(slog.DiscardHandler) }

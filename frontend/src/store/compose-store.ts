@@ -1,9 +1,12 @@
 import { createContext } from '@lit/context';
-import { messageOperations } from '../services/message-operations';
-import { activeUsername, readUserSettings } from './settings-store';
-import { abortUploads } from '../utils/attachment-utils';
+import { messageOperations, MissingUploadsError } from '../services/message-operations';
+import { activeUsername, ownAddress, readUserSettings } from './settings-store';
+import { abortUploads, inlinePartsOf } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
+import { cidReferencesOf, escapeHtml, withoutCidReferences } from '../utils/html-sanitizer';
+import { DraftFlushError } from '../utils/draft-flush-error';
+import { canonicalRecipient } from '../utils/address-display';
 
 /**
  * Where a user's unsent drafts are kept, scoped to WHOSE they are.
@@ -33,6 +36,140 @@ export const bareAddress = (addr: string): string => {
   }
   return rawEmail.trim().toLowerCase();
 };
+
+/**
+ * A recipient field as a send or a draft save posts it, each address's domain
+ * in its A-label form (see canonicalRecipient). The pills keep what was typed.
+ */
+export const recipientField = (addrs?: string[]): string => (addrs || []).map(canonicalRecipient).join(', ');
+
+/**
+ * What a draft save stores of a composer: the message, not where its window
+ * sits or how far an upload has got. Two composers with the same key would
+ * save the same draft.
+ */
+export const draftContentKey = (c: ComposerInstance): string => JSON.stringify([
+  c.subject, c.to, c.cc, c.bcc, c.text, c.format, c.html,
+  (c.attachments || []).map(a => [a._tempId, a.uuid, a.partPath, a.filename]),
+]);
+
+/**
+ * An attachment whose upload the server no longer holds, as one the user has
+ * to add again: shown with its name, and sent with nothing, so a save or a
+ * send no longer names an upload that is gone.
+ */
+export const uploadGone = (att: any): any => {
+  const gone = { ...att, missing: true };
+  delete gone.uuid;
+  return gone;
+};
+
+/**
+ * Apply a save's source mapping to the attachments still in the composer.
+ * Uploads are consumed and old part paths are replaced on every save, even
+ * when edits made during the request leave the composer open and dirty.
+ * Keep additions and removals made while the request was out.
+ */
+export const reconcileSavedAttachments = (latest: any[], sent: any[], stored: any[]): any[] => {
+  const sourceKey = (a: any): string | undefined => a.uuid ? `uuid:${a.uuid}` : a.partPath ? `part:${a.partPath}` : undefined;
+  const sentKeys = new Set(sent.map(sourceKey));
+  const storedFrom = new Map<string, any>();
+  for (const { source, ...part } of stored) {
+    const key = source && sourceKey(source);
+    if (key) storedFrom.set(key, part);
+  }
+  return latest.map(a => {
+    const key = sourceKey(a);
+    const stored = key && sentKeys.has(key) && storedFrom.get(key);
+    return stored ? { ...stored, ...(a.contentId && { contentId: a.contentId }) } : a;
+  });
+};
+
+/**
+ * The attachments a save or a send of the composer posts. In plain text not
+ * the inline parts, the quote's images: nothing in a text/plain message shows
+ * them, and the server, with no HTML to embed them in, wrote them as files,
+ * which the recipients got and the user never saw, and which a saved draft
+ * held as attachments. The composer keeps them for a switch back to HTML,
+ * until a save without them has landed (see keptAfterSave).
+ */
+export const postedAttachments = (c: ComposerInstance): any[] =>
+  (c.attachments || []).filter(a => !a.inline || c.format === 'html');
+
+/**
+ * The attachments left in a composer once a save of `saved` has landed:
+ * without the inline parts that save left out. Their paths name parts of the
+ * quoted message, and from the first stored draft on, the server reads the
+ * composer's parts from that draft, which holds none of them: carried by a
+ * later save in HTML, each named a part the draft does not have, or another.
+ */
+export const keptAfterSave = (attachments: any[], saved: ComposerInstance): any[] => {
+  const posted = postedAttachments(saved);
+  const leftOut = (saved.attachments || []).filter(a => !posted.includes(a));
+  return leftOut.length ? attachments.filter(a => !leftOut.includes(a)) : attachments;
+};
+
+/**
+ * A successful text save discarded its inline parts. The retained rich quote
+ * must stop naming them too, including while the user has switched back and
+ * typed in HTML during the save. Keep those edits and every other resource.
+ */
+export const discardedInlineAfterSave = (
+  latest: ComposerInstance, saved: ComposerInstance, stored: { structure?: unknown } = {},
+): Partial<ComposerInstance> => {
+  if (saved.format !== 'text') return {};
+  const omitted = (saved.attachments || []).filter(a => a.inline);
+  if (!omitted.length) return {};
+  const lost = new Set<string>(omitted.map(a => a.contentId).filter(Boolean));
+  if (omitted.some(a => !a.contentId)) {
+    // Older local drafts predate stable Content-ID metadata. The new draft's
+    // structure says which references still have a part, including a normal
+    // forwarded file linked by CID, which the plain-text save kept.
+    if (stored.structure) {
+      const kept = new Set(inlinePartsOf(stored.structure, saved.html || '').map(a => a.contentId));
+      for (const id of cidReferencesOf(saved.html || '')) if (!kept.has(id)) lost.add(id);
+    } else if (!saved.draftUid || (saved.quoteSource?.uid === saved.draftUid && saved.quoteSource?.mailbox === saved.draftMailbox)) {
+      // The original/current source still uses these paths. Never guess from
+      // an old original after earlier saves have renumbered the attachments.
+      const paths = new Set(omitted.filter(a => !a.contentId).map(a => a.partPath));
+      for (const part of inlinePartsOf(saved.quoteSource?.structure, saved.html || '')) {
+        if (paths.has(part.partPath) && part.contentId) lost.add(part.contentId);
+      }
+    }
+  }
+  if (!lost.size) return {};
+  return {
+    html: withoutCidReferences(latest.html || '', lost),
+    discardedInlineIds: [...new Set([...(latest.discardedInlineIds || []), ...lost])],
+  };
+};
+
+/**
+ * Where the quote's images are shown from once a save of `saved` has stored
+ * a new draft, or undefined where that does not change. A composer editing a
+ * draft shows them from that draft, which the save has replaced: the source
+ * follows to the new draft, with the structure the server read it back with.
+ * Left on the replaced draft, the quote drawn again, as after a reload,
+ * named parts of a draft that is gone. A reply's or a forward's quote is
+ * shown from the message it quotes, and stays.
+ */
+export const quoteSourceAfterSave = (
+  saved: ComposerInstance,
+  stored: { uid: string; mailbox: string; structure?: unknown },
+): QuoteSource | undefined => {
+  const source = saved.quoteSource;
+  if (!source || !saved.draftUid || source.uid !== saved.draftUid || source.mailbox !== saved.draftMailbox) return undefined;
+  return { mailbox: stored.mailbox, uid: stored.uid, structure: stored.structure ?? source.structure };
+};
+
+/**
+ * The paths of the parts a save or a send posts as the body's own, its
+ * quote's images, for the server to write into the body: it took a part
+ * filed as an attachment, as Outlook and Apple Mail file their inline images,
+ * for a file by that disposition, and wrote it beside the body.
+ */
+export const inlinePartPaths = (posted: any[]): string =>
+  posted.filter(a => a.inline && a.partPath).map(a => a.partPath).join(',');
 
 const isBlockedAddress = (addr: string): boolean => {
   const lowerEmail = bareAddress(addr);
@@ -73,6 +210,8 @@ export interface ComposerInstance {
   zIndex?: number;
   attachments?: any[];
   quoteSource?: QuoteSource;
+  /** Inline resources a committed text save deliberately left out. */
+  discardedInlineIds?: string[];
   dirty?: boolean;
   draftUid?: string;
   draftMailbox?: string;
@@ -81,6 +220,8 @@ export interface ComposerInstance {
   replyMailbox?: string;
   replyUid?: string;
   isSending?: boolean;
+  /** A save of this draft is on the wire, by its window or by the sign-out flush. */
+  isSaving?: boolean;
   closing?: boolean;
   [key: string]: any;
 }
@@ -101,6 +242,14 @@ export class ComposeStore extends EventTarget {
    * somewhere shared. */
   private username: string | null = null;
 
+  /**
+   * Set when a sign-out goes ahead past a failed flush (see
+   * {@link DraftFlushError.keepRecoveryCopy}), and consumed by the very next
+   * `session-cleared`. While set, that sign-out empties the screen but leaves
+   * the stored drafts on disk, under this account's key, for its next sign-in.
+   */
+  private keepDraftsOnSignOut = false;
+
   constructor() {
     super();
     // Unattributable, so it is removed rather than adopted.
@@ -120,8 +269,28 @@ export class ComposeStore extends EventTarget {
     // nothing else re-ran this until a page reload.
     window.addEventListener('user-logged-in', this.adoptSession);
     window.addEventListener('alps-active-user-changed', this.adoptSession);
+    window.addEventListener('pagehide', this.flushOnPageHide);
     this.adoptSession();
   }
+
+  /**
+   * Writes the change still waiting for the debounced write, as the page
+   * goes: a reload, a closed tab, a link followed. The write comes half a
+   * second after the last change, and leaving within it took that much of
+   * what was typed with it.
+   *
+   * Only a write that is waiting, which is what would have been written had
+   * the page stayed: the login screen clears the windows from memory alone,
+   * and a sign-out cancels the waiting write as it erases the disk copy, so
+   * writing the composers as they are would put an emptied list over the
+   * drafts on disk, or bring an erased one back.
+   */
+  private flushOnPageHide = () => {
+    if (this.saveTimeout === null) return;
+    window.clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    this.saveDrafts();
+  };
 
   /**
    * Loads the signed-in user's drafts, and carries across anything opened
@@ -144,7 +313,11 @@ export class ComposeStore extends EventTarget {
 
   /**
    * Sign-out: the drafts leave the screen AND the disk. Expiry — a
-   * `session-cleared` carrying `reason: 'expired'` — the screen only.
+   * `session-cleared` carrying `reason: 'expired'` — the screen only. So does
+   * a sign-out that went ahead although its flush could not store every draft
+   * (the idle timeout, or a user who confirmed): those drafts exist nowhere
+   * else, so the disk copy stays under this account's key, where only this
+   * account's next sign-in reads it.
    *
    * Cancelling the debounced writer is not tidiness — it is the difference
    * between erasing and appearing to. A save armed moments before the logout
@@ -171,7 +344,9 @@ export class ComposeStore extends EventTarget {
     // isSending on the way back in.
     const expired = (event as CustomEvent | undefined)?.detail?.reason === 'expired';
     if (expired) this.saveDrafts();
-    const key = this.username && !expired ? draftsKeyFor(this.username) : null;
+    const keep = expired || this.keepDraftsOnSignOut;
+    this.keepDraftsOnSignOut = false;
+    const key = this.username && !keep ? draftsKeyFor(this.username) : null;
     this.username = null;
     // An upload still streaming would otherwise finish (or 401) into a composer
     // that no longer exists, and deposit its bytes in a server-side session that
@@ -199,8 +374,23 @@ export class ComposeStore extends EventTarget {
           const wasSending = draft.isSending;
           return {
             ...draft,
-            attachments: draft.attachments?.filter(att => !att.uploading && att.uuid) || [],
+            // An upload the tab went away in never finished. One already in the
+            // stored draft (a part path, as each save answers) is kept: dropped
+            // here, the next save, which carries only what the window lists,
+            // stored the draft without it. One uploaded but not yet saved was
+            // kept by the session it was uploaded in, and this may be another,
+            // after the session expired: kept, it made every save and the send
+            // fail. So it is listed as one to add again; so is one that was
+            // being added again when the tab went away.
+            attachments: (draft.attachments || [])
+              .map(att => (att.uploading && att._replaces ? att._replaces : att))
+              .filter(att => !att.uploading && (att.uuid || att.partPath || att.missing))
+              .map(att => (att.uuid ? uploadGone(att) : att)),
             isSending: false,
+            // A save or a deferred close the tab or the session went away in.
+            // Kept, it would refuse every later save, or hide the window.
+            isSaving: false,
+            closing: false,
             minimized: wasSending ? false : draft.minimized
           };
         });
@@ -211,14 +401,16 @@ export class ComposeStore extends EventTarget {
     return [];
   }
 
-  private saveDrafts() {
+  private saveDrafts(): boolean {
     // No identity, no key that could safely be written — so nothing is
     // persisted, rather than persisted where the next user would find it.
-    if (!this.username) return;
+    if (!this.username) return this.state.activeComposers.length === 0;
     try {
       localStorage.setItem(draftsKeyFor(this.username), JSON.stringify(this.state.activeComposers));
+      return true;
     } catch (e) {
       Logger.error('Failed to save compose drafts to localStorage', e);
+      return false;
     }
   }
 
@@ -230,6 +422,22 @@ export class ComposeStore extends EventTarget {
       this.saveDrafts();
       this.saveTimeout = null;
     }, 500);
+  }
+
+  /**
+   * Writes the composers to disk now, not when the debounced write comes
+   * round: before a reload the user asked for, which would otherwise take the
+   * last half second of typing with it. They open again after the reload.
+   */
+  persistNow(): boolean {
+    if (this.saveTimeout !== null) {
+      window.clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    // The login screen clears only the live windows. Writing that empty list
+    // would erase its preserved recovery copy during an update-offer reload.
+    if (this.state.activeComposers.length === 0) return true;
+    return this.saveDrafts();
   }
 
   private notify() {
@@ -293,7 +501,10 @@ export class ComposeStore extends EventTarget {
 
     if (signature && !initialData?.draftUid) {
       const sigText = `-- \n${signature}`;
-      const sigHtml = `<div class="alps-signature">-- <br>${signature.replace(/\n/g, '<br>')}</div>`;
+      // The signature is plain text, typed into a textarea: escaped, so an
+      // address in angle brackets or an ampersand reads as written instead of
+      // as markup, with its line breaks kept.
+      const sigHtml = `<div class="alps-signature">-- <br>${escapeHtml(signature).replace(/\r?\n/g, '<br>')}</div>`;
       
       initialText = `\n\n${sigText}\n${initialText}`;
       if (initialHtml || initialData?.text) {
@@ -331,7 +542,15 @@ export class ComposeStore extends EventTarget {
     this.notify();
   }
 
-  updateComposer(id: string, updates: Partial<ComposerInstance>) {
+  /**
+   * Applies `updates` to a composer. A change to what would be saved marks
+   * it unsaved, except with `edit: false`, for content the user did not
+   * write: the HTML part a plain-text draft is given as it opens in HTML,
+   * or the paragraph the editor adds after a quote. Marked unsaved for
+   * that, a draft only opened was stored again, and an untouched reply
+   * was filed as a draft.
+   */
+  updateComposer(id: string, updates: Partial<ComposerInstance>, { edit = true }: { edit?: boolean } = {}) {
     if (updates.to) updates.to = filterAddresses(updates.to);
     if (updates.cc) updates.cc = filterAddresses(updates.cc);
     if (updates.bcc) updates.bcc = filterAddresses(updates.bcc);
@@ -345,23 +564,34 @@ export class ComposeStore extends EventTarget {
       if ('cc' in updates && JSON.stringify(updates.cc || []) !== JSON.stringify(c.cc || [])) isDirtyUpdate = true;
       if ('bcc' in updates && JSON.stringify(updates.bcc || []) !== JSON.stringify(c.bcc || [])) isDirtyUpdate = true;
       if ('attachments' in updates && updates.attachments !== c.attachments) isDirtyUpdate = true;
+      // Against the current revision, not the opening text: once a draft is
+      // saved, the opening text is not what is stored, and an edit back to it
+      // is an edit. Nor is the text the whole message: a switch between rich
+      // and plain text, or bold over unchanged words, changes what is saved
+      // and sent while the text stays the same.
+      //
+      // Except while the composer is pristine, never stored and never edited.
+      // Its opening text is then the only baseline, and whitespace at its
+      // edges, such as the newline a stray Enter leaves, is not an edit: an
+      // opened but unanswered reply is not worth filing as a draft.
+      const pristine = !c.dirty && !c.draftUid;
+      if ('text' in updates && (updates.text || '') !== (c.text || '') &&
+          !(pristine && (updates.text || '').trim() === (c.initialText || '').trim())) isDirtyUpdate = true;
+      if ('format' in updates && updates.format !== c.format) isDirtyUpdate = true;
+      if ((updates.format ?? c.format) === 'html' && 'html' in updates &&
+          (updates.html || '') !== (c.html || '')) isDirtyUpdate = true;
 
-      if (!isDirtyUpdate && !c.dirty) {
-        if ('text' in updates || 'html' in updates) {
-          const newText = 'text' in updates ? updates.text || '' : c.text || '';
-          const initialText = c.initialText || '';
-          if (newText.trim() !== initialText.trim()) {
-            isDirtyUpdate = true;
-          }
-        }
-      } else if (!isDirtyUpdate && c.dirty) {
-         // if it's already dirty, check if the change should keep it dirty or if they deleted everything back to initial
-         // We could revert dirty to false here if they erase their work, 
-         // but let's just keep it dirty if it was already dirty unless we explicitly pass dirty: false
-      }
-
-      const newDirty = 'dirty' in updates ? updates.dirty : (isDirtyUpdate ? true : c.dirty);
-      return { ...c, ...updates, dirty: newDirty };
+      const newDirty = 'dirty' in updates ? updates.dirty : (edit && isDirtyUpdate ? true : c.dirty);
+      // Content the composer made itself is the message as it opened, while
+      // the text is still the opening text: the opening text moves with it.
+      // An answer opens with its text as the quote's `> ` lines, which the
+      // editor's own text, taken as no edit, does not have; left behind,
+      // every later test of a message still as it opened found it changed.
+      const opening = !edit && (c.text || '') === (c.initialText || '') ? {
+        ...('text' in updates && { initialText: updates.text }),
+        ...('html' in updates && { initialHtml: updates.html }),
+      } : {};
+      return { ...c, ...updates, ...opening, dirty: newDirty };
     });
     this.state = { ...this.state, activeComposers: composers };
     this.debouncedSaveDrafts();
@@ -378,7 +608,7 @@ export class ComposeStore extends EventTarget {
   }
 
   /**
-   * Takes the composer windows off the screen WITHOUT touching what is on disk.
+   * Takes the composer windows off the screen, preserving their disk copy.
    *
    * The only caller is `login-page`'s connectedCallback, which runs every time
    * the login screen mounts — including on an ordinary boot redirect, when
@@ -393,93 +623,201 @@ export class ComposeStore extends EventTarget {
    *
    * Persisting is the sign-out path's job, and it already does it properly —
    * `handleSessionCleared` removes the key outright, after aborting uploads.
-   * Here, memory only.
+   * Here, settle any pending edit before clearing memory, so neither its timer
+   * nor pagehide writes the emptied list over that recovery copy.
+   *
+   * With nothing open it does nothing, not even announce a change. The login
+   * page calls this as it connects, inside the shell's render, and the
+   * change it announced regardless had the shell render the login screen a
+   * second time.
    */
   clearAllComposers() {
+    if (this.saveTimeout !== null) this.persistNow();
+    if (this.state.activeComposers.length === 0) return;
     this.state = { ...this.state, activeComposers: [] };
     this.notify();
   }
 
   /**
-   * Saves every dirty composer, and reports how many could NOT be saved.
+   * Saves every dirty composer, closing each one the server stored, and
+   * throws a {@link DraftFlushError} when any could not be stored.
    *
-   * The result used to be discarded and `activeComposers` emptied regardless:
+   * The only caller is sign-out. This used to empty every composer whatever
+   * the saves answered, and sign-out then deleted the drafts key outright, so
+   * a draft that failed to reach the server (offline, a 500, a full mailbox)
+   * was destroyed from the screen and from localStorage at once, and the
+   * login screen could only report it lost. A composer still sending in its
+   * undo window, or still uploading, was "saved" without what made it so.
    *
-   *     await messageOperations.saveDraft(formData);   // result ignored
-   *     …
-   *     this.state = { ...this.state, activeComposers: [] };
-   *     this.saveDrafts();
-   *
-   * The only caller is sign-out, which then dispatches `session-cleared` and
-   * deletes the drafts key outright. So a draft that failed to reach the server
-   * — offline, a 500, a full mailbox — was destroyed in the same breath, from
-   * the screen, from localStorage and from the server all at once, silently.
-   * This is the third place this exact mistake lived; the other two were the
-   * close button (e85d153) and the deferred close (63c1515).
-   *
-   * A local session that is ending cannot keep the draft, so the honest answer
-   * is not to silently keep going: the count travels back and the caller tells
-   * the user on the login screen they are about to land on.
+   * Now a composer that cannot be stored stays open, and so does its copy on
+   * disk: one sending, saving, closing behind an upload, or still uploading,
+   * and one whose save failed or that was edited while its save was out. The
+   * rest still go, one at a time, because the idle sign-out goes ahead
+   * whatever this answers, and every draft that can reach the server should.
+   * The error carries the hook that keeps the copy through the sign-out.
    */
-  async saveAllDirtyDrafts(): Promise<{ failed: number }> {
-    let failed = 0;
-    const dirtyComposers = this.state.activeComposers.filter(c => c.dirty);
-    if (dirtyComposers.length > 0) {
-      for (const composer of dirtyComposers) {
+  async saveAllDirtyDrafts(): Promise<void> {
+    // Decided afresh by each sign-out, never inherited from one that did not
+    // happen.
+    this.keepDraftsOnSignOut = false;
+    const username = this.username;
+    let failed = false;
+    try {
+      for (const id of this.state.activeComposers.map(c => c.id)) {
+        // Signed out, or someone else signed in, during a save: nothing here
+        // is this flush's to store any more.
+        if (this.username !== username) throw new DraftFlushError();
+        const composer = this.getComposer(id);
+        if (!composer) continue;
+        if (composer.isSending || composer.isSaving || composer.closing || composer.attachments?.some(a => a.uploading || a.missing)) {
+          // Missing placeholders exist only here and in localStorage, never
+          // in the saved MIME draft. Even a clean autosaved composer must
+          // retain them until the user adds the files again or removes them.
+          failed = true;
+          continue;
+        }
+        // Only what was touched: an opened but unanswered reply is not filed
+        // as a draft, and a draft already saved is on the server.
+        if (!composer.dirty) {
+          this.closeComposer(id);
+          continue;
+        }
         const hasRecipient = (composer.to?.length || 0) > 0 || (composer.cc?.length || 0) > 0 || (composer.bcc?.length || 0) > 0;
         const textIsJustInitial = composer.text?.trim() === composer.initialText?.trim();
         const hasContent = !textIsJustInitial || (composer.subject?.trim().length || 0) > 0;
-        if (!hasRecipient && !hasContent && !(composer.attachments && composer.attachments.length > 0)) continue;
+        // Nothing to save only in a message never stored: a stored draft
+        // emptied to blank is saved, as its window saves it, or Drafts keeps
+        // what the user took out.
+        if (!composer.draftUid && !hasRecipient && !hasContent && !(composer.attachments && composer.attachments.length > 0)) {
+          this.closeComposer(id);
+          continue;
+        }
 
-        const formData = new FormData();
-        let bcc = [...(composer.bcc || [])];
-        let replyToSetting = '';
-        {
-          // Same correction as the composer defaults above: `bccMyself`,
-          // `loginUsername` and `replyTo` all live in the per-user record, never
-          // in `alps_settings`, so "BCC myself" and a custom Reply-To silently
-          // did nothing on every message sent.
-          const sendSettings = readUserSettings();
-          const self = sendSettings.loginUsername;
-          if (sendSettings.bccMyself && self && !bcc.some(addr => bareAddress(addr) === bareAddress(self))) {
-            bcc.push(self);
+        const contentKey = draftContentKey(composer);
+        this.updateComposer(id, { isSaving: true });
+        try {
+          let saved: Awaited<ReturnType<typeof messageOperations.saveDraft>>;
+          try {
+            saved = await messageOperations.saveDraft(this.draftForm(composer));
+          } catch (error) {
+            if (!(error instanceof MissingUploadsError)) throw error;
+            // Kept open, listing those files as ones to add again, so the
+            // window's next save stores the rest without them.
+            const gone = new Set(error.uuids);
+            const current = this.getComposer(id);
+            if (current) {
+              this.updateComposer(id, {
+                attachments: (current.attachments || []).map(a => (a.uuid && gone.has(a.uuid) ? uploadGone(a) : a)),
+              });
+            }
+            saved = null;
           }
-          if (sendSettings.replyTo) {
-            replyToSetting = sendSettings.replyTo;
+          if (this.username !== username) throw new DraftFlushError();
+          if (!saved) {
+            failed = true;
+            continue;
           }
+          const current = this.getComposer(id);
+          if (current && draftContentKey(current) !== contentKey) {
+            // Stored, but not as it is now: record the stored draft, so the
+            // next save replaces it, without marking the newer edit clean.
+            let attachments = saved.attachments
+              ? reconcileSavedAttachments(current.attachments || [], composer.attachments || [], saved.attachments)
+              : current.attachments;
+            // Nor the quote's images a plain-text save left out: see keptAfterSave.
+            if (attachments) attachments = keptAfterSave(attachments, composer);
+            const quoteSource = quoteSourceAfterSave(composer, saved);
+            this.updateComposer(id, {
+              draftUid: saved.uid,
+              draftMailbox: saved.mailbox,
+              ...(attachments !== current.attachments && { attachments }),
+              ...(quoteSource && { quoteSource }),
+              ...discardedInlineAfterSave(current, composer, saved),
+            });
+            failed = true;
+            continue;
+          }
+          this.closeComposer(id);
+        } finally {
+          if (this.getComposer(id)) this.updateComposer(id, { isSaving: false });
         }
+      }
+      if (failed || this.state.activeComposers.length > 0) throw new DraftFlushError();
+    } catch (error) {
+      if (!(error instanceof DraftFlushError)) Logger.error('Failed to save drafts before signing out', error);
+      this.saveDrafts();
+      // The keep hook only while the account the flush began for is still
+      // the one signed in: armed for another, it would spare the wrong
+      // account's drafts.
+      throw new DraftFlushError(this.username === username && username !== null
+        ? () => this.retainDraftsForSignOut(username)
+        : undefined);
+    }
+  }
 
-        formData.append('to', (composer.to || []).join(', '));
-        formData.append('cc', (composer.cc || []).join(', '));
-        formData.append('bcc', bcc.join(', '));
-        if (replyToSetting) {
-          formData.append('reply_to', replyToSetting);
-        }
-        formData.append('subject', (composer.subject || '').trim());
-        formData.append('text', composer.text || '');
-        if (composer.html && composer.format === 'html') {
-          formData.append('html', composer.html);
-        }
-        formData.append('save_as_draft', '1');
+  /**
+   * The keep hook a failed flush hands its caller. Writes the composers as
+   * they are now, since the user may have edited one between the failure and
+   * a confirmed sign-out and `handleSessionCleared` cancels the debounced
+   * writer, and marks the coming `session-cleared` as one that leaves them.
+   */
+  private retainDraftsForSignOut(username: string): void {
+    if (this.username !== username) return;
+    if (this.saveTimeout !== null) {
+      window.clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    this.saveDrafts();
+    this.keepDraftsOnSignOut = true;
+  }
 
-        const attachments = composer.attachments || [];
-        const uuids = attachments.map(a => a.uuid).filter(Boolean).join(',');
-        if (uuids) formData.append('attachment-uuids', uuids);
-        
-        const prev = attachments.map(a => a.partPath).filter(Boolean).join(',');
-        if (prev) formData.append('prev_attachments', prev);
-
-        if (composer.draftMailbox) formData.append('draft_mailbox', composer.draftMailbox);
-        if (composer.draftUid) formData.append('draft_uid', composer.draftUid);
-        appendReplyFields(formData, composer);
-
-        if (!(await messageOperations.saveDraft(formData))) failed++;
+  /** A composer as the form a draft save posts. */
+  private draftForm(composer: ComposerInstance): FormData {
+    const formData = new FormData();
+    let bcc = [...(composer.bcc || [])];
+    let replyToSetting = '';
+    {
+      // Same correction as the composer defaults above: `bccMyself`,
+      // `loginUsername` and `replyTo` all live in the per-user record, never
+      // in `alps_settings`, so "BCC myself" and a custom Reply-To silently
+      // did nothing on every message sent.
+      const sendSettings = readUserSettings();
+      // The address, not the login: see ownAddress.
+      const self = ownAddress(sendSettings);
+      if (sendSettings.bccMyself && self && !bcc.some(addr => bareAddress(addr) === bareAddress(self))) {
+        bcc.push(self);
+      }
+      if (sendSettings.replyTo) {
+        replyToSetting = sendSettings.replyTo;
       }
     }
-    this.state = { ...this.state, activeComposers: [] };
-    this.saveDrafts();
-    this.notify();
-    return { failed };
+
+    formData.append('to', recipientField(composer.to));
+    formData.append('cc', recipientField(composer.cc));
+    formData.append('bcc', recipientField(bcc));
+    if (replyToSetting) {
+      formData.append('reply_to', replyToSetting);
+    }
+    formData.append('subject', (composer.subject || '').trim());
+    formData.append('text', composer.text || '');
+    if (composer.html && composer.format === 'html') {
+      formData.append('html', composer.html);
+    }
+    formData.append('save_as_draft', '1');
+
+    const attachments = postedAttachments(composer);
+    const uuids = attachments.map(a => a.uuid).filter(Boolean).join(',');
+    if (uuids) formData.append('attachment-uuids', uuids);
+
+    const prev = attachments.map(a => a.partPath).filter(Boolean).join(',');
+    if (prev) formData.append('prev_attachments', prev);
+    const inline = inlinePartPaths(attachments);
+    if (inline) formData.append('inline_attachments', inline);
+
+    if (composer.draftMailbox) formData.append('draft_mailbox', composer.draftMailbox);
+    if (composer.draftUid) formData.append('draft_uid', composer.draftUid);
+    appendReplyFields(formData, composer);
+    return formData;
   }
 
   bringComposerToFront(id: string) {

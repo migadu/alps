@@ -10,8 +10,10 @@ import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-select';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-address-input';
+import type { AlpsAddressInput } from '../../../frontend/src/components/alps-address-input';
 import '../../../frontend/src/components/ui-confirm';
 import { modalButtonStyles } from '../../../frontend/src/components/ui-modal';
+import { isolatedCaption, isolatedSentence } from '../../../frontend/src/utils/bidi';
 
 @customElement('calendar-event-modal')
 export class CalendarEventModal extends LitElement {
@@ -123,6 +125,9 @@ export class CalendarEventModal extends LitElement {
                     const end = new Date(this.event.end);
                     end.setUTCDate(end.getUTCDate() - 1);
                     this.endDate = `${end.getUTCFullYear()}-${pad(end.getUTCMonth() + 1)}-${pad(end.getUTCDate())}`;
+                    // An event another client wrote with no length would
+                    // otherwise open ending the day before it starts.
+                    if (this.endDate < this.startDate) this.endDate = this.startDate;
                     this.endTime = '00:00';
                 } else {
                     const start = new Date(this.event.start);
@@ -190,20 +195,60 @@ export class CalendarEventModal extends LitElement {
         };
     }
 
-    /** Someone else's meeting: its guest list is its organizer's. */
-    private get invited(): boolean {
-        return this.event?.role === 'attendee';
+    /**
+     * Sets the start, and takes the end along when the start moves past it:
+     * the end date up to the start date and, on that one day, the end time up
+     * to the start time. Left behind, the end made an event that finishes
+     * before it begins.
+     */
+    private setStart(change: { startDate?: string; startTime?: string; isAllDay?: boolean }) {
+        Object.assign(this, change);
+        if (this.startDate && this.endDate < this.startDate) this.endDate = this.startDate;
+        if (!this.isAllDay && this.startDate && this.endDate === this.startDate
+            && this.startTime && this.endTime && this.endTime < this.startTime) {
+            this.endTime = this.startTime;
+        }
+    }
+
+    /** Whether the form ends before it starts, which no event can. */
+    private endsBeforeStart(): boolean {
+        if (this.isAllDay) return this.endDate < this.startDate;
+        const { startISO, endISO } = this.formTimes();
+        return new Date(endISO).getTime() < new Date(startISO).getTime();
+    }
+
+    /**
+     * Someone else's meeting: its guest list is its organizer's. That is one
+     * the user is invited to, and also a colleague's in a calendar shared
+     * with the user, which names an organizer and not the user at all; the
+     * server keeps the guests of both as they are, whatever is sent.
+     */
+    private get othersMeeting(): boolean {
+        const event = this.event;
+        return event?.role === 'attendee' || (!!event?.organizer && event.role !== 'organizer');
     }
 
     private async handleSave() {
+        // A guest typed and not yet a pill is one the user means to invite,
+        // whether or not the press on Save took the focus from the field.
+        this.shadowRoot?.querySelector<AlpsAddressInput>('alps-address-input.guests')?.commitPending();
         if (!this.summary.trim() || !this.startDate || !this.endDate) return;
+        // Said here, in the user's words: the server refuses an event that
+        // ends before it starts with a failure that does not say why, or
+        // quietly makes an all-day one a single day.
+        if (this.endsBeforeStart()) {
+            window.dispatchEvent(new CustomEvent('show-toast', {
+                detail: { message: this.i18nStore?.t('calendar.endBeforeStart'), duration: 8000 }
+            }));
+            return;
+        }
         // A change to a meeting that already has guests is theirs to hear about
         // or not; a new meeting's guests are invited, which is what adding them
         // asked for.
         // An event that is over, and stays over, tells nobody: moved to a time
         // still to come, it is news again.
         const staysOver = !!this.event?.ended && new Date(this.formTimes().endISO) <= new Date();
-        if (this.event?.path && !this.invited && tellsSomeone({ ...this.event, ended: staysOver }, this.scheduling)) {
+        if (this.event?.path && !this.othersMeeting && tellsSomeone({ ...this.event, ended: staysOver }, this.scheduling)) {
             this.askNotify = true;
             return;
         }
@@ -236,7 +281,7 @@ export class CalendarEventModal extends LitElement {
                 // The version this editor opened; see EventData.etag.
                 etag: this.event?.etag,
                 // Left out for someone else's meeting, whose list stays as it is.
-                attendees: this.invited
+                attendees: this.othersMeeting
                     ? undefined
                     : this.attendees.map(personFromAddress).filter((p): p is NonNullable<typeof p> => p !== null),
                 notify,
@@ -275,14 +320,17 @@ export class CalendarEventModal extends LitElement {
 
         return html`
             <ui-modal 
-                title="${this.event ? (this.i18nStore?.t('calendar.editEvent')) : (this.i18nStore?.t('calendar.newEvent'))}" 
+                heading="${this.event ? (this.i18nStore?.t('calendar.editEvent')) : (this.i18nStore?.t('calendar.newEvent'))}" 
                 width="450px"
                 ?dismissible=${!this.isSaving}
                 @cancel=${this.handleCancel}
             >
                 <div class="form-group">
-                    <label>${this.i18nStore?.t('calendar.summary')}</label>
+                    <!-- Each label names its field: a bare one was tied to nothing. -->
+                    <label for="event-summary">${this.i18nStore?.t('calendar.summary')}</label>
                     <alps-input 
+                        id="event-summary"
+                        label=${this.i18nStore?.t('calendar.summary')}
                         .value=${this.summary} 
                         @input=${(e: any) => this.summary = e.target.value}
                         placeholder=${this.i18nStore?.t('calendar.eventTitle')}
@@ -291,8 +339,10 @@ export class CalendarEventModal extends LitElement {
 
                 ${this.calendars.length > 1 ? html`
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('calendar.calendar')}</label>
+                        <label for="event-calendar">${this.i18nStore?.t('calendar.calendar')}</label>
                         <alps-select
+                            id="event-calendar"
+                            label=${this.i18nStore?.t('calendar.calendar')}
                             .value=${this.calendarPath}
                             .options=${this.calendars.map(c => ({ value: c.path, label: c.name }))}
                             @change=${(e: Event) => { this.calendarPath = (e.target as HTMLSelectElement).value; }}
@@ -301,15 +351,19 @@ export class CalendarEventModal extends LitElement {
                     </div>
                 ` : ''}
 
-                ${this.invited ? html`
+                ${this.othersMeeting ? html`
                     <div class="form-group organized-by">
-                        ${this.i18nStore?.t('invitations.organizedBy', { name: this.event?.organizer?.name || this.event?.organizer?.email || '' })}
+                        ${isolatedSentence(this.i18nStore, 'invitations.organizedBy', {
+                            name: this.event?.organizer ? isolatedCaption(this.event.organizer.name, this.event.organizer.email) : '',
+                        })}
                     </div>
                 ` : html`
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('invitations.guests')}</label>
+                        <label for="event-guests">${this.i18nStore?.t('invitations.guests')}</label>
                         <alps-address-input
+                            id="event-guests"
                             class="guests"
+                            label=${this.i18nStore?.t('invitations.guests')}
                             .addresses=${this.attendees}
                             @addresses-changed=${(e: CustomEvent) => { this.attendees = e.detail.addresses; }}
                         ></alps-address-input>
@@ -318,20 +372,25 @@ export class CalendarEventModal extends LitElement {
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('calendar.startDate')}</label>
+                        <label for="event-start-date">${this.i18nStore?.t('calendar.startDate')}</label>
                         <alps-input 
+                            id="event-start-date"
+                            label=${this.i18nStore?.t('calendar.startDate')}
                             type="date"
                             .value=${this.startDate} 
-                            @input=${(e: any) => this.startDate = e.target.value}
+                            @input=${(e: any) => this.setStart({ startDate: e.target.value })}
                         ></alps-input>
                     </div>
                     ${!this.isAllDay ? html`
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('calendar.time')}</label>
+                        <label for="event-start-time">${this.i18nStore?.t('calendar.time')}</label>
+                        <!-- Named "Start time", though its label reads "Time": so is the end's. -->
                         <alps-input 
+                            id="event-start-time"
+                            label=${this.i18nStore?.t('calendar.startTime')}
                             type="time"
                             .value=${this.startTime} 
-                            @input=${(e: any) => this.startTime = e.target.value}
+                            @input=${(e: any) => this.setStart({ startTime: e.target.value })}
                         ></alps-input>
                     </div>
                     ` : ''}
@@ -339,8 +398,10 @@ export class CalendarEventModal extends LitElement {
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('calendar.endDate')}</label>
+                        <label for="event-end-date">${this.i18nStore?.t('calendar.endDate')}</label>
                         <alps-input 
+                            id="event-end-date"
+                            label=${this.i18nStore?.t('calendar.endDate')}
                             type="date"
                             .value=${this.endDate} 
                             @input=${(e: any) => this.endDate = e.target.value}
@@ -348,8 +409,10 @@ export class CalendarEventModal extends LitElement {
                     </div>
                     ${!this.isAllDay ? html`
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('calendar.time')}</label>
+                        <label for="event-end-time">${this.i18nStore?.t('calendar.time')}</label>
                         <alps-input 
+                            id="event-end-time"
+                            label=${this.i18nStore?.t('calendar.endTime')}
                             type="time"
                             .value=${this.endTime} 
                             @input=${(e: any) => this.endTime = e.target.value}
@@ -359,13 +422,15 @@ export class CalendarEventModal extends LitElement {
                 </div>
 
                 <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="allday-checkbox" .checked=${this.isAllDay} @change=${(e: any) => this.isAllDay = e.target.checked}>
+                    <input type="checkbox" id="allday-checkbox" .checked=${this.isAllDay} @change=${(e: any) => this.setStart({ isAllDay: e.target.checked })}>
                     <label for="allday-checkbox" style="margin-bottom: 0; cursor: pointer;">${this.i18nStore?.t('calendar.allDay')}</label>
                 </div>
 
                 <div class="form-group">
-                    <label>${this.i18nStore?.t('calendar.repeat')}</label>
+                    <label for="event-repeat">${this.i18nStore?.t('calendar.repeat')}</label>
                     <alps-select
+                        id="event-repeat"
+                        label=${this.i18nStore?.t('calendar.repeat')}
                         .value=${this.rruleFreq}
                         .options=${[
                             { value: '', label: this.i18nStore?.t('calendar.repeatNone') },
@@ -380,8 +445,10 @@ export class CalendarEventModal extends LitElement {
                 </div>
 
                 <div class="form-group">
-                    <label>${this.i18nStore?.t('calendar.location')}</label>
+                    <label for="event-location">${this.i18nStore?.t('calendar.location')}</label>
                     <alps-input 
+                        id="event-location"
+                        label=${this.i18nStore?.t('calendar.location')}
                         .value=${this.location} 
                         @input=${(e: any) => this.location = e.target.value}
                         placeholder=${this.i18nStore?.t('calendar.addLocation')}
@@ -389,8 +456,9 @@ export class CalendarEventModal extends LitElement {
                 </div>
 
                 <div class="form-group">
-                    <label>${this.i18nStore?.t('calendar.description')}</label>
+                    <label for="event-description">${this.i18nStore?.t('calendar.description')}</label>
                     <textarea 
+                        id="event-description"
                         .value=${this.description} 
                         @input=${(e: any) => this.description = e.target.value}
                         placeholder=${this.i18nStore?.t('calendar.addDescription')}
@@ -409,7 +477,7 @@ export class CalendarEventModal extends LitElement {
 
             ${this.askNotify ? html`
                 <ui-confirm
-                    title=${this.i18nStore?.t('invitations.notifyTitle')}
+                    heading=${this.i18nStore?.t('invitations.notifyTitle')}
                     message=${this.i18nStore?.t('invitations.notifyChanges')}
                     confirmText=${this.i18nStore?.t('invitations.send')}
                     secondaryText=${this.i18nStore?.t('invitations.dontSend')}

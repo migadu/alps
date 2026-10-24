@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/emersion/go-imap/v2"
+	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-sasl"
 	"github.com/migadu/alps/plugins/managesieve"
 )
@@ -21,7 +22,10 @@ import (
 //	DELETE /outbox
 //	POST   /reset/settings   {"username","password"}  drop alps's IMAP METADATA
 //	POST   /reset/sieve      {"username","password"}  deactivate and delete every script
-//	POST   /reset/dav        {"username"}             empty the calendar and address book
+//	POST   /reset/dav        {"username"}             drop the calendars made, empty the rest and the address book
+//	POST   /mailbox/create       {"username","password","mailbox"}  CREATE, and nothing else
+//	POST   /mailbox/subscribe    {"username","password","mailbox"}
+//	POST   /mailbox/unsubscribe  {"username","password","mailbox"}
 
 // settingsRoot is where alps keeps its per-account state.
 const settingsRoot = "/private/vendor/alps"
@@ -56,7 +60,45 @@ func (c *control) handler() http.Handler {
 		c.dav.dropUser(a.Username)
 		return nil
 	}))
+	mux.HandleFunc("POST /mailbox/{verb}", c.mailbox)
 	return mux
+}
+
+// mailboxVerbs are what another client does to a folder behind alps's back.
+// A folder made by CREATE alone is left as the IMAP server leaves a new
+// folder, which on sora is unsubscribed.
+var mailboxVerbs = map[string]func(client *imapclient.Client, name string) *imapclient.Command{
+	"create":      func(client *imapclient.Client, name string) *imapclient.Command { return client.Create(name, nil) },
+	"subscribe":   (*imapclient.Client).Subscribe,
+	"unsubscribe": (*imapclient.Client).Unsubscribe,
+}
+
+func (c *control) mailbox(w http.ResponseWriter, r *http.Request) {
+	verb, ok := mailboxVerbs[r.PathValue("verb")]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	var req struct {
+		account
+		Mailbox string `json:"mailbox"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Username == "" || req.Mailbox == "" {
+		http.Error(w, "expected {\"username\", \"password\", \"mailbox\"}", http.StatusBadRequest)
+		return
+	}
+	client, err := c.creds.login(req.Username, req.Password)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("imap login: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer client.Close()
+	defer client.Logout()
+	if err := verb(client, req.Mailbox).Wait(); err != nil {
+		http.Error(w, fmt.Sprintf("%s %q: %v", r.PathValue("verb"), req.Mailbox, err), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (c *control) withAccount(fn func(account) error) http.HandlerFunc {

@@ -1,7 +1,7 @@
-// The settings page, and whether a preference sticks.
+// The Settings window, and whether a preference sticks.
 //
-// Two things are pinned here. First, that the settings page renders at all:
-// it is the only route that mounts `alps-select`, `alps-setting-group` and the
+// Two things are pinned here. First, that the Settings window renders at all:
+// it is the only view that mounts `alps-select`, `alps-setting-group` and the
 // plugin settings tabs, none of which the mailbox exercises, and a component
 // that renders nothing is exactly the failure this suite exists to catch. An
 // element whose module was never imported stays an unknown tag: no shadow
@@ -31,10 +31,14 @@ test.afterEach(async ({ page }) => {
   await page.request.delete("/session");
 });
 
-/** The settings sidebar entries, addressed as a user would read them. */
+/** The settings sections, addressed as a user would read them. */
 function category(page: Page, name: string) {
   return page.locator("alps-category-item").filter({ hasText: name });
 }
+
+/** The window's title bar, which says Settings, and the open section's name. */
+const windowTitle = (page: Page) => page.locator("settings-window .header-title");
+const sectionTitle = (page: Page) => page.locator("settings-window .category-title");
 
 /**
  * The native `<select>` a labelled setting group owns.
@@ -64,7 +68,7 @@ async function openSettings(page: Page, path = "/#/settings"): Promise<void> {
   await login(page);
   expect((await read).ok(), "the account's settings could not be read").toBe(true);
   await page.goto(path);
-  await expect(page.locator("settings-page")).toBeVisible();
+  await expect(page.locator("settings-window .window-frame")).toBeVisible();
 }
 
 /** Resolves when the next settings save has been accepted by the server. */
@@ -74,10 +78,11 @@ function settingsSaved(page: Page) {
   );
 }
 
-test("the settings page opens on General and lists every category", async ({ page }) => {
+test("Settings opens on General and lists every category", async ({ page }) => {
   await openSettings(page);
 
-  await expect(page.locator(".settings-title")).toHaveText("Settings / General");
+  await expect(windowTitle(page)).toHaveText("Settings");
+  await expect(sectionTitle(page)).toHaveText("General");
 
   // The plugin tabs are in this list deliberately: each takes its label from
   // its plugin's own dictionary, and `I18nStore.t()` returns the KEY on a
@@ -92,6 +97,7 @@ test("the settings page opens on General and lists every category", async ({ pag
     "Linked Accounts",
     "2FA / WebAuthn",
     "Filters",
+    "Auto-reply",
     "GPG Keys",
     "Password",
   ]) {
@@ -99,7 +105,7 @@ test("the settings page opens on General and lists every category", async ({ pag
   }
   // Safe as a negative only because the assertions above have already waited
   // for the sidebar to be on screen.
-  await expect(page.locator("settings-page")).not.toContainText("settings.");
+  await expect(page.locator("settings-window")).not.toContainText("settings.");
 
   // The General panel itself, not just its heading. Its two checkboxes are
   // addressed by the label a user reads rather than by position, so reordering
@@ -120,7 +126,7 @@ test("choosing a category swaps the panel", async ({ page }) => {
   await category(page, "Reading & Composing").click();
 
   await expect(page).toHaveURL(/#\/settings\/reading/);
-  await expect(page.locator(".settings-title")).toHaveText("Settings / Reading & Composing");
+  await expect(sectionTitle(page)).toHaveText("Reading & Composing");
   await expect(page.getByLabel("Use threading")).toBeVisible();
   // Only NOW is the old panel's absence meaningful: asserted before the new
   // panel had rendered, it would pass while nothing whatsoever had happened.
@@ -129,7 +135,7 @@ test("choosing a category swaps the panel", async ({ page }) => {
   await category(page, "Identity").click();
 
   await expect(page).toHaveURL(/#\/settings\/identity/);
-  await expect(page.locator(".settings-title")).toHaveText("Settings / Identity");
+  await expect(sectionTitle(page)).toHaveText("Identity");
   await expect(page.getByLabel("Always BCC myself on outgoing mail")).toBeVisible();
   await expect(page.getByLabel("Use threading")).toHaveCount(0);
 });
@@ -327,10 +333,12 @@ test("switching language re-renders the interface and survives a reload", async 
   // The dictionary is loaded by dynamic import, so this also proves the
   // non-English bundles resolve at all — a broken glob would leave the UI in
   // English with only a logged error to show for it.
-  await expect(page.locator(".settings-title")).toHaveText("Einstellungen / Lokalisierung");
+  await expect(windowTitle(page)).toHaveText("Einstellungen");
+  await expect(sectionTitle(page)).toHaveText("Lokalisierung");
   await expect(category(page, "Allgemein")).toBeVisible();
   await saved;
 
   await page.reload();
-  await expect(page.locator(".settings-title")).toHaveText("Einstellungen / Lokalisierung");
+  await expect(windowTitle(page)).toHaveText("Einstellungen");
+  await expect(sectionTitle(page)).toHaveText("Lokalisierung");
 });

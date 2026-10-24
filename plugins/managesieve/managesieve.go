@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/emersion/go-sasl"
 )
@@ -96,10 +97,10 @@ func (c *MSClient) Authenticate(saslClient sasl.Client) error {
 		return err
 	}
 
-	cmd := fmt.Sprintf("AUTHENTICATE %q", mech)
+	cmd := "AUTHENTICATE " + sieveString(mech)
 	logCmd := cmd
 	if len(ir) > 0 {
-		cmd += fmt.Sprintf(" %q", base64.StdEncoding.EncodeToString(ir))
+		cmd += " " + sieveString(base64.StdEncoding.EncodeToString(ir))
 		logCmd += " [REDACTED]"
 	}
 
@@ -121,7 +122,10 @@ func (c *MSClient) Authenticate(saslClient sasl.Client) error {
 		}
 
 		parts, err := c.parseStringList(line)
-		if err != nil || len(parts) == 0 {
+		if err != nil {
+			return err
+		}
+		if len(parts) == 0 {
 			continue
 		}
 
@@ -146,7 +150,7 @@ func (c *MSClient) Authenticate(saslClient sasl.Client) error {
 			return err
 		}
 
-		if err := c.sendCommandWithLog(fmt.Sprintf("%q", base64.StdEncoding.EncodeToString(resp)), `"[REDACTED]"`); err != nil {
+		if err := c.sendCommandWithLog(sieveString(base64.StdEncoding.EncodeToString(resp)), `"[REDACTED]"`); err != nil {
 			return err
 		}
 	}
@@ -182,7 +186,10 @@ func (c *MSClient) ListScripts() ([]Script, error) {
 		// Each line is a script name (quoted string or literal) optionally
 		// followed by the ACTIVE flag: "catchall" ACTIVE
 		parts, err := c.parseStringList(line)
-		if err != nil || len(parts) == 0 {
+		if err != nil {
+			return nil, err
+		}
+		if len(parts) == 0 {
 			continue
 		}
 		s := Script{Name: parts[0]}
@@ -195,8 +202,10 @@ func (c *MSClient) ListScripts() ([]Script, error) {
 	}
 }
 
+// PutScript stores a script under name (RFC 5804 PUTSCRIPT), sent as a
+// literal.
 func (c *MSClient) PutScript(name, content string) error {
-	cmd := fmt.Sprintf("PUTSCRIPT %q {%d+}\r\n%s", name, len(content), content)
+	cmd := fmt.Sprintf("PUTSCRIPT %s {%d+}\r\n%s", sieveString(name), len(content), content)
 	if err := c.sendCommand(cmd); err != nil {
 		return err
 	}
@@ -204,11 +213,8 @@ func (c *MSClient) PutScript(name, content string) error {
 }
 
 func (c *MSClient) SetActive(name string) error {
-	cmd := fmt.Sprintf("SETACTIVE %q", name)
-	if name == "" {
-		cmd = "SETACTIVE \"\""
-	}
-	if err := c.sendCommand(cmd); err != nil {
+	// An empty name switches every script off.
+	if err := c.sendCommand("SETACTIVE " + sieveString(name)); err != nil {
 		return err
 	}
 	return c.readResponse()
@@ -217,14 +223,14 @@ func (c *MSClient) SetActive(name string) error {
 // DeleteScript removes a script (RFC 5804 DELETESCRIPT). The server refuses to
 // delete the active script, so deactivate it with SetActive("") first.
 func (c *MSClient) DeleteScript(name string) error {
-	if err := c.sendCommand(fmt.Sprintf("DELETESCRIPT %q", name)); err != nil {
+	if err := c.sendCommand("DELETESCRIPT " + sieveString(name)); err != nil {
 		return err
 	}
 	return c.readResponse()
 }
 
 func (c *MSClient) GetScript(name string) (string, error) {
-	if err := c.sendCommand(fmt.Sprintf("GETSCRIPT %q", name)); err != nil {
+	if err := c.sendCommand("GETSCRIPT " + sieveString(name)); err != nil {
 		return "", err
 	}
 
@@ -252,6 +258,10 @@ func (c *MSClient) GetScript(name string) (string, error) {
 			if err != nil {
 				return "", err
 			}
+			if content.Len()+size > maxLiteralBytes {
+				c.conn.Close()
+				return "", fmt.Errorf("script exceeds the %d-byte limit", maxLiteralBytes)
+			}
 			lit := make([]byte, size)
 			c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 			if _, err := io.ReadFull(c.r, lit); err != nil {
@@ -263,7 +273,15 @@ func (c *MSClient) GetScript(name string) (string, error) {
 			content.Write(lit)
 			foundScript = true
 		} else if strings.HasPrefix(line, "\"") {
-			content.WriteString(strings.Trim(line, "\""))
+			script, _, ok := readQuoted(line)
+			if !ok {
+				return "", fmt.Errorf("GETSCRIPT answered with an unclosed string: %q", line)
+			}
+			if content.Len()+len(script) > maxLiteralBytes {
+				c.conn.Close()
+				return "", fmt.Errorf("script exceeds the %d-byte limit", maxLiteralBytes)
+			}
+			content.WriteString(script)
 			foundScript = true
 		}
 	}
@@ -291,7 +309,7 @@ func (c *MSClient) readResponse() error {
 		// or "SIEVE" "fileinto reject"
 		parts, err := c.parseStringList(line)
 		if err != nil {
-			continue // skip malformed capabilities
+			return err
 		}
 		if len(parts) >= 1 {
 			key := strings.ToUpper(parts[0])
@@ -304,17 +322,33 @@ func (c *MSClient) readResponse() error {
 	}
 }
 
+// sieveString writes s as a string in a command (RFC 5804 §4). A quoted
+// string escapes a quote and a backslash with a backslash, and nothing else:
+// every other character goes as it is. Go's %q, used before, escapes far more
+// (a tab as \t, a rune it does not count as printable as \u..., a byte that
+// is not UTF-8 as \x..), and a server reads the character after a backslash
+// as it is, so such a name named another script. A string that a quoted one
+// cannot hold, one with a NUL, a CR or an LF in it or that is not UTF-8, goes
+// as a literal, as any string in a command may: RFC 5804 allows no such
+// script name, but one a server lists is named back to it as it was listed.
+func sieveString(s string) string {
+	if !utf8.ValidString(s) || strings.ContainsAny(s, "\x00\r\n") {
+		return fmt.Sprintf("{%d+}\r\n%s", len(s), s)
+	}
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+}
+
 func (c *MSClient) sendCommand(cmd string) error {
 	return c.sendCommandWithLog(cmd, cmd)
 }
 
+// sendCommandWithLog writes cmd and the line break that ends it, logging
+// logCmd in its place. The line break is written always, even after one the
+// command already ends in: that one belongs to a literal, a script or a name
+// that ends in a line break, and a command ended by it alone was left unended.
 func (c *MSClient) sendCommandWithLog(cmd, logCmd string) error {
-	if !strings.HasSuffix(cmd, "\r\n") {
-		cmd += "\r\n"
-	}
-	if !strings.HasSuffix(logCmd, "\r\n") {
-		logCmd += "\r\n"
-	}
+	cmd += "\r\n"
+	logCmd += "\r\n"
 	if c.debugWriter != nil {
 		c.debugWriter.Write([]byte("C: " + logCmd))
 	}
@@ -323,25 +357,93 @@ func (c *MSClient) sendCommandWithLog(cmd, logCmd string) error {
 	return err
 }
 
+// readLine reads one line of a response, without its line break. A line
+// longer than maxLineBytes is a protocol error, and it closes the connection:
+// the rest of the line is still to come, and nothing read after it would be
+// in step with the server.
 func (c *MSClient) readLine() (string, error) {
 	c.conn.SetReadDeadline(time.Now().Add(15 * time.Second))
-	line, err := c.r.ReadString('\n')
-	if err == nil && c.debugWriter != nil {
-		c.debugWriter.Write([]byte("S: " + line))
+	var line []byte
+	for {
+		chunk, err := c.r.ReadSlice('\n')
+		if len(line)+len(chunk) > maxLineBytes {
+			c.conn.Close()
+			return "", fmt.Errorf("server sent a line longer than %d bytes", maxLineBytes)
+		}
+		line = append(line, chunk...)
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		break
 	}
-	if err != nil {
-		return "", err
+	if c.debugWriter != nil {
+		c.debugWriter.Write([]byte("S: " + string(line)))
 	}
-	return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"), nil
+	return strings.TrimSuffix(strings.TrimSuffix(string(line), "\n"), "\r"), nil
 }
 
-func parseLiteralSize(line string) (int, error) {
-	line = strings.TrimPrefix(line, "{")
-	line = strings.TrimSuffix(line, "+")
-	line = strings.TrimSuffix(line, "}")
-	return strconv.Atoi(line)
+// maxLiteralBytes is the largest literal the client reads, and the largest
+// script GetScript puts together from the literals it is sent. The sizes come
+// from the server and are read into memory whole, so they are bounded: by the
+// largest script alps takes from the page, as a larger one could not be saved
+// back.
+const maxLiteralBytes = maxScriptBytes
+
+// maxLineBytes includes the worst-case quoted form of a maximum-size
+// script: every byte escaped, plus its quotes and CRLF. GetScript separately
+// bounds decoded content so quoting does not change the script's limit.
+const maxLineBytes = 2*maxLiteralBytes + 4
+
+// parseLiteralSize reads the size from a literal's header, "{size}" or
+// "{size+}", which ends the line. A header that is not one, or a size past
+// maxLiteralBytes, is an error: without the bounds, a negative size or one
+// past what can be allocated panicked, and any other was allocated whole
+// before a byte of it arrived.
+func parseLiteralSize(header string) (int, error) {
+	digits, ok := strings.CutPrefix(header, "{")
+	if ok {
+		digits, ok = strings.CutSuffix(digits, "}")
+	}
+	digits = strings.TrimSuffix(digits, "+")
+	if !ok || digits == "" || strings.Trim(digits, "0123456789") != "" {
+		return 0, fmt.Errorf("malformed literal header %q", header)
+	}
+	size, err := strconv.Atoi(digits)
+	if err != nil || size > maxLiteralBytes {
+		return 0, fmt.Errorf("literal of %s bytes exceeds the %d-byte limit", digits, maxLiteralBytes)
+	}
+	return size, nil
 }
 
+// readQuoted reads the quoted string that s starts with (RFC 5804 §4): what
+// is between its quotes, with each escape undone, and what follows it on the
+// line. The grammar escapes only a quote and a backslash, each with a
+// backslash; whatever else a backslash comes before is taken as it is. ok is
+// false for a string that is not closed on the line.
+func readQuoted(s string) (value, rest string, ok bool) {
+	var b strings.Builder
+	for i := 1; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			if i++; i < len(s) {
+				b.WriteByte(s[i])
+			}
+		case '"':
+			return b.String(), s[i+1:], true
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	return "", "", false
+}
+
+// parseStringList reads the strings on a response line. Its error is a
+// literal, or the rest of the line after one, that could not be read, which
+// leaves the client out of step with the server: the callers end the exchange
+// on one, rather than read on into the literal as if it were responses.
 func (c *MSClient) parseStringList(line string) ([]string, error) {
 	// A very rudimentary parser for "string" "string"
 	var out []string
@@ -349,17 +451,19 @@ func (c *MSClient) parseStringList(line string) ([]string, error) {
 	line = strings.TrimSpace(line)
 	for len(line) > 0 {
 		if strings.HasPrefix(line, "\"") {
-			idx := strings.Index(line[1:], "\"")
-			if idx == -1 {
+			value, rest, ok := readQuoted(line)
+			if !ok {
 				return out, nil
 			}
-			out = append(out, line[1:idx+1])
-			line = strings.TrimSpace(line[idx+2:])
+			out = append(out, value)
+			line = strings.TrimSpace(rest)
 		} else if strings.HasPrefix(line, "{") {
 			// Literal in capabilities? Rare but possible.
 			// Format: {size}\r\n
-			sizeStr := line[1:strings.Index(line, "}")]
-			size, _ := strconv.Atoi(sizeStr)
+			size, err := parseLiteralSize(line)
+			if err != nil {
+				return out, err
+			}
 			// we assume the rest of the line was empty, so we read size bytes
 			lit := make([]byte, size)
 			if _, err := io.ReadFull(c.r, lit); err != nil {
@@ -369,8 +473,14 @@ func (c *MSClient) parseStringList(line string) ([]string, error) {
 				c.debugWriter.Write([]byte("S: [literal data]\n"))
 			}
 			out = append(out, string(lit))
-			lineStr, _ := c.readLine()
-			line = strings.TrimSpace(lineStr)
+			// The rest of the line comes after the literal. A failed read
+			// here is not the end of the line: what was left of it may still
+			// arrive, and be read as a line of its own.
+			rest, err := c.readLine()
+			if err != nil {
+				return out, err
+			}
+			line = strings.TrimSpace(rest)
 		} else {
 			// Unquoted string? ManageSieve requires capabilities to be strings, but let's be safe
 			idx := strings.Index(line, " ")

@@ -1,12 +1,33 @@
 export default {
   contacts: {
-    deleteFailed: 'Non è stato possibile eliminare {failed} contatti su {total}.',
-    categoryRenameFailed: 'Non è stato possibile aggiornare {failed} contatti su {total}, la categoria è stata rinominata solo in parte.',
-    categoryDeleteFailed: 'Non è stato possibile aggiornare {failed} contatti su {total}, la categoria è stata rimossa solo in parte.',
-    categoryUpdateFailed: 'Non è stato possibile aggiornare {failed} contatti su {total}.',
+    deleteFailed: {
+      one: 'Non è stato possibile eliminare {count} contatto su {total}.',
+      other: 'Non è stato possibile eliminare {count} contatti su {total}.'
+    },
+    categoryRenameFailed: {
+      one: 'Non è stato possibile aggiornare {count} contatto su {total}, la categoria è stata rinominata solo in parte.',
+      other: 'Non è stato possibile aggiornare {count} contatti su {total}, la categoria è stata rinominata solo in parte.'
+    },
+    categoryDeleteFailed: {
+      one: 'Non è stato possibile aggiornare {count} contatto su {total}, la categoria è stata rimossa solo in parte.',
+      other: 'Non è stato possibile aggiornare {count} contatti su {total}, la categoria è stata rimossa solo in parte.'
+    },
+    categoryUpdateFailed: {
+      one: 'Non è stato possibile aggiornare {count} contatto su {total}.',
+      other: 'Non è stato possibile aggiornare {count} contatti su {total}.'
+    },
+    deleteOneFailed: 'Non è stato possibile eliminare il contatto.',
+    categoryRenameOneFailed: 'Non è stato possibile aggiornare un contatto, la categoria è stata rinominata solo in parte.',
+    categoryDeleteOneFailed: 'Non è stato possibile aggiornare un contatto, la categoria è stata rimossa solo in parte.',
+    categoryUpdateOneFailed: 'Non è stato possibile aggiornare il contatto.',
     saveFailed: 'Non è stato possibile salvare il contatto.',
+    loadFailed: 'Non è stato possibile caricare il contatto, quindi non può ancora essere modificato.',
     saveConflict: 'Il contatto è stato modificato su un altro dispositivo, quindi la modifica non è stata salvata. Annulla la modifica per vedere l\'ultima versione.',
-    starFailed: 'Non è stato possibile aggiornare il contatto.',
+    starFailed: {
+      one: 'Non è stato possibile aggiornare {count} contatto su {total}.',
+      other: 'Non è stato possibile aggiornare {count} contatti su {total}.'
+    },
+    starOneFailed: 'Non è stato possibile aggiornare il contatto.',
     unnamedContact: 'Contatto senza nome',
     title: 'Contatti',
     allContacts: 'Tutti i contatti',
@@ -54,6 +75,9 @@ export default {
     address: 'Indirizzo',
     url: 'URL',
     birthday: 'Compleanno',
+    birthdayDay: 'Giorno',
+    birthdayMonth: 'Mese',
+    birthdayYear: 'Anno',
     back: 'Indietro',
     toggleStar: 'Attiva/disattiva preferito',
     publicKey: 'Chiave pubblica',

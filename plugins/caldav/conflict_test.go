@@ -26,6 +26,7 @@ import (
 	"github.com/migadu/alps"
 	_ "github.com/migadu/alps/plugins/base"
 	"github.com/migadu/alps/provider/maildir"
+	"github.com/migadu/alps/provider/multi"
 )
 
 // These run the real server, with this plugin pointed at go-webdav's own
@@ -211,6 +212,12 @@ type harnessOptions struct {
 	// wrap stands in front of the CalDAV server, to say or record what
 	// go-webdav's own handler does not.
 	wrap func(http.Handler) http.Handler
+	// login is the name the user signs in with, testUser when empty: a
+	// bare user name, as some IMAP servers take.
+	login string
+	// defaultDomain, when set, signs in through the multi provider, which
+	// completes a bare login with it.
+	defaultDomain string
 }
 
 func newHarness(t *testing.T) *harness {
@@ -236,9 +243,13 @@ func startHarness(t *testing.T, o harnessOptions) *harness {
 		o.smtp = "smtp://127.0.0.1:1"
 	}
 
+	login := testUser
+	if o.login != "" {
+		login = o.login
+	}
 	base := t.TempDir()
 	passwd := filepath.Join(base, "passwd")
-	if err := os.WriteFile(passwd, []byte(testUser+":{PLAIN}"+testPassword+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(passwd, []byte(login+":{PLAIN}"+testPassword+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	mailDir := filepath.Join(base, "ada")
@@ -256,6 +267,9 @@ func startHarness(t *testing.T, o harnessOptions) *harness {
 	popt, err := pcfg.ToOptions()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if o.defaultDomain != "" {
+		popt = &multi.Options{DefaultDomain: o.defaultDomain, Default: popt}
 	}
 	opts := &alps.Options{
 		Provider: popt,
@@ -275,7 +289,7 @@ func startHarness(t *testing.T, o harnessOptions) *harness {
 
 	jar, _ := cookiejar.New(nil)
 	h := &harness{t: t, url: ts.URL, client: &http.Client{Jar: jar}, dav: dav, mailDir: mailDir}
-	h.expect(h.do("POST", "/session", map[string]string{"username": testUser, "password": testPassword}), http.StatusOK)
+	h.expect(h.do("POST", "/session", map[string]string{"username": login, "password": testPassword}), http.StatusOK)
 	return h
 }
 

@@ -1,3 +1,5 @@
+import { Logger } from './utils/logger';
+
 export interface NavTab {
     id: string;
     pluginId?: string;
@@ -12,6 +14,8 @@ export interface SettingsTab {
     labelKey: string; // The i18n translation key for the tab label
     icon: string;     // The icon name for the sidebar
     component: string; // The HTML custom element tag name, e.g. 'alps-password-settings'
+    /** Fetches the module that defines `component`; see {@link Route.load}. */
+    load?: () => Promise<unknown>;
 }
 
 export interface Route {
@@ -27,6 +31,88 @@ export interface Route {
      * `#/calendar` typed into the address bar reaches it without one.
      */
     pluginId?: string;
+    /**
+     * Fetches the module that defines `component`, the first time the page is
+     * shown.
+     *
+     * Every plugin's `index.ts` is imported eagerly, so a page it imports
+     * statically ships in the first download: Calendar, Tasks, Contacts and the
+     * plugins' settings panes were a third of it, for a user who opened the
+     * inbox. A plugin passes `() => import('./its-page')` here instead, and
+     * keeps static only what the mail view itself shows (a reader banner, a
+     * hook's service).
+     */
+    load?: () => Promise<unknown>;
+}
+
+export const PLUGIN_LOAD_FAILED_EVENT = 'plugin-load-failed';
+
+/** Failed native imports stay failed until the document is reloaded. */
+const failedComponents = new Map<string, unknown>();
+const loadingComponents = new Map<string, Set<() => void>>();
+const announcedFailures = new Set<string>();
+
+/** A real navigation rearms the shell's safe escape action for a failed page. */
+export function resetComponentLoadFailures(): void {
+    announcedFailures.clear();
+}
+
+/**
+ * Start a page's one shared import and allow its existing element to upgrade.
+ * False means the caller must draw the recovery notice instead. A handled
+ * Vite preload error may fulfill without defining the tag, which also fails.
+ *
+ * Every pending caller hears failure, and the shell's event remains deduped
+ * until navigation. Failed native imports cannot be retried in this document;
+ * the notice offers a reload after safely persisting open composition.
+ */
+export function loadComponent(
+    entry: { component: string; load?: () => Promise<unknown> },
+    onFailure?: () => void,
+): boolean {
+    const { component, load } = entry;
+    if (!load || customElements.get(component)) {
+        failedComponents.delete(component);
+        announcedFailures.delete(component);
+        return true;
+    }
+    const announce = (error: unknown) => {
+        if (announcedFailures.has(component)) return;
+        announcedFailures.add(component);
+        Logger.error(`Failed to load <${component}>`, error);
+        window.dispatchEvent(new CustomEvent(PLUGIN_LOAD_FAILED_EVENT, { detail: { component } }));
+    };
+    if (failedComponents.has(component)) {
+        announce(failedComponents.get(component));
+        return false;
+    }
+    const existing = loadingComponents.get(component);
+    if (existing) {
+        if (onFailure) existing.add(onFailure);
+        return true;
+    }
+    const callbacks = new Set<() => void>();
+    if (onFailure) callbacks.add(onFailure);
+    loadingComponents.set(component, callbacks);
+    const fail = (error: unknown) => {
+        if (customElements.get(component) || failedComponents.has(component)) return;
+        failedComponents.set(component, error);
+        announce(error);
+        callbacks.forEach(callback => callback());
+    };
+    let pending: Promise<unknown>;
+    try {
+        pending = load.call(entry);
+    } catch (error) {
+        fail(error);
+        loadingComponents.delete(component);
+        return false;
+    }
+    void Promise.resolve(pending).then(() => {
+        if (!customElements.get(component)) throw new Error(`The module did not define <${component}>`);
+        announcedFailures.delete(component);
+    }).catch(fail).finally(() => loadingComponents.delete(component));
+    return true;
 }
 
 /** Set equality, so a re-read of /session that changed nothing announces
@@ -47,8 +133,9 @@ class PluginRegistry {
     hooks: Map<string, { handler: Function; pluginId?: string }[]> = new Map();
     enabledPlugins: Set<string> | null = null;
 
-    setEnabledPlugins(plugins: string[]) {
-        const next = new Set(plugins);
+    /** The plugins /session names as on, or null for "not known yet": all of them. */
+    setEnabledPlugins(plugins: string[] | null) {
+        const next = plugins === null ? null : new Set(plugins);
         // Idempotent, because the callers are not: /session is re-read on every
         // sign-in and reconnect, and each would otherwise announce a change that
         // never happened — costing a full re-render in all three listeners and

@@ -12,7 +12,9 @@ export class AlpsToast extends LitElement {
   @property({ type: Boolean, reflect: true }) show = false;
   @property({ type: String }) message = '';
   @property({ type: String }) actionLabel = '';
-  @property({ type: Object }) onAction?: () => void;
+  // A synchronous false keeps an action that could not complete available
+  // for retry. Other results, including promises, keep the usual dismissal.
+  @property({ type: Object }) onAction?: () => void | boolean | Promise<unknown>;
   // Invoked when the toast is genuinely dismissed (X button or auto-timeout),
   // as opposed to the undo action. Lets the opener proceed immediately instead
   // of waiting out the remaining timeout.
@@ -51,7 +53,7 @@ export class AlpsToast extends LitElement {
 
   private handleAction() {
     if (this.onAction) {
-      this.onAction();
+      if (this.onAction() === false) return;
     } else {
       this.dispatchEvent(new CustomEvent('action'));
     }
@@ -62,6 +64,7 @@ export class AlpsToast extends LitElement {
   static styles = css`
     :host {
       display: block;
+      max-width: calc(100vw - 48px);
       transform: translateY(20px);
       opacity: 0;
       pointer-events: none;
@@ -80,7 +83,7 @@ export class AlpsToast extends LitElement {
       border: 1px solid var(--toast-border, rgba(255, 255, 255, 0.1));
       border-radius: 6px;
       padding: 0 4px 0 16px;
-      height: 36px;
+      min-height: 36px;
       box-sizing: border-box;
       font-size: 13px;
       font-weight: 500;
@@ -88,9 +91,20 @@ export class AlpsToast extends LitElement {
       display: flex;
       align-items: center;
       gap: 8px;
-      white-space: nowrap;
+      white-space: normal;
       backdrop-filter: blur(4px);
       -webkit-backdrop-filter: blur(4px);
+    }
+
+    .toast-container > span {
+      min-width: 0;
+      padding: 6px 0;
+      overflow-wrap: anywhere;
+    }
+
+    .toast-container > alps-button,
+    .toast-container > alps-icon-btn {
+      flex-shrink: 0;
     }
 
     /* Action button is now an alps-button and styled via custom properties inline */
@@ -109,10 +123,12 @@ export class AlpsToast extends LitElement {
             ${this.actionLabel}
           </alps-button>
         ` : ''}
+        <!-- Named by its title, which alps-icon-btn passes on to its button; an
+             aria-label would stay on this element, which is no control. -->
         <alps-icon-btn 
           class="dismiss-btn" 
           icon="x" 
-          aria-label="${this.i18nStore?.t('toast.dismiss')}" 
+          title="${this.i18nStore?.t('toast.dismiss')}" 
           @click=${this.dismiss}
           style="--btn-color: var(--toast-fg, rgba(255, 255, 255, 0.7)); --btn-hover-bg: rgba(255, 255, 255, 0.15); --text-primary: var(--toast-fg, #fff); --btn-icon-size: 16px;"
         ></alps-icon-btn>

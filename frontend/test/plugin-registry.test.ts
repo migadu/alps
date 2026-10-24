@@ -8,8 +8,9 @@
  * have to be filtered as well as the nav, or a disabled plugin keeps running.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { registry } from '../src/plugin-registry';
+import { loadComponent, registry } from '../src/plugin-registry';
 import { Router } from '../src/router';
+import { Logger } from '../src/utils/logger';
 
 beforeEach(() => {
   registry.navTabs = [];
@@ -181,5 +182,64 @@ describe('hooks', () => {
     registry.setEnabledPlugins([]);
     await registry.invokeHookAsync('composer:send', {});
     expect(seen).toEqual(['app']);
+  });
+});
+
+describe('page modules', () => {
+  it('fetches a page when it is first shown, not when it is registered, and once', async () => {
+    const tag = 'lazy-shown-page';
+    const load = vi.fn(async () => customElements.define(tag, class extends HTMLElement {}));
+    registry.registerRoute({ path: '/lazy', component: tag, load });
+    expect(load).not.toHaveBeenCalled();
+
+    // Shown before its module has arrived, as the shell shows it.
+    const page = document.body.appendChild(document.createElement(tag));
+    loadComponent(registry.getRoutes()[0]);
+    await load.mock.results[0].value;
+    loadComponent(registry.getRoutes()[0]);
+
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(page).toBeInstanceOf(customElements.get(tag)!);
+    page.remove();
+  });
+
+  it('says a page whose import failed cannot be shown, and does not import it again', async () => {
+    // The browser keeps a failed import in the document's module map, and
+    // importing the module again rejects at once without a request: trying
+    // again each time the page was shown fetched nothing. The load here
+    // rejects every time, as the browser's does.
+    const tag = 'lazy-failed-pane';
+    vi.spyOn(Logger, 'error').mockImplementation(() => {});
+    const load = vi.fn(() => Promise.reject(new TypeError('Failed to fetch dynamically imported module')));
+    const failed = vi.fn();
+    const tab = { id: 'lazy', labelKey: 'l', icon: 'key', component: tag, load };
+
+    expect(loadComponent(tab, failed)).toBe(true);
+    await vi.waitFor(() => expect(failed).toHaveBeenCalledTimes(1));
+
+    expect(loadComponent(tab, failed)).toBe(false);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(Logger.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('says a page cannot be shown when its load settles without defining it', async () => {
+    // As in a build: Vite's preload helper resolves the import with nothing
+    // once app-update has handled the error event it raises for it, and the
+    // page's element is never defined.
+    const tag = 'lazy-undefined-page';
+    vi.spyOn(Logger, 'error').mockImplementation(() => {});
+    const load = vi.fn(async () => undefined);
+    const failed = vi.fn();
+    const route = { path: '/undefined', component: tag, load };
+
+    expect(loadComponent(route, failed)).toBe(true);
+    await vi.waitFor(() => expect(failed).toHaveBeenCalledTimes(1));
+
+    expect(loadComponent(route, failed)).toBe(false);
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a page with nothing to load alone', () => {
+    expect(() => loadComponent({ component: 'div' })).not.toThrow();
   });
 });

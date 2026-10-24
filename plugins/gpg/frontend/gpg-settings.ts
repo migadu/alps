@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit';
+import { keyed } from 'lit/directives/keyed.js';
 import { customElement, state } from 'lit/decorators.js';
 import { fetchWithTimeout } from '../../../frontend/src/utils/fetch-utils';
 import { consume } from '@lit/context';
@@ -30,6 +31,7 @@ export class AlpsGpgSettings extends LitElement {
     @state() private passphrasePromptMode: 'lock' | 'confirm' | 'unlock' = 'lock';
     @state() private showPurgeConfirm = false;
     private resolvePassphrase: ((pass: string | null) => void) | null = null;
+    @state() private passphrasePromptId = 0;
 
     static styles = css`
         :host {
@@ -104,6 +106,10 @@ export class AlpsGpgSettings extends LitElement {
 
     private promptForPassphrase(mode: 'lock' | 'confirm' | 'unlock' = 'lock'): Promise<string | null> {
         this.passphrasePromptMode = mode;
+        // Resolving one step can open the next before Lit renders the hide.
+        // Give each invocation a fresh form, including same-mode retries: a
+        // reused prompt retains both its passphrase and submit latch.
+        this.passphrasePromptId++;
         this.showPassphrasePrompt = true;
         return new Promise((resolve) => {
             this.resolvePassphrase = resolve;
@@ -159,6 +165,26 @@ export class AlpsGpgSettings extends LitElement {
         this.showPassphrasePrompt = false;
     }
 
+    /**
+     * Stores a new keypair in place of the server's, and forgets the key the
+     * page holds unlocked. Neither save looked at the answer, so a refused
+     * import cleared the pasted keys without a word and a refused generation
+     * went back to the pane as though it had worked; and the old key, still
+     * unlocked, went on reading and signing in place of the new one.
+     */
+    private async saveKeyring(publicKey: string, encryptedPrivateKey: string) {
+        const res = await fetchWithTimeout('/gpg/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                public_key: publicKey,
+                encrypted_private_key: encryptedPrivateKey
+            })
+        });
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
+        clearCachedPrivateKey();
+    }
+
     async generateKeys() {
         const pass = await this.getConfirmedPassphrase();
         if (!pass) return;
@@ -174,14 +200,7 @@ export class AlpsGpgSettings extends LitElement {
                 passphrase: pass
             });
 
-            await fetchWithTimeout('/gpg/keys', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    public_key: publicKey,
-                    encrypted_private_key: privateKey
-                })
-            });
+            await this.saveKeyring(publicKey, privateKey);
             await this.fetchKeys();
         } catch (e: any) {
             alert(this.i18nStore?.t('gpg.generateFailed', { error: e.message }));
@@ -247,14 +266,9 @@ export class AlpsGpgSettings extends LitElement {
                 passphrase: pass
             });
 
-            await fetchWithTimeout('/gpg/keys', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    public_key: this.pubKeyInput,
-                    encrypted_private_key: encryptedPrivateKey
-                })
-            });
+            // encryptKey returns a PrivateKey object; the keyring stores
+            // armored text, not its circular in-memory object graph.
+            await this.saveKeyring(this.pubKeyInput, encryptedPrivateKey.armor());
             this.pubKeyInput = '';
             this.privKeyInput = '';
             this.viewState = 'default';
@@ -266,18 +280,30 @@ export class AlpsGpgSettings extends LitElement {
         }
     }
 
+    /**
+     * Deletes the keypair from the server, and only then from the page. The
+     * page cleared its keys and forgot the unlocked one whatever the server
+     * answered: a refused delete showed no keypair, the keypair came back on
+     * the next visit, and meanwhile this tab could not open encrypted mail.
+     */
     async purgeKeys() {
         this.loading = true;
         this.showPurgeConfirm = false;
-        await fetchWithTimeout('/gpg/keys', { method: 'DELETE' });
-        this.keyring = null;
-        clearCachedPrivateKey();
-        this.loading = false;
+        try {
+            const res = await fetchWithTimeout('/gpg/keys', { method: 'DELETE' });
+            if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
+            this.keyring = null;
+            clearCachedPrivateKey();
+        } catch (e: any) {
+            alert(this.i18nStore?.t('gpg.purgeFailed', { error: e.message }));
+        } finally {
+            this.loading = false;
+        }
     }
 
     render() {
         if (this.loading || this.generating) {
-            return html`<alps-loader full-height .text=${this.generating ? 'Generating keypair...' : 'Loading...'}></alps-loader>`;
+            return html`<alps-loader full-height .text=${this.i18nStore?.t(this.generating ? 'gpg.generating' : 'settings.loading') ?? ''}></alps-loader>`;
         }
 
         return html`
@@ -294,11 +320,13 @@ export class AlpsGpgSettings extends LitElement {
                     <alps-setting-group description="${this.i18nStore?.t('gpg.importUnencryptedDesc')}" style="margin-bottom: 24px;"></alps-setting-group>
                     
                     <alps-setting-group label="${this.i18nStore?.t('gpg.publicKeyBlock')}" style="margin-bottom: 24px;">
-                        <textarea .value=${this.pubKeyInput} @input=${(e: any) => this.pubKeyInput = e.target.value}></textarea>
+                        <!-- Each box named by the label above it, which is in
+                             alps-setting-group's shadow root and cannot reach it. -->
+                        <textarea aria-label=${this.i18nStore?.t('gpg.publicKeyBlock') ?? ''} .value=${this.pubKeyInput} @input=${(e: any) => this.pubKeyInput = e.target.value}></textarea>
                     </alps-setting-group>
 
                     <alps-setting-group label="${this.i18nStore?.t('gpg.privateKeyBlock')}" style="margin-bottom: 24px;">
-                        <textarea .value=${this.privKeyInput} @input=${(e: any) => this.privKeyInput = e.target.value}></textarea>
+                        <textarea aria-label=${this.i18nStore?.t('gpg.privateKeyBlock') ?? ''} .value=${this.privKeyInput} @input=${(e: any) => this.privKeyInput = e.target.value}></textarea>
                     </alps-setting-group>
 
                     <div class="actions">
@@ -316,9 +344,9 @@ export class AlpsGpgSettings extends LitElement {
                 </alps-setting-group>
             `}
 
-            ${this.showPassphrasePrompt ? html`
+            ${this.showPassphrasePrompt ? keyed(this.passphrasePromptId, html`
                 <ui-prompt
-                    title="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.passphraseRequired') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.passphraseConfirmTitle') : this.i18nStore?.t('gpg.passphraseSetTitle')}"
+                    heading="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.passphraseRequired') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.passphraseConfirmTitle') : this.i18nStore?.t('gpg.passphraseSetTitle')}"
                     confirmText="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.unlock') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.confirm') : this.i18nStore?.t('gpg.lock')}"
                     cancelText="${this.i18nStore?.t('general.cancel')}"
                     .fields=${[
@@ -337,17 +365,17 @@ export class AlpsGpgSettings extends LitElement {
                     @submit=${(e: CustomEvent) => this.handlePassphraseSubmit(e.detail.passphrase)}
                     @cancel=${this.handlePassphraseCancel}
                 ></ui-prompt>
-            ` : ''}
+            `) : ''}
             ${this.importError ? html`
-                <ui-modal title="${this.i18nStore?.t('gpg.importFailedTitle')}" @cancel=${this.clearError}>
+                <ui-modal heading="${this.i18nStore?.t('gpg.importFailedTitle')}" @cancel=${this.clearError}>
                     <div style="padding: 16px; white-space: pre-wrap; font-family: monospace; font-size: 13px;">${this.importError}</div>
-                    <alps-button slot="actions" @click=${this.clearError}>OK</alps-button>
+                    <alps-button slot="actions" @click=${this.clearError}>${this.i18nStore?.t('attachment.close')}</alps-button>
                 </ui-modal>
             ` : ''}
 
             ${this.showPurgeConfirm ? html`
                 <ui-confirm
-                    title="${this.i18nStore?.t('gpg.purgeKeys')}"
+                    heading="${this.i18nStore?.t('gpg.purgeKeys')}"
                     message="${this.i18nStore?.t('gpg.purgeConfirm')}"
                     confirmText="${this.i18nStore?.t('gpg.purgeKeys')}"
                     cancelText="${this.i18nStore?.t('general.cancel')}"

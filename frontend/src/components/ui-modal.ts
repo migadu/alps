@@ -1,5 +1,5 @@
-import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { LitElement, html, css, nothing } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
 
 export const modalButtonStyles = css`
   .btn-cancel {
@@ -42,10 +42,19 @@ export const modalButtonStyles = css`
 
 @customElement('ui-modal')
 export class UIModal extends LitElement {
-  @property({ type: String }) title: string = '';
+  /** The dialog's heading, and its name. Not `title`: that is HTML's global
+   * attribute, advisory text for everything inside the element, so the
+   * browser showed it as a tooltip wherever the pointer rested on the dialog. */
+  @property({ type: String }) heading: string = '';
   @property({ type: Boolean }) isDanger: boolean = false;
   @property({ type: Boolean }) dismissible: boolean = false;
   @property({ type: String }) width: string = '400px';
+  /** The body describes the dialog, as a confirmation's message does. Not by
+   * default: an editor's body is a form, and its fields are no description. */
+  @property({ type: Boolean }) bodyDescribes: boolean = false;
+
+  /** A header of the caller's own fills the header slot, in the heading's place. */
+  @state() private ownHeader = false;
 
   static styles = css`
     .modal-dialog {
@@ -143,14 +152,26 @@ export class UIModal extends LitElement {
     }
   }
 
+  private _handleHeaderChange(e: Event) {
+    this.ownHeader = (e.target as HTMLSlotElement).assignedElements().length > 0;
+  }
+
   render() {
+    // Named by its heading. The dialog had no name, so a screen reader
+    // announced every confirmation, prompt and editor as a bare "dialog". The
+    // <h3> names it where it is drawn; where a header of the caller's own
+    // replaces the <h3>, the heading is the dialog's label.
     return html`
-      <dialog class="modal-dialog" @pointerdown=${this._handleOverlayClick} @cancel=${this._handleEscape} @close=${this._handleDialogClose}>
+      <dialog class="modal-dialog"
+        aria-labelledby=${this.heading && !this.ownHeader ? 'modal-title' : nothing}
+        aria-label=${this.heading && this.ownHeader ? this.heading : nothing}
+        aria-describedby=${this.bodyDescribes ? 'modal-body' : nothing}
+        @pointerdown=${this._handleOverlayClick} @cancel=${this._handleEscape} @close=${this._handleDialogClose}>
         <div class="modal-card" style="width: ${this.width};" @pointerdown=${(e: Event) => e.stopPropagation()}>
-          <slot name="header">
-            ${this.title ? html`<h3 class="modal-title ${this.isDanger ? 'danger' : ''}">${this.title}</h3>` : ''}
+          <slot name="header" @slotchange=${this._handleHeaderChange}>
+            ${this.heading ? html`<h3 id="modal-title" class="modal-title ${this.isDanger ? 'danger' : ''}">${this.heading}</h3>` : ''}
           </slot>
-          <div class="modal-body">
+          <div class="modal-body" id="modal-body">
             <slot></slot>
           </div>
           <div class="modal-actions">

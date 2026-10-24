@@ -1,0 +1,591 @@
+package alps
+
+import (
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/migadu/alps/provider"
+)
+
+// A page learns of new mail by asking: it checks for it every few minutes
+// (the poll). With push on ([server] push_new_mail), a session also waits for
+// the mail server's news of the Inbox (IMAP IDLE, RFC 2177) while one of its
+// pages holds an event stream open (WatchInbox), and tells the page as the
+// news comes, which then checks at once. The poll goes on beside it: for the
+// folders other than the Inbox (but see below), flags, and for when there is
+// no news to be had.
+//
+// The IDLE runs on the session's background connection (see
+// DoBackgroundMail), one for the session however many of its pages watch, and
+// only while one does. The connection stays busy meanwhile, so the idle close
+// does not apply until the last watch stops. Background work does not wait
+// for the IDLE: it ends the IDLE (DONE), runs, and the IDLE begins again once
+// the connection has gone unused for pushResumeAfter, so that a run of work
+// does not have the IDLE ended and begun around each piece of it. The IDLE is
+// begun again every pushRestartAfter too, within RFC 2177's 29 minutes.
+//
+// With the subscribed folders as well ([server] push_subscribed_folders),
+// and a mail server that can tell of them (IMAP NOTIFY, RFC 5465), the
+// background connection asks for their news too before the IDLE, once for
+// its life unless the server stops telling (see watchFolders), and the pages
+// are told of the folders as of the Inbox, and poll less often. The IDLE
+// stays: it keeps the connection in use, and the Inbox selected. Without
+// NOTIFY, or refused it, the Inbox alone is watched, as before.
+//
+// A server without IDLE gets no push, and the watches are told so. A lost or
+// refused connection is never the session's failure, as for any background
+// work: the watches go without news, the pages poll, and the IDLE is tried
+// again, after twice pushRetryAfter, and twice as long after each failure
+// in a row, up to 64 times pushRetryAfter, about half an hour (see
+// idleFailed).
+const (
+	pushRestartAfter = 25 * time.Minute
+	pushResumeAfter  = time.Second
+	pushRetryAfter   = 30 * time.Second
+)
+
+// pushMailbox is the mailbox a session waits for news of.
+const pushMailbox = "INBOX"
+
+// InboxEvent is news of the Inbox for a page: see WatchInbox.
+type InboxEvent int
+
+const (
+	// InboxWatched says the session waits for the mail server's news of the
+	// Inbox from now on. What changed before was not heard: a page checks.
+	InboxWatched InboxEvent = iota + 1
+	// InboxChanged says a message arrived in the Inbox or went from it. A
+	// flag changed is no news (see provider.Idler).
+	InboxChanged
+	// InboxUnwatchable says the mail server cannot tell of changes (it has no
+	// IDLE). It is the last event of a watch.
+	InboxUnwatchable
+	// FoldersWatched says the session waits for the mail server's news of
+	// the subscribed folders as well as of the Inbox from now on. What
+	// changed before was not heard: a page checks.
+	FoldersWatched
+	// FolderChanged says a message arrived in a folder other than the Inbox
+	// or went from it: InboxWatch.Folders names the folders.
+	FolderChanged
+)
+
+func (ev InboxEvent) String() string {
+	switch ev {
+	case InboxWatched:
+		return "watched"
+	case InboxChanged:
+		return "changed"
+	case InboxUnwatchable:
+		return "unwatchable"
+	case FoldersWatched:
+		return "folders watched"
+	case FolderChanged:
+		return "folder changed"
+	}
+	return "unknown"
+}
+
+// InboxWatch is a page's watch of the Inbox: see WatchInbox.
+type InboxWatch struct {
+	// C carries the news, and is closed when the watch ends: when it is
+	// stopped, after InboxUnwatchable, and when the session ends.
+	C       <-chan InboxEvent
+	stop    func()
+	folders func() []string
+}
+
+// Stop ends the watch. The session's IDLE ends with its last watch.
+func (w *InboxWatch) Stop() {
+	w.stop()
+}
+
+// Folders takes the folders other than the Inbox that the watch was told
+// changed (FolderChanged) and has not taken yet. They are kept for it until
+// it does, however much news comes meanwhile: a reader of C takes them after
+// each event it reads, as a FolderChanged may have found C full.
+func (w *InboxWatch) Folders() []string {
+	return w.folders()
+}
+
+// inboxPush is a session's watches of the Inbox and the IDLE that serves them.
+type inboxPush struct {
+	mu sync.Mutex
+	// watchers are the watches, each with the folders it was told changed
+	// and has not taken (see InboxWatch.Folders).
+	watchers map[chan InboxEvent]map[string]bool
+	running  bool // runInboxPush is running
+	ended    bool // the session has ended, or the server is shutting down
+	// The mail server cannot IDLE: watches are told so, and none is kept.
+	unwatchable bool
+	// The connection the watchers were last told an IDLE began on, or nil
+	// when none has since the last was lost, or since the watches began.
+	// watchingFolders says that they were told the folders are watched as
+	// well (FoldersWatched).
+	watching        provider.MailProvider
+	watchingFolders bool
+	// foldersOn is the connection whose server tells of the folders, whose
+	// news of them is passed on; nil when none does.
+	foldersOn provider.MailProvider
+	// Closed to end the IDLE running now; nil when none runs. interrupted
+	// keeps an interrupt that came while none ran, for the IDLE about to
+	// begin: it has taken the connection already (see idleInbox).
+	stop        chan struct{}
+	interrupted bool
+	// failures counts the IDLEs that failed since one last began, for the
+	// pause before the next (see idleFailed).
+	failures int
+	// Background operations waiting for the connection, or running on it, and
+	// when the last of them returned.
+	wanted   int
+	lastDone time.Time
+	// kick wakes runInboxPush to look again.
+	kick chan struct{}
+}
+
+// tell gives every watch ev. A watch with news it has not read yet is due to
+// check anyway, so news it has no room for is let go. The caller holds mu.
+func (w *inboxPush) tell(ev InboxEvent) {
+	for ch := range w.watchers {
+		select {
+		case ch <- ev:
+		default:
+		}
+	}
+}
+
+// tellFolder tells every watch that mailbox changed. The name is kept for it
+// until it takes it, so FolderChanged is sent only with the first name kept:
+// sent for each, a watch's buffer filled with them, and news of the Inbox
+// found no room. The caller holds mu.
+func (w *inboxPush) tellFolder(mailbox string) {
+	for ch, folders := range w.watchers {
+		if folders == nil {
+			folders = make(map[string]bool)
+			w.watchers[ch] = folders
+		}
+		first := len(folders) == 0
+		folders[mailbox] = true
+		if first {
+			select {
+			case ch <- FolderChanged:
+			default:
+			}
+		}
+	}
+}
+
+// watched is what watches are told as the IDLE begins: whether the folders
+// are watched as well.
+func watched(folders bool) InboxEvent {
+	if folders {
+		return FoldersWatched
+	}
+	return InboxWatched
+}
+
+// tellLast gives every watch ev as its last event, and ends the watches. The
+// last word is never let go for want of room: unread news makes way for it.
+// The caller holds mu, and no other sends to a watch meanwhile.
+func (w *inboxPush) tellLast(ev InboxEvent) {
+	for ch := range w.watchers {
+		for sent := false; !sent; {
+			select {
+			case ch <- ev:
+				sent = true
+			default:
+				select {
+				case <-ch:
+				default:
+				}
+			}
+		}
+		close(ch)
+	}
+	w.watchers = nil
+}
+
+// interruptLocked ends the IDLE running now, if one is. The caller holds mu.
+func (w *inboxPush) interruptLocked() {
+	if w.stop != nil {
+		close(w.stop)
+		w.stop = nil
+	}
+}
+
+func (w *inboxPush) kickLocked() {
+	if w.kick == nil {
+		return
+	}
+	select {
+	case w.kick <- struct{}{}:
+	default:
+	}
+}
+
+// interrupt ends the IDLE running now, so that its connection is free: for
+// a connection the session gives up on, and for the session's own work that
+// is to take the background connection over (see reclaimBackground). One
+// that comes while no IDLE runs is kept for the next, which may have taken
+// the connection already and not begun.
+func (w *inboxPush) interrupt() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.stop == nil {
+		w.interrupted = true
+	}
+	w.interruptLocked()
+}
+
+// want says that a background operation waits for the connection, and ends
+// the IDLE that holds it. done says it has returned.
+func (w *inboxPush) want() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.wanted++
+	w.interruptLocked()
+}
+
+func (w *inboxPush) done() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.wanted--
+	w.lastDone = time.Now()
+	w.kickLocked()
+}
+
+// end closes every watch, and keeps any from opening: the session has ended,
+// or the server is shutting down.
+func (w *inboxPush) end() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.ended = true
+	for ch := range w.watchers {
+		close(ch)
+	}
+	w.watchers = nil
+	w.interruptLocked()
+	w.kickLocked()
+}
+
+// WatchInbox has the session tell the caller of the mail server's news of
+// the Inbox, and of the subscribed folders where they are watched too, for
+// as long as the watch lasts: see inboxPush. A watch begun while the IDLE is
+// up is told InboxWatched, or FoldersWatched, at once. With push off, the
+// watch ends at once.
+func (s *Session) WatchInbox() *InboxWatch {
+	w := &s.push
+	ch := make(chan InboxEvent, 2)
+	watch := &InboxWatch{C: ch, stop: func() { s.unwatchInbox(ch) }, folders: func() []string { return s.takeFolders(ch) }}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	switch {
+	case w.ended || s.manager == nil || !s.manager.pushNewMail:
+		close(ch)
+	case w.unwatchable:
+		ch <- InboxUnwatchable
+		close(ch)
+	default:
+		if w.watchers == nil {
+			w.watchers = make(map[chan InboxEvent]map[string]bool)
+		}
+		w.watchers[ch] = nil
+		if w.watching != nil {
+			// A background transition removes its connection before taking
+			// w.mu to clear watching. Check ownership while announcing it,
+			// including that gap. The lock order is w.mu then bg.mu;
+			// background transitions release bg.mu before connectionGone.
+			bg := &s.background
+			bg.mu.Lock()
+			if bg.p == w.watching {
+				ch <- watched(w.watchingFolders)
+			} else {
+				w.watching = nil
+			}
+			bg.mu.Unlock()
+		}
+		if !w.running {
+			if w.kick == nil {
+				w.kick = make(chan struct{}, 1)
+			}
+			w.running = true
+			go s.runInboxPush()
+		}
+	}
+	return watch
+}
+
+// takeFolders answers the folders the watch ch was told changed, and forgets
+// them: see InboxWatch.Folders.
+func (s *Session) takeFolders(ch chan InboxEvent) []string {
+	w := &s.push
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	folders := w.watchers[ch]
+	if len(folders) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(folders))
+	for name := range folders {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	w.watchers[ch] = nil
+	return names
+}
+
+func (s *Session) unwatchInbox(ch chan InboxEvent) {
+	w := &s.push
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if _, ok := w.watchers[ch]; !ok {
+		return
+	}
+	delete(w.watchers, ch)
+	close(ch)
+	if len(w.watchers) == 0 {
+		// Nobody waits for the news from now on, though the IDLE has yet to
+		// end: a watch begun next is told once an IDLE has begun for it.
+		w.watching = nil
+		w.interruptLocked()
+		w.kickLocked()
+	}
+}
+
+// connectionGone says that p is no longer the session's background
+// connection: dropped, closed, or handed over to the session's own work. A
+// watch begun after is not told that the IDLE is up (InboxWatched) until one
+// has begun again, on another connection: told of p's, a page would take
+// news to come that nothing waited for.
+func (w *inboxPush) connectionGone(p provider.MailProvider) {
+	if p == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.watching == p {
+		w.watching = nil
+	}
+	if w.foldersOn == p {
+		w.foldersOn = nil
+	}
+}
+
+// mailboxNews is told what the mail server says unasked on p, the background
+// connection (see provider.Idler.OnMailboxNews). News of a folder other than
+// the Inbox is passed on from a connection that watches the folders: without
+// it, it is news of the mailbox a job selected, and of no folder a page was
+// told is watched.
+func (s *Session) mailboxNews(p provider.MailProvider, mailbox string) {
+	w := &s.push
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	switch {
+	case strings.EqualFold(mailbox, pushMailbox):
+		w.tell(InboxChanged)
+	case mailbox != "" && w.foldersOn != nil && w.foldersOn == p:
+		w.tellFolder(mailbox)
+	}
+}
+
+// runInboxPush is the session's IDLE, begun again after each pause, for as
+// long as the session has a watch.
+func (s *Session) runInboxPush() {
+	var pause time.Duration
+	for s.awaitIdleTurn(pause) {
+		pause = s.idleInbox()
+	}
+}
+
+// awaitIdleTurn waits until the IDLE may begin: pause has passed, no
+// background operation wants the connection, and it has gone unused for
+// pushResume since the last one. It reports false, and runInboxPush ends,
+// when no watch is left or the session has ended.
+func (s *Session) awaitIdleTurn(pause time.Duration) bool {
+	w := &s.push
+	until := time.Now().Add(pause)
+	for {
+		w.mu.Lock()
+		if w.ended || len(w.watchers) == 0 {
+			w.running = false
+			w.watching = nil
+			w.mu.Unlock()
+			return false
+		}
+		wanted := w.wanted > 0
+		at := until
+		if resume := w.lastDone.Add(s.manager.pushResume); resume.After(at) {
+			at = resume
+		}
+		kick := w.kick
+		w.mu.Unlock()
+
+		if wanted {
+			<-kick
+			continue
+		}
+		wait := time.Until(at)
+		if wait <= 0 {
+			return true
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-kick:
+		case <-timer.C:
+		}
+		timer.Stop()
+	}
+}
+
+// idleInbox waits on the background connection in IDLE until something ends
+// the wait, and answers how long to pause before the next.
+func (s *Session) idleInbox() time.Duration {
+	bg := &s.background
+	w := &s.push
+	bg.jobs.Lock()
+	defer bg.jobs.Unlock()
+
+	p := s.useBackground()
+	if p == nil {
+		// None to be had now: the session holds a connection it has given
+		// up on, or the mail server would not open one and is not asked
+		// again yet (see useBackground).
+		w.mu.Lock()
+		w.watching = nil
+		w.mu.Unlock()
+		return s.manager.pushRetry
+	}
+	idler, ok := p.(provider.Idler)
+	if ok {
+		var err error
+		if ok, err = idler.CanIdle(); err != nil {
+			return s.idleFailed(p, err)
+		}
+	}
+	if !ok {
+		s.doneWithBackground()
+		s.manager.logger.Debugf("Push: the mail server of %s cannot IDLE; its pages poll for new mail", s.username)
+		w.mu.Lock()
+		w.unwatchable = true
+		w.tellLast(InboxUnwatchable)
+		w.mu.Unlock()
+		return 0
+	}
+	idler.OnMailboxNews(func(mailbox string) { s.mailboxNews(p, mailbox) })
+	folders := s.watchFolders(p)
+
+	w.mu.Lock()
+	if w.wanted > 0 || w.interrupted || w.ended || len(w.watchers) == 0 {
+		// Asked for since the turn came.
+		w.interrupted = false
+		w.mu.Unlock()
+		s.doneWithBackground()
+		return 0
+	}
+	stop := make(chan struct{})
+	w.stop = stop
+	w.mu.Unlock()
+
+	restart := time.AfterFunc(s.manager.pushRestart, w.interrupt)
+	err := idler.Idle(pushMailbox, stop, func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		w.failures = 0
+		if w.watching != p || w.watchingFolders != folders {
+			w.watching = p
+			w.watchingFolders = folders
+			w.tell(watched(folders))
+		}
+	})
+	restart.Stop()
+
+	w.mu.Lock()
+	if w.stop == stop {
+		w.stop = nil
+	}
+	w.mu.Unlock()
+	if err != nil {
+		return s.idleFailed(p, err)
+	}
+	s.doneWithBackground()
+	return 0
+}
+
+// watchFolders has the mail server tell of the subscribed folders as well on
+// p, where the session is to wait for their news and the server can, and
+// reports whether it does (see provider.FolderWatcher). Where it begins to,
+// what changed before went unheard: the watches are told again that the
+// folders are watched, as the IDLE begins, and the pages check. Where it
+// cannot, or refuses, the Inbox is watched alone; a connection lost asking is
+// found lost by the IDLE after.
+func (s *Session) watchFolders(p provider.MailProvider) bool {
+	w := &s.push
+	fw, ok := p.(provider.FolderWatcher)
+	if !ok || !s.manager.pushFolders {
+		return false
+	}
+	on, begun, err := fw.WatchFolders()
+	if err != nil {
+		s.manager.logger.Debugf("Push: the mail server of %s does not tell of the folders; its pages are told of the Inbox alone: %v", s.username, err)
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if on {
+		w.foldersOn = p
+	} else if w.foldersOn == p {
+		w.foldersOn = nil
+	}
+	if begun && w.watching == p {
+		w.watching = nil
+	}
+	return on
+}
+
+// idleFailed lets go of the connection an IDLE failed on, and answers how
+// long to pause before the next, longer after each failure in a row.
+//
+// Only a connection that is gone is closed, as for any background work, and
+// the next IDLE opens another. A refusal, a NO to SELECT or to IDLE, or
+// capabilities that could not be read, says nothing against the connection:
+// it is kept for the next IDLE and for the work that waits for it, and the
+// session's own work that is to take it over gets it. Nobody is signed out
+// for either, and what changed meanwhile is checked once the IDLE is back
+// (InboxWatched).
+func (s *Session) idleFailed(p provider.MailProvider, err error) time.Duration {
+	w := &s.push
+	w.mu.Lock()
+	w.failures++
+	pause := s.manager.pushRetry << min(w.failures, 6)
+	w.watching = nil
+	w.mu.Unlock()
+	if isNetworkError(err) {
+		s.dropBackground()
+		p.Close()
+	} else {
+		s.doneWithBackground()
+	}
+	s.manager.logger.Debugf("Push: the IDLE of %s failed, tried again in %v: %v", s.username, pause, err)
+	return pause
+}
+
+// PushNewMail reports whether sessions tell their pages of new mail as the
+// mail server announces it: see Session.WatchInbox.
+func (sm *SessionManager) PushNewMail() bool {
+	return sm.pushNewMail
+}
+
+// endInboxWatches ends the watches of every session, for a server shutting
+// down: the event streams they serve end, and the HTTP server does not wait
+// for them. The pages open theirs again on the next server.
+func (sm *SessionManager) endInboxWatches() {
+	sm.locker.RLock()
+	sessions := make([]*Session, 0, len(sm.sessions))
+	for _, s := range sm.sessions {
+		sessions = append(sessions, s)
+	}
+	sm.locker.RUnlock()
+	for _, s := range sessions {
+		s.push.end()
+	}
+}

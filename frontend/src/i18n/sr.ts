@@ -1,7 +1,11 @@
 export const sr = {
   settings: {
-    saveFailed: 'Nije moguće sačuvati to podešavanje — možda neće preživeti odjavu',
+    saveFailed: 'Nije moguće sačuvati to podešavanje; možda neće preživeti odjavu',
     title: 'Podešavanja',
+    unsavedTitle: 'Odbaciti izmene?',
+    unsavedMessage: 'Imate nesačuvane izmene. Ako napustite ovaj odeljak, biće odbačene.',
+    discard: 'Odbaci',
+    keepEditing: 'Nastavi uređivanje',
     categories: {
       general: 'Opšte',
       identity: 'Identitet',
@@ -14,8 +18,8 @@ export const sr = {
       webauthn: '2FA / WebAuthn'
     },
     loading: 'Učitavanje...',
-    placeholderName: 'Tvoje ime',
-    placeholderReplyTo: 'odgovor@primer.com',
+    placeholderName: 'Vaše ime',
+    placeholderReplyTo: 'odgovor@primer.example',
     general: {
       checkMailInterval: 'Interval provere pošte',
       checkMailIntervalDesc: 'Koliko često automatski proveravati novu poštu.',
@@ -41,7 +45,7 @@ export const sr = {
       signatureDesc: 'Dodaje se na kraj poslatih poruka.',
       replyTo: 'Adresa za odgovor',
       replyToDesc: 'Opciono: navedite drugu adresu za odgovore.',
-      bccMyself: 'Uvek dodaj mene u BCC za odlaznu poštu',
+      bccMyself: 'Uvek dodaj mene u Bcc za odlaznu poštu',
     },
     reading: {
       messagesPerPage: 'Poruka po stranici',
@@ -80,10 +84,10 @@ export const sr = {
       listDensityDesc: 'Prilagodite razmak i gustinu liste poruka.',
       light: 'Svetla',
       dark: 'Tamna',
-      systemAuto: 'Automatski (Sistem)',
+      systemAuto: 'Automatski (sistem)',
       vertical: 'Vertikalno (3 okna)',
-      horizontal: 'Horizontalno (Gore/Dole)',
-      fullScreen: 'Preko celog ekrana (Sakrij listu pri čitanju)',
+      horizontal: 'Horizontalno (gore/dole)',
+      fullScreen: 'Preko celog ekrana (sakrij listu pri čitanju)',
       loose: 'Široko',
       normal: 'Normalno',
       compact: 'Kompaktno',
@@ -104,11 +108,11 @@ export const sr = {
       german: 'Deutsch',
       italian: 'Italiano',
       spanish: 'Español',
-      serbian: 'Српски (Ћирилица)',
-      serbianLatin: 'Srpski (Latinica)',
-      french: 'Francuski',
-      portuguese: 'Portugalski',
-      danish: 'Danski'
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
+      french: 'Français',
+      portuguese: 'Português',
+      danish: 'Dansk'
     },
   },
   linkedAccounts: {
@@ -131,18 +135,19 @@ export const sr = {
     subtitle: 'Prijavite se na svoj vebmejl.',
     emailPlaceholder: 'Adresa e-pošte',
     passwordPlaceholder: 'Lozinka',
-    keepMeSignedIn: 'Ostani prijavljen',
+    keepMeSignedIn: 'Ostanite prijavljeni',
     signIn: 'Prijavi se',
     tooManyAttempts: 'Previše pokušaja prijavljivanja',
     loginFailed: 'Prijavljivanje nije uspelo. Proverite svoje podatke.',
     networkError: 'Došlo je do greške na mreži. Pokušajte ponovo.',
     pleaseWait: 'Molimo sačekajte',
-    wait: 'Sačekaj',
+    wait: 'Sačekajte',
     signedOut: 'Odjavljeni ste.',
-    signedOutDraftsLost: 'Odjavljeni ste. Neke neposlate skice nije bilo moguće sačuvati i izgubljene su.',
+    signedOutDraftsKept: 'Odjavljeni ste. Neke neposlate nacrte nije bilo moguće sačuvati na serveru. Ostaju na ovom uređaju i otvoriće se ponovo kada se sledeći put prijavite.',
     sessionExpired: 'Vaša sesija je istekla. Prijavite se ponovo.',
+    secondFactorExpired: 'Prijava je istekla pre nego što je bezbednosni ključ proveren. Prijavite se ponovo.',
     inactivitySignedOut: 'Odjavljeni ste zbog neaktivnosti.',
-    inactivitySignedOutDraftsLost: "Odjavljeni ste zbog neaktivnosti. Neke neposlate skice nije bilo moguće sačuvati i izgubljene su."
+    inactivitySignedOutDraftsKept: "Odjavljeni ste zbog neaktivnosti. Neke neposlate nacrte nije bilo moguće sačuvati na serveru. Ostaju na ovom uređaju i otvoriće se ponovo kada se sledeći put prijavite."
   },
   folderList: {
     compose: 'Napiši',
@@ -150,9 +155,10 @@ export const sr = {
     drafts: 'Nacrti',
     sent: 'Poslato',
     archive: 'Arhiva',
-    spam: 'Spem',
+    spam: 'Spam',
     junk: 'Nepoželjno',
     trash: 'Otpad',
+    allFolders: 'Sve fascikle',
     title: 'Fascikle',
     rename: 'Preimenuj',
     delete: 'Obriši',
@@ -173,7 +179,10 @@ export const sr = {
     moveToTop: "Pomeri na vrh",
     moveUp: "Pomeri nagore",
     moveDown: "Pomeri nadole",
-    moveToBottom: "Pomeri na dno"
+    moveToBottom: "Pomeri na dno",
+    more: "Više",
+    less: "Manje",
+    unsubscribedFolders: "Fascikle bez pretplate"
   },
   search: {
     placeholder: 'Pretraži poštu',
@@ -181,10 +190,27 @@ export const sr = {
   messageList: {
     menu: 'Meni',
     selectAll: 'Izaberi sve poruke',
-    allOnPageSelected: 'Svih {count} poruka na ovoj stranici je izabrano',
-    selectAllMatching: 'Izaberi svih {count} u {folder}',
-    allMatchingSelected: 'Svih {count} poruka u {folder} je izabrano',
+    allOnPageSelected: {
+      one: '{count} poruka na ovoj stranici je izabrana',
+      few: 'Sve {count} poruke na ovoj stranici su izabrane',
+      other: 'Svih {count} poruka na ovoj stranici je izabrano'
+    },
+    selectAllMatching: {
+      one: 'Izaberi sve {count} u fascikli {folder}',
+      few: 'Izaberi sve {count} u fascikli {folder}',
+      other: 'Izaberi svih {count} u fascikli {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} poruka u fascikli {folder} je izabrana',
+      few: 'Sve {count} poruke u fascikli {folder} su izabrane',
+      other: 'Svih {count} poruka u fascikli {folder} je izabrano'
+    },
     clearSelection: 'Poništi izbor',
+    dragCount: {
+      one: '{count} poruka',
+      few: '{count} poruke',
+      other: '{count} poruka'
+    },
     checkNew: 'Proveri nove poruke',
     sortDesc: 'Sortiraj opadajuće po datumu',
     sortAsc: 'Sortiraj rastuće po datumu',
@@ -192,7 +218,8 @@ export const sr = {
     filterUnread: 'Filtriraj po nepročitanim',
     noMessages: 'Nema poruka',
     loadError: 'Nije moguće učitati ovu fasciklu.',
-    loadErrorRetry: 'Pokušaj ponovo',
+    loadErrorRetry: 'Pokušajte ponovo',
+    searchLimited: 'Server pošte trenutno ograničava pretrage. Pokušajte ponovo za trenutak.',
     loading: 'Učitavanje...',
     unknownSender: 'Nepoznat pošiljalac',
     unknown: 'Nepoznato',
@@ -201,38 +228,52 @@ export const sr = {
     replied: 'Odgovoreno',
     forwarded: 'Prosleđeno',
     searchResultsFor: 'Rezultati pretrage za:',
-    clearSearch: 'Obriši pretragu',
+    clearSearch: 'Očisti pretragu',
     searchAllMailboxes: 'Pretraži sve',
-    totalMessagesIn: 'Ukupno {count} poruka u {folder}',
+    totalMessagesIn: {
+      one: '{count} poruka u fascikli {folder}',
+      few: 'Ukupno {count} poruke u fascikli {folder}',
+      other: 'Ukupno {count} poruka u fascikli {folder}'
+    },
     totalConversationsIn: {
-      one: '{count} razgovor u {folder}',
-      few: 'Ukupno {count} razgovora u {folder}',
-      other: 'Ukupno {count} razgovora u {folder}'
+      one: '{count} razgovor u fascikli {folder}',
+      few: 'Ukupno {count} razgovora u fascikli {folder}',
+      other: 'Ukupno {count} razgovora u fascikli {folder}'
     },
     deleteAllNow: 'Obriši sve sada',
     emptyMailboxTitle: 'Isprazni {folder}',
-    emptyMailboxConfirm: 'Da li ste sigurni da želite trajno da obrišete svih {count} poruka u {folder}? Ova akcija se ne može poništiti.',
+    emptyMailboxConfirm: {
+      one: 'Da li ste sigurni da želite trajno da obrišete {count} poruku u fascikli {folder}? Ova akcija se ne može poništiti.',
+      few: 'Da li ste sigurni da želite trajno da obrišete sve {count} poruke u fascikli {folder}? Ova akcija se ne može poništiti.',
+      other: 'Da li ste sigurni da želite trajno da obrišete svih {count} poruka u fascikli {folder}? Ova akcija se ne može poništiti.'
+    },
     emptyMailboxConfirmConversations: {
-      one: 'Da li ste sigurni da želite trajno da obrišete jedan razgovor u {folder} i sve poruke u njemu? Ova akcija se ne može poništiti.',
-      few: 'Da li ste sigurni da želite trajno da obrišete {count} razgovora u {folder} i sve poruke u njima? Ova akcija se ne može poništiti.',
-      other: 'Da li ste sigurni da želite trajno da obrišete svih {count} razgovora u {folder} i sve poruke u njima? Ova akcija se ne može poništiti.'
+      one: 'Da li ste sigurni da želite trajno da obrišete {count} razgovor u fascikli {folder} i sve poruke u njemu? Ova akcija se ne može poništiti.',
+      few: 'Da li ste sigurni da želite trajno da obrišete {count} razgovora u fascikli {folder} i sve poruke u njima? Ova akcija se ne može poništiti.',
+      other: 'Da li ste sigurni da želite trajno da obrišete svih {count} razgovora u fascikli {folder} i sve poruke u njima? Ova akcija se ne može poništiti.'
     },
     emptyMailboxSelectionNote: {
-      one: 'Uključena je i poruka koju ste označili.',
+      one: 'Uključena je i {count} poruka koju ste označili.',
       few: 'Uključene su i {count} poruke koje ste označili.',
       other: 'Uključeno je i {count} poruka koje ste označili.'
     },
-    emptyingMailbox: 'Pražnjenje sandučeta...',
-    mailboxEmptied: 'Sanduče je uspešno ispražnjeno.',
-    emptyMailboxFailed: 'Nije moguće isprazniti sanduče. Proverite da li je Otpad ili Nepoželjna pošta.',
-    mailboxAlreadyEmpty: '{folder} je već bio prazan — ništa nije obrisano.',
-    emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi — proverite ponovo za trenutak.'
+    emptyingMailbox: 'Pražnjenje fascikle {folder}...',
+    mailboxEmptied: 'Fascikla {folder} je ispražnjena.',
+    emptyMailboxFailed: 'Nije moguće isprazniti fasciklu {folder}.',
+    mailboxAlreadyEmpty: 'Fascikla {folder} je već bila prazna, pa ništa nije obrisano.',
+    emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi; proverite ponovo za trenutak.'
   },
   composer: {
-    discardFailed: 'Skicu nije bilo moguće obrisati sa servera i još uvek je u skicama.',
+    windowLoadFailed: 'Prozor za poruku nije mogao da se učita.',
+    discardFailed: 'Nacrt nije bilo moguće obrisati sa servera i još uvek je u Nacrtima.',
     attachmentsTooLarge: 'Prilozi prelaze maksimalnu dozvoljenu veličinu.',
-    draftSaveFailedKeepOpen: 'Nije moguće sačuvati ovu skicu — prozor ostaje otvoren da se ništa ne izgubi',
+    draftSaveFailedKeepOpen: 'Nije moguće sačuvati ovaj nacrt, pa prozor ostaje otvoren da se ništa ne izgubi',
     attachmentsWait: 'Molimo sačekajte da se prilozi učitaju pre slanja.',
+    attachmentsGone: {
+      one: '{count} prilog treba ponovo priložiti: server ga više nema.',
+      few: '{count} priloga treba ponovo priložiti: server ih više nema.',
+      other: '{count} priloga treba ponovo priložiti: server ih više nema.'
+    },
     sending: 'Slanje poruke...',
     undo: 'Opozovi',
     sendError: 'Greška pri slanju poruke: {error}',
@@ -278,7 +319,7 @@ export const sr = {
     later: 'Kasnije',
   },
   floatingComposer: {
-    discardDraftTitle: 'Odbaci nacrt?',
+    discardDraftTitle: 'Odbaciti nacrt?',
     discardDraftMessage: 'Da li ste sigurni da želite da odbacite ovaj nacrt? Ova akcija se ne može poništiti.',
     discard: 'Odbaci',
     dropFiles: 'Prevucite datoteke ovde da biste ih priložili',
@@ -312,7 +353,11 @@ export const sr = {
     removeAllTags: 'Ukloni sve oznake',
     removeTag: 'Ukloni oznaku',
     selectMessage: 'Izaberite poruku za čitanje',
-    messagesSelected: 'izabranih poruka',
+    messagesSelected: {
+      one: '{count} izabrana poruka',
+      few: '{count} izabrane poruke',
+      other: '{count} izabranih poruka'
+    },
     back: 'Nazad',
     reply: 'Odgovori',
     replyAll: 'Odgovori svima',
@@ -320,21 +365,21 @@ export const sr = {
     to: 'Za:',
     cc: 'Cc:',
     date: 'Datum:',
-    undisclosed: 'Sakriveno',
+    undisclosed: 'Skriveno',
     loadingMessage: 'Učitavanje poruke...',
     remoteContentWarning: 'Ova poruka sadrži udaljeni sadržaj. Radi vaše privatnosti, blokiran je.',
     loadRemoteContent: 'Učitaj udaljeni sadržaj',
-    isDraft: 'Ovo je radna verzija poruke.',
-    editDraft: 'Uredi radnu verziju',
+    isDraft: 'Ovo je nacrt poruke.',
+    editDraft: 'Uredi nacrt',
     noRecipients: '(Nema primalaca)',
-    discardDraft: 'Odbaci radnu verziju',
+    discardDraft: 'Odbaci nacrt',
     noReadableText: 'Ova poruka ne sadrži čitljiv tekst, već samo priloge.',
     attachments: 'Prilozi',
     downloadAllAttachments: 'Preuzmi sve priloge',
     unknownAttachment: 'Nepoznat prilog',
     archive: 'Arhiviraj',
-    reportSpam: 'Prijavi kao Spem',
-    notSpam: 'Nije Spem',
+    reportSpam: 'Prijavi kao nepoželjno',
+    notSpam: 'Nije nepoželjno',
     delete: 'Obriši',
     deleteThread: 'Obriši razgovor',
     deleteConfirmSingle: 'Da li ste sigurni da želite da trajno obrišete ovu poruku? Ova akcija se ne može poništiti.',
@@ -342,7 +387,7 @@ export const sr = {
     markUnread: 'Označi kao nepročitano',
     markRead: 'Označi kao pročitano',
     star: 'Označi zvezdicom',
-    moveTo: 'Kopiraj/Premesti u...',
+    moveTo: 'Kopiraj/premesti u...',
     print: 'Štampaj',
     showPlaintext: 'Prikaži običan tekst',
     showHtml: 'Prikaži HTML',
@@ -351,12 +396,23 @@ export const sr = {
     verifiedSender: 'Verifikovan pošiljalac',
     unverifiedSender: 'Neverifikovan pošiljalac',
     senderUnverifiedWarning: 'Vaš server pošte nije mogao da verifikuje ovog pošiljaoca. Poruka možda nije od onoga za koga se predstavlja, zato budite oprezni sa vezama i prilozima.',
-    clickToExpand: 'Kliknite da proširite sadržaj poruke'
+    clickToExpand: 'Kliknite da proširite sadržaj poruke',
+    loadError: 'Nije moguće učitati ovu poruku.',
+    loadErrorRetry: 'Pokušajte ponovo'
+  },
+  address: {
+    directionalControl: 'skrivene oznake smera',
+    directionalControlTooltip: 'Skrivene oznake smera mogu promeniti redosled prikaza ove adrese.',
+    mixedScript: 'adresa meša pisma',
+    mixedScriptTooltip: 'Ova adresa meša slova iz različitih pisama, pa može da liči na adresu koju poznajete.',
+    mixedScriptAscii: 'Domen {domain} se u ASCII zapisu piše {ascii}.',
+    unusualDomain: 'neobičan domen',
+    unusualDomainTooltip: 'Ovaj domen nije važeće ime internet domena i sadrži znakove van običnog ASCII skupa, pa možda nije domen na koji liči.'
   },
   originalMessage: {
     title: 'Originalna poruka',
     loading: 'Učitavanje originalne poruke...',
-    errorMissingParams: 'Nedostaju parametri fascikle ili uid',
+    errorMissingParams: 'Nedostaje fascikla ili ID poruke',
     errorFailedToFetch: 'Nije moguće preuzeti originalnu poruku',
     messageId: 'ID poruke',
     createdAt: 'Napravljeno',
@@ -384,6 +440,7 @@ export const sr = {
   },
   attachment: {
     remove: 'Ukloni',
+    addAgain: 'Treba ponovo priložiti',
     preview: 'Pregled',
     download: 'Preuzmi',
     zoomIn: 'Uvećaj',
@@ -398,7 +455,17 @@ export const sr = {
     cannotPreview: 'Pregled nije dostupan za ovaj tip datoteke',
     loadingPreview: 'Učitavanje pregleda...',
     errorLoading: 'Greška pri učitavanju pregleda',
-    close: 'Zatvori'
+    close: 'Zatvori',
+    uploadProgress: '{percent}% od {size}'
+  },
+
+  sizeUnits: {
+    bytes: 'B',
+    kilobytes: 'KB',
+    megabytes: 'MB',
+    gigabytes: 'GB',
+    terabytes: 'TB',
+    petabytes: 'PB'
   },
 
   navigation: {
@@ -410,6 +477,9 @@ export const sr = {
   userMenu: {
     settings: 'Podešavanja',
     signOut: 'Odjava',
+    unsavedDraftsTitle: 'Odjaviti se sa nesačuvanim nacrtima?',
+    unsavedDraftsMessage: 'Nacrt nije mogao da se sačuva na serveru. Ako se sada odjavite, ostaje na ovom uređaju i otvoriće se ponovo kada se sledeći put prijavite na ovaj nalog.',
+    signOutAnyway: 'Ipak se odjavi',
     profileOptions: 'Opcije profila'
   },
   pagination: {
@@ -417,14 +487,18 @@ export const sr = {
     nextPage: 'Sledeća stranica',
     zeroMessages: '0 poruka',
     totalCount: 'ukupno {total}',
-    searchResults: '{total} rezultata',
+    searchResults: {
+      one: '{count} rezultat',
+      few: '{count} rezultata',
+      other: '{count} rezultata'
+    },
     rangeOfTotal: '{start}–{end} od {total}'
   },
   toast: {
     messagePermanentlyDeleted: 'Poruka trajno obrisana',
-    draftDiscarded: 'Radna verzija odbačena',
+    draftDiscarded: 'Nacrt odbačen',
     folderRenamed: 'Fascikla preimenovana',
-    tagNotSupported: 'Ovaj mejl server ne podržava tu oznaku',
+    tagNotSupported: 'Ovaj server pošte ne podržava tu oznaku',
     flagChangeFailed: 'Nije moguće ažurirati poruke',
     folderCreated: 'Fascikla je kreirana',
     folderExists: 'Fascikla sa tim imenom već postoji',
@@ -436,41 +510,17 @@ export const sr = {
     folderPermanentlyDeleted: 'Fascikla trajno obrisana',
     undo: 'Opozovi',
     dismiss: 'Odbaci',
-    messageMovedToArchive: 'Poruka premeštena u Arhivu',
-    messagesMovedToArchive: {
-      one: "{count} poruka premeštena u Arhivu",
-      few: "{count} poruke premeštene u Arhivu",
-      other: "{count} poruka premešteno u Arhivu"
-    },
-    messageMovedToSpam: 'Poruka premeštena u Nepoželjne',
-    messagesMovedToSpam: {
-      one: "{count} poruka premeštena u Nepoželjne",
-      few: "{count} poruke premeštene u Nepoželjne",
-      other: "{count} poruka premešteno u Nepoželjne"
-    },
-    messageMovedToInbox: 'Poruka premeštena u Prijemno',
-    messagesMovedToInbox: {
-      one: "{count} poruka premeštena u Prijemno",
-      few: "{count} poruke premeštene u Prijemno",
-      other: "{count} poruka premešteno u Prijemno"
-    },
-    messageMovedToTrash: 'Poruka premeštena u Smeće',
-    messagesMovedToTrash: {
-      one: "{count} poruka premeštena u Smeće",
-      few: "{count} poruke premeštene u Smeće",
-      other: "{count} poruka premešteno u Smeće"
-    },
-    messageMovedToFolder: 'Poruka premeštena u {folder}',
+    messageMovedToFolder: 'Poruka premeštena u fasciklu {folder}',
     messagesMovedToFolder: {
-      one: "{count} poruka premeštena u {folder}",
-      few: "{count} poruke premeštene u {folder}",
-      other: "{count} poruka premešteno u {folder}"
+      one: "{count} poruka premeštena u fasciklu {folder}",
+      few: "{count} poruke premeštene u fasciklu {folder}",
+      other: "{count} poruka premešteno u fasciklu {folder}"
     },
-    messageCopiedToFolder: 'Poruka kopirana u {folder}',
+    messageCopiedToFolder: 'Poruka kopirana u fasciklu {folder}',
     messagesCopiedToFolder: {
-      one: "{count} poruka kopirana u {folder}",
-      few: "{count} poruke kopirane u {folder}",
-      other: "{count} poruka kopirano u {folder}"
+      one: "{count} poruka kopirana u fasciklu {folder}",
+      few: "{count} poruke kopirane u fasciklu {folder}",
+      other: "{count} poruka kopirano u fasciklu {folder}"
     },
     draftsDiscarded: {
       one: "{count} nacrt odbačen",
@@ -504,18 +554,27 @@ export const sr = {
     refresh: 'Osveži',
     permanentlyDelete: 'Trajno obrisati?',
     deletePermanently: 'Trajno obriši',
+    discardDraftsTitle: 'Odbaciti nacrte?',
+    discardDraftsMessage: 'Da li ste sigurni da želite da odbacite ove nacrte? Ova akcija se ne može poništiti.',
     undo: 'Opozovi'
   },
   offline: {
     title: 'Veza je prekinuta',
     description: 'Mrežna veza je prekinuta',
-    tryingAgain: 'Pokušaj ponovo za {seconds} sekundi...'
+    tryingAgain: {
+      one: 'Novi pokušaj za {count} sekundu...',
+      few: 'Novi pokušaj za {count} sekunde...',
+      other: 'Novi pokušaj za {count} sekundi...'
+    }
   },
   update: {
     available: 'Dostupna je nova verzija.',
     reload: 'Osveži'
   },
   general: {
+    pageLoadFailed: 'Ova stranica nije mogla da se učita.',
+    pageLoadFailedHint: 'Proverite vezu, pa ponovo učitajte. Poruke koje pišete ostaju sačuvane.',
+    backToMail: "Nazad na poštu",
     error: 'Greška',
     cancel: 'Otkaži',
     save: 'Sačuvaj',
@@ -528,7 +587,9 @@ export const sr = {
     next: "Napred",
     expand: "Proširi",
     collapse: "Skupi",
-    notFound: "Stranica nije pronađena"
+    moreOptions: "Više opcija",
+    notFound: "Stranica nije pronađena",
+    close: "Zatvori"
   },
   webauthn: {
     title: 'Verifikacija bezbednosnog ključa',
@@ -548,13 +609,25 @@ export const sr = {
     trust_linked: 'Veruj povezanim nalozima',
     trust_linked_desc: 'Ako je omogućeno, možete da se prebacite na ovaj nalog sa povezanog naloga bez ponovnog unosa 2FA akreditiva.',
     trust_linked_checkbox: 'Dozvoli prebacivanje na ovaj nalog bez 2FA',
+    trust_password_label: 'Unesite svoju lozinku da biste potvrdili',
     confirm_remove: 'Da li ste sigurni da želite da uklonite ovaj bezbednosni ključ?',
+    remove_password_label: 'Unesite svoju lozinku da biste uklonili ovaj bezbednosni ključ',
     errors: {
       begin_failed: 'Nije uspelo pokretanje autentifikacije.',
       invalid_options: 'Primljene su nevažeće opcije autentifikacije.',
       verification_failed: 'Verifikacija nije uspela. Pokušajte ponovo.',
+      cancelled: 'Bezbednosni ključ nije upotrebljen. Kliknite na "Potvrdi identitet" da biste pokušali ponovo.',
+      unavailable: 'Server trenutno nije mogao da proveri vaš bezbednosni ključ. Pokušajte ponovo za trenutak.',
       register_failed: 'Došlo je do greške prilikom registracije bezbednosnog ključa. Pokušajte ponovo.',
       remove_failed: 'Nije uspelo uklanjanje bezbednosnog ključa.',
+      wrong_password: 'Ta lozinka nije ispravna.',
+      password_required: 'Unesite svoju trenutnu lozinku.',
+      rate_limited: 'Previše pokušaja. Sačekajte nekoliko minuta i pokušajte ponovo.',
+      two_factor_required: 'Prijavite se svojim bezbednosnim ključem da biste promenili ovo podešavanje.',
+      no_security_key: 'Prvo dodajte bezbednosni ključ.',
+      trust_failed: 'Podešavanje nije moguće promeniti. Pokušajte ponovo.',
+      remove_unavailable: 'Bezbednosni ključ trenutno nije moguće ukloniti. Pokušajte ponovo za trenutak.',
+      load_failed: 'Podešavanja bezbednosnih ključeva nije moguće učitati.',
       general: 'Došlo je do greške.',
     },
     settings: {

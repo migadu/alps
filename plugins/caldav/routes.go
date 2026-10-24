@@ -5,9 +5,11 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,12 +37,100 @@ func resolveDAVPath(base *url.URL, href string) string {
 	return path.Join(base.Path, href)
 }
 
+// mkcalendarBody is the MKCALENDAR request for a collection named name. Given
+// components, it asks that the collection take only those (RFC 4791 sections
+// 5.2.3 and 5.3.1); given none, the server decides.
+func mkcalendarBody(name string, components []string) string {
+	var comps strings.Builder
+	if len(components) > 0 {
+		comps.WriteString("\n      <C:supported-calendar-component-set>")
+		for _, comp := range components {
+			fmt.Fprintf(&comps, `<C:comp name="%s"/>`, xmlEscape(comp))
+		}
+		comps.WriteString("</C:supported-calendar-component-set>")
+	}
+	return fmt.Sprintf(`<?xml version="1.0" encoding="utf-8" ?>
+<C:mkcalendar xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:set>
+    <D:prop>
+      <D:displayname>%s</D:displayname>%s
+    </D:prop>
+  </D:set>
+</C:mkcalendar>`, xmlEscape(name), comps.String())
+}
+
 // xmlEscape returns s escaped for inclusion in XML character data.
 func xmlEscape(s string) string {
 	var b bytes.Buffer
 	// xml.EscapeText only fails if the writer fails; a bytes.Buffer never does.
 	_ = xml.EscapeText(&b, []byte(s))
 	return b.String()
+}
+
+// renameMultiStatus is what a 207 answer to a rename says, as far as the
+// rename goes: a status for each property, or one for the calendar as a whole.
+type renameMultiStatus struct {
+	Responses []struct {
+		Status    string `xml:"DAV: status"`
+		Propstats []struct {
+			Prop struct {
+				DisplayName *struct{} `xml:"DAV: displayname"`
+			} `xml:"DAV: prop"`
+			Status string `xml:"DAV: status"`
+		} `xml:"DAV: propstat"`
+	} `xml:"DAV: response"`
+}
+
+// renameAnswered reads the server's answer to a rename sent with method. A
+// 2xx is a rename done, except a 207 Multi-Status: that answers property by
+// property (RFC 4918 section 9.2), and a server that will not take the name,
+// with a 403 or a 409, says so in there and not in the status line. So a 207
+// is a rename done only when the display name's propstat is 2xx, or, with no
+// propstat for it, the calendar's own status is.
+func renameAnswered(resp *http.Response, method string) error {
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("failed to rename calendar via %s: %s", method, resp.Status)
+	}
+	if resp.StatusCode != http.StatusMultiStatus {
+		return nil
+	}
+	var ms renameMultiStatus
+	if err := xml.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&ms); err != nil {
+		return fmt.Errorf("failed to rename calendar via %s: unreadable answer: %v", method, err)
+	}
+	var named, whole string
+	for _, r := range ms.Responses {
+		if r.Status != "" {
+			whole = r.Status
+		}
+		for _, ps := range r.Propstats {
+			if ps.Prop.DisplayName != nil {
+				named = ps.Status
+			}
+		}
+	}
+	status := named
+	if status == "" {
+		status = whole
+	}
+	if status == "" {
+		return fmt.Errorf("failed to rename calendar via %s: no status for the name", method)
+	}
+	if code := statusLineCode(status); code/100 != 2 {
+		return fmt.Errorf("failed to rename calendar via %s: %s", method, status)
+	}
+	return nil
+}
+
+// statusLineCode is the code in an HTTP status line such as
+// "HTTP/1.1 403 Forbidden", or 0.
+func statusLineCode(line string) int {
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return 0
+	}
+	code, _ := strconv.Atoi(fields[1])
+	return code
 }
 
 type CalendarData struct {
@@ -172,6 +262,11 @@ func eventIsAllDay(event *ical.Event) bool {
 	return end != nil && isUTCMidnight(start.Value) && isUTCMidnight(end.Value)
 }
 
+// dateOf is t's calendar date, at midnight in t's own location.
+func dateOf(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
 func isUTCMidnight(value string) bool {
 	return len(value) == len("20060102T150405Z") && strings.HasSuffix(value, "T000000Z")
 }
@@ -182,10 +277,19 @@ func isUTCMidnight(value string) bool {
 // which the frontend builds as UTC midnight of the day the user picked. Both
 // setters replace the property whole, so switching an event between all-day and
 // timed leaves no stale VALUE or TZID parameter behind.
+//
+// DTEND is exclusive, so an all-day event ends on the day after its last at
+// the earliest. Written on its first day instead, it lasts no time at all, and
+// calendars draw it on no day.
 func setEventTimes(event *ical.Event, start, end time.Time, allDay bool) {
 	if allDay {
-		event.Props.SetDate(ical.PropDateTimeStart, start.UTC())
-		event.Props.SetDate(ical.PropDateTimeEnd, end.UTC())
+		first := dateOf(start.UTC())
+		after := dateOf(end.UTC())
+		if !after.After(first) {
+			after = first.AddDate(0, 0, 1)
+		}
+		event.Props.SetDate(ical.PropDateTimeStart, first)
+		event.Props.SetDate(ical.PropDateTimeEnd, after)
 		return
 	}
 	event.Props.SetDateTime(ical.PropDateTimeStart, start)
@@ -196,6 +300,29 @@ func setEventTimes(event *ical.Event, start, end time.Time, allDay bool) {
 // the stored one: most often the user's own phone saved the object while it
 // was open here.
 var errChangedElsewhere = alps.NewHTTPError(http.StatusPreconditionFailed, "changed elsewhere since it was opened")
+
+// deleteFailed answers a delete the CalDAV server did not carry out. An event
+// or a task already gone is not one: davsave.Delete takes it as deleted, since
+// that is what was asked for, and a second click or a delete made on another
+// device no longer reads as a failure. (A calendar gone from the user's list
+// is refused before that, by requireCalendarPath.) A refusal keeps its status,
+// so the browser can tell a read-only calendar (403) or a version conflict
+// (409, 412) from an outage; anything else is an internal error.
+func deleteFailed(what string, err error) error {
+	if errors.Is(err, davsave.ErrConflict) {
+		return errChangedElsewhere
+	}
+	var refused *davsave.StatusError
+	if errors.As(err, &refused) {
+		switch refused.Code {
+		case http.StatusForbidden:
+			return alps.NewHTTPError(http.StatusForbidden, "the server does not allow deleting it")
+		case http.StatusConflict:
+			return alps.NewHTTPError(http.StatusConflict, "the server cannot delete it as it is")
+		}
+	}
+	return fmt.Errorf("failed to delete %s: %w", what, err)
+}
 
 // putCalendar writes cal to objectPath, conditional on etag when there is one,
 // and returns the ETag of the version written.
@@ -228,7 +355,8 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		var calDatas []CalendarData
+		// An empty home is listed as [], not null, which the page cannot filter.
+		calDatas := []CalendarData{}
 		for _, calendar := range calendars {
 			calDatas = append(calDatas, CalendarData{
 				Name:        calendar.Name,
@@ -248,12 +376,22 @@ func registerRoutes(p *plugin) {
 	p.POST("/calendar/calendars", func(ctx *alps.Context) error {
 		var req struct {
 			Name string `json:"name"`
+			// Components, when given, is all the new collection takes, out of
+			// VEVENT and VTODO. The Tasks tab makes its lists for VTODO alone,
+			// so a list does not also show on the Calendar tab as an empty
+			// calendar. None given leaves it to the server.
+			Components []string `json:"components"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
 		}
 		if req.Name == "" {
 			return alps.NewHTTPError(http.StatusBadRequest, "Calendar name is required")
+		}
+		for _, comp := range req.Components {
+			if comp != ical.CompEvent && comp != ical.CompToDo {
+				return alps.NewHTTPError(http.StatusBadRequest, "Unknown calendar component")
+			}
 		}
 
 		_, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
@@ -267,7 +405,16 @@ func registerRoutes(p *plugin) {
 
 		if !ok || homeSet == "" {
 			if len(calendars) > 0 {
-				homeSet = path.Dir(calendars[0].Path)
+				// The collection that holds the first calendar. A collection's
+				// path ends in a slash, and path.Dir of that is the calendar
+				// itself, which put the new calendar inside it.
+				homeSet = path.Dir(strings.TrimSuffix(calendars[0].Path, "/"))
+			} else if ok {
+				// An empty home set href, with no calendar in it yet. The
+				// calendars were listed where go-webdav resolves that href,
+				// the endpoint itself, and the first one is made there: at
+				// its path, or at the root when it has none.
+				homeSet = path.Join("/", resolveDAVPath(p.urlFor(ctx.Session.Username()), homeSet))
 			} else {
 				return fmt.Errorf("failed to determine calendar home set")
 			}
@@ -282,15 +429,6 @@ func registerRoutes(p *plugin) {
 			targetURL.Path += "/"
 		}
 
-		xmlPayload := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8" ?>
-<C:mkcalendar xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-  <D:set>
-    <D:prop>
-      <D:displayname>%s</D:displayname>
-    </D:prop>
-  </D:set>
-</C:mkcalendar>`, xmlEscape(req.Name))
-
 		rt := authRoundTripper{
 			server:  http.DefaultTransport,
 			session: ctx.Session,
@@ -298,34 +436,41 @@ func registerRoutes(p *plugin) {
 		}
 		hc := &http.Client{Transport: &rt}
 
-		httpReq, err := http.NewRequestWithContext(ctx.Request.Context(), "MKCALENDAR", targetURL.String(), strings.NewReader(xmlPayload))
-		if err != nil {
-			return err
-		}
-		httpReq.Header.Set("Content-Type", "application/xml; charset=utf-8")
-
-		resp, err := hc.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented {
-			httpReq, err = http.NewRequestWithContext(ctx.Request.Context(), "POST", targetURL.String(), strings.NewReader(xmlPayload))
+		send := func(method, xmlPayload string) (*http.Response, error) {
+			httpReq, err := http.NewRequestWithContext(ctx.Request.Context(), method, targetURL.String(), strings.NewReader(xmlPayload))
 			if err != nil {
-				return err
+				return nil, err
 			}
 			httpReq.Header.Set("Content-Type", "application/xml; charset=utf-8")
-			resp2, err := hc.Do(httpReq)
+			resp, err := hc.Do(httpReq)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			defer resp2.Body.Close()
-			if resp2.StatusCode/100 != 2 {
-				return fmt.Errorf("failed to create calendar via POST: %s", resp2.Status)
+			resp.Body.Close()
+			return resp, nil
+		}
+		// create sends the MKCALENDAR, or the same body as a POST to a server
+		// that has no MKCALENDAR.
+		create := func(xmlPayload string) (*http.Response, error) {
+			resp, err := send("MKCALENDAR", xmlPayload)
+			if err != nil || (resp.StatusCode != http.StatusMethodNotAllowed && resp.StatusCode != http.StatusNotImplemented) {
+				return resp, err
 			}
-		} else if resp.StatusCode/100 != 2 {
-			return fmt.Errorf("failed to create calendar via MKCALENDAR: %s", resp.Status)
+			return send("POST", xmlPayload)
+		}
+
+		resp, err := create(mkcalendarBody(req.Name, req.Components))
+		// A server that will not restrict what a collection takes refuses the
+		// whole MKCALENDAR with 403 (RFC 4791 section 5.3.1). A list that takes
+		// events as well is still a list, so it is made without the restriction.
+		if err == nil && resp.StatusCode == http.StatusForbidden && len(req.Components) > 0 {
+			resp, err = create(mkcalendarBody(req.Name, nil))
+		}
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode/100 != 2 {
+			return fmt.Errorf("failed to create calendar via %s: %s", resp.Request.Method, resp.Status)
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": newPath})
@@ -347,7 +492,15 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		_, _, err = p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		_, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		// One of the user's calendars, as for a delete. The PROPPATCH below
+		// sets the display name of whatever the path names: the principal,
+		// the home set, an event.
+		calPath, err = requireCalendarPath(calPath, calendars)
 		if err != nil {
 			return err
 		}
@@ -397,11 +550,11 @@ func registerRoutes(p *plugin) {
 				return err
 			}
 			defer resp2.Body.Close()
-			if resp2.StatusCode/100 != 2 && resp2.StatusCode != 207 {
-				return fmt.Errorf("failed to rename calendar via POST: %s", resp2.Status)
+			if err := renameAnswered(resp2, "POST"); err != nil {
+				return err
 			}
-		} else if resp.StatusCode/100 != 2 && resp.StatusCode != 207 {
-			return fmt.Errorf("failed to rename calendar via PROPPATCH: %s", resp.Status)
+		} else if err := renameAnswered(resp, "PROPPATCH"); err != nil {
+			return err
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
@@ -413,12 +566,12 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		c, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		_, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
 		if err != nil {
 			return err
 		}
 
-		// Must BE one of the user's calendars. RemoveAll takes children with it,
+		// Must BE one of the user's calendars. A DELETE takes children with it,
 		// so an unconstrained path here deletes whatever collection it names.
 		calPath, err = requireCalendarPath(calPath, calendars)
 		if err != nil {
@@ -429,8 +582,12 @@ func registerRoutes(p *plugin) {
 			return alps.NewHTTPError(http.StatusBadRequest, "Cannot delete the default calendar")
 		}
 
-		if err := c.RemoveAll(ctx.Request.Context(), calPath); err != nil {
-			return fmt.Errorf("failed to delete calendar: %v", err)
+		// davsave.Delete rather than go-webdav's RemoveAll, whose error keeps
+		// the server's status in a type nothing outside go-webdav can read:
+		// see deleteFailed.
+		err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), calPath), "", nil)
+		if err != nil {
+			return deleteFailed("calendar", err)
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
@@ -708,8 +865,8 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		// Must be INSIDE one of them: this route deletes an event, and RemoveAll
-		// would just as happily delete the calendar holding it.
+		// Must be INSIDE one of them: this route deletes an event, and a
+		// DELETE would just as happily delete the calendar holding it.
 		path, err = requireCalendarObjectPath(path, calendars)
 		if err != nil {
 			return err
@@ -725,13 +882,10 @@ func registerRoutes(p *plugin) {
 			letters, from, header = departure(acct, co.Data, ctx.QueryParam("notify") != "0", time.Now())
 		}
 
-		if header != nil {
-			err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), path), "", header)
-		} else {
-			err = c.RemoveAll(ctx.Request.Context(), path)
-		}
+		// header is nil unless the delete needs scheduling headers.
+		err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), path), "", header)
 		if err != nil {
-			return fmt.Errorf("failed to delete calendar object: %v", err)
+			return deleteFailed("calendar object", err)
 		}
 
 		saved := eventSaved{OK: "true"}

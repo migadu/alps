@@ -100,6 +100,7 @@ beforeEach(() => {
 afterEach(() => {
   messageSync.stop();
   cleanup();
+  history.replaceState(null, '', '#/mailbox/INBOX');
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -205,7 +206,7 @@ describe('the listing already on screen', () => {
 });
 
 describe('the re-read after a move or a delete', () => {
-  it('reads the folder in full, and does not dim the rows for it', async () => {
+  it('reads the folder without a refresh, and does not dim the rows for it', async () => {
     const el = await shownInbox();
 
     messageSync.sync();
@@ -215,9 +216,11 @@ describe('the re-read after a move or a delete', () => {
     let dimmed = false;
     await waitFor(() => { dimmed ||= el.loadingMessages; return !el.isSyncing; }, 'the sync to end');
     expect(dimmed).toBe(false);
-    // In full: a write elsewhere moves counts on folders the probe never asks
-    // about, and they are drawn from this answer's mailbox list.
-    expect(listingReads()).toEqual(['/mailboxes/INBOX?page=0&refresh=true']);
+    // Not a refresh. A write elsewhere moves counts on folders the probe never
+    // asks about, and they are drawn from this answer's mailbox list, but the
+    // server has read them again for the write already. The folder's own
+    // counts are asked first, for mail that arrived meanwhile.
+    expect(listingReads()).toEqual(['/mailboxes/INBOX/status', '/mailboxes/INBOX?page=0']);
   });
 
   it('lands on the page being viewed, not only on the first', async () => {
@@ -239,3 +242,100 @@ describe('the re-read after a move or a delete', () => {
     expect(updateSpy).toHaveBeenCalled();
   });
 });
+
+describe('a later page that has emptied', () => {
+  /** A folder of 60 messages, 50 to a page: page 1 holds ten, page 2 none. */
+  function sixtyMessages() {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(url);
+      if (url.includes('/status')) return new Response('{}', { status: 200 });
+      const page = Number(new URL(url, 'http://alps.test').searchParams.get('page'));
+      return new Response(JSON.stringify({
+        Page: page,
+        Total: 60,
+        MessagesPerPage: 50,
+        Mailboxes: [{ Name: 'INBOX', Total: 60, Unseen: 0 }],
+        Messages: page === 1 ? [message(10)] : page === 0 ? [message(60)] : [],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+  }
+
+  it('gives way to the last page that exists, quietly and without a step back', async () => {
+    const el = await shownInbox();
+    sixtyMessages();
+    history.pushState(null, '', '#/mailbox/INBOX?p=2');
+    const steps = history.length;
+    el.currentPage = 2;
+    messageSync.setContext('INBOX', 2, '');
+
+    // What a move or delete of every row on the page re-reads.
+    messageSync.sync();
+    await waitFor(() => el.messages.length === 1 && !el.isSyncing, 'the last page');
+
+    expect(listingReads()).toEqual(['/mailboxes/INBOX/status', '/mailboxes/INBOX?page=2', '/mailboxes/INBOX?page=1']);
+    expect(el.currentPage).toBe(1);
+    expect(el.messages.map((m: any) => m.UID)).toEqual(['10']);
+    expect(location.hash).toBe('#/mailbox/INBOX?p=1');
+    expect(history.length).toBe(steps);
+    expect(el.loadingMessages).toBe(false);
+  });
+
+  it('is not what the first page is, which is empty when the folder is', async () => {
+    const el = await shownInbox();
+    quietMailbox([]);
+    messageSync.sync();
+    await waitFor(() => !el.isSyncing, 'the sync to end');
+    expect(listingReads()).toEqual(['/mailboxes/INBOX/status', '/mailboxes/INBOX?page=0']);
+    expect(el.messages).toEqual([]);
+  });
+});
+
+describe('a folder switch', () => {
+  const MAILBOXES = [{ Name: 'INBOX', Attrs: [] }, { Name: 'Sent', Attrs: ['\\Sent'] }];
+
+  /** Inbox and Sent, with the Sent listing held until `release` is called. */
+  function twoFolders() {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(url);
+      if (url.includes('/status')) return new Response('{}', { status: 200 });
+      if (url.startsWith('/mailboxes/Sent?')) await held;
+      if (url.startsWith('/mailboxes/')) {
+        const folder = url.startsWith('/mailboxes/Sent?') ? 'Sent' : 'INBOX';
+        return new Response(JSON.stringify({
+          Page: 0,
+          Total: 1,
+          MessagesPerPage: 50,
+          Mailboxes: MAILBOXES,
+          Messages: [{ ...message(folder === 'Sent' ? 20 : 9), Mailbox: folder }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response('{}', { status: 404 });
+    }));
+    return () => release();
+  }
+
+  it('tells the list which folder the rows still on screen were read from', async () => {
+    const release = twoFolders();
+    const el = await shownInbox();
+    const list = shadow<El>(el, 'alps-message-list');
+    expect(list.listedMailbox).toBe('INBOX');
+
+    location.hash = '#/mailbox/Sent';
+    await waitFor(() => el.currentMailbox === 'Sent' && el.loadingMessages, 'the switch to start');
+    await el.updateComplete;
+    // The Inbox's rows, dimmed, under the Sent folder's name: drawn as Inbox rows.
+    expect(list.currentMailbox).toBe('Sent');
+    expect(list.currentMailboxRole).toBe('sent');
+    expect(list.listedMailbox).toBe('INBOX');
+    expect(list.listedMailboxRole).toBe('inbox');
+
+    release();
+    await waitFor(() => !el.loadingMessages, 'the Sent listing');
+    await el.updateComplete;
+    expect(list.listedMailbox).toBe('Sent');
+    expect(list.listedMailboxRole).toBe('sent');
+  });
+});
+

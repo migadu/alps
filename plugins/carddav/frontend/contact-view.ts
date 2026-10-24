@@ -4,15 +4,80 @@ import { CATEGORY_FAVORITES } from './constants';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { composeContext, ComposeStore } from '../../../frontend/src/store/compose-store';
-import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { formatFullDate, renderIcon } from '../../../frontend/src/utils/ui';
+import { activeUsername, settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
+import { formatDayMonth, formatFullDate, renderIcon } from '../../../frontend/src/utils/ui';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/alps-input';
+import '../../../frontend/src/components/alps-select';
 import '../../../frontend/src/components/alps-avatar';
 import '../../../frontend/src/components/alps-toolbar';
 import '../../../frontend/src/components/alps-popup';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
+import { isolatedCaption } from '../../../frontend/src/utils/bidi';
+import { writtenAddress } from '../../../frontend/src/utils/address-display';
+
+/** A birthday's day, month and year as its fields in the editor hold them. */
+type BirthdayFields = Record<'day' | 'month' | 'year', string>;
+
+/** A date with its fields in range, the year set as written: `new Date`
+ * with a year below 100 takes it for 19xx. */
+function dateOf(year: number, month: number, day: number): Date | null {
+  const d = new Date(2000, 0, 1);
+  d.setFullYear(year, month - 1, day);
+  return d.getMonth() === month - 1 && d.getDate() === day ? d : null;
+}
+
+/**
+ * The day, month and year a vCard birthday names, without a year when the
+ * card gives none; null for anything else, a year alone or a text value.
+ *
+ * The vCard forms are read here, and no text is parsed by `new Date`, which
+ * makes up what a form leaves out: Chromium reads `--10-31` as 31 October
+ * 2001, `--1031` as 1 January 1031 and `1985` as 1 January 1985.
+ */
+function birthdayParts(raw: string): { year?: number; month: number; day: number } | null {
+  // A birthday with no year, `--1031` (RFC 6350) or `--10-31`, is a day and
+  // a month; so is the year 0000 some address books put in its place. 2000
+  // is a leap year, so it lets 29 February through.
+  const yearless = /^(?:--|0000-?)(\d{2})-?(\d{2})(?:T.*)?$/.exec(raw);
+  if (yearless) {
+    const [month, day] = [Number(yearless[1]), Number(yearless[2])];
+    return dateOf(2000, month, day) ? { month, day } : null;
+  }
+  // A date, `1990-05-15` or the basic `19900515`. A date-time is the date it
+  // names, its time set aside: a birthday is a day, not a moment to move
+  // into the reader's zone.
+  const full = /^(\d{4})-?(\d{2})-?(\d{2})(?:T.*)?$/.exec(raw);
+  if (!full) return null;
+  const [year, month, day] = [Number(full[1]), Number(full[2]), Number(full[3])];
+  return dateOf(year, month, day) ? { year, month, day } : null;
+}
+
+/** The editor's fields for a stored birthday: empty for one it cannot read. */
+function birthdayFields(raw: string): BirthdayFields {
+  const parts = birthdayParts(raw);
+  return {
+    day: parts ? String(parts.day) : '',
+    month: parts ? String(parts.month) : '',
+    year: parts?.year !== undefined ? String(parts.year).padStart(4, '0') : '',
+  };
+}
+
+/**
+ * The vCard value the editor's birthday fields make: `1985-10-31`, or
+ * `--1031` (RFC 6350) without a year. '' when all three are empty, and null
+ * while they make no date: a day without a month, a year still being typed,
+ * 30 February.
+ */
+function writtenBirthday({ day, month, year }: BirthdayFields): string | null {
+  year = year.trim();
+  if (!day && !month && !year) return '';
+  if (!day || !month || (year && !/^\d{4}$/.test(year))) return null;
+  const [mm, dd] = [month.padStart(2, '0'), day.padStart(2, '0')];
+  if (!year) return dateOf(2000, Number(month), Number(day)) ? `--${mm}${dd}` : null;
+  return dateOf(Number(year), Number(month), Number(day)) ? `${year}-${mm}-${dd}` : null;
+}
 
 @customElement('alps-contact-view')
 export class AlpsContactView extends LitElement {
@@ -36,6 +101,15 @@ export class AlpsContactView extends LitElement {
   settingsStore!: SettingsStore;
 
   @state() private editForm: any = {};
+  /**
+   * The birthday as its fields hold it. A date input cannot hold a birthday
+   * without a year, and showed one as empty, as it did a date in the basic
+   * form, `19851031`; a date picked there replaced it with a full one. So the
+   * day, the month and the year, which may be left out, are fields of their
+   * own. They may make no date for a moment, a month picked before its day,
+   * and the form's birthday changes only when they make one.
+   */
+  @state() private birthday: BirthdayFields = { day: '', month: '', year: '' };
   @state() private isDirty = false;
   @state() private newCategoryName = '';
 
@@ -101,6 +175,19 @@ export class AlpsContactView extends LitElement {
       color: var(--text-muted, #9ca3af);
     }
 
+    /* Decoration, drawn as alps-icon-btn draws its icon, without the button. */
+    .selection-icon {
+      display: flex;
+      padding: 6px;
+      margin-right: 8px;
+    }
+
+    .selection-icon .icon {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
     .contact-detail-header {
       font-size: 24px;
       font-weight: 600;
@@ -138,6 +225,18 @@ export class AlpsContactView extends LitElement {
     }
     .multi-field-row alps-input {
       flex: 1;
+    }
+    .birthday-label {
+      font-size: 13px;
+      color: var(--text-secondary, #4b5563);
+      margin-bottom: 6px;
+    }
+    .birthday-fields > * {
+      flex: 1;
+      min-width: 0;
+    }
+    .birthday-fields .birthday-month {
+      flex: 2;
     }
     .multi-field-type {
       height: 36px;
@@ -253,45 +352,88 @@ export class AlpsContactView extends LitElement {
       // save and a cancel the form came back holding the refused values rather
       // than the version just read.
       const startedEditing = changedProperties.has('isEditing') && this.isEditing;
-      if (this.contact && this.isEditing && (startedEditing || !this.editForm || this.editForm.path !== this.contact.path)) {
+      // A new contact's first save gives it its path: the same card, not
+      // another one. Filled again from the open contact, which holds the
+      // form as that save sent it, the form lost whatever was typed while
+      // the save was on its way. So the form only takes the path.
+      const created = !startedEditing && this.isEditing && changedProperties.get('contact')?.isTemporary
+        && this.contact && !this.contact.isTemporary && this.contact.path && this.editForm && !this.editForm.path;
+      if (!created && ((changedProperties.has('isEditing') && !this.isEditing)
+        || (changedProperties.has('contact') && changedProperties.get('contact')?.path !== this.contact?.path)
+        || (changedProperties.get('contact')?.isTemporary && this.contact?.isTemporary && changedProperties.get('contact') !== this.contact))) {
+        this.flushPendingSave();
+      }
+      if (created) {
+        this.editForm = { ...this.editForm, path: this.contact.path };
+      } else if (this.contact && this.isEditing && (startedEditing || !this.editForm || this.editForm.path !== this.contact.path)) {
+        this.editContact = this.contact;
+        this.editUsername = activeUsername() ?? (this.settingsStore?.getState().loginUsername || '');
         this.editForm = { ...this.contact };
+        this.birthday = birthdayFields(String(this.editForm.birthday || ''));
         this.isDirty = false;
-        if (Array.isArray(this.editForm.categories)) {
-          this.editForm.categories = this.editForm.categories.join(', ');
-        }
         if (Array.isArray(this.editForm.emails) && this.editForm.emails.length > 0) {
-          this.editForm.emails = this.editForm.emails.map((e: any) => ({ ...e }));
+          this.editForm.emails = this.editForm.emails.map((e: any, i: number) => ({ ...e, id: e.id || `emails:${i}` }));
         } else if (this.editForm.email) {
-          this.editForm.emails = [{ value: this.editForm.email, type: '' }];
+          this.editForm.emails = [{ value: this.editForm.email, type: '', id: 'emails:0' }];
         } else {
-          this.editForm.emails = [{ value: '', type: '' }];
+          this.editForm.emails = [{ value: '', type: '', id: crypto.randomUUID() }];
         }
         if (Array.isArray(this.editForm.phones) && this.editForm.phones.length > 0) {
-          this.editForm.phones = this.editForm.phones.map((p: any) => ({ ...p }));
+          this.editForm.phones = this.editForm.phones.map((p: any, i: number) => ({ ...p, id: p.id || `phones:${i}` }));
         } else if (this.editForm.phone) {
-          this.editForm.phones = [{ value: this.editForm.phone, type: '' }];
+          this.editForm.phones = [{ value: this.editForm.phone, type: '', id: 'phones:0' }];
         } else {
-          this.editForm.phones = [{ value: '', type: '' }];
+          this.editForm.phones = [{ value: '', type: '', id: crypto.randomUUID() }];
         }
       }
     }
   }
 
   private saveTimeout: any = null;
+  private pendingSave: (() => void) | null = null;
+  /** The card the form was opened on, retained across its first create. */
+  private editContact: any;
+  private editUsername = '';
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    clearTimeout(this.saveTimeout);
+    this.pendingSave = null;
+  }
+
+  private flushPendingSave() {
+    const save = this.pendingSave;
+    this.pendingSave = null;
+    clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    save?.();
+  }
 
   private debouncedSave() {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
     }
-    this.saveTimeout = setTimeout(() => {
-      this.handleSave();
-    }, 500);
+    const form = this.editForm;
+    const contact = this.editContact;
+    const username = this.editUsername;
+    this.pendingSave = () => this.handleSave(form, contact, username);
+    this.saveTimeout = setTimeout(() => this.flushPendingSave(), 500);
   }
 
   private handleInput(field: string, value: string) {
     this.editForm = { ...this.editForm, [field]: value };
     this.isDirty = true;
     this.debouncedSave();
+  }
+
+  private handleBirthdayInput(field: keyof BirthdayFields, value: string) {
+    this.birthday = { ...this.birthday, [field]: value };
+    const written = writtenBirthday(this.birthday);
+    // Compared with the stored birthday as the fields read it: a stored
+    // `19851031` is not rewritten as `1985-10-31` when its year is typed again.
+    if (written !== null && written !== writtenBirthday(birthdayFields(String(this.editForm.birthday || '')))) {
+      this.handleInput('birthday', written);
+    }
   }
 
   private handleMultiInput(field: 'emails' | 'phones', index: number, prop: 'value' | 'type', val: string) {
@@ -310,7 +452,7 @@ export class AlpsContactView extends LitElement {
 
   private addMultiField(field: 'emails' | 'phones') {
     const list = [...(this.editForm[field] || [])];
-    list.push({ value: '', type: '' });
+    list.push({ value: '', type: '', id: crypto.randomUUID() });
     this.editForm = { ...this.editForm, [field]: list };
     this.requestUpdate();
   }
@@ -341,12 +483,15 @@ export class AlpsContactView extends LitElement {
     return `${prefix} ${defaultLabel}`;
   }
 
-  private handleSave() {
-    this.dispatchEvent(new CustomEvent('save', {
-      detail: this.editForm,
+  private handleSave(form = this.editForm, contact = this.editContact, username = this.editUsername) {
+    clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    this.pendingSave = null;
+    this.dispatchEvent(Object.assign(new CustomEvent('save', {
+      detail: form,
       bubbles: true,
       composed: true
-    }));
+    }), { sourceContact: contact, sourceUsername: username }));
   }
 
   private renderDetailRow(label: string, value: string, isEmail = false, isPhone = false) {
@@ -356,7 +501,7 @@ export class AlpsContactView extends LitElement {
     if (isEmail || label === 'Email Address' || label === 'Email' || label.endsWith('Email') || label.endsWith(this.i18nStore?.t('contacts.email') || 'Email')) {
       content = html`<a href="mailto:${value}" @click=${(e: Event) => {
         e.preventDefault();
-        const formattedEmail = this.contact?.name ? `"${this.contact.name}" <${value}>` : value;
+        const formattedEmail = writtenAddress(this.contact?.name, value);
         this.composeStore?.openComposer({ to: [formattedEmail] });
       }}>${value}</a>`;
     } else if (isPhone || label === 'Phone' || label.endsWith('Phone') || label.endsWith(this.i18nStore?.t('contacts.phone') || 'Phone')) {
@@ -384,10 +529,42 @@ export class AlpsContactView extends LitElement {
 
   private get formattedBirthday() {
     if (!this.contact?.birthday) return '';
-    const d = new Date(this.contact.birthday);
-    if (isNaN(d.getTime())) return this.contact.birthday; // fallback if invalid like --10-31
+    // What is not read as a date, a year alone or a text value, is shown as
+    // written.
+    const raw = String(this.contact.birthday);
     const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
-    return formatFullDate(d, dateFormat, '24').split(' ')[0];
+    const parts = birthdayParts(raw);
+    if (!parts) return raw;
+    if (parts.year === undefined) return formatDayMonth(parts.month, parts.day, dateFormat);
+    // That day where the reader is: read as UTC midnight, which west of UTC
+    // is the evening before, the birthday showed a day early.
+    return formatFullDate(dateOf(parts.year, parts.month, parts.day)!, dateFormat, '24').split(' ')[0];
+  }
+
+  /** The birthday's day, month and year, in the order the date format puts them. */
+  private renderBirthday() {
+    const t = (key: string) => this.i18nStore?.t(key) || '';
+    const monthName = new Intl.DateTimeFormat(this.i18nStore?.getIntlLanguage?.(), { month: 'long' });
+    const numbers = (count: number, label: (n: number) => string) =>
+      Array.from({ length: count }, (_, i) => ({ value: String(i + 1), label: label(i + 1) }));
+    const day = html`<alps-select class="birthday-day" label=${t('contacts.birthdayDay')} .value=${this.birthday.day}
+      .options=${[{ value: '', label: t('contacts.birthdayDay') }, ...numbers(31, String)]}
+      @change=${(e: any) => this.handleBirthdayInput('day', e.target.value)}></alps-select>`;
+    const month = html`<alps-select class="birthday-month" label=${t('contacts.birthdayMonth')} .value=${this.birthday.month}
+      .options=${[{ value: '', label: t('contacts.birthdayMonth') }, ...numbers(12, m => monthName.format(new Date(2000, m - 1, 1)))]}
+      @change=${(e: any) => this.handleBirthdayInput('month', e.target.value)}></alps-select>`;
+    const year = html`<alps-input class="birthday-year" placeholder=${t('contacts.birthdayYear')} label=${t('contacts.birthdayYear')} .value=${this.birthday.year}
+      @input=${(e: any) => this.handleBirthdayInput('year', e.target.value)}></alps-input>`;
+    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
+    const fields = dateFormat === 'MM/DD/YYYY' ? [month, day, year]
+      : dateFormat === 'DD.MM.YYYY' ? [day, month, year]
+      : [year, month, day];
+    return html`
+      <div role="group" aria-labelledby="birthday-label">
+        <div class="birthday-label" id="birthday-label">${t('contacts.birthday')}</div>
+        <div class="multi-field-row birthday-fields">${fields}</div>
+      </div>
+    `;
   }
 
   render() {
@@ -494,7 +671,7 @@ export class AlpsContactView extends LitElement {
       }}>
         ${this.selectedCount > 0 ? html`
           <div class="empty-state" style="flex-direction: column; gap: 16px;">
-            <alps-icon-btn icon="users" style="pointer-events: none; margin-right: 8px;"></alps-icon-btn>
+            <div class="selection-icon">${renderIcon('users')}</div>
             <span>${this.i18nStore?.t('contacts.selectedContacts', { count: this.selectedCount })}</span>
           </div>
         ` : html`
@@ -561,14 +738,14 @@ export class AlpsContactView extends LitElement {
 
             <alps-input placeholder="${this.i18nStore?.t('contacts.address')}" .value=${this.editForm.address || ''} @input=${(e: any) => this.handleInput('address', e.target.value)}></alps-input>
             <alps-input placeholder="${this.i18nStore?.t('contacts.url')}" type="url" .value=${this.editForm.url || ''} @input=${(e: any) => this.handleInput('url', e.target.value)}></alps-input>
-            <alps-input placeholder="${this.i18nStore?.t('contacts.birthday')}" type="date" .value=${this.editForm.birthday || ''} @input=${(e: any) => this.handleInput('birthday', e.target.value)}></alps-input>
+            ${this.renderBirthday()}
             <textarea class="edit-textarea" placeholder="${this.i18nStore?.t('contacts.notes')}" .value=${this.editForm.note || ''} @input=${(e: any) => this.handleInput('note', e.target.value)}></textarea>
             <textarea class="edit-textarea" placeholder="${this.i18nStore?.t('contacts.publicKey') || 'GPG Public Key Block'}" .value=${this.editForm.public_key || ''} @input=${(e: any) => this.handleInput('public_key', e.target.value)} style="font-family: monospace; white-space: pre;"></textarea>
           </div>
         ` : html`
           <div class="view-header" style="margin-top: -32px;">
             <div class="view-name">
-              ${(this.contact.name || this.contact.email) || this.i18nStore?.t('contacts.unnamedContact') || 'Unnamed Contact'} ${this.contact.nickname ? `(${this.contact.nickname})` : ''}
+              ${this.contact.name || this.contact.email ? isolatedCaption(this.contact.name, this.contact.email) : this.i18nStore?.t('contacts.unnamedContact') || 'Unnamed Contact'} ${this.contact.nickname ? `(${this.contact.nickname})` : ''}
             </div>
             ${this.contact.organization || this.contact.title ? html`
               <div class="view-organization">

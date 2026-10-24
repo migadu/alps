@@ -60,6 +60,14 @@ describe('mailboxRole', () => {
     expect(mailboxRole(mb('Trash receipts'))).toBeNull();
     expect(mailboxRole(undefined)).toBeNull();
   });
+
+  // The name tables are object literals: a bare lookup also finds what every
+  // object inherits, and handed back Object's own function for a role.
+  it.each(['constructor', 'toString', 'hasOwnProperty', '__proto__'])('gives a folder called %s no role', (name) => {
+    expect(mailboxRole(mb(name))).toBeNull();
+    expect(mailboxRoleByName(name)).toBeNull();
+    expect(mailboxRoleByName(name, [mb('INBOX'), mb(name)])).toBeNull();
+  });
 });
 
 describe('advertisedRoles', () => {

@@ -1,12 +1,38 @@
 export default {
   contacts: {
-    deleteFailed: '{failed} od {total} kontakata nije moglo biti obrisano.',
-    categoryRenameFailed: '{failed} od {total} kontakata nije moglo biti ažurirano, kategorija je samo delimično preimenovana.',
-    categoryDeleteFailed: '{failed} od {total} kontakata nije moglo biti ažurirano, kategorija je samo delimično uklonjena.',
-    categoryUpdateFailed: '{failed} od {total} kontakata nije moglo biti ažurirano.',
+    deleteFailed: {
+      one: 'Nije bilo moguće obrisati {count} kontakt od ukupno {total}.',
+      few: 'Nije bilo moguće obrisati {count} kontakta od ukupno {total}.',
+      other: 'Nije bilo moguće obrisati {count} kontakata od ukupno {total}.'
+    },
+    categoryRenameFailed: {
+      one: 'Nije bilo moguće ažurirati {count} kontakt od ukupno {total}, pa je kategorija samo delimično preimenovana.',
+      few: 'Nije bilo moguće ažurirati {count} kontakta od ukupno {total}, pa je kategorija samo delimično preimenovana.',
+      other: 'Nije bilo moguće ažurirati {count} kontakata od ukupno {total}, pa je kategorija samo delimično preimenovana.'
+    },
+    categoryDeleteFailed: {
+      one: 'Nije bilo moguće ažurirati {count} kontakt od ukupno {total}, pa je kategorija samo delimično uklonjena.',
+      few: 'Nije bilo moguće ažurirati {count} kontakta od ukupno {total}, pa je kategorija samo delimično uklonjena.',
+      other: 'Nije bilo moguće ažurirati {count} kontakata od ukupno {total}, pa je kategorija samo delimično uklonjena.'
+    },
+    categoryUpdateFailed: {
+      one: 'Nije bilo moguće ažurirati {count} kontakt od ukupno {total}.',
+      few: 'Nije bilo moguće ažurirati {count} kontakta od ukupno {total}.',
+      other: 'Nije bilo moguće ažurirati {count} kontakata od ukupno {total}.'
+    },
+    deleteOneFailed: 'Kontakt nije mogao biti obrisan.',
+    categoryRenameOneFailed: 'Jedan kontakt nije mogao biti ažuriran, pa je kategorija samo delimično preimenovana.',
+    categoryDeleteOneFailed: 'Jedan kontakt nije mogao biti ažuriran, pa je kategorija samo delimično uklonjena.',
+    categoryUpdateOneFailed: 'Kontakt nije mogao biti ažuriran.',
     saveFailed: 'Kontakt nije mogao biti sačuvan.',
+    loadFailed: 'Kontakt nije mogao biti učitan, pa se još ne može urediti.',
     saveConflict: 'Kontakt je izmenjen na drugom uređaju, pa vaša izmena nije sačuvana. Otkažite izmenu da biste videli najnoviju verziju.',
-    starFailed: 'Kontakt nije mogao biti ažuriran.',
+    starFailed: {
+      one: 'Nije bilo moguće ažurirati {count} kontakt od ukupno {total}.',
+      few: 'Nije bilo moguće ažurirati {count} kontakta od ukupno {total}.',
+      other: 'Nije bilo moguće ažurirati {count} kontakata od ukupno {total}.'
+    },
+    starOneFailed: 'Kontakt nije mogao biti ažuriran.',
     unnamedContact: 'Neimenovani kontakt',
     title: 'Kontakti',
     allContacts: 'Svi kontakti',
@@ -23,8 +49,8 @@ export default {
     add: 'Dodaj',
     newCategory: 'Nova kategorija',
     refreshContacts: 'Osveži kontakte',
-    sortZa: 'Sortiraj Z-A',
-    sortAz: 'Sortiraj A-Z',
+    sortZa: 'Sortiraj Ž-A',
+    sortAz: 'Sortiraj A-Ž',
     filterStarred: 'Filtriraj omiljene',
     uncategorized: 'Nekategorizovano',
     addToCategory: 'Dodaj u kategoriju',
@@ -55,6 +81,9 @@ export default {
     address: 'Adresa',
     url: 'URL',
     birthday: 'Rođendan',
+    birthdayDay: 'Dan',
+    birthdayMonth: 'Mesec',
+    birthdayYear: 'Godina',
     back: 'Nazad',
     toggleStar: 'Uključi/isključi omiljeno',
     publicKey: 'Javni ključ',

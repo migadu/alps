@@ -1,8 +1,23 @@
 
 
-export class Router {
+import type { ReactiveController } from 'lit';
+
+/**
+ * The hash router: which page the URL names, and a call to the shell on every
+ * navigation.
+ *
+ * A ReactiveController, added by the shell that renders it, because the
+ * `hashchange` listener has to live exactly as long as that shell is in the
+ * document. Added at construction and never removed, it kept a removed shell
+ * re-rendering on every hash change for the rest of the page's life. Lit
+ * connects and disconnects a controller with its host, including a host that
+ * is put back.
+ */
+export class Router implements ReactiveController {
   private routes: Record<string, () => unknown>;
   private fallback: () => unknown;
+  /** Kept so that the listener removed is the one that was added. */
+  private readonly onHashChange: (event?: HashChangeEvent) => void;
 
   /**
    * The path the browser is on RIGHT NOW.
@@ -22,12 +37,30 @@ export class Router {
   constructor(
     routes: Record<string, () => unknown>,
     fallback: () => unknown,
-    onChange: () => void
+    onChange: (event?: HashChangeEvent) => void
   ) {
     this.routes = routes;
     this.fallback = fallback;
+    this.onHashChange = (event) => onChange(event);
+  }
 
-    window.addEventListener('hashchange', () => onChange());
+  /**
+   * Starts listening when the shell is connected, and again each time it is
+   * put back. Not at construction, so a shell built and never attached routes
+   * nothing. Adding the same listener twice adds it once.
+   *
+   * It also asks for a render: the hash may have moved while the shell was
+   * out of the document, and a shell put back must show what the URL names
+   * now. On the first connection that is the render Lit has already queued.
+   */
+  hostConnected(): void {
+    window.addEventListener('hashchange', this.onHashChange);
+    this.onHashChange();
+  }
+
+  /** Stops listening when the shell leaves the document. */
+  hostDisconnected(): void {
+    window.removeEventListener('hashchange', this.onHashChange);
   }
 
   private getHashPath() {
@@ -41,19 +74,28 @@ export class Router {
     window.location.hash = path;
   }
 
-  render() {
-    // Exact match
-    if (this.routes[this.currentPath]) {
-      return this.routes[this.currentPath]();
-    }
-    
-    // Prefix match
-    for (const route in this.routes) {
-      if (route.endsWith('/*') && this.currentPath.startsWith(route.replace('/*', ''))) {
-         return this.routes[route]();
-      }
-    }
+  /** Rebuilds the table after the session's enabled plugins change. */
+  setRoutes(routes: Record<string, () => unknown>) {
+    this.routes = routes;
+  }
 
-    return this.fallback();
+  /**
+   * Renders `path`: the one the browser is on unless told otherwise. The shell
+   * names another while the Settings window is open, to draw the page beneath
+   * it (`app-root`'s `backgroundView`).
+   */
+  render(path: string = this.currentPath) {
+    const key = this.matchKey(path);
+    return key === null ? this.fallback() : this.routes[key]();
+  }
+
+  /** The table key `path` renders through, or null for the fallback. An exact
+   * route wins over a prefix that also matches. */
+  matchKey(path: string): string | null {
+    if (this.routes[path]) return path;
+    for (const route in this.routes) {
+      if (route.endsWith('/*') && path.startsWith(route.replace('/*', ''))) return route;
+    }
+    return null;
   }
 }

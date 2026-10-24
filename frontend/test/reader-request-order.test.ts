@@ -1,11 +1,14 @@
 /**
  * What the reader asks the server for first, and how much of it at once.
  *
- * The server answers one request per session at a time — it holds a single IMAP
- * connection under a lock — so the reader's order IS the reader's latency. Two
- * things followed from that, and both are pinned here: the opened message's
- * body is asked for before its conversation, and the bodies nobody asked for
- * are read one at a time.
+ * The server answers what the user waits for one request per session at a
+ * time — on the session's own IMAP connection, under a lock — so the reader's
+ * order IS the reader's latency. Two things followed from that, and both are
+ * pinned here: the opened message's body is asked for before its conversation,
+ * and the bodies nobody asked for are read one at a time. Those reads are
+ * marked as background work, which the server does on the session's
+ * background connection; a session without one (turned off, or refused by the
+ * mail server) does them on its own, behind the rest.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/message-reader';
@@ -60,8 +63,12 @@ function settingsStore() {
 const i18nStore = Object.assign(new EventTarget(), { t: (key: string) => key });
 
 let asked: string[];
+/** The requests sent as ones nobody waits for, which the server does aside. */
+let background: string[];
 /** Body reads held open, so what the reader does NEXT is visible. */
 let release: Map<string, () => void>;
+/** Test-owned reads, including conversation work a completed body starts. */
+let pendingReads: Set<Promise<unknown>>;
 
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -78,11 +85,25 @@ beforeEach(() => {
   installMatchMedia();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   asked = [];
+  background = [];
   release = new Map();
+  pendingReads = new Set();
+  const prototype = customElements.get('alps-message-reader')!.prototype as El;
+  for (const method of ['fetchItemBody', 'loadConversation']) {
+    const read = prototype[method];
+    vi.spyOn(prototype, method).mockImplementation(function (this: El, ...args: any[]) {
+      const running = read.apply(this, args) as Promise<unknown>;
+      pendingReads.add(running);
+      const finished = () => { pendingReads.delete(running); };
+      void running.then(finished, finished);
+      return running;
+    });
+  }
 
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url);
     asked.push(u);
+    if (new Headers(init?.headers).has('X-Alps-Background')) background.push(u);
     // Per message, not one answer for every ask. A single shared conversation
     // made the reader read THIS conversation's members after a switch to a
     // message outside it — correctly, because the mock had just said they were
@@ -102,10 +123,18 @@ beforeEach(() => {
   }));
 });
 
-afterEach(() => {
-  for (const resolve of release.values()) resolve();
+async function settleReaderReads(clearAccount = true) {
+  // Disconnect before releasing: no more queued members may start. A released
+  // metadata response can still decode and ask for /raw; keep this test's fetch
+  // stub installed until those reads and their follow-on conversation settle.
   cleanup();
-  MessageCache.clear();
+  if (clearAccount) MessageCache.clear();
+  for (const resolve of release.values()) resolve();
+  while (pendingReads.size) await Promise.allSettled([...pendingReads]);
+}
+
+afterEach(async () => {
+  await settleReaderReads();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -167,6 +196,24 @@ describe('opening a conversation', () => {
     expect(bodyReads()).toHaveLength(3);
   });
 
+  it('reads the members nobody asked for in the background, and the opened message not', async () => {
+    await openConversation();
+    await waitFor(() => release.has('10'), 'the opened message to be read');
+    release.get('10')!();
+    await waitFor(() => asked.some(url => url.includes('/messages/10/raw')), 'the opened message\'s text');
+    await waitFor(() => bodyReads().length > 1, 'the first member to be read');
+
+    // The server reads these on the session's second connection, so the
+    // message the user opens next does not wait behind them.
+    const member = /\/messages\/(\d+)\?view=/.exec(bodyReads()[1])![1];
+    release.get(member)!();
+    await waitFor(() => asked.some(url => url.includes(`/messages/${member}/raw`)), 'the member\'s text');
+    const readsOf = (uid: string) => (url: string) =>
+      url.includes(`/messages/${uid}?`) || url.includes(`/messages/${uid}/raw`);
+    expect(background.filter(readsOf(member))).toHaveLength(2);
+    expect(background.filter(readsOf('10'))).toEqual([]);
+  });
+
   it('drops what is left to read when another message is opened', async () => {
     const el = await openConversation();
     await waitFor(() => release.has('10'), 'the opened message to be read');
@@ -196,6 +243,108 @@ describe('opening a conversation', () => {
   });
 });
 
+it.each([false, true])('waits for released metadata before teardown restores fetch (clear account: %s)', async (clearAccount) => {
+  const fetch = vi.mocked(globalThis.fetch).getMockImplementation()!;
+  let finishMetadata!: () => void;
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const response = await fetch(url, init);
+    if (String(url).includes('/messages/1?view=')) {
+      const parse = response.json.bind(response);
+      response.json = () => new Promise((resolve, reject) => {
+        finishMetadata = () => { void parse().then(resolve, reject); };
+      });
+    }
+    return response;
+  }));
+  await openConversation();
+  await waitFor(() => release.has('10'), 'the open message');
+  release.get('10')!();
+  await waitFor(() => release.has('1'), 'the first member');
+  release.get('1')!();
+  await waitFor(() => !!finishMetadata, 'the pending metadata decode');
+
+  let settled = false;
+  // A live account finishes its raw request under this stub; a cleared
+  // account cancels that follow-up. Both must finish before restoring fetch.
+  const settling = settleReaderReads(clearAccount).then(() => { settled = true; });
+  try {
+    await Promise.resolve();
+    expect(settled).toBe(false);
+  } finally {
+    finishMetadata();
+    await settling;
+    // Release the held response even when the assertion fails, so this
+    // regression's own teardown cannot hang or leak into another test.
+    while (pendingReads.size) await Promise.allSettled([...pendingReads]);
+  }
+
+  // The live account uses this stub; the cleared account makes no raw read.
+  // Neither may enter the next test’s recorder.
+  expect(asked.filter(url => url.includes('/messages/1/raw'))).toHaveLength(clearAccount ? 0 : 1);
+  expect(pendingReads.size).toBe(0);
+});
+
+/**
+ * The teardown above, pinned from outside: the test before calls
+ * settleReaderReads() itself, so it would still pass if afterEach stopped
+ * calling it.
+ *
+ * The first test leaves a member's metadata decoding past its own end, with
+ * nothing of its own to wait for it; the second then waits out whatever the
+ * first left running, and finds that none of it asked this test's stub for
+ * anything. Without afterEach's settleReaderReads() the decode finishes in the
+ * second test, and its /raw read (with the members queued after it) lands in
+ * that test's recorder, which is how #377 counted three background reads of a
+ * member instead of two.
+ *
+ * The two run in order, as a file's tests do: the second, run alone (with -t),
+ * finds nothing left and passes either way.
+ */
+describe('a read still running when its test ends', () => {
+  /** The reads the first test left running, kept for the second to wait out. */
+  let leftRunning: Set<Promise<unknown>> | null = null;
+
+  it('leaves a member decoding past the end of its test', async () => {
+    const fetch = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    let decoding = false;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const response = await fetch(url, init);
+      if (String(url).includes('/messages/1?view=')) {
+        const parse = response.json.bind(response);
+        // Decoded a moment after this test has returned: past its end, and
+        // before any slow machine would have reached the next test's checks.
+        response.json = () => {
+          decoding = true;
+          return new Promise((resolve, reject) => setTimeout(() => { void parse().then(resolve, reject); }, 20));
+        };
+      }
+      return response;
+    }));
+    await openConversation();
+    await waitFor(() => release.has('10'), 'the open message');
+    release.get('10')!();
+    await waitFor(() => release.has('1'), 'the first member');
+    release.get('1')!();
+    await waitFor(() => decoding, 'the member to be decoding');
+
+    leftRunning = pendingReads;
+    expect(leftRunning.size).toBeGreaterThan(0);
+  });
+
+  it("lets nothing it left running reach the next test's stub", async () => {
+    // Waited out as they stand. Not until the set is empty: a read finishing
+    // now takes itself out of THIS test's set, not the first one's.
+    if (leftRunning) await Promise.allSettled([...leftRunning]);
+    await flush();
+
+    // Account-generation guards may cancel follow-on fetches even when
+    // teardown forgot to wait. The first test's own tracked reads must also
+    // have finished before beforeEach replaced the fixture's pending set.
+    expect(leftRunning?.size ?? 0).toBe(0);
+    expect(asked).toEqual([]);
+  });
+});
+
 describe('an answer that lands after the reader has gone', () => {
   /**
    * The reads here are held open and released at teardown, which is what a
@@ -221,6 +370,31 @@ describe('an answer that lands after the reader has gone', () => {
     // not happen is the reader adopting it and repainting for it.
     expect(el.content).toBe('');
     expect(el.loading).toBe(true);
+  });
+
+  it('does not cache a body that answers after its user signed out', async () => {
+    // The cache keys name no user, so a body written after the sign-out is
+    // there for whoever signs in next on this tab and opens the same message.
+    // Only the event, not `MessageCache.clear()`: an expired session empties
+    // sessionStorage wholesale and dispatches nothing else.
+    const el = await openConversation();
+    await waitFor(() => release.has('10'), 'the opened message to be read');
+
+    sessionStorage.clear();
+    window.dispatchEvent(new CustomEvent('session-cleared', { detail: { reason: 'expired' } }));
+    el.remove();
+    release.get('10')!();
+    await flush();
+    await flush();
+
+    expect(MessageCache.get('INBOX', '10', 'text')).toBeNull();
+  });
+
+  it('caches a body that answers while its user is still signed in', async () => {
+    await openConversation();
+    await waitFor(() => release.has('10'), 'the opened message to be read');
+    release.get('10')!();
+    await waitFor(() => MessageCache.get('INBOX', '10', 'text') !== null, 'the body to be cached');
   });
 
   it('does not resolve a conversation that lands after the element was removed', async () => {

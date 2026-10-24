@@ -11,6 +11,7 @@ import {
   getMailboxLabel,
 } from '../src/utils/ui';
 import { readSources } from './helpers/sources';
+import { I18nStore } from '../src/store/i18n-store';
 
 describe('formatSize', () => {
   it('reads a non-positive, NaN or infinite count as 0 B', () => {
@@ -45,6 +46,39 @@ describe('formatSize', () => {
   it('stays on the largest unit past it, rather than printing "undefined"', () => {
     expect(formatSize(5000 * 1024 ** 5)).toBe('5000 PB');
   });
+
+  /** Each language's symbols, from bytes to petabytes. */
+  const UNITS: Record<string, string[]> = {
+    en: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    da: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    de: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    es: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    it: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    pt: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    fr: ['o', 'Ko', 'Mo', 'Go', 'To', 'Po'],
+    rs: ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ПБ'],
+    sr: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+  };
+
+  it.each(Object.keys(UNITS))('writes every unit as %s writes it', async (code) => {
+    // The units were English in every language: French read "768 KB" for
+    // "768 Ko", and Cyrillic Serbian a Latin "KB" inside Cyrillic text.
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage(code);
+    const sizes = [0, 768, 768 * 1024, 768 * 1024 ** 2, 768 * 1024 ** 3, 768 * 1024 ** 4, 768 * 1024 ** 5];
+    const want = ['0', '768', '768', '768', '768', '768', '768'].map((n, i) => `${n} ${UNITS[code][Math.max(i - 1, 0)]}`);
+    expect(sizes.map((bytes) => formatSize(bytes, i18nStore))).toEqual(want);
+  });
+
+  it('is handed the store wherever a size is shown', () => {
+    // Every caller has a store; one that left it out would show English units.
+    const sources = readSources();
+    const calls = Object.entries(sources)
+      .filter(([path]) => path !== 'src/utils/ui.ts')
+      .flatMap(([path, text]) => [...text.matchAll(/\bformatSize\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g)].map((m) => `${path}: ${m[1]}`));
+    expect(calls.length).toBeGreaterThanOrEqual(8);
+    expect(calls.filter((call) => !/,\s*this\.i18nStore\s*$/.test(call))).toEqual([]);
+  });
 });
 
 describe('getMailboxLabel', () => {
@@ -56,25 +90,88 @@ describe('getMailboxLabel', () => {
     expect(getMailboxLabel('Junk', i18n)).toBe('<folderList.junk>');
   });
 
+  const listed = (Delimiter: string, ...names: string[]) => names.map(Name => ({ Name, Attrs: [], Delimiter }));
+
   it('splits on the delimiter the server reported', () => {
-    expect(getMailboxLabel('Work/Clients/Acme', undefined, '/')).toBe('Acme');
-    expect(getMailboxLabel('INBOX.Receipts', undefined, '.')).toBe('Receipts');
+    expect(getMailboxLabel('Work/Clients/Acme', undefined, listed('/', 'Work/Clients/Acme'))).toBe('Acme');
+    expect(getMailboxLabel('INBOX.Receipts', undefined, listed('.', 'INBOX.Receipts'))).toBe('Receipts');
   });
 
   it('keeps a dot that is part of the name on a slash-delimited server', () => {
     // The sidebar splits on the server's delimiter; splitting on any dot here
     // named the same folder "2" in the header.
-    expect(getMailboxLabel('Invoices v1.2', undefined, '/')).toBe('Invoices v1.2');
-    expect(getMailboxLabel('Clients/acme.com', undefined, '/')).toBe('acme.com');
+    expect(getMailboxLabel('Invoices v1.2', undefined, listed('/', 'Invoices v1.2'))).toBe('Invoices v1.2');
+    expect(getMailboxLabel('Clients/acme.com', undefined, listed('/', 'Clients/acme.com'))).toBe('acme.com');
   });
 
-  it('falls back to either delimiter when the caller does not know it', () => {
+  it('falls back to either delimiter when the list does not hold the name', () => {
     expect(getMailboxLabel('Work/Acme')).toBe('Acme');
     expect(getMailboxLabel('INBOX.Receipts')).toBe('Receipts');
   });
 
+  it('titles the search across every folder, which has no name to show', () => {
+    expect(getMailboxLabel('*', i18n)).toBe('<folderList.allFolders>');
+    expect(getMailboxLabel('*')).toBe('All Folders');
+  });
+
   it('answers an empty name with an empty label', () => {
     expect(getMailboxLabel('')).toBe('');
+  });
+
+  it.each(['constructor', 'toString', 'valueOf', '__proto__'])('names a folder called %s by its name', (name) => {
+    // Not by what an object inherits under that key: the header drew
+    // "function Object() { [native code] }" for a folder called "constructor".
+    expect(getMailboxLabel(name, i18n)).toBe(name);
+  });
+});
+
+describe('getMailboxLabel names a folder by its role', () => {
+  const german = {
+    t: (key: string) => ({
+      'folderList.inbox': 'Eingang',
+      'folderList.sent': 'Gesendet',
+      'folderList.archive': 'Archiv',
+      'folderList.spam': 'Spam',
+      'folderList.junk': 'Junk',
+      'folderList.trash': 'Papierkorb',
+    } as Record<string, string>)[key] ?? key,
+  } as any;
+  const mb = (Name: string, Attrs: string[] = []) => ({ Name, Attrs, Delimiter: '/' });
+  const server = [
+    mb('INBOX'),
+    mb('Corbeille', ['\\Trash']),
+    mb('[Gmail]/Sent Mail', ['\\Sent']),
+    mb('Spam', ['\\Junk']),
+    mb('Trash'),
+    mb('Sent'),
+    mb('Archives'),
+  ];
+
+  it('captions a special folder by its role, whatever the server calls it', () => {
+    expect(getMailboxLabel('Corbeille', german, server)).toBe('Papierkorb');
+    expect(getMailboxLabel('[Gmail]/Sent Mail', german, server)).toBe('Gesendet');
+    expect(getMailboxLabel('INBOX', german, server)).toBe('Eingang');
+  });
+
+  it("keeps the name of a folder of the user's own, even one that spells a special folder's", () => {
+    // The server gave Trash and Sent to other folders, so these are ordinary
+    // folders; the sidebar draws them so, and Delete does not file into them.
+    expect(getMailboxLabel('Trash', german, server)).toBe('Trash');
+    expect(getMailboxLabel('Sent', german, server)).toBe('Sent');
+  });
+
+  it('keeps Spam for a junk folder called that, as the sidebar does', () => {
+    expect(getMailboxLabel('Spam', german, server)).toBe('Spam');
+    expect(getMailboxLabel('Bulk', german, [mb('INBOX'), mb('Bulk', ['\\Junk'])])).toBe('Junk');
+  });
+
+  it('takes a well-known name for a role no folder carries', () => {
+    expect(getMailboxLabel('Archives', german, server)).toBe('Archiv');
+  });
+
+  it('guesses by the name alone until the list has loaded', () => {
+    expect(getMailboxLabel('Trash', german)).toBe('Papierkorb');
+    expect(getMailboxLabel('Corbeille', german)).toBe('Corbeille');
   });
 });
 

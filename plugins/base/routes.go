@@ -3,10 +3,13 @@ package alpsbase
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime"
 	"net/http"
 	"net/url"
@@ -58,6 +61,9 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.POST("/attachments", handleComposeAttachment)
 	p.DELETE("/attachments/{uuid}", handleCancelAttachment)
 
+	// News of new mail, pushed: see handleEvents
+	p.GET("/events", handleEvents)
+
 	// Session
 	p.POST("/session", handleLogin)
 	p.GET("/session", handleGetSession)
@@ -96,17 +102,23 @@ type BaseMailboxData struct {
 func mailboxInfoToStatus(mbox MailboxInfo) *MailboxStatus {
 	numMessages := uint32(mbox.Total)
 	numUnseen := uint32(mbox.Unseen)
-	return &MailboxStatus{
+	status := &MailboxStatus{
 		StatusData: &imap.StatusData{
 			Mailbox:     mbox.Mailbox,
 			NumMessages: &numMessages,
 			NumUnseen:   &numUnseen,
-			// UIDValidity not available from ListData
 		},
 	}
+	// What LIST-STATUS answered beside the counts, so that a status read with
+	// the folder list compares with one a check for new mail reads.
+	if mbox.Status != nil {
+		status.UIDValidity = mbox.Status.UIDValidity
+		status.UIDNext = mbox.Status.UIDNext
+		status.HighestModSeq = mbox.Status.HighestModSeq
+	}
+	return status
 }
 
-// invalidateMailboxCache clears cached mailbox data for a session.
 // invalidateMailboxTree drops every cached entry for a mailbox AND anything
 // beneath it, for operations that change which mailboxes exist.
 //
@@ -126,22 +138,135 @@ func invalidateMailboxTree(ctx *alps.Context) {
 	ctx.Session.Cache().Clear()
 }
 
+// invalidateMailboxCache brings the session's cache in line with a write that
+// changed what the named mailboxes hold: their pages and conversations are
+// dropped, and their counts are read again, for the folder list too. With no
+// names, the write changed the folder list itself (a subscription), and the
+// list is dropped.
+//
+// It used to drop the folder list and the named folders' counts, so the
+// listing that follows every write read every folder's counts again. And it
+// dropped every message the session held of each folder; the messages that
+// leave a folder are dropped by the write itself now (forgetMessages), and the
+// rest are kept. A message's body never changes under its UID. Its flags do,
+// and every copy the session holds of it is patched for them
+// (applyFlagsToCache).
 func invalidateMailboxCache(ctx *alps.Context, mailboxNames ...string) {
 	cache := ctx.Session.Cache()
-
-	// Clear mailbox list cache
-	cache.Delete("mailboxes")
-
-	// Clear specific mailbox status caches and message caches
-	for _, name := range mailboxNames {
-		// Clear mailbox status
-		cache.Delete("status:" + name)
-
-		dropMailboxListings(cache, name)
-
-		// Clear individual messages for this mailbox
-		cache.DeletePrefix("message:" + name + ":")
+	if len(mailboxNames) == 0 {
+		cache.Delete("mailboxes")
+		return
 	}
+
+	mailboxNames = slices.Compact(slices.Sorted(slices.Values(mailboxNames)))
+	for _, name := range mailboxNames {
+		dropMailboxListings(cache, name)
+	}
+	rereadMailboxCounts(ctx, mailboxNames)
+}
+
+// rereadMailboxCounts reads the counts of mailboxes a write changed, with a
+// STATUS each, sent together, and puts them where the next listing reads
+// them: the cached counts, and the folder list (patchListedCounts). A STATUS
+// that fails drops the list, as every write's did before: the list is then
+// read again, with every folder's counts.
+func rereadMailboxCounts(ctx *alps.Context, names []string) {
+	cache := ctx.Session.Cache()
+	dropAll := func() {
+		cache.Delete("mailboxes")
+		for _, name := range names {
+			cache.Delete("status:" + name)
+		}
+	}
+
+	// A request whose client has gone does not reach for the connection
+	// again: cancelled there, it would close it (see DoMailWithContext).
+	if ctx.Request.Context().Err() != nil {
+		dropAll()
+		return
+	}
+	var statuses []*MailboxStatus
+	err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		// Sent together, so that the write waits for one round trip rather
+		// than one per folder, as a listing's are (getBaseMailboxData).
+		got, errs := getMailboxStatusesWithProvider(p, names)
+		for _, err := range errs {
+			if err != nil {
+				return err
+			}
+		}
+		statuses = got
+		return nil
+	})
+	if err != nil {
+		ctx.Server.Logger().Debugf("Re-reading the counts of %v after a write failed: %v", names, err)
+		dropAll()
+		return
+	}
+
+	for i, name := range names {
+		cache.Set("status:"+name, statuses[i])
+	}
+	patchListedCounts(cache, names, statuses)
+}
+
+// patchListedCounts lays the counts read of the named folders over the folder
+// list the session holds. A folder the list does not hold (a write can create
+// one, as an APPEND to Sent may) drops the list, which is then read again,
+// with every folder's counts.
+func patchListedCounts(cache *alps.Cache, names []string, statuses []*MailboxStatus) {
+	// Transform the current live list atomically. Separate Get/Replace calls
+	// let concurrent checks of different folders erase one another's counts.
+	// Update also keeps the original expiry and never recreates a dropped list.
+	cache.Update("mailboxes", func(cached any) any {
+		mailboxes, ok := cached.([]MailboxInfo)
+		if !ok {
+			return nil
+		}
+		// A copy, not the list in place: another request may be reading it.
+		updated := slices.Clone(mailboxes)
+		for i, name := range names {
+			j := slices.IndexFunc(updated, func(mbox MailboxInfo) bool { return mbox.Name() == name })
+			if j < 0 || statuses[i] == nil || statuses[i].NumMessages == nil || statuses[i].NumUnseen == nil {
+				return nil
+			}
+			updated[j].Total = int(*statuses[i].NumMessages)
+			updated[j].Unseen = int(*statuses[i].NumUnseen)
+		}
+		return updated
+	})
+}
+
+// forgetMessages drops what the session holds of messages that have left
+// mailbox: their bodies and parts, cached under the UIDs they had there. The
+// mailbox's other messages are kept.
+func forgetMessages(cache *alps.Cache, mailbox string, uids ...string) {
+	if len(uids) == 0 {
+		return
+	}
+	gone := make(map[string]bool, len(uids))
+	for _, uid := range uids {
+		gone[uid] = true
+	}
+	// Keys are message:<mailbox>:<uid>:[<part path>]..., and the prefix also
+	// matches a mailbox whose name continues with a colon. Its keys read as a
+	// UID no message of this mailbox has, and stay.
+	prefix := "message:" + mailbox + ":"
+	for _, key := range cache.GetKeysWithPrefix(prefix) {
+		rest := key[len(prefix):]
+		end := strings.Index(rest, ":[")
+		if end < 0 || gone[rest[:end]] {
+			cache.Delete(key)
+		}
+	}
+}
+
+func idStrings(ids []provider.MessageID) []string {
+	strs := make([]string, len(ids))
+	for i, id := range ids {
+		strs[i] = id.String()
+	}
+	return strs
 }
 
 // dropMailboxListings forgets what this session was told a mailbox holds: its
@@ -150,19 +275,233 @@ func invalidateMailboxCache(ctx *alps.Context, mailboxNames ...string) {
 // The two go together. A cached conversation is named by the same membership
 // the pages carry (see listedThreadUIDs), so a page kept past a change it does
 // not show is one thing, and a conversation kept past it would be that same
-// staleness served to the reader under its own name.
+// staleness served to the reader under its own name. The conversations go by
+// the messages they hold (dropConversationsHolding): those kept under the
+// mailbox's keys, and those of other folders that hold its messages.
 func dropMailboxListings(cache *alps.Cache, mailbox string) {
-	cache.DeletePrefix("messages:" + mailbox + ":")
-	cache.DeletePrefix("thread:" + mailbox + ":")
+	deleteFolderEntries(cache, "messages", mailbox)
+	dropConversationsHolding(cache, mailbox)
+}
+
+// deleteFolderEntries deletes the pages ("messages") or the messages read
+// ("message") the session holds of mailbox. They are kept under keys that
+// begin with kind:<mailbox>:, which also begins the keys of a folder whose
+// name goes on from this one's with a colon, as Work:Sub's goes on from
+// Work's. A page and a message record the folder they were read from, and one
+// of another folder stays: deleted by the prefix, Work:Sub's were read again
+// for every change to Work. An entry that names no folder goes, as it cannot
+// be told apart.
+func deleteFolderEntries(cache *alps.Cache, kind, mailbox string) {
+	for _, key := range cache.GetKeysWithPrefix(kind + ":" + mailbox + ":") {
+		if cached, ok := cache.Get(key); ok {
+			folder := mailbox
+			switch entry := cached.(type) {
+			case CachedMessages:
+				folder = entry.Mailbox
+			case CachedMessagePart:
+				folder = entry.Mailbox
+			}
+			if folder != "" && folder != mailbox {
+				continue
+			}
+		}
+		cache.Delete(key)
+	}
+}
+
+// dropConversationsHolding drops the conversations the session holds, under
+// any folder's keys, that hold a message of mailbox.
+//
+// A conversation is kept under the folder it was opened from, and one opened
+// from the Inbox holds the user's own replies from Sent. Dropped with Sent's
+// own alone, it went on showing a reply that had been deleted or moved, and
+// one with the flags it had before the whole of Sent was marked read.
+//
+// By the folder each member names, not by the key, which names only the
+// folder the conversation was opened from; and not by a prefix of the folder's
+// name, as a folder whose name goes on from this one's with a colon is
+// another. A conversation that holds none of this mailbox's messages stays.
+func dropConversationsHolding(cache *alps.Cache, mailbox string) {
+	for _, key := range cache.GetKeysWithPrefix("thread:") {
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		msgs, ok := cached.([]IMAPMessage)
+		if ok && slices.ContainsFunc(msgs, func(m IMAPMessage) bool { return m.Mailbox == mailbox }) {
+			cache.Delete(key)
+		}
+	}
+}
+
+// dropRenumberedMailbox forgets everything this session holds about a
+// mailbox's messages by UID, for a mailbox whose UIDVALIDITY moved: its pages
+// and conversations, and every message read from it.
+//
+// A new UIDVALIDITY says that every UID may now name a different message. A
+// message read under the old one is kept by its UID, and a re-listing keeps a
+// cached message that has a body, so the list showed the new message and
+// opening it showed the old one: handleGetPart answers message:<mbox>:<uid>:…
+// from the cache.
+func dropRenumberedMailbox(cache *alps.Cache, mailbox string) {
+	dropMailboxListings(cache, mailbox)
+	deleteFolderEntries(cache, "message", mailbox)
+	cache.Delete("uidvalidity:" + mailbox)
+}
+
+// uidMoved reports whether a UIDVALIDITY or UIDNEXT moved from prev to now.
+// Either is 0 where it is not known, and then it says nothing.
+func uidMoved(prev, now uint32) bool {
+	return prev != 0 && now != 0 && prev != now
+}
+
+// heldUIDValidities answers the UIDVALIDITY values the session's status,
+// pages and raw-part validator were read at, where they are known.
+//
+// Any can be all that is left from before the folder was
+// made again elsewhere. The folder list reads every folder's status again
+// without looking at its pages, a check of another folder that finds a change
+// drops every status and keeps the pages, and a folder only searched has a
+// status and no page. A raw part can outlive both its status and its pages.
+func heldUIDValidities(cache *alps.Cache, mailbox string) []uint32 {
+	var held []uint32
+	if cached, ok := cache.Get("uidvalidity:" + mailbox); ok && cached.(uint32) != 0 {
+		held = append(held, cached.(uint32))
+	}
+	if cached, ok := cache.Get("status:" + mailbox); ok {
+		if status := cached.(*MailboxStatus); status.StatusData != nil && status.UIDValidity != 0 {
+			held = append(held, status.UIDValidity)
+		}
+	}
+	for _, key := range cache.GetKeysWithPrefix("messages:" + mailbox + ":") {
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		// Another folder's pages were read at its own UIDVALIDITY, and taken
+		// for this one's they would make it look made again.
+		if page, ok := cached.(CachedMessages); ok && page.Mailbox == mailbox && page.Counts.UIDValidity != 0 {
+			held = append(held, page.Counts.UIDValidity)
+		}
+	}
+	return held
+}
+
+// renumberedSince reports whether any of the held UIDVALIDITY values moved to
+// now.
+func renumberedSince(held []uint32, now uint32) bool {
+	for _, prev := range held {
+		if uidMoved(prev, now) {
+			return true
+		}
+	}
+	return false
 }
 
 // CachedMessages holds cached message list data
 type CachedMessages struct {
+	// Mailbox is the folder the page lists. A page is found by the prefix of
+	// its key, "messages:<folder>:", and the pages of a folder whose name
+	// begins with another's and a colon, as "Work:Sub" begins with "Work",
+	// have keys with the other folder's prefix too.
+	Mailbox  string
 	Messages []provider.Message
 	Total    int
 	// Threaded records what Total counts, so a cache hit reports the same
 	// kind of row the live listing would have. See provider.PageInfo.
 	Threaded bool
+	// Counts are the folder's message and unseen counts as they stood when
+	// the page was read, and the page is served only while the folder still
+	// has them.
+	//
+	// A check for new mail drops the pages when the counts it reads differ
+	// from the ones the session holds (handleMailboxStatus). But the check is
+	// not the only reader of those counts: the folder list that comes with
+	// every message and part read fetches them whenever they are missing, and
+	// reading a message no page holds is one way they go missing (see
+	// applyFlagsToCache). Mail that arrived in between was counted there and
+	// nowhere else, the check then saw no change, and the list went on
+	// answering from a page that did not hold the new mail until the cache
+	// expired. Held by the page itself, the counts tell it that it is out of
+	// date, whoever read them.
+	Counts mailboxCounts
+}
+
+// mailboxCounts is a folder's message and unseen counts, held by value: the
+// cached status is a pointer, and its counts the provider's.
+//
+// UIDValidity and UIDNext go with them, 0 where the provider has none. A
+// message that arrives as another goes leaves both counts as they were, and
+// moves UIDNext; a folder deleted and made again elsewhere with as many
+// messages moves UIDValidity.
+//
+// HighestModSeq goes with them where the mail server numbers its changes
+// (provider.ChangeTracker), 0 otherwise. Any change to the folder's messages
+// moves it, a flag set or cleared among them: a star, which leaves the counts
+// as they were, as much as a read.
+type mailboxCounts struct {
+	Known         bool
+	Messages      uint32
+	Unseen        uint32
+	UIDValidity   uint32
+	UIDNext       uint32
+	HighestModSeq uint64
+}
+
+// reflaggedOnly reports whether a folder at now holds the messages it held at
+// was, and says which flags changed in between: the same UIDVALIDITY, as many
+// messages and the same UIDNEXT, each known, and the changes numbered at both.
+// No message came, as one would have moved UIDNEXT, and so none went, as that
+// would have lowered the count; what changed is flags alone, and the change
+// numbers say which (see reflaggedPage).
+//
+// It says nothing about whether anything changed: counts equal to each other
+// hold the same messages too.
+func reflaggedOnly(was, now mailboxCounts) bool {
+	return was.Known && now.Known && was.Messages == now.Messages &&
+		was.UIDValidity != 0 && was.UIDValidity == now.UIDValidity &&
+		was.UIDNext != 0 && was.UIDNext == now.UIDNext &&
+		was.HighestModSeq != 0 && now.HighestModSeq != 0
+}
+
+// countsOf reads the counts out of a status. A status without them (the
+// search across every folder has none) gives counts that match only each
+// other, so such a page is served as it always was.
+func countsOf(status *MailboxStatus) mailboxCounts {
+	if status == nil || status.StatusData == nil || status.NumMessages == nil || status.NumUnseen == nil {
+		return mailboxCounts{}
+	}
+	return mailboxCounts{
+		Known:         true,
+		Messages:      *status.NumMessages,
+		Unseen:        *status.NumUnseen,
+		UIDValidity:   status.UIDValidity,
+		UIDNext:       uint32(status.UIDNext),
+		HighestModSeq: status.HighestModSeq,
+	}
+}
+
+// shiftListedUnseen moves the unseen count every cached page of a mailbox was
+// read at by step, for a message whose \Seen the pages have been brought in
+// line with. The server's count moved by the same step, and the pages are
+// still what it would list; left behind, they would be read again for a
+// change they already show.
+func shiftListedUnseen(cache *alps.Cache, mailbox string, step int) {
+	for _, key := range cache.GetKeysWithPrefix("messages:" + mailbox + ":") {
+		// Under the cache's lock, from the page it holds then: one read before
+		// would put back the rows as they were before a change made meanwhile
+		// (applyFlagsToCache).
+		cache.Update(key, func(cached interface{}) interface{} {
+			page, ok := cached.(CachedMessages)
+			// Another folder's pages count its own messages, which this change
+			// did not touch.
+			if !ok || page.Mailbox != mailbox || !page.Counts.Known || (step < 0 && page.Counts.Unseen == 0) {
+				return cached
+			}
+			page.Counts.Unseen = uint32(int64(page.Counts.Unseen) + int64(step))
+			return page
+		})
+	}
 }
 
 // CachedMessagePart holds a cached individual message with optional body data
@@ -171,11 +510,22 @@ type CachedMessagePart struct {
 	HeaderData []byte // nil if only envelope/flags are cached
 	BodyData   []byte // nil if only envelope/flags are cached
 	Mailbox    string
+	// UIDValidity is the folder's UIDVALIDITY as the session held it when the
+	// message was read, 0 where it was not known. The message is kept by its
+	// UID, which names another message once the UIDVALIDITY has moved, and it
+	// can outlive everything else the session held of the folder from before
+	// (see handleGetPart).
+	UIDValidity uint32
+	// ReaderFields says that Message carries the verdict and References the
+	// reader shows, which only a read of the part for the reader fetches.
+	ReaderFields bool
 }
 
-// updateCachedMessageFlags updates flags for specific messages in cached message lists
-func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.MessageID, addFlags []imap.Flag, removeFlags []imap.Flag) {
-	applyFlagsToCache(ctx.Session.Cache(), ctx.Server.Logger().Debugf, mailbox, uid, addFlags, removeFlags)
+// updateCachedMessageFlags updates flags for specific messages in cached message lists.
+// It reports whether the mailbox's cached count was dropped (see
+// applyFlagsToCache), for the caller to read it again.
+func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.MessageID, addFlags []imap.Flag, removeFlags []imap.Flag) bool {
+	return applyFlagsToCache(ctx.Session.Cache(), ctx.Server.Logger().Debugf, mailbox, uid, addFlags, removeFlags)
 }
 
 // patchCachedConversations brings the conversations this session has assembled
@@ -187,53 +537,92 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 // member of that same conversation. A conversation that does not hold the
 // message is left alone — it is not affected by the change — but one whose
 // members cannot be told apart from it is dropped rather than guessed at.
+//
+// Every folder's conversations are looked through, not only this one's: a
+// conversation is kept under the folder it was opened from, and one opened
+// from the Inbox holds the user's own replies from Sent. Patched under Sent's
+// keys alone, a reply starred in Sent was shown unstarred in the Inbox's.
+// Finding them all walks no more of the cache than finding this folder's
+// did: the cache goes through every key it holds for any prefix.
 func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interface{}), mailbox, uidStr string, addFlags, removeFlags []imap.Flag) {
-	keys := cache.GetKeysWithPrefix("thread:" + mailbox + ":")
-	if len(keys) == 0 {
-		return
-	}
-
-	for _, key := range keys {
-		cached, ok := cache.Get(key)
-		if !ok {
-			continue
-		}
-		msgs, ok := cached.([]IMAPMessage)
-		if !ok {
-			cache.Delete(key)
-			continue
-		}
-		for i := range msgs {
-			// By the id the reader names messages with, which is the provider's
-			// own: a UID under IMAP, a file name under maildir.
-			if msgs[i].AlpsUID != uidStr {
-				continue
+	for _, key := range cache.GetKeysWithPrefix("thread:") {
+		patched := false
+		cache.Update(key, func(cached interface{}) interface{} {
+			msgs, ok := cached.([]IMAPMessage)
+			if !ok {
+				return nil
 			}
-			flags := msgs[i].Flags
-			for _, flag := range addFlags {
-				if !slices.Contains(flags, flag) {
-					flags = append(flags, flag)
+			for i := range msgs {
+				// By the id the reader names messages with, which is the provider's
+				// own: a UID under IMAP, a file name under maildir. It names a
+				// message only within its folder, and the conversations walked are
+				// every folder's, each holding that folder's messages and the
+				// user's own from Sent. Every member names its folder (namedIn).
+				// The key is not asked: it names only the folder the conversation
+				// was opened from, and Work's begins the keys of Work:Sub too.
+				if msgs[i].AlpsUID != uidStr || msgs[i].Mailbox != mailbox {
+					continue
 				}
-			}
-			for _, flag := range removeFlags {
-				for j := len(flags) - 1; j >= 0; j-- {
-					if flags[j] == flag {
-						flags = append(flags[:j], flags[j+1:]...)
-						break
+				// A reader may be encoding the old conversation now. Its slice,
+				// message buffer and flag storage must all stay unchanged. Update
+				// publishes the new snapshot atomically, so another flag change
+				// cannot overwrite it and an invalidation cannot be undone.
+				updated := slices.Clone(msgs)
+				message := *msgs[i].FetchMessageBuffer
+				flags := slices.Clone(message.Flags)
+				for _, flag := range addFlags {
+					if !slices.Contains(flags, flag) {
+						flags = append(flags, flag)
 					}
 				}
+				for _, flag := range removeFlags {
+					for j := len(flags) - 1; j >= 0; j-- {
+						if flags[j] == flag {
+							flags = append(flags[:j], flags[j+1:]...)
+							break
+						}
+					}
+				}
+				message.Flags = flags
+				updated[i].FetchMessageBuffer = &message
+				patched = true
+				return updated
 			}
-			msgs[i].Flags = flags
-			cache.Set(key, msgs)
+			return msgs
+		})
+		if patched {
 			debugf("Updated flags for message %s in conversation %s", uidStr, key)
-			break
 		}
 	}
 }
 
+// listedMessage finds the message named uid among a page's rows and, in a
+// threaded page, among the earlier messages of each row's conversation, which
+// the row (the conversation's latest message) carries as SubMessages. It
+// returns a copy of the rows, and the message in it, to be changed there: the
+// rows it was given are the cached page's, which a request may be reading.
+func listedMessage(rows []provider.Message, uid string) ([]provider.Message, *provider.Message) {
+	for i := range rows {
+		if rows[i].ID.String() == uid {
+			rows = slices.Clone(rows)
+			return rows, &rows[i]
+		}
+		for j := range rows[i].SubMessages {
+			if rows[i].SubMessages[j].ID.String() == uid {
+				rows = slices.Clone(rows)
+				rows[i].SubMessages = slices.Clone(rows[i].SubMessages)
+				return rows, &rows[i].SubMessages[j]
+			}
+		}
+	}
+	return nil, nil
+}
+
 // applyFlagsToCache brings the session's cached copies of one message, and
 // its mailbox's unseen count, in line with a flag change the server has made.
-func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), mailbox string, uid provider.MessageID, addFlags []imap.Flag, removeFlags []imap.Flag) {
+// It reports whether it dropped the count instead, as the copies could not say
+// what the message was before the change.
+func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), mailbox string, uid provider.MessageID, addFlags []imap.Flag, removeFlags []imap.Flag) bool {
 	// Convert IMAP flags to alps flags
 	alpsAddFlags := make([]provider.Flag, len(addFlags))
 	for i, f := range addFlags {
@@ -246,9 +635,9 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 
 	// What the cached copies said about \Seen BEFORE this change. The unseen
 	// count may only move when the message really goes from unseen to seen or
-	// back: reading a message adds \Seen twice (the body fetch sets it, and
-	// so does the reader's mark-as-read), and a count that dropped on both
-	// fell by two for one message.
+	// back: adding \Seen to a message that already has it changes nothing on
+	// the server, and a count that dropped on every add fell by two for one
+	// message marked read twice.
 	var cachedSeen, cachedUnseen bool
 	noteSeen := func(flags []provider.Flag) {
 		if slices.Contains(flags, provider.Flag(imap.FlagSeen)) {
@@ -258,8 +647,14 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 		}
 	}
 
-	// Helper function to update flags
+	// The flags after the change, in a list of their own. The cached copies
+	// are changed by publishing new ones, never in place: a request may be
+	// answering from what it read of them, and a list with room to spare was
+	// written through every slice that shared it. Update publishes each new
+	// copy under the cache's lock, so that changes made side by side are all
+	// kept.
 	updateFlags := func(flags []provider.Flag) []provider.Flag {
+		flags = slices.Clone(flags)
 		// Add new flags
 		for _, flag := range alpsAddFlags {
 			if !slices.Contains(flags, flag) {
@@ -285,33 +680,78 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	// Convert UID to MessageID for comparison
 	uidStr := uid.String()
 
-	messageUpdated := false
-	for _, key := range keys {
-		if cached, ok := cache.Get(key); ok {
-			cachedData := cached.(CachedMessages)
-			// Find and update the message in this page
-			for i := range cachedData.Messages {
-				if cachedData.Messages[i].ID.String() == uidStr {
-					noteSeen(cachedData.Messages[i].Flags)
-					cachedData.Messages[i].Flags = updateFlags(cachedData.Messages[i].Flags)
-					cache.Set(key, cachedData)
-					messageUpdated = true
-					debugf("Updated flags for message %s in cache key %s", uidStr, key)
-					break
-				}
+	patchPart := func(key string, prior bool) bool {
+		updated := false
+		cache.Update(key, func(cached interface{}) interface{} {
+			part, ok := cached.(CachedMessagePart)
+			if !ok || part.Message == nil || (part.Mailbox != mailbox && !(prior && part.Mailbox == "")) {
+				return cached
 			}
+			if prior {
+				// The exact metadata key also identifies an older entry that
+				// names no folder; other parts still require explicit provenance.
+				noteSeen(part.Message.Flags)
+			}
+			message := *part.Message
+			message.Flags = updateFlags(message.Flags)
+			part.Message = &message
+			updated = true
+			return part
+		})
+		if updated {
+			debugf("Updated flags for message %s in cache key %s", uidStr, key)
+		}
+		return updated
+	}
+
+	// Ask and patch the message's own entry atomically, before touching pages.
+	// Concurrent idempotent marks must not both count its old state. A listing
+	// originally shares the row with this entry, so each patch publishes its
+	// own copy and the untouched page still says what it said before.
+	msgKey := fmt.Sprintf("message:%s:%s:[]", mailbox, uidStr)
+	messageUpdated := patchPart(msgKey, true)
+	for _, key := range keys {
+		updated := false
+		cache.Update(key, func(cached interface{}) interface{} {
+			page, ok := cached.(CachedMessages)
+			// Another folder's page lists its own messages, and the UID names
+			// a different one there.
+			if !ok || page.Mailbox != mailbox {
+				return cached
+			}
+			rows, row := listedMessage(page.Messages, uidStr)
+			if row == nil {
+				return cached
+			}
+			noteSeen(row.Flags)
+			row.Flags = updateFlags(row.Flags)
+			page.Messages = rows
+			updated = true
+			return page
+		})
+		if updated {
+			messageUpdated = true
+			debugf("Updated flags for message %s in cache key %s", uidStr, key)
 		}
 	}
 
-	// Update individual message cache (metadata only)
-	msgKey := fmt.Sprintf("message:%s:%s:[]", mailbox, uidStr)
-	if cached, ok := cache.Get(msgKey); ok {
-		cachedPart := cached.(CachedMessagePart)
-		if cachedPart.Message != nil {
-			noteSeen(cachedPart.Message.Flags)
-			cachedPart.Message.Flags = updateFlags(cachedPart.Message.Flags)
-			cache.Set(msgKey, cachedPart)
-			debugf("Updated flags for message %s in individual cache", uidStr)
+	// Update the message's own entries: its metadata, and each part read with
+	// it. A part is answered with the flags it was cached with, and the reader
+	// shows them, so a part that kept its old ones reopened a starred message
+	// unstarred, or a message marked unread as read. They are kept across
+	// writes now, as the body under a UID does not change.
+	//
+	// The parts (handleGetPart) are cached with the message as the read found
+	// it, flags included. A read leaves \Seen as it is, so an unread message is
+	// cached unread, and the reader's own mark-as-read is the change that has
+	// to reach them: without it the message reopened unread. They follow the
+	// change but are not asked what the message was before it, as the
+	// message's own entry was above. That is the listing's to say: a part is
+	// not read again when the listing is, and one cached before another client
+	// changed the message would move the count for a change that changed
+	// nothing.
+	for _, key := range cache.GetKeysWithPrefix(fmt.Sprintf("message:%s:%s:[", mailbox, uidStr)) {
+		if key != msgKey && patchPart(key, false) {
 			messageUpdated = true
 		}
 	}
@@ -325,65 +765,139 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	seenAdded := slices.Contains(addFlags, imap.FlagSeen)
 	seenRemoved := slices.Contains(removeFlags, imap.FlagSeen)
 	if !seenAdded && !seenRemoved {
-		return
+		return false
+	}
+
+	// The count moves by one where the copies say the message was the other
+	// way before the change, and not at all where they say it was this way.
+	step := 0
+	switch {
+	case cachedSeen == cachedUnseen:
+	case seenAdded && cachedUnseen:
+		step = -1
+	case seenRemoved && cachedSeen:
+		step = 1
+	}
+
+	// The pages move with the server's count, cached status or not. When the
+	// copies cannot say what the message was, they keep the count they were
+	// read at: if the message was unseen, the next count read is not theirs,
+	// and they are read again.
+	if step != 0 {
+		shiftListedUnseen(cache, mailbox, step)
 	}
 
 	statusKey := "status:" + mailbox
 	cached, ok := cache.Get(statusKey)
 	if !ok {
-		return
+		return false
 	}
 	status := cached.(*MailboxStatus)
 	if status.NumUnseen == nil {
-		return
+		return false
 	}
 
 	// Copies that disagree, or no copy at all, say nothing reliable about the
-	// message's state before the change: drop the count and let the next
-	// listing ask the server.
+	// message's state before the change: drop the count, for the caller to
+	// read again. Left missing, the folder list's own count for the folder
+	// would be shown in its place (withHeldCounts), and the list outlives
+	// writes: a message opened from a search across every folder, which no
+	// copy of the folder's own holds, left its folder counted unread until
+	// the list expired.
 	if cachedSeen == cachedUnseen {
 		cache.Delete(statusKey)
 		debugf("Dropped cached status for %s: the message's previous \\Seen state is unknown", mailbox)
-		return
+		return true
 	}
 
-	switch {
-	case seenAdded && cachedUnseen && *status.NumUnseen > 0:
-		newCount := *status.NumUnseen - 1
-		status.NumUnseen = &newCount
-		cache.Set(statusKey, status)
-		debugf("Decremented unseen count for %s to %d", mailbox, newCount)
-	case seenRemoved && cachedSeen:
-		newCount := *status.NumUnseen + 1
-		status.NumUnseen = &newCount
-		cache.Set(statusKey, status)
-		debugf("Incremented unseen count for %s to %d", mailbox, newCount)
+	if step == 0 {
+		return false
 	}
+	// A new status, with counts of its own: the cached one is read by every
+	// folder list, and the counts it points to may be the provider's.
+	var unseen uint32
+	moved := false
+	cache.Update(statusKey, func(cached interface{}) interface{} {
+		status, ok := cached.(*MailboxStatus)
+		if !ok || status.StatusData == nil || status.NumUnseen == nil || (step < 0 && *status.NumUnseen == 0) {
+			return cached
+		}
+		data := *status.StatusData
+		unseen = uint32(int64(*status.NumUnseen) + int64(step))
+		data.NumUnseen = &unseen
+		moved = true
+		return &MailboxStatus{StatusData: &data}
+	})
+	if moved {
+		debugf("Moved the unseen count for %s to %d", mailbox, unseen)
+	}
+	return false
+}
+
+// heldCounts returns the counts the session holds for a mailbox, or nil when
+// it holds none, or not both.
+func heldCounts(cache *alps.Cache, mailbox string) *MailboxStatus {
+	cached, ok := cache.Get("status:" + mailbox)
+	if !ok {
+		return nil
+	}
+	held, ok := cached.(*MailboxStatus)
+	if !ok || held.NumUnseen == nil || held.NumMessages == nil {
+		return nil
+	}
+	return held
+}
+
+// withHeldCounts returns a copy of a folder list with the counts the session
+// holds laid over the list's own. The folder list outlives writes, and a flag
+// change moves only its folder's cached counts (applyFlagsToCache): a list
+// answered as it was cached showed a folder read, or marked unread, with its
+// old count. A copy, as other requests may be reading the cached list.
+func withHeldCounts(cache *alps.Cache, mailboxes []MailboxInfo) []MailboxInfo {
+	held := slices.Clone(mailboxes)
+	for i := range held {
+		if status := heldCounts(cache, held[i].Name()); status != nil {
+			held[i].Unseen = int(*status.NumUnseen)
+			held[i].Total = int(*status.NumMessages)
+		}
+	}
+	return held
 }
 
 // cachedMailboxList returns the session's folder list, going to IMAP only when
-// the cache has none. The key is the one every mailbox verb already drops, so
-// a list read straight after a create or a rename is the new tree.
+// the cache has none, with the counts the session holds (withHeldCounts). The
+// key is the one every mailbox verb already drops, so a list read straight
+// after a create or a rename is the new tree.
 func cachedMailboxList(ctx *alps.Context) ([]MailboxInfo, error) {
 	const cacheKey = "mailboxes"
-	if cached, ok := ctx.Session.Cache().Get(cacheKey); ok {
-		return cached.([]MailboxInfo), nil
+	cache := ctx.Session.Cache()
+	if cached, ok := cache.Get(cacheKey); ok {
+		return withHeldCounts(cache, cached.([]MailboxInfo)), nil
 	}
 
 	var mailboxes []MailboxInfo
-	err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err := doRequestMail(ctx, func(p provider.MailProvider) error {
 		var err error
 		mailboxes, err = listMailboxesWithProvider(p)
 		if err != nil {
 			return err
 		}
-		ctx.Session.Cache().Set(cacheKey, mailboxes)
+		cache.Set(cacheKey, mailboxes)
+		// The counts the list carries are the newest the session has, and go
+		// where the counts are held, as getBaseMailboxData's list puts them.
+		// Else the older ones held from before, laid over this list and every
+		// listing after it, would bring back what it had replaced.
+		for _, mbox := range mailboxes {
+			if mbox.Unseen >= 0 && mbox.Total >= 0 {
+				cache.Set("status:"+mbox.Name(), mailboxInfoToStatus(mbox))
+			}
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return mailboxes, nil
+	return withHeldCounts(cache, mailboxes), nil
 }
 
 func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
@@ -461,20 +975,42 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 		// Everything is cached, skip provider call entirely
 		err = nil
 	} else {
-		err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err = doRequestMail(ctx, func(p provider.MailProvider) error {
 			var err error
 			var needsMailboxListFetch = len(mailboxes) == 0
 
 			// Collect which statuses we need to fetch
 			statusesToFetch := make(map[string]bool)
+			var missing []string
 			if mboxName != "" {
 				if _, ok := ctx.Session.Cache().Get("status:" + mboxName); !ok {
 					statusesToFetch[mboxName] = true
+					missing = append(missing, mboxName)
 				}
 			}
 			if mboxName != "INBOX" {
 				if _, ok := ctx.Session.Cache().Get("status:INBOX"); !ok {
 					statusesToFetch["INBOX"] = true
+					missing = append(missing, "INBOX")
+				}
+			}
+
+			// With the folder list cached, the counts that are missing are
+			// asked for on their own. Read with the list instead, one or two
+			// missing counts cost a LIST-STATUS over every folder, or on a
+			// server without it a LIST and a STATUS per subscribed folder.
+			if !needsMailboxListFetch && len(missing) > 0 {
+				if fetched, ok := statusesOfListed(p, mailboxes, missing); ok {
+					for _, name := range missing {
+						statuses[name] = fetched[name]
+						ctx.Session.Cache().Set("status:"+name, fetched[name])
+						ctx.Server.Logger().Debugf("Cache MISS for status:%s (via STATUS)", name)
+					}
+					statusesToFetch = nil
+				} else {
+					// The list the session holds may be what is out of date,
+					// so the list read now replaces it.
+					needsMailboxListFetch = true
 				}
 			}
 
@@ -494,6 +1030,7 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 
 				// Cache ALL statuses from the list (not just the ones we need)
 				// This way, subsequent requests will be fully cached
+				var unlisted []string
 				for _, mbox := range mailboxes {
 					if mbox.Unseen >= 0 && mbox.Total >= 0 {
 						// Status was included in LIST-STATUS - cache it
@@ -514,20 +1051,48 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 							continue
 						}
 						// Server doesn't support LIST-STATUS, need individual STATUS command
-						status, err := getMailboxStatusWithProvider(p, mbox.Name())
-						if err != nil {
-							if statusesToFetch[mbox.Name()] {
-								return err
-							}
-							// A sidebar folder's STATUS failure must not take
-							// down the whole mailbox view.
-							ctx.Server.Logger().Errorf("Failed to get status for mailbox %q: %v", mbox.Name(), err)
-							continue
-						}
-						statuses[mbox.Name()] = status
-						ctx.Session.Cache().Set("status:"+mbox.Name(), status)
-						ctx.Server.Logger().Debugf("Cache MISS for status:%s (via STATUS)", mbox.Name())
+						unlisted = append(unlisted, mbox.Name())
+					} else if mbox.Name() != mboxName && mbox.Name() != "INBOX" {
+						// A folder whose counts are not read again here (an
+						// unsubscribed one, on a server without LIST-STATUS)
+						// forgets the ones the session held for it. A change
+						// elsewhere no longer drops them, and kept, they would
+						// go on vouching for its cached pages when it is
+						// opened, whether mail reached it since or not. The
+						// INBOX's and the open folder's stay: they are read
+						// from the cache below.
+						//
+						// Its parts' validator goes with them, as nothing
+						// checks it now (heldPartUIDValidity): a part of the
+						// folder made again elsewhere was confirmed to the
+						// browser with a 304, the old one for the new message,
+						// even after a refresh. The next part read asks the
+						// folder's UIDVALIDITY again.
+						ctx.Session.Cache().Delete("status:" + mbox.Name())
+						ctx.Session.Cache().Delete("uidvalidity:" + mbox.Name())
+						// Conversations have no validity of their own. Without
+						// these checks, a later normal open could list a recreated
+						// folder yet answer with its old conversation by UID.
+						dropConversationsHolding(ctx.Session.Cache(), mbox.Name())
 					}
+				}
+
+				// Sent together, so that the listing waits for one round trip
+				// rather than one per folder.
+				fetched, errs := getMailboxStatusesWithProvider(p, unlisted)
+				for i, name := range unlisted {
+					if errs[i] != nil {
+						if statusesToFetch[name] {
+							return errs[i]
+						}
+						// A sidebar folder's STATUS failure must not take
+						// down the whole mailbox view.
+						ctx.Server.Logger().Errorf("Failed to get status for mailbox %q: %v", name, errs[i])
+						continue
+					}
+					statuses[name] = fetched[i]
+					ctx.Session.Cache().Set("status:"+name, fetched[i])
+					ctx.Server.Logger().Debugf("Cache MISS for status:%s (via STATUS)", name)
 				}
 			}
 
@@ -566,14 +1131,25 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 	}
 	statuses["INBOX"] = inbox
 
+	// The answer's own copy of the list, which the session's cache holds,
+	// whether it was found there or read now and put there. Marked in place,
+	// the list carried this request's active folder and counts into the next
+	// answer read from it, and two requests of the session wrote it at once.
+	mailboxes = slices.Clone(mailboxes)
 	for i := range mailboxes {
 		// Populate unseen & active states
-		// Always reset Active first (important when using cached mailboxes)
 		mailboxes[i].Active = false
 		if active != nil && mailboxes[i].Name() == active.Mailbox {
 			mailboxes[i].Active = true
 		}
 		status := statuses[mailboxes[i].Name()]
+		if status == nil {
+			// Every folder's counts the session holds, not only the INBOX's
+			// and this folder's, as withHeldCounts lays them: a folder read,
+			// or marked unread, and then left kept its old count in the
+			// sidebar until the list was read again.
+			status = heldCounts(ctx.Session.Cache(), mailboxes[i].Name())
+		}
 		if status != nil {
 			mailboxes[i].Unseen = int(*status.NumUnseen)
 			mailboxes[i].Total = int(*status.NumMessages)
@@ -587,87 +1163,280 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 	}, nil
 }
 
+// statusesOfListed reads the status of each of names, folders the session's
+// folder list holds, with a STATUS each. It reports false when one of them is
+// not a folder of that list that a STATUS may be asked of, or when a STATUS
+// fails: the folder list may be what is out of date, and is read again.
+func statusesOfListed(p provider.MailProvider, mailboxes []MailboxInfo, names []string) (map[string]*MailboxStatus, bool) {
+	for _, name := range names {
+		i := slices.IndexFunc(mailboxes, func(mbox MailboxInfo) bool { return mbox.Name() == name })
+		if i < 0 || mailboxes[i].HasAttr(string(imap.MailboxAttrNoSelect)) ||
+			mailboxes[i].HasAttr(string(imap.MailboxAttrNonExistent)) {
+			return nil, false
+		}
+	}
+	got, errs := getMailboxStatusesWithProvider(p, names)
+	fetched := make(map[string]*MailboxStatus, len(names))
+	for i, name := range names {
+		if errs[i] != nil || got[i] == nil {
+			return nil, false
+		}
+		fetched[name] = got[i]
+	}
+	return fetched, true
+}
+
 // MailboxStatusResponse is the JSON response for the mailbox status polling endpoint.
 type MailboxStatusResponse struct {
 	Total  int `json:"total"`
 	Unseen int `json:"unseen"`
+	// UIDNext and UIDValidity are the ones read with the counts, 0 where
+	// they are not known, as a listing's Mailbox and Inbox carry them. A
+	// client that reads the listing again only when the folder changed can
+	// tell from them what the counts do not show: a message that arrived as
+	// another went, or a folder made again elsewhere.
+	UIDNext     uint32 `json:"uidnext"`
+	UIDValidity uint32 `json:"uidvalidity"`
+	// HighestModSeq is the change number read with the counts where the mail
+	// server numbers its changes, as the listing's Mailbox and Inbox carry
+	// it, and is left out otherwise. A flag changed in another client, which
+	// may leave every count as it was, moves it.
+	HighestModSeq uint64 `json:"highestmodseq,omitempty,string"`
 }
 
 // handleMailboxStatus returns a lightweight JSON response with the current
-// mailbox message count and unseen count. It bypasses the status cache to
-// get a fresh answer from the IMAP server (which triggers NOOP to pick up
-// changes). When the counts differ from the previously cached values it
-// also invalidates the message-page caches so the next full page fetch
-// returns up-to-date data.
+// mailbox message count and unseen count. It asks the IMAP server, which picks
+// up changes with a NOOP, rather than the status cache, and records the answer
+// in the cache. When the counts differ from the ones the session held, it
+// also drops the folder's cached pages and conversations, so the next full
+// page fetch returns up-to-date data, and lays the new counts over the folder
+// list (patchListedCounts).
+//
+// The list was dropped instead, so that the listing after it read every
+// folder's counts again: mail that arrives here may have been filed into
+// folders no check looks at. That cost a LIST-STATUS, or a STATUS per
+// subscribed folder, for every arrival. A list patched keeps the expiry it was
+// read with, so those folders' counts are read again within one cache
+// lifetime of the last read all the same, which is as soon as a poll that
+// sees no change reads the listing again past the cache.
+//
+// The other folders' counts are kept too. Dropped, as they were once, each
+// other folder's next check found no earlier counts to compare with, and read
+// as a change.
 func handleMailboxStatus(ctx *alps.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
 		return alps.NewHTTPError(http.StatusBadRequest, err)
 	}
-
-	cache := ctx.Session.Cache()
-
-	// Remember the previously cached counts so we can detect changes.
-	var prevTotal, prevUnseen uint32
-	if cached, ok := cache.Get("status:" + mboxName); ok {
-		prev := cached.(*MailboxStatus)
-		if prev.NumMessages != nil {
-			prevTotal = *prev.NumMessages
-		}
-		if prev.NumUnseen != nil {
-			prevUnseen = *prev.NumUnseen
+	// The folders `with` names are read in the same request, the poll's Inbox
+	// beside the folder on screen, and the folders other tabs show: a request
+	// each waited its turn on the connection, one after another.
+	names := []string{mboxName}
+	for _, name := range ctx.Request.URL.Query()["with"] {
+		if name != "" && !slices.Contains(names, name) {
+			names = append(names, name)
 		}
 	}
 
-	// Clear cached status so the provider call goes to IMAP.
-	cache.Delete("status:" + mboxName)
-
-	var status *MailboxStatus
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		s, err := p.GetMailboxStatus(mboxName)
-		if err != nil {
-			return err
+	cache := ctx.Session.Cache()
+	prev := make([]mailboxCounts, len(names))
+	held := make([][]uint32, len(names))
+	var statuses []*MailboxStatus
+	var errs []error
+	err = ctx.Session.DoBackgroundMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+		// The counts held before are read under the lock, beside the STATUS:
+		// a listing that ran while this request waited for it may have read
+		// newer ones. They stay in the cache until the answer replaces them,
+		// so that a listing meanwhile does not find them missing and read
+		// every folder's counts again.
+		for i, name := range names {
+			if cached, ok := cache.Get("status:" + name); ok {
+				prev[i] = countsOf(cached.(*MailboxStatus))
+			}
+			held[i] = heldUIDValidities(cache, name)
 		}
-		status = providerStatusToMailboxStatus(s)
-		cache.Set("status:"+mboxName, status)
+		statuses, errs = getMailboxStatusesWithProvider(p, names)
+		if errs[0] != nil {
+			return errs[0]
+		}
+		for i, name := range names {
+			if errs[i] == nil {
+				cache.Set("status:"+name, statuses[i])
+			}
+		}
 		return nil
 	})
 	if err != nil {
 		return err
 	}
 
-	newTotal := *status.NumMessages
-	newUnseen := *status.NumUnseen
-
-	// If counts changed, invalidate message-page caches and mailbox list
-	// so the next full-page fetch will return fresh data.
-	if newTotal != prevTotal || newUnseen != prevUnseen {
-		dropMailboxListings(cache, mboxName)
-		cache.Delete("mailboxes")
-		// Also clear all status caches so sidebar counts refresh
-		for _, key := range cache.GetKeysWithPrefix("status:") {
-			cache.Delete(key)
+	answer := func(counts mailboxCounts) MailboxStatusResponse {
+		return MailboxStatusResponse{
+			Total:         int(counts.Messages),
+			Unseen:        int(counts.Unseen),
+			UIDNext:       counts.UIDNext,
+			UIDValidity:   counts.UIDValidity,
+			HighestModSeq: counts.HighestModSeq,
 		}
-		ctx.Server.Logger().Debugf("Mailbox %s status changed: total %d→%d, unseen %d→%d — caches invalidated",
-			mboxName, prevTotal, newTotal, prevUnseen, newUnseen)
+	}
+	counts := countsOf(statuses[0])
+	noteMailboxStatus(ctx, mboxName, prev[0], statuses[0], held[0])
+	if len(names) == 1 {
+		return ctx.JSON(http.StatusOK, answer(counts))
+	}
+	// A folder `with` names that could not be read, one deleted say, is left
+	// out, and the asker reads it as a check that said nothing.
+	with := make(map[string]MailboxStatusResponse, len(names)-1)
+	for i, name := range names[1:] {
+		if errs[i+1] != nil {
+			continue
+		}
+		c := countsOf(statuses[i+1])
+		noteMailboxStatus(ctx, name, prev[i+1], statuses[i+1], held[i+1])
+		with[name] = answer(c)
+	}
+	return ctx.JSON(http.StatusOK, struct {
+		MailboxStatusResponse
+		With map[string]MailboxStatusResponse `json:"with"`
+	}{answer(counts), with})
+}
+
+// noteMailboxStatus drops what a folder's new counts say is out of date: its
+// pages, and with them the folder list, when the folder changed since the
+// counts held before, prev, or since its pages were read.
+func noteMailboxStatus(ctx *alps.Context, mboxName string, prev mailboxCounts, read *MailboxStatus, heldValidities []uint32) {
+	cache := ctx.Session.Cache()
+	counts := countsOf(read)
+	// No earlier counts is not zero earlier counts: taken as zero, every first
+	// check of a folder read as a change. Without them, the folder's cached
+	// pages say whether it moved since they were read, as each holds the
+	// counts it was read at.
+	readAt, recounted := true, false
+	if !prev.Known {
+		readAt, recounted = pagesReadAt(cache, mboxName, counts)
 	}
 
-	return ctx.JSON(http.StatusOK, MailboxStatusResponse{
-		Total:  int(newTotal),
-		Unseen: int(newUnseen),
-	})
+	renumbered := renumberedSince(heldValidities, counts.UIDValidity)
+	// A message read or marked unread, where the folder holds the messages it
+	// held and the change numbers say which flags changed (reflaggedOnly).
+	// The pages stay, and each has the flags that changed laid over it when
+	// it is next listed (reflaggedPage). The folder list stays as well: no
+	// mail came, here or elsewhere, and it shows this folder's counts from
+	// the status just kept (withHeldCounts).
+	reflagged := prev.Known && prev.Unseen != counts.Unseen && reflaggedOnly(prev, counts) ||
+		!prev.Known && readAt && pagesReadAtOtherUnseen(cache, mboxName, counts)
+	switch {
+	case renumbered || prev.Known && (prev.Messages != counts.Messages || prev.Unseen != counts.Unseen && !reflagged ||
+		uidMoved(prev.UIDNext, counts.UIDNext)):
+		if renumbered {
+			dropRenumberedMailbox(cache, mboxName)
+		} else {
+			dropMailboxListings(cache, mboxName)
+		}
+		patchListedCounts(cache, []string{mboxName}, []*MailboxStatus{read})
+		ctx.Server.Logger().Debugf("Mailbox %s status changed: total %d→%d, unseen %d→%d — caches invalidated",
+			mboxName, prev.Messages, counts.Messages, prev.Unseen, counts.Unseen)
+	case !readAt:
+		// Pages that disagree, or none at all, mean the folder's listings
+		// are dropped, all of them. A page read at another message count
+		// says that mail came or went, as a change seen against earlier
+		// counts does, and the new counts go into the folder list as they
+		// do for one. One that differs only in its unread count says no
+		// more than that a message was read or marked unread, which may
+		// have been the session's own doing, and the list is left as it is.
+		if renumbered {
+			dropRenumberedMailbox(cache, mboxName)
+		} else {
+			dropMailboxListings(cache, mboxName)
+		}
+		if recounted || renumbered {
+			patchListedCounts(cache, []string{mboxName}, []*MailboxStatus{read})
+		}
+		ctx.Server.Logger().Debugf("Mailbox %s status read with no earlier counts: its pages are not at %d, %d unseen — its listings dropped",
+			mboxName, counts.Messages, counts.Unseen)
+	case reflagged:
+		// The conversations go, as they went with the pages: a member's
+		// flags are kept with it, and a conversation is not read with a
+		// listing.
+		dropConversationsHolding(cache, mboxName)
+		ctx.Server.Logger().Debugf("Mailbox %s flags changed: unseen %d→%d, change %d→%d — its pages kept, its conversations dropped",
+			mboxName, prev.Unseen, counts.Unseen, prev.HighestModSeq, counts.HighestModSeq)
+	}
+}
+
+// pagesReadAt reports whether the session holds pages of mailbox and every one
+// of them was read at counts. With no page to say so, the folder may have
+// changed under conversations assembled from it. recounted reports whether a
+// page was read at another message count.
+//
+// A page whose folder holds the messages it held and says which flags changed
+// since (reflaggedOnly) is read at counts too, as it is brought up to date
+// when it is next listed (reflaggedPage).
+func pagesReadAt(cache *alps.Cache, mailbox string, counts mailboxCounts) (readAt, recounted bool) {
+	held, agree := false, true
+	for _, key := range cache.GetKeysWithPrefix("messages:" + mailbox + ":") {
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		page, ok := cached.(CachedMessages)
+		// Another folder's pages were read at its own counts, and say
+		// nothing of whether this one moved.
+		if ok && page.Mailbox != mailbox {
+			continue
+		}
+		held = true
+		switch {
+		case !ok:
+			agree = false
+		case page.Counts == counts, reflaggedOnly(page.Counts, counts):
+		default:
+			agree = false
+		}
+		if ok && page.Counts.Known && page.Counts.Messages != counts.Messages {
+			recounted = true
+		}
+	}
+	return held && agree, recounted
+}
+
+// pagesReadAtOtherUnseen reports whether a page the session holds of mailbox
+// was read at another unread count than counts'.
+func pagesReadAtOtherUnseen(cache *alps.Cache, mailbox string, counts mailboxCounts) bool {
+	for _, key := range cache.GetKeysWithPrefix("messages:" + mailbox + ":") {
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		if page, ok := cached.(CachedMessages); ok && page.Mailbox == mailbox && page.Counts.Unseen != counts.Unseen {
+			return true
+		}
+	}
+	return false
 }
 
 func handleGetMailbox(ctx *alps.Context) error {
+	// The UIDVALIDITY values the session holds the folder at, taken before
+	// anything below reads its status again, to compare with the status this
+	// page is read beside. A refresh drops the folder's status and pages,
+	// which are what a new UIDVALIDITY is seen against. And a folder with no
+	// page held, opened when its counts have gone, has its status read for
+	// this page and nothing to compare it with but these: a conversation, or
+	// a message, read from it before it was made again elsewhere went on
+	// answering for the new folder's message under the same UID.
+	cache := ctx.Session.Cache()
+	var heldValidities []uint32
+	mboxName, nameErr := url.PathUnescape(ctx.Param("mbox"))
+	if nameErr == nil {
+		heldValidities = heldUIDValidities(cache, mboxName)
+	}
 	if refresh := ctx.QueryParam("refresh"); refresh == "1" || refresh == "true" {
-		cache := ctx.Session.Cache()
 		cache.Delete("mailboxes")
 		for _, key := range cache.GetKeysWithPrefix("status:") {
 			cache.Delete(key)
 		}
 
-		mboxName, err := url.PathUnescape(ctx.Param("mbox"))
-		if err == nil {
+		if nameErr == nil {
 			dropMailboxListings(cache, mboxName)
 		}
 	}
@@ -680,15 +1449,6 @@ func handleGetMailbox(ctx *alps.Context) error {
 	mbox := ibase.Mailbox
 	if mbox == nil {
 		return alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
-	}
-	title := mbox.Name()
-	if title == "INBOX" {
-		title = "Inbox"
-	} else if title == "*" {
-		title = "Search All Mailboxes"
-	}
-	if mbox.NumUnseen != nil && *mbox.NumUnseen > 0 {
-		title = fmt.Sprintf("(%d) %s", *mbox.NumUnseen, title)
 	}
 
 	page := 0
@@ -737,14 +1497,25 @@ func handleGetMailbox(ctx *alps.Context) error {
 	// A search is never answered from the cache, and never stored in it.
 	//
 	// A cached page is dropped when the mailbox changes — a write here, or its
-	// counts moving (handleMailboxStatus). A search's answer changes without
-	// either: a body word is matched through a full-text index the server
-	// builds after delivery, so the message is counted well before its body can
-	// be found. The first search for it was empty, correctly, and that empty
-	// page was then the answer to every search after it until something else
-	// in the mailbox moved. A search is a question asked on purpose; it goes to
-	// the server each time.
+	// counts moving (handleMailboxStatus, CachedMessages.Counts). A search's
+	// answer changes without either: a body word is matched through a
+	// full-text index the server builds after delivery, so the message is
+	// counted well before its body can be found. The first search for it was
+	// empty, correctly, and that empty page was then the answer to every
+	// search after it until something else in the mailbox moved. A search is
+	// a question asked on purpose; it goes to the server each time.
 	cacheable := query == ""
+
+	// The counts this page is answered beside, taken before the listing is
+	// read so that a page never claims counts newer than its rows. A cached
+	// page is served only while they are still the ones it was read at.
+	counts := countsOf(mbox)
+	// A folder made again elsewhere, opened with a refresh or with no page
+	// held, has no cached page to be turned down below, and what was read
+	// from it before is dropped here instead.
+	if renumberedSince(heldValidities, counts.UIDValidity) {
+		dropRenumberedMailbox(ctx.Session.Cache(), mbox.Name())
+	}
 
 	// Try to get messages from cache
 	cached, hit := ctx.Session.Cache().Get(msgCacheKey)
@@ -752,7 +1523,34 @@ func handleGetMailbox(ctx *alps.Context) error {
 		hit = false
 	}
 	if hit {
-		if cachedData, ok := cached.(CachedMessages); ok {
+		cachedData, ok := cached.(CachedMessages)
+		// A page whose folder holds the messages it held, and says which
+		// flags changed since, has those flags read and laid over it rather
+		// than being read again.
+		if ok && cachedData.Counts != counts && cachedData.Counts.HighestModSeq < counts.HighestModSeq &&
+			reflaggedOnly(cachedData.Counts, counts) {
+			if patched, err := reflaggedPage(ctx, msgCacheKey, cachedData, counts); err == nil {
+				cachedData = patched
+			} else {
+				if errors.Is(err, errReflaggedMailboxRenumbered) {
+					// Reload status as well as rows: otherwise the fresh page
+					// would be published under the old mailbox identity.
+					var reloadErr error
+					ibase, reloadErr = getBaseMailboxData(ctx)
+					if reloadErr != nil {
+						return reloadErr
+					}
+					mbox = ibase.Mailbox
+					if mbox == nil {
+						return alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
+					}
+					counts = countsOf(mbox)
+					ok = false
+				}
+				ctx.Server.Logger().Debugf("The flags changed in %s since page %d was read could not be read, reading the page again: %v", mbox.Name(), page, err)
+			}
+		}
+		if ok && cachedData.Counts == counts {
 			total = cachedData.Total
 			threaded = cachedData.Threaded
 
@@ -765,6 +1563,12 @@ func handleGetMailbox(ctx *alps.Context) error {
 			ctx.Server.Logger().Debugf("Cache HIT for messages in %s page %d (query: %q)", mbox.Name(), page, query)
 		} else {
 			hit = false
+			// The folder's status can reach the session with the folder list,
+			// without a check for new mail, and then this is where a new
+			// UIDVALIDITY is seen.
+			if ok && uidMoved(cachedData.Counts.UIDValidity, counts.UIDValidity) {
+				dropRenumberedMailbox(ctx.Session.Cache(), mbox.Name())
+			}
 		}
 	}
 	if !hit {
@@ -785,9 +1589,11 @@ func handleGetMailbox(ctx *alps.Context) error {
 			// Cache the message list using provider types
 			if cacheable {
 				ctx.Session.Cache().Set(msgCacheKey, CachedMessages{
+					Mailbox:  mbox.Name(),
 					Messages: providerMsgs,
 					Total:    total,
 					Threaded: threaded,
+					Counts:   counts,
 				})
 			}
 
@@ -803,14 +1609,19 @@ func handleGetMailbox(ctx *alps.Context) error {
 				}
 				// Cache just the metadata (no body)
 				ctx.Session.Cache().Set(msgKey, CachedMessagePart{
-					Message:    &providerMsgs[i],
-					HeaderData: nil, // No body data yet
-					BodyData:   nil,
-					Mailbox:    mbox.Name(),
+					Message:     &providerMsgs[i],
+					HeaderData:  nil, // No body data yet
+					BodyData:    nil,
+					Mailbox:     mbox.Name(),
+					UIDValidity: counts.UIDValidity,
 				})
 			}
 			return nil
 		})
+		var limited *provider.LimitError
+		if errors.As(err, &limited) {
+			return searchRateLimited(ctx, limited)
+		}
 		if err != nil {
 			return err
 		}
@@ -824,10 +1635,20 @@ func handleGetMailbox(ctx *alps.Context) error {
 		ctx.Server.Logger().Debugf("Cache MISS for messages in %s page %d (query: %q), fetched and cached %d messages", mbox.Name(), page, query, len(msgs))
 	}
 
-	return ctx.JSON(http.StatusOK, map[string]interface{}{
+	title := mbox.Name()
+	if title == "INBOX" {
+		title = "Inbox"
+	} else if title == "*" {
+		title = "Search All Mailboxes"
+	}
+	if mbox.NumUnseen != nil && *mbox.NumUnseen > 0 {
+		title = fmt.Sprintf("(%d) %s", *mbox.NumUnseen, title)
+	}
+
+	answer := map[string]interface{}{
 		"Title":           title,
 		"Username":        ctx.Session.Username(),
-		"Mailboxes":       ibase.Mailboxes,
+		"Address":         ctx.Session.Address(),
 		"Mailbox":         ibase.Mailbox,
 		"Inbox":           ibase.Inbox,
 		"Messages":        msgs,
@@ -835,7 +1656,50 @@ func handleGetMailbox(ctx *alps.Context) error {
 		"Threaded":        threaded,
 		"Page":            page,
 		"MessagesPerPage": messagesPerPage,
-	})
+	}
+	// The folder list, unless it is the one the browser says it holds: every
+	// listing carried it, a poll's and a page turn's alike, and nearly always
+	// it was the list the browser had.
+	version := folderListVersion(ibase.Mailboxes)
+	answer["MailboxesVersion"] = version
+	if ctx.QueryParam("mailboxes") != version {
+		answer["Mailboxes"] = ibase.Mailboxes
+	}
+	return ctx.JSON(http.StatusOK, answer)
+}
+
+// folderListVersion names a folder list by what it holds, counts and all, so
+// that two answers with the same version carry the same list.
+func folderListVersion(mailboxes []MailboxInfo) string {
+	// Active belongs to this request, not the shared folder data. Its
+	// decoration must not change the version across listings and /mailboxes.
+	canonical := slices.Clone(mailboxes)
+	for i := range canonical {
+		canonical[i].Active = false
+	}
+	data, err := json.Marshal(canonical)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:8])
+}
+
+// searchRateLimited answers a search the mail server refused for its rate
+// limit (RFC 5530 [LIMIT]): 429, with the wait the server named as
+// Retry-After when it named one, so that the page says the server asked to
+// slow down instead of that the folder could not be loaded. It was a 500.
+// Only a search with a query gets here: a listing without one is listed by
+// number instead when the server refuses its SORT or SEARCH.
+func searchRateLimited(ctx *alps.Context, limited *provider.LimitError) error {
+	ctx.Server.Logger().Printf("Search refused for the mail server's rate limit: %v", limited)
+	body := map[string]interface{}{"error": "search_rate_limited"}
+	if limited.RetryAfter > 0 {
+		seconds := int(math.Ceil(limited.RetryAfter.Seconds()))
+		ctx.Response.Header().Set("Retry-After", strconv.Itoa(seconds))
+		body["retry_after"] = seconds
+	}
+	return ctx.JSON(http.StatusTooManyRequests, body)
 }
 
 // handleListMailboxes answers with the folder list and nothing else.
@@ -853,7 +1717,7 @@ func handleListMailboxes(ctx *alps.Context) error {
 
 	// Keyed as `GET /mailboxes/{mbox}` keys it, so the one consumer on the
 	// frontend reads either answer the same way.
-	return ctx.JSON(http.StatusOK, map[string]interface{}{"Mailboxes": mailboxes})
+	return ctx.JSON(http.StatusOK, map[string]interface{}{"Mailboxes": mailboxes, "MailboxesVersion": folderListVersion(mailboxes)})
 }
 
 func handleNewMailbox(ctx *alps.Context) error {
@@ -911,18 +1775,22 @@ func handleRenameMailbox(ctx *alps.Context) error {
 	}
 
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		// "Is this rename a move into Trash?" resolved by IMAP special-use,
-		// not by testing whether the new name starts with the English word
-		// "trash". The frontend already resolves the real Trash folder by
-		// attribute — see findMailboxNameByRole and the issue #4 comment it
-		// carries — so the two halves of one feature disagreed: on Gmail, where
-		// Trash is `[Gmail]/Trash`, the unsubscribe that is supposed to
-		// accompany the move never happened, and a user's own folder named
-		// "Trash notes" got it when it should not have.
-		if isMoveIntoTrash(p, req.NewName) {
+		// Read fresh rather than from the session's cache: which folders are
+		// subscribed is the point, and another client may have changed that.
+		// A listing that fails leaves the rename to go ahead on the Trash
+		// guess by name alone, as it always could.
+		mailboxes, _ := p.ListMailboxes()
+		plan := planRenameSubscriptions(mailboxes, mboxName, req.NewName)
+		if plan.unsubscribeOld {
 			_ = unsubscribeMailboxWithProvider(p, mboxName)
 		}
-		return renameMailboxWithProvider(p, mboxName, req.NewName)
+		if err := renameMailboxWithProvider(p, mboxName, req.NewName); err != nil {
+			return err
+		}
+		for _, name := range plan.subscribe {
+			_ = subscribeMailboxWithProvider(p, name)
+		}
+		return nil
 	})
 	if err != nil {
 		return respondMailboxError(ctx, "rename mailbox", err)
@@ -999,8 +1867,11 @@ func handleLogin(ctx *alps.Context) error {
 	if ctx.Server.RateLimiter != nil {
 		allowed, reason, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username)
 		if !allowed {
-			ctx.Server.Logger().Printf("Rate limit exceeded for login attempt: username=%s, ip=%s, reason=%s",
-				username, ctx.Request.RemoteAddr, reason)
+			ctx.Server.Logger().Slog().Warn("sign-in failed",
+				"user", username,
+				"ip", ctx.ClientIP(),
+				"reason", "rate limited",
+				"detail", reason)
 
 			// Set Retry-After header
 			if retryAfter > 0 {
@@ -1027,8 +1898,18 @@ func handleLogin(ctx *alps.Context) error {
 		if err != nil {
 			var authErr provider.AuthError
 			if errors.As(err, &authErr) {
+				ctx.Server.Logger().Slog().Warn("sign-in failed",
+					"user", username,
+					"ip", ctx.ClientIP(),
+					"reason", "bad credentials",
+					"agent", ctx.Request.UserAgent())
 				return ctx.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Failed to login"})
 			}
+			ctx.Server.Logger().Slog().Warn("sign-in failed",
+				"user", username,
+				"ip", ctx.ClientIP(),
+				"reason", "error",
+				"error", err.Error())
 			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
 
@@ -1071,6 +1952,10 @@ func handleLogin(ctx *alps.Context) error {
 				"password": password,
 			})
 
+			ctx.Server.Logger().Slog().Info("sign-in awaits second factor",
+				"user", username,
+				"ip", ctx.ClientIP(),
+				"session", s.ID())
 			return ctx.JSON(http.StatusOK, map[string]interface{}{"requires_2fa": true})
 		}
 
@@ -1084,6 +1969,14 @@ func handleLogin(ctx *alps.Context) error {
 		// Set session cookie: persistent if "remember me" checked, browser session otherwise
 		ctx.SetSessionWithExpiry(s, persistent)
 
+		ctx.Server.Logger().Slog().Info("sign-in",
+			"user", username,
+			"ip", ctx.ClientIP(),
+			"session", s.ID(),
+			"2fa", s.IsAuthenticated2FA(),
+			"remember", persistent,
+			"restored", restoredFromToken,
+			"agent", ctx.Request.UserAgent())
 		return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
 	}
 
@@ -1092,7 +1985,7 @@ func handleLogin(ctx *alps.Context) error {
 
 func handleLogout(ctx *alps.Context) error {
 	if ctx.Session != nil {
-		ctx.Session.Close()
+		ctx.Session.CloseWithReason("sign-out")
 		ctx.SetSession(nil)
 	}
 	ctx.SetLoginToken("", "", false, false)
@@ -1105,8 +1998,11 @@ func handleLogout(ctx *alps.Context) error {
 // and each open asked for the conversation again from scratch: the same THREAD,
 // the same search through Sent, the same envelopes. They are one answer, so it
 // is stored once per member and any of them is served from it. Dropped wherever
-// the mailbox's listings are (see dropMailboxListings), which is every write,
-// every count change and every explicit refresh.
+// the mailbox's listings are (see dropMailboxListings), which is every write
+// that changes what the mailbox holds, every count change and every explicit
+// refresh, and by a reply to one of its messages, which adds a member in Sent
+// (handleComposeNew). And served only while each folder it holds messages of
+// is held at the UIDVALIDITY they were read under (renumberedConversation).
 func threadCacheKey(mailbox, uid string) string {
 	return "thread:" + mailbox + ":" + uid
 }
@@ -1119,31 +2015,72 @@ func handleGetThread(ctx *alps.Context) error {
 
 	cache := ctx.Session.Cache()
 	if cached, ok := cache.Get(threadCacheKey(mboxName, uidStr)); ok {
-		if msgs, ok := cached.([]IMAPMessage); ok {
+		if msgs, ok := cached.([]IMAPMessage); ok && !renumberedConversation(cache, msgs) {
 			return ctx.JSON(http.StatusOK, map[string]interface{}{"Messages": msgs})
 		}
 	}
 
-	var msgs []IMAPMessage
+	// The UIDVALIDITY of each folder the conversation holds messages of, as
+	// they are read.
+	validities := make(map[string]uint32)
+	var thread []provider.Message
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		uid, parseErr := p.ParseMessageID(uidStr)
 		if parseErr != nil {
 			return parseErr
 		}
-
-		known := conversationHints{
-			memberUIDs:  listedThreadUIDs(p, cache, mboxName, uidStr),
-			sentMailbox: cachedSentMailbox(cache),
+		var threadErr error
+		thread, threadErr = messageThreadWithProvider(p, mboxName, uid, listedThreadUIDs(p, cache, mboxName, uidStr))
+		if threadErr == nil {
+			validities[mboxName] = partUIDValidity(ctx, p, mboxName, 0)
 		}
-		threadMsgs, threadErr := getConversationWithProvider(p, mboxName, uid, known, ctx.Server.Logger().Printf)
-		if threadErr != nil {
-			return threadErr
-		}
-		msgs = threadMsgs
-		return nil
+		return threadErr
 	})
 	if err != nil {
 		return err
+	}
+
+	// Threading sees one mailbox at a time, and the replies a user sends are
+	// not in the mailbox of the messages they answer. They are looked for in
+	// Sent on the session's background connection, which selects Sent to
+	// search it: the session's own keeps this mailbox selected, and the next
+	// request for the folder on screen does not select it again. A failed look
+	// is logged, and the thread is answered as it is.
+	var sent []provider.Message
+	var lookErr error
+	err = ctx.Session.DoBackgroundMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+		sent, lookErr = sentOfConversation(p, mboxName, thread, cachedSentMailbox(cache))
+		for _, m := range sent {
+			if _, read := validities[m.Mailbox]; !read && lookErr == nil {
+				validities[m.Mailbox] = partUIDValidity(ctx, p, m.Mailbox, 0)
+			}
+		}
+		return lookErr
+	})
+	// Not the look's own failure but the connection's, or a request given up
+	// on, whose look may still be running: answered as any other.
+	if err != nil && (ctx.Request.Context().Err() != nil || lookErr == nil) {
+		return err
+	}
+	conversation := thread
+	if lookErr != nil {
+		ctx.Server.Logger().Printf("looking in Sent for the conversation of %s/%s: %v", mboxName, uidStr, lookErr)
+	} else {
+		conversation = mergeConversation(thread, sent)
+	}
+	msgs := make([]IMAPMessage, len(conversation))
+	for i, m := range conversation {
+		msgs[i] = providerMessageToIMAP(m)
+		msgs[i].UIDValidity = validities[msgs[i].Mailbox]
+	}
+
+	// A conversation without the user's replies, as the failed look left it,
+	// is answered and not kept: kept, it went on without them once Sent could
+	// be read again, until it was dropped.
+	if lookErr != nil {
+		return ctx.JSON(http.StatusOK, map[string]interface{}{
+			"Messages": msgs,
+		})
 	}
 
 	// Under the message asked for, and under every member of the conversation
@@ -1153,7 +2090,7 @@ func handleGetThread(ctx *alps.Context) error {
 	for _, m := range msgs {
 		// Members from Sent are keyed under their own mailbox by the read that
 		// asks for them there, which is a different conversation to assemble.
-		if m.AlpsUID == "" || (m.Mailbox != "" && m.Mailbox != mboxName) {
+		if m.AlpsUID == "" || m.Mailbox != mboxName {
 			continue
 		}
 		cache.Set(threadCacheKey(mboxName, m.AlpsUID), msgs)
@@ -1162,6 +2099,40 @@ func handleGetThread(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Messages": msgs,
 	})
+}
+
+// renumberedConversation reports whether a conversation the session keeps
+// holds a message read under another UIDVALIDITY than one the session now
+// holds of its folder, and drops what the session holds of such a folder.
+//
+// The conversation is kept by UID, and a folder deleted and made again
+// elsewhere gives its UIDs to other messages. A check for new mail or a
+// listing that sees the new UIDVALIDITY drops the conversations with the
+// folder's pages (dropRenumberedMailbox), but the folder list reads every
+// folder's counts again without looking at what the session holds of each, and
+// the conversation was then served as it was read: the reader showed the old
+// folder's message beside the new one's body, which is read by its UID under
+// the new UIDVALIDITY (handleGetPart).
+//
+// Which of the two is the newer is not known here, so everything the session
+// holds of the folder by UID goes, its pages among them: a page read under the
+// old UIDVALIDITY would give the conversation read again its old members
+// (listedThreadUIDs). A message whose UIDVALIDITY was not known is not asked.
+func renumberedConversation(cache *alps.Cache, msgs []IMAPMessage) bool {
+	// Asked once a folder: a conversation's messages are of one or two.
+	asked := make(map[string]uint32)
+	renumbered := false
+	for _, m := range msgs {
+		if m.UIDValidity == 0 || m.Mailbox == "" || asked[m.Mailbox] == m.UIDValidity {
+			continue
+		}
+		asked[m.Mailbox] = m.UIDValidity
+		if renumberedSince(heldUIDValidities(cache, m.Mailbox), m.UIDValidity) {
+			dropRenumberedMailbox(cache, m.Mailbox)
+			renumbered = true
+		}
+	}
+	return renumbered
 }
 
 // listedThreadUIDs answers which UIDs the conversation holds in this mailbox,
@@ -1182,8 +2153,10 @@ func listedThreadUIDs(p provider.MailProvider, cache *alps.Cache, mailbox, uidSt
 		if !ok {
 			continue
 		}
+		// Another folder's rows name its own messages, and their
+		// conversations are its own.
 		listing, ok := cached.(CachedMessages)
-		if !ok {
+		if !ok || listing.Mailbox != mailbox {
 			continue
 		}
 		for _, row := range listing.Messages {
@@ -1245,18 +2218,41 @@ func cachedSentMailbox(cache *alps.Cache) string {
 	return ""
 }
 
+// backgroundRequestHeader marks a request the browser makes on its own, which
+// nobody waits for, such as a body a conversation reads ahead of the user.
+const backgroundRequestHeader = "X-Alps-Background"
+
+// doRequestMail runs f for the request ctx: on the session's background
+// connection when the browser marked the request as one nobody waits for (see
+// backgroundRequestHeader), so that what the user opens meanwhile does not
+// wait behind it, and on the session's own connection otherwise.
+func doRequestMail(ctx *alps.Context, f func(provider.MailProvider) error) error {
+	if ctx.Request.Header.Get(backgroundRequestHeader) != "" {
+		return ctx.Session.DoBackgroundMail(ctx.Request.Context(), f)
+	}
+	return ctx.Session.DoMailWithContext(ctx.Request.Context(), f)
+}
+
 func handleGetPart(ctx *alps.Context, raw bool) error {
-	_, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
+	mboxName, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return err
 	}
-	ibase, err := getBaseMailboxData(ctx)
+	// Confirm a browser-held part before reading the page, settings or body.
+	var validity uint32
+	if raw {
+		validity, err = mailboxUIDValidity(ctx, mboxName)
+		if err != nil {
+			return err
+		}
+		if etag := rawPartETag(ctx, validity); etag != "" && etagListed(ctx.Request.Header.Get("If-None-Match"), etag) {
+			setRawPartCaching(ctx.Response.Header(), etag)
+			return ctx.NoContent(http.StatusNotModified)
+		}
+	}
+	mbox, err := partMailbox(ctx, mboxName)
 	if err != nil {
 		return err
-	}
-	mbox := ibase.Mailbox
-	if mbox == nil {
-		return alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
 	}
 
 	settings, err := readSettings(ctx)
@@ -1270,29 +2266,59 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		return alps.NewHTTPError(http.StatusBadRequest, err)
 	}
 
-	// We need to briefly fetch the message structure to see what parts are available
-	var tempMsg *IMAPMessage
+	// The reader's request names no part: the part to show is chosen here,
+	// and its text goes back with the answer.
+	reading := partPathParam == "" && !raw
+	cache := ctx.Session.Cache()
+
+	// The session's cache names a message by its id as a listing gave it,
+	// which is the id the client sends, so the cache is asked before the id
+	// is parsed. Parsing it waits for the session's IMAP connection, and an
+	// answer the cache holds needs nothing from that connection.
 	var uid provider.MessageID
-
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		var parseErr error
-		uid, parseErr = p.ParseMessageID(uidStr)
-		if parseErr != nil {
-			return parseErr
+	parseUID := func(p provider.MailProvider) error {
+		if uid != nil {
+			return nil
 		}
-
-		// If no part specified and not raw, determine preferred part
-		if partPathParam == "" && !raw {
-			tempMsg, parseErr = getMessageMetadataWithProvider(p, mbox.Name(), uid)
-			return parseErr
-		}
-		return nil
-	})
-	if err != nil {
+		var err error
+		uid, err = p.ParseMessageID(uidStr)
 		return err
 	}
 
-	if partPathParam == "" && !raw {
+	// The message's metadata, when this request had to read it from the
+	// server. It carries the verdict and References that a listing row does
+	// not.
+	var tempMsg *IMAPMessage
+	// The images an HTML body shows, read with it: see bodyImagesToRead.
+	var bodyImages [][]int
+
+	if reading {
+		// The part is chosen from the message's structure, which the session
+		// holds for every message a listing listed and every message opened
+		// before, and which never changes under a UID. It was read from the
+		// server before every open all the same, before the cache was looked
+		// in, even for a message whose body the cache held.
+		structure := cachedMessageRow(cache, mbox.Name(), uidStr, mbox.UIDValidity)
+		if structure == nil {
+			err = doRequestMail(ctx, func(p provider.MailProvider) error {
+				if err := parseUID(p); err != nil {
+					return err
+				}
+				meta, err := p.GetMessageMetadata(mbox.Name(), uid)
+				if err != nil {
+					return err
+				}
+				cacheMessageRow(cache, mbox.Name(), meta, mbox.UIDValidity)
+				imapMsg := providerMessageToIMAP(*meta)
+				tempMsg = &imapMsg
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			structure = tempMsg
+		}
+
 		// Determine preference: user setting overrides system default (true for HTML)
 		preferHTML := true
 		if settings.PreferredView != "" {
@@ -1309,25 +2335,33 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		// Select the preferred part
 		var preferredPart *IMAPPartNode
 		if preferHTML {
-			preferredPart = tempMsg.HTMLPart()
+			preferredPart = structure.HTMLPart()
 			if preferredPart == nil {
-				preferredPart = tempMsg.TextPart()
+				preferredPart = structure.TextPart()
 			}
 		} else {
-			preferredPart = tempMsg.TextPart()
+			preferredPart = structure.TextPart()
 			if preferredPart == nil {
-				preferredPart = tempMsg.HTMLPart()
+				preferredPart = structure.HTMLPart()
 			}
 		}
 
 		// Use the preferred part path
 		if preferredPart != nil {
 			partPath = preferredPart.Path
+			if strings.EqualFold(preferredPart.MIMEType, "text/html") {
+				held := func(path []int) bool {
+					_, ok := cache.Get(rawPartCacheKey(mbox.Name(), uidStr, path))
+					return ok
+				}
+				bodyImages = bodyImagesToRead(structure, held, ctx.Server.Options.CacheMaxPartBytes())
+			}
 		}
 	}
 
 	var msg *IMAPMessage
 	var headerData, bodyData []byte
+	var partValidity uint32
 
 	limitStr := ctx.QueryParam("limit")
 	var limit int64
@@ -1339,102 +2373,83 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	}
 
 	// Build cache key for individual message (without allow-remote-resources since it doesn't affect IMAP data)
-	partPathStr := fmt.Sprintf("%v", partPath)
-	msgCacheKey := fmt.Sprintf("message:%s:%s:%s:limit%d", mbox.Name(), uid.String(), partPathStr, limit)
+	msgCacheKey := partCacheKey(mbox.Name(), uidStr, partPath, limit)
 
-	// Try to get message from cache
+	// A part cached with its body is served from the cache. The reader is also
+	// shown the verdict and References, which a part cached by another read of
+	// it (/raw) does not carry, so for the reader such a part is read again
+	// unless this request has just read them.
 	var cachedPart *CachedMessagePart
-	if cached, ok := ctx.Session.Cache().Get(msgCacheKey); ok {
-		if cp, ok := cached.(CachedMessagePart); ok {
+	if cached, ok := cache.Get(msgCacheKey); ok {
+		if cp, ok := cached.(CachedMessagePart); ok && cp.Message != nil && cp.HeaderData != nil && cp.BodyData != nil &&
+			(!reading || cp.ReaderFields || tempMsg != nil) && (!raw || cp.UIDValidity == validity) {
 			cachedPart = &cp
 		}
 	}
+	// A message read before the folder was made again elsewhere is the old
+	// folder's message, under a UID that may now name another. It can be all
+	// the session holds of the folder from before: a folder only searched, or
+	// a message opened from a link, has no page, a page may expire before a
+	// message read from it, a refresh of another folder or a check that finds
+	// new mail drops every status, and the folder list reads the statuses
+	// again without comparing them. The list then showed the new message, and
+	// opening it showed the old one. Held at another UIDVALIDITY than the
+	// folder has now, the message goes, with everything else read from the
+	// folder, and is read again.
+	if cachedPart != nil && uidMoved(cachedPart.UIDValidity, mbox.UIDValidity) {
+		ctx.Server.Logger().Debugf("Mailbox %s uidvalidity %d→%d since message %s was read — messages read from it dropped",
+			mbox.Name(), cachedPart.UIDValidity, mbox.UIDValidity, uidStr)
+		dropRenumberedMailbox(ctx.Session.Cache(), mbox.Name())
+		cachedPart = nil
+	}
 	if cachedPart != nil {
-		cachedData := *cachedPart
-
-		// Check if we have the body data
-		if cachedData.HeaderData != nil && cachedData.BodyData != nil {
-			// Full message cached - convert from provider type to IMAP type
-			imapMsg := providerMessageToIMAP(*cachedData.Message)
-			if tempMsg != nil {
-				imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
-				imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
-				if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
-					imapMsg.References = tempMsg.References
-				}
+		imapMsg := providerMessageToIMAP(*cachedPart.Message)
+		if tempMsg != nil {
+			// Read from the server just now, where the cached part has the
+			// flags of the read that cached it.
+			imapMsg.Flags = tempMsg.Flags
+			imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
+			imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
+			if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
+				imapMsg.References = tempMsg.References
 			}
-			msg = &imapMsg
-			headerData = cachedData.HeaderData
-			bodyData = cachedData.BodyData
+		}
+		msg = &imapMsg
+		headerData = cachedPart.HeaderData
+		bodyData = cachedPart.BodyData
+		partValidity = cachedPart.UIDValidity
 
-			ctx.Server.Logger().Debugf("Cache HIT (full) for message %s/%v part %v", mbox.Name(), uid, partPath)
-		} else {
-			// Only metadata cached, need to fetch body
-			var providerMsg *provider.Message
-			err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-				var err error
-				if raw {
-					// For raw mode, don't parse - just get bytes
-					providerMsg, headerData, bodyData, err = p.GetMessagePartRaw(mbox.Name(), uid, partPath, limit)
-				} else {
-					// For normal mode, parse the message
-					providerMsg, _, headerData, bodyData, err = p.GetMessagePartWithData(mbox.Name(), uid, partPath)
-					if err != nil {
-						return err
-					}
-
-				}
-				if err != nil {
-					return err
-				}
-
-				// Update cache with body data using provider type
-				ctx.Session.Cache().Set(msgCacheKey, CachedMessagePart{
-					Message:    providerMsg,
-					HeaderData: headerData,
-					BodyData:   bodyData,
-					Mailbox:    mbox.Name(),
-				})
-				ctx.Server.Logger().Debugf("Cache HIT (metadata only), fetched body for message %s/%s part %v", mbox.Name(), uid.String(), partPath)
-				return nil
-			})
-			if err != nil {
+		ctx.Server.Logger().Debugf("Cache HIT for message %s/%s part %v", mbox.Name(), uidStr, partPath)
+	} else {
+		var providerMsg *provider.Message
+		var imageHeaders, imageBodies [][]byte
+		err = doRequestMail(ctx, func(p provider.MailProvider) error {
+			if err := parseUID(p); err != nil {
 				return err
 			}
-
-			// Convert provider message to IMAP message for display
-			imapMsg := providerMessageToIMAP(*providerMsg)
-			if tempMsg != nil {
-				imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
-				imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
-				if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
-					imapMsg.References = tempMsg.References
-				}
-			}
-			msg = &imapMsg
-
-			// Fetching body without Peek marks message as \Seen, so update the cached flags
-			updateCachedMessageFlags(ctx, mbox.Name(), uid, []imap.Flag{imap.FlagSeen}, nil)
-		}
-	} else {
-		// Nothing cached, fetch everything
-		var providerMsg *provider.Message
-		err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
-			if raw {
+			switch {
+			case raw:
 				// For raw mode, don't parse - just get bytes
 				providerMsg, headerData, bodyData, err = p.GetMessagePartRaw(mbox.Name(), uid, partPath, limit)
-			} else {
-				// For normal mode, parse the message
-				providerMsg, _, headerData, bodyData, err = p.GetMessagePartWithData(mbox.Name(), uid, partPath)
-				if err != nil {
-					return err
-				}
-
+			case reading && (tempMsg == nil || readsPartsWith(p, bodyImages)):
+				// The structure came from the cache: the verdict and the
+				// References are read with the part, in the same FETCH. So
+				// are the images an HTML body shows, where the provider can.
+				providerMsg, headerData, bodyData, imageHeaders, imageBodies, err = readerPartWithProvider(p, mbox.Name(), uid, partPath, bodyImages)
+			default:
+				// The bytes, as for /raw: the answer is built from them, and
+				// reading the part decoded failed on a charset or a transfer
+				// encoding alps does not know, for a decoding nothing here
+				// used. The text is decoded below, where one that cannot be
+				// is left out of the answer.
+				providerMsg, headerData, bodyData, err = p.GetMessagePartRaw(mbox.Name(), uid, partPath, 0)
 			}
 			if err != nil {
 				return err
 			}
+
+			partValidity = partUIDValidity(ctx, p, mbox.Name(), mbox.UIDValidity)
 
 			if tempMsg != nil {
 				providerMsg.BimiPotential = tempMsg.HasBimiPotential
@@ -1444,14 +2459,36 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				}
 			}
 
-			// Cache the raw bytes using provider type so we can recreate fresh readers
-			ctx.Session.Cache().Set(msgCacheKey, CachedMessagePart{
-				Message:    providerMsg,
-				HeaderData: headerData,
-				BodyData:   bodyData,
-				Mailbox:    mbox.Name(),
-			})
-			ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uid.String(), partPath)
+			// Cache the raw bytes using provider type so we can recreate fresh
+			// readers, unless the part is above the session cache's limit.
+			if int64(len(headerData)+len(bodyData)) <= ctx.Server.Options.CacheMaxPartBytes() {
+				cache.Set(msgCacheKey, CachedMessagePart{
+					Message:      providerMsg,
+					HeaderData:   headerData,
+					BodyData:     bodyData,
+					Mailbox:      mbox.Name(),
+					ReaderFields: reading,
+					UIDValidity:  partValidity,
+				})
+				ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uidStr, partPath)
+			} else {
+				ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched, %d bytes, too large to cache", mbox.Name(), uidStr, partPath, len(headerData)+len(bodyData))
+			}
+			// The body's images, kept where /raw looks for them: the page
+			// asks for each as soon as it shows the body.
+			for i, path := range bodyImages {
+				if i >= len(imageHeaders) || imageHeaders[i] == nil || imageBodies[i] == nil ||
+					int64(len(imageHeaders[i])+len(imageBodies[i])) > ctx.Server.Options.CacheMaxPartBytes() {
+					continue
+				}
+				cache.Set(rawPartCacheKey(mbox.Name(), uidStr, path), CachedMessagePart{
+					Message:     providerMsg,
+					HeaderData:  imageHeaders[i],
+					BodyData:    imageBodies[i],
+					Mailbox:     mbox.Name(),
+					UIDValidity: partValidity,
+				})
+			}
 			return nil
 		})
 		if err != nil {
@@ -1460,24 +2497,14 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 		// Convert provider message to IMAP message for display
 		imapMsg := providerMessageToIMAP(*providerMsg)
-		if tempMsg != nil {
-			ctx.Server.Logger().Debugf("BIMI debug routes: tempMsg.HasBimiPotential=%v for UID %v", tempMsg.HasBimiPotential, uid)
-			imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
-			imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
-			if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
-				imapMsg.References = tempMsg.References
-			}
-		}
 		msg = &imapMsg
-
-		// Fetching body without Peek marks message as \Seen, so update the cached flags
-		updateCachedMessageFlags(ctx, mbox.Name(), uid, []imap.Flag{imap.FlagSeen}, nil)
 	}
 
 	// Note: We no longer need selected mailbox info from IMAP
 	// The provider abstraction doesn't expose this, and we use standard flags below
 
 	if raw {
+		etag := rawPartETag(ctx, partValidity)
 		// For raw mode, work directly with headerData and bodyData bytes
 		// Parse the MIME header
 		h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerData)))
@@ -1515,6 +2542,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 			ctx.Response.Header().Set("Content-Type", mimeType)
 			ctx.Response.Header().Set("Content-Length", fmt.Sprintf("%d", len(headerData)+len(bodyData)))
+			setRawPartCaching(ctx.Response.Header(), etag)
 
 			dispParams := map[string]string{"filename": filename}
 			ctx.Response.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", dispParams))
@@ -1531,7 +2559,11 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		// serve only the decoded body (not the MIME headers).
 		msgHeader := message.Header{Header: h}
 		entity, err := message.New(msgHeader, bytes.NewReader(bodyData))
-		if err != nil {
+		// A charset or a transfer encoding alps does not know leaves the
+		// body as far as it could be decoded, and the reader asks here for
+		// a text the message's answer could not carry: it gets those bytes,
+		// not an error.
+		if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
 			return fmt.Errorf("failed to create message reader: %v", err)
 		}
 
@@ -1546,6 +2578,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		}
 		ctx.Response.Header().Set("Content-Type", mimeType)
 		ctx.Response.Header().Set("Content-Length", fmt.Sprintf("%d", len(decodedBody)))
+		setRawPartCaching(ctx.Response.Header(), etag)
 
 		// Get filename from Content-Disposition or Content-Type params
 		disp, dispParams, _ := msgHeader.ContentDisposition()
@@ -1586,18 +2619,164 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		partNode = nil
 	}
 
-	return ctx.JSON(http.StatusOK, map[string]interface{}{
-		"Mailboxes": ibase.Mailboxes,
-		"Mailbox":   ibase.Mailbox,
-		"Inbox":     ibase.Inbox,
-		"Message":   msg,
-		"Part":      partNode,
+	// The folder list is not sent: the listing sends it, and the reader
+	// never read it here.
+	answer := map[string]interface{}{
+		"Message": msg,
+		"Part":    partNode,
 
 		"Flags":       flags,
 		"Attachments": msg.Attachments(),
 		"HasHTML":     msg.HTMLPart() != nil,
 		"HasText":     func() bool { tp := msg.TextPart(); return tp != nil && strings.EqualFold(tp.MIMEType, "text/plain") }(),
+	}
+	// The part's text, which the reader used to ask for again with /raw: a
+	// second request, and a second wait for the session's IMAP connection,
+	// for bytes this one already holds. A text that cannot be decoded is left
+	// out, and the reader asks /raw for it as before.
+	if partNode != nil {
+		if text, err := partText(headerData, bodyData); err == nil {
+			answer["Body"] = text
+		} else {
+			ctx.Server.Logger().Debugf("Message %s/%s part %v sent without its text: %v", mbox.Name(), uidStr, partPath, err)
+		}
+	}
+	return ctx.JSON(http.StatusOK, answer)
+}
+
+// partCacheKey is where the session cache keeps a part of a message as a
+// request reads it: the reader's request for a body part and /raw's for the
+// same part share one entry.
+func partCacheKey(mailbox, uid string, partPath []int, limit int64) string {
+	return fmt.Sprintf("message:%s:%s:%v:limit%d", mailbox, uid, partPath, limit)
+}
+
+// rawPartCacheKey is where /raw finds a part read whole.
+func rawPartCacheKey(mailbox, uid string, partPath []int) string {
+	return partCacheKey(mailbox, uid, partPath, 0)
+}
+
+// bodyImagesToRead are the images an HTML body may show by Content-ID, to
+// read in the FETCH that reads the body. The page asks /raw for each as soon
+// as it shows the body, and each was a request and a FETCH of its own, one
+// after another on the session's connection, each asking again for the
+// message's envelope and structure.
+//
+// What the body then waits for is bounded by limit, the part cache's: an
+// image is read with it only while it, and those before it all told, come
+// within the limit, which would not keep a larger one anyway. An image the
+// cache already holds (held) is not read again; one left out is read when
+// the page asks for it, as before.
+func bodyImagesToRead(msg *IMAPMessage, held func(path []int) bool, limit int64) [][]int {
+	if msg == nil || msg.BodyStructure == nil {
+		return nil
+	}
+	var paths [][]int
+	var total int64
+	msg.BodyStructure.Walk(func(path []int, part imap.BodyStructure) bool {
+		single, ok := part.(*imap.BodyStructureSinglePart)
+		if !ok || single.ID == "" || !strings.EqualFold(single.Type, "image") {
+			return true
+		}
+		if size := int64(single.Size); total+size <= limit && !held(path) {
+			total += size
+			paths = append(paths, append([]int(nil), path...))
+		}
+		return true
 	})
+	return paths
+}
+
+// partText is a part's body as /raw serves it: the transfer encoding undone,
+// and a text in a charset alps knows converted to UTF-8.
+func partText(headerData, bodyData []byte) (string, error) {
+	h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerData)))
+	if err != nil {
+		return "", fmt.Errorf("failed to read part header: %v", err)
+	}
+	entity, err := message.New(message.Header{Header: h}, bytes.NewReader(bodyData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create message reader: %v", err)
+	}
+	text, err := io.ReadAll(entity.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode message body: %v", err)
+	}
+	return string(text), nil
+}
+
+// cachedMessageRow returns the message's own entry in the session cache,
+// which a listing writes for each row it lists (handleGetMailbox), when it
+// holds the message's structure to choose the part to show from.
+func cachedMessageRow(cache *alps.Cache, mailbox, uid string, validity uint32) *IMAPMessage {
+	cached, ok := cache.Get(fmt.Sprintf("message:%s:%s:[]", mailbox, uid))
+	if !ok {
+		return nil
+	}
+	row, ok := cached.(CachedMessagePart)
+	if !ok || row.Message == nil {
+		return nil
+	}
+	if uidMoved(row.UIDValidity, validity) {
+		dropRenumberedMailbox(cache, mailbox)
+		return nil
+	}
+	msg := providerMessageToIMAP(*row.Message)
+	if msg.BodyStructure == nil {
+		return nil
+	}
+	return &msg
+}
+
+// partMailbox is the mailbox a part is read from, for its name and the
+// UIDVALIDITY the session's cache is asked under. Every record the session
+// holds of it agreeing (its counts, its pages, the validator a read of a part
+// left), the UIDVALIDITY is taken from them. It was asked of the server
+// first, with the folder list, which cost a STATUS before a body the session
+// held could be served once the counts had gone, as a check that finds new
+// mail or a write drops them; and the counts were all it was read for. A
+// mailbox the session holds nothing of, or two values of, is read as before.
+func partMailbox(ctx *alps.Context, name string) (*MailboxStatus, error) {
+	if name != allMailboxes {
+		if validity := agreedUIDValidity(ctx.Session.Cache(), name); validity != 0 {
+			return &MailboxStatus{StatusData: &imap.StatusData{Mailbox: name, UIDValidity: validity}}, nil
+		}
+	}
+	ibase, err := getBaseMailboxData(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if ibase.Mailbox == nil {
+		return nil, alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
+	}
+	return ibase.Mailbox, nil
+}
+
+// agreedUIDValidity is the UIDVALIDITY every record the session holds of a
+// mailbox agrees on (see heldUIDValidities), or 0 when it holds none or they
+// disagree.
+func agreedUIDValidity(cache *alps.Cache, mailbox string) uint32 {
+	held := heldUIDValidities(cache, mailbox)
+	if len(held) == 0 {
+		return 0
+	}
+	for _, validity := range held[1:] {
+		if validity != held[0] {
+			return 0
+		}
+	}
+	return held[0]
+}
+
+// cacheMessageRow keeps the metadata of a message opened without a listing
+// in the entry a listing would have written, so that it opens from the cache
+// next time as a listed one does. Flag changes keep that entry current
+// (applyFlagsToCache).
+func cacheMessageRow(cache *alps.Cache, mailbox string, msg *provider.Message, validity uint32) {
+	if msg == nil || msg.ID == nil {
+		return
+	}
+	cache.Set(fmt.Sprintf("message:%s:%s:[]", mailbox, msg.ID.String()), CachedMessagePart{Message: msg, Mailbox: mailbox, UIDValidity: validity})
 }
 
 type messagePath struct {
@@ -1614,25 +2793,147 @@ type messagePath struct {
 // expressed there was not actually enforced anywhere.
 const maxComposeBodyBytes = 32 << 20
 
+// errDraftMaybeStored answers a draft save whose draft may be in Drafts
+// already: see storeOnce.
+var errDraftMaybeStored = errors.New("the draft was stored, but the connection failed before the mail server said so: save it again")
+
+// storeOnce runs store, the APPEND of the message whose Message-ID is
+// messageID into the mailbox of type t, unless one has gone out before, as
+// *tried says, on a connection that then failed. The server may have stored
+// the message before the connection failed, and its answer was lost: stored
+// again, the mailbox would hold it twice. So the mailbox is looked in first, by the
+// Message-ID. A copy there, other than except, names its mailbox in held.
+// An empty search cannot rule out the old APPEND still committing on another
+// connection. Only a failure marked ErrAppendNotStarted permits another try.
+func storeOnce(p provider.MailProvider, tried *bool, t provider.MailboxType, messageID string, except *messagePath, store func() error) (held string, err error) {
+	if *tried {
+		held, err := heldByMessageID(p, t, messageID, except)
+		if err != nil || held != "" {
+			return held, err
+		}
+		return "", fmt.Errorf("the previous APPEND may still complete: it is not stored again")
+	}
+	*tried = true
+	err = store()
+	if errors.Is(err, provider.ErrAppendNotStarted) {
+		*tried = false
+	}
+	return "", err
+}
+
+// heldByMessageID answers the name of the mailbox of type t when it holds a
+// message whose Message-ID is id, other than except, and "" when it does not.
+// An absent mailbox holds nothing. A failed lookup cannot establish that.
+func heldByMessageID(p provider.MailProvider, t provider.MailboxType, id string, except *messagePath) (string, error) {
+	want := provider.MessageIDs(id)
+	finder, ok := p.(provider.ReferenceFinder)
+	if !ok || len(want) == 0 {
+		// Nothing to look by: the copy may be there.
+		return "", fmt.Errorf("the message may have been stored before the connection failed, and is not stored again")
+	}
+	mbox, err := p.FindMailboxByType(t)
+	if err != nil {
+		return "", fmt.Errorf("unable to verify the previous APPEND: %w", err)
+	}
+	if mbox == nil {
+		return "", nil
+	}
+	found, err := finder.FindByReferences(mbox.Name, want)
+	if err != nil {
+		return "", err
+	}
+	for _, m := range found {
+		if except != nil && except.Mailbox == mbox.Name && m.ID != nil && m.ID.String() == except.Uid {
+			continue
+		}
+		if own := ownMessageIDs(m); len(own) > 0 && own[0] == want[0] {
+			return mbox.Name, nil
+		}
+	}
+	return "", nil
+}
+
+// deleteDraft removes the draft a save or a send replaces, when there is one.
+// One already gone counts as removed.
+func deleteDraft(p provider.MailProvider, draft *messagePath) error {
+	if draft == nil {
+		return nil
+	}
+	id, err := p.ParseMessageID(draft.Uid)
+	if err != nil {
+		return err
+	}
+	return deleteMessagesWithProvider(p, draft.Mailbox, []provider.MessageID{id})
+}
+
+// A mail callback may outlive its HTTP request. Forget its affected copies
+// when it finishes too, including copies read after the request was canceled.
+// This is cache-only: the callback still owns the mail connection, so it must
+// not call invalidateMailboxCache and try to acquire that connection again.
+func forgetAppendOutcome(cache *alps.Cache, mailbox string, attempted bool, draft *messagePath) {
+	if mailbox != "" {
+		dropMailboxListings(cache, mailbox)
+	} else if attempted {
+		cache.Clear()
+	}
+	if draft != nil {
+		dropMailboxListings(cache, draft.Mailbox)
+		forgetMessages(cache, draft.Mailbox, draft.Uid)
+	}
+}
+
 func handleComposeNew(ctx *alps.Context) error {
 	// Before the first FormValue, which is what triggers parsing.
 	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, maxComposeBodyBytes)
 
 	saveAsDraft := ctx.FormValue("save_as_draft") != ""
+	// A draft is saved as the user types, several megabytes of it with its
+	// attachments, and what they open meanwhile does not wait for it: a save
+	// does its mail work on the session's background connection.
+	doMail := ctx.Session.DoMailWithContext
+	if saveAsDraft {
+		doMail = ctx.Session.DoBackgroundMail
+	}
 
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
-		fromAddr = ctx.Session.Username()
-		if settings, err := readSettings(ctx); err == nil && settings.From != "" {
-			fromAddr = fmt.Sprintf("%s <%s>", settings.From, ctx.Session.Username())
+		// The user's address, not the login: a login can be a bare user
+		// name, which is no address to send from (see Session.Address).
+		fromAddr = ctx.Session.Address()
+		if settings, err := readSettings(ctx); err == nil {
+			// The display name is free text, so it is formatted as an address
+			// rather than pasted in front of one. Written bare, a comma in it
+			// ("Doe, Jane") read as two addresses, the first with none, and
+			// every send and draft save failed; quotes in it were lost.
+			if name := strings.TrimSpace(settings.From); name != "" {
+				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Address()}).String()
+			}
 		}
+	}
+
+	// A field that does not read as addresses is refused here, for what it
+	// is, rather than as a failure to send or to store the draft. A Bcc that
+	// does not read so is refused only when the message is sent: a draft is
+	// still saved, with each Bcc entry that does read. Saved without the
+	// field, it lost every Bcc recipient over one that did not, the ones
+	// written correctly too.
+	recipients := map[string][]string{}
+	for _, field := range []string{"to", "cc", "bcc"} {
+		list, err := parseAddressList(ctx.FormValue(field))
+		if err != nil && saveAsDraft && field == "bcc" {
+			list, err = readableAddresses(ctx.FormValue(field)), nil
+		}
+		if err != nil {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid %s address: %v", field, err)})
+		}
+		recipients[field] = list
 	}
 
 	msg := &OutgoingMessage{
 		From:       fromAddr,
-		To:         parseAddressList(ctx.FormValue("to")),
-		Cc:         parseAddressList(ctx.FormValue("cc")),
-		Bcc:        parseAddressList(ctx.FormValue("bcc")),
+		To:         recipients["to"],
+		Cc:         recipients["cc"],
+		Bcc:        recipients["bcc"],
 		Subject:    ctx.FormValue("subject"),
 		Text:       ctx.FormValue("text"),
 		HTML:       ctx.FormValue("html"),
@@ -1649,19 +2950,66 @@ func handleComposeNew(ctx *alps.Context) error {
 		msg.MessageID = "<" + mid + ">"
 	}
 
-	uuids := ctx.FormValue("attachment-uuids")
-	for _, uuid := range strings.Split(uuids, ",") {
+	// Where each of msg.Attachments comes from, in the same order: the upload
+	// or the earlier part the composer named it by. A draft save answers with
+	// it, so the composer can tell which stored part each of its entries became.
+	var sources []map[string]string
+
+	// Every id the session does not hold (it ended, or the attachment budget
+	// let the upload go) is refused before anything is taken, all of them
+	// named, so the composer can ask for those files again and save the rest.
+	var ids, missing []string
+	for _, uuid := range strings.Split(ctx.FormValue("attachment-uuids"), ",") {
 		uuid = strings.TrimSpace(uuid)
 		if uuid == "" {
 			continue
 		}
+		if ctx.Session.GetAttachment(uuid) == nil {
+			missing = append(missing, uuid)
+			continue
+		}
+		ids = append(ids, uuid)
+	}
+	refuseMissing := func(missing []string) error {
+		return ctx.JSON(http.StatusConflict, map[string]interface{}{
+			"error":               "unable to retrieve message attachment " + strings.Join(missing, ", "),
+			"missing_attachments": missing,
+		})
+	}
+	if len(missing) > 0 {
+		return refuseMissing(missing)
+	}
 
+	// Then the uploads are the request's: taken out of the session, so that
+	// nothing else removes their files while the message is written (the
+	// user's Remove, the session's end, room made for another upload). Once
+	// the message holds them they are removed; otherwise they are given back,
+	// for the next try. They used to be removed when the request ended,
+	// whether the message was stored or not.
+	type takenUpload struct {
+		uuid       string
+		attachment *alps.Attachment
+	}
+	var taken []takenUpload
+	inMessage := false
+	defer func() {
+		for _, u := range taken {
+			if inMessage {
+				u.attachment.Remove()
+			} else {
+				ctx.Session.ReturnAttachment(u.uuid, u.attachment)
+			}
+		}
+	}()
+	for _, uuid := range ids {
 		attachment := ctx.Session.PopAttachment(uuid)
 		if attachment == nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "unable to retrieve message attachment " + uuid})
+			// Removed since the pass above.
+			return refuseMissing([]string{uuid})
 		}
+		taken = append(taken, takenUpload{uuid, attachment})
 		msg.Attachments = append(msg.Attachments, &formAttachment{attachment.File})
-		defer attachment.Form.RemoveAll()
+		sources = append(sources, map[string]string{"uuid": uuid})
 	}
 
 	var draftPath *messagePath
@@ -1697,6 +3045,16 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 	}
 
+	// The parts among them the body shows, by Content-ID: the composer names
+	// the ones its quote shows, whatever their disposition, as Outlook and
+	// Apple Mail file their inline images as attachments.
+	shownInline := map[string]bool{}
+	for _, p := range strings.Split(ctx.FormValue("inline_attachments"), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			shownInline[p] = true
+		}
+	}
+
 	if len(prevAttachments) > 0 {
 		// A saved draft holds every part the composer carries, renumbered, so
 		// once there is one the parts are read from it.
@@ -1713,58 +3071,94 @@ func handleComposeNew(ctx *alps.Context) error {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "attachments name a message part, but no message to take it from"})
 		}
 
-		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-			for _, pathStr := range prevAttachments {
-				partPath, err := parsePartPath(pathStr)
-				if err != nil {
+		err := doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+			// Added only after every part is read, so a retry never duplicates them.
+			var parts []Attachment
+			var partSources []map[string]string
+			parsedUid, err := p.ParseMessageID(sourcePath.Uid)
+			if err != nil {
+				return fmt.Errorf("invalid UID: %v", err)
+			}
+			partPaths := make([][]int, len(prevAttachments))
+			for i, pathStr := range prevAttachments {
+				if partPaths[i], err = parsePartPath(pathStr); err != nil {
 					return fmt.Errorf("invalid part path: %v", err)
 				}
-				parsedUid, err := p.ParseMessageID(sourcePath.Uid)
+			}
+			// All of them in one read: an autosave carries them every time.
+			headers, bodies, err := messagePartsWithProvider(p, sourcePath.Mailbox, parsedUid, partPaths)
+			if err != nil {
+				return fmt.Errorf("failed to fetch attachments %s: %v", strings.Join(prevAttachments, ","), err)
+			}
+			for i, pathStr := range prevAttachments {
+				partPath := partPaths[i]
+				h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headers[i])))
 				if err != nil {
-					return fmt.Errorf("invalid UID: %v", err)
+					return fmt.Errorf("failed to read the header of attachment %s: %v", pathStr, err)
 				}
-				_, entity, _, _, err := p.GetMessagePartWithData(sourcePath.Mailbox, parsedUid, partPath)
-				if err != nil {
-					return fmt.Errorf("failed to fetch attachment %s: %v", pathStr, err)
-				}
+				header := message.Header{Header: h}
 
-				mimeType, _, _ := entity.Header.ContentType()
-				disposition, dispParams, _ := entity.Header.ContentDisposition()
+				mimeType, params, _ := header.ContentType()
+				disposition, dispParams, _ := header.ContentDisposition()
 				filename := dispParams["filename"]
 				if filename == "" {
-					_, ctParams, _ := entity.Header.ContentType()
-					filename = ctParams["name"]
+					filename = params["name"]
 				}
 				if mimeType == "" {
 					mimeType = "application/octet-stream"
 				}
-				contentID := strings.Trim(strings.TrimSpace(entity.Header.Get("Content-Id")), "<>")
+				contentID := strings.Trim(strings.TrimSpace(header.Get("Content-Id")), "<>")
 
-				// We have to decode Content-Transfer-Encoding for the bodyData.
-				// wait, entity.Body is an io.Reader that is ALREADY decoded!
-				// We can just read from entity.Body!
-				decodedBody, err := io.ReadAll(entity.Body)
+				// The part keeps its Content-Type parameters, and a text
+				// says the charset its bytes are now in. A text is read
+				// converted to UTF-8, and the part was written with no
+				// parameters at all, so a Latin-1 file went out as UTF-8
+				// bytes labelled plain text with no charset, which a
+				// recipient reads as US-ASCII. It cannot keep the charset it
+				// was stored in, as the message writer writes a text in
+				// UTF-8 or US-ASCII only. In a charset alps does not know,
+				// the text cannot be converted, and goes as it is stored,
+				// without a charset it could be written under.
+				// Keep an unknown charset from masking an undecodable transfer encoding.
+				entity, decodeErr := provider.DecodePart(header, bodies[i])
+				if decodeErr != nil && !message.IsUnknownCharset(decodeErr) {
+					return fmt.Errorf("failed to decode attachment %s: %v", pathStr, decodeErr)
+				}
+				body, err := io.ReadAll(entity.Body)
 				if err != nil {
-					return fmt.Errorf("failed to decode attachment body: %v", err)
+					return fmt.Errorf("failed to decode attachment %s: %v", pathStr, err)
+				}
+				if strings.HasPrefix(mimeType, "text/") && params["charset"] != "" {
+					if decodeErr == nil {
+						params["charset"] = "utf-8"
+					} else {
+						delete(params, "charset")
+					}
 				}
 
 				node := &IMAPPartNode{
 					Path:     partPath,
 					MIMEType: mimeType,
+					Params:   params,
 					Filename: filename,
 				}
-				msg.Attachments = append(msg.Attachments, &imapAttachment{
+				parts = append(parts, &imapAttachment{
 					Mailbox: sourcePath.Mailbox,
 					Uid:     sourcePath.Uid,
 					Node:    node,
-					Body:    decodedBody,
+					Body:    body,
 					CID:     contentID,
-					// A part with a Content-ID belongs to the body unless it says
-					// it is an attachment; an image in multipart/related often
-					// gives no disposition at all.
-					Inline: contentID != "" && !strings.EqualFold(disposition, "attachment"),
+					// A part with a Content-ID belongs to the body when the
+					// composer says the body shows it, or unless it says it is
+					// an attachment; an image in multipart/related often gives
+					// no disposition at all. Taken by its disposition alone, an
+					// image filed as an attachment went out beside the body.
+					Inline: contentID != "" && (shownInline[pathStr] || !strings.EqualFold(disposition, "attachment")),
 				})
+				partSources = append(partSources, map[string]string{"partPath": pathStr})
 			}
+			msg.Attachments = append(msg.Attachments, parts...)
+			sources = append(sources, partSources...)
 			return nil
 		})
 		if err != nil {
@@ -1773,16 +3167,84 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	if saveAsDraft {
+		// The Bcc actually written, not the field the browser posted: a Bcc
+		// entry that does not read is omitted from a draft. Name and Address
+		// stay separate so the browser need not decode MIME display names.
+		storedBcc, err := prepareAddressList(msg.Bcc)
+		if err != nil {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid bcc address: " + err.Error()})
+		}
+		for _, addr := range storedBcc {
+			// Keep quoting required by a local part such as "a;b", while
+			// leaving the display name plain for the browser to format.
+			addr.Address = mailboxAddress(addr)
+		}
 		var drafts *MailboxInfo
 		var uid provider.MessageID
 		var size uint32
 		var respAttachments []map[string]interface{}
+		// The new draft's structure, as a read of it gives one. A composer
+		// editing a draft shows the quote's images from the draft by their
+		// Content-IDs, and this save replaces it: without the new draft's
+		// structure, its quote named the parts of a draft that is gone.
+		var storedStructure imap.BodyStructure
+		// Whether the answer can say which stored part each upload became.
+		// Without it the composer still names them by id, so they are kept for
+		// its next save.
+		readBack := false
 
-		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-			var err error
-			drafts, uid, size, err = appendMessageWithProvider(p, msg, provider.MailboxTypeDrafts)
-			if err != nil {
-				return err
+		// The source of each attachment, by the part path WriteTo gives it
+		// (see partPaths).
+		sourceAt := make(map[string]map[string]string, len(sources))
+		for i, path := range msg.partPaths() {
+			sourceAt[path] = sources[i]
+		}
+
+		// After a network error the save is run again, on another connection
+		// (see DoBackgroundMail): from where it was, without storing the
+		// draft again once it is stored (see storeOnce).
+		var tried bool
+		var heldIn string // Drafts, when it holds a copy the save could not name
+		err = doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+			defer func() {
+				mailbox := heldIn
+				if drafts != nil {
+					mailbox = drafts.Name()
+				}
+				forgetAppendOutcome(ctx.Session.Cache(), mailbox, tried, draftPath)
+			}()
+			if drafts == nil {
+				held, err := storeOnce(p, &tried, provider.MailboxTypeDrafts, msg.MessageID, draftPath, func() error {
+					var err error
+					drafts, uid, size, err = appendMessageWithProvider(p, msg.asDraft(), provider.MailboxTypeDrafts)
+					return err
+				})
+				if err != nil {
+					return err
+				}
+				if held != "" {
+					// Stored, but the save cannot tell that copy from another
+					// of the same draft, and so has no UID to answer.
+					heldIn = held
+					return errDraftMaybeStored
+				}
+			}
+
+			// What a save run again reads back replaces what the one before
+			// it read: added to it, the answer named every part twice.
+			readBack = false
+			respAttachments = nil
+			storedStructure = nil
+
+			// A server without UIDPLUS stores the draft without saying under
+			// which UID: there is nothing to read it back by.
+			if uid == nil {
+				if draftPath != nil {
+					// The composer still refers to the old draft and its parts.
+					// Keep that source until a replacement can be identified.
+					return errors.New("the replacement draft was stored but could not be identified; the previous draft was kept")
+				}
+				return nil
 			}
 
 			// Fetch the new attachments to get updated part paths BEFORE deleting the old draft!
@@ -1792,61 +3254,87 @@ func handleComposeNew(ctx *alps.Context) error {
 			if err != nil {
 				ctx.Server.Logger().Errorf("Failed to fetch new attachments for draft %v: %v", uid, err)
 			} else if newMsg != nil {
+				readBack = true
 				msgIMAP := providerMessageToIMAP(*newMsg)
+				storedStructure = msgIMAP.BodyStructure
+				stored := func(a IMAPPartNode) map[string]interface{} {
+					path := formatPartPath(a.Path)
+					part := map[string]interface{}{
+						"name":     a.Filename,
+						"size":     a.Size,
+						"type":     a.MIMEType,
+						"partPath": path,
+					}
+					if source, ok := sourceAt[path]; ok {
+						part["source"] = source
+					}
+					return part
+				}
 				for _, a := range msgIMAP.Attachments() {
-					respAttachments = append(respAttachments, map[string]interface{}{
-						"name":     a.Filename,
-						"size":     a.Size,
-						"type":     a.MIMEType,
-						"partPath": formatPartPath(a.Path),
-					})
+					respAttachments = append(respAttachments, stored(a))
 				}
-				// The body's images too, marked inline: the composer replaces
-				// what it carries with this list, and left out they were not
-				// carried by the next save or by the send.
+				// The body's images too, marked inline, so that each inline
+				// entry the save carried finds the part it is now stored as.
+				// Left out, such an entry would keep a path the new draft does
+				// not have.
 				for _, a := range msgIMAP.EmbeddedParts() {
-					respAttachments = append(respAttachments, map[string]interface{}{
-						"name":     a.Filename,
-						"size":     a.Size,
-						"type":     a.MIMEType,
-						"partPath": formatPartPath(a.Path),
-						"inline":   true,
-					})
+					part := stored(a)
+					part["inline"] = true
+					respAttachments = append(respAttachments, part)
 				}
 			}
 
-			if draftPath != nil {
-				parsedDraftUid, err := p.ParseMessageID(draftPath.Uid)
-				if err != nil {
-					return err
-				}
-				if err := deleteMessagesWithProvider(p, draftPath.Mailbox, []provider.MessageID{parsedDraftUid}); err != nil {
-					return err
-				}
-			}
-
-			return nil
+			return deleteDraft(p, draftPath)
 		})
 		if err != nil {
+			// Cancellation can return before the callback does. Its state is
+			// still worker-owned; the deferred invalidation covers a late write.
+			ctx.Session.Cache().Clear()
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
+		inMessage = readBack
 
 		mailboxesToInvalidate := []string{drafts.Name()}
 		if draftPath != nil && draftPath.Mailbox != drafts.Name() {
 			mailboxesToInvalidate = append(mailboxesToInvalidate, draftPath.Mailbox)
 		}
 		invalidateMailboxCache(ctx, mailboxesToInvalidate...)
+		if draftPath != nil {
+			forgetMessages(ctx.Session.Cache(), draftPath.Mailbox, draftPath.Uid)
+		}
 
-		return ctx.JSON(http.StatusOK, map[string]interface{}{
+		draftUID := ""
+		if uid != nil {
+			draftUID = uid.String()
+		}
+		answer := map[string]interface{}{
 			"ok":            true,
-			"draft_uid":     uid.String(),
+			"draft_uid":     draftUID,
 			"draft_mailbox": drafts.Name(),
 			"draft_size":    size,
+			"draft_bcc":     storedBcc,
 			"attachments":   respAttachments,
-		})
+		}
+		if storedStructure != nil {
+			answer["draft_structure"] = storedStructure
+		}
+		return ctx.JSON(http.StatusOK, answer)
+	}
+
+	// A send the browser has given up on before the message goes is not
+	// sent. The composer has already said that the send failed, and is open
+	// again for the user to send the message once more: sent now as well, it
+	// would go twice. Nothing has changed yet; the draft is where it was.
+	if err := ctx.Request.Context().Err(); err != nil {
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "message not sent: " + err.Error()})
 	}
 
 	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
+		// A temporary refusal may outlast the browser's wait. Each new
+		// attempt checks again before MAIL, while nothing has been sent.
+		if err := ctx.Request.Context().Err(); err != nil {
+			return fmt.Errorf("message not sent: %v", err)
+		}
 		return sendMessage(c, msg)
 	})
 	if err != nil {
@@ -1856,55 +3344,88 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send message: " + err.Error()})
 	}
+	// Sent. The copy in Sent below still reads them, and they are removed
+	// when the request ends, whether that copy is written or not.
+	inMessage = true
 
-	answered := false
+	// The message has gone. What is left of sending it, the mark on the
+	// message it answers, the copy in Sent and the removal of its draft, is
+	// done whether or not the browser still waits for the answer. A request
+	// given up on does no mail work it has not begun (see DoMailWithContext),
+	// but this is the end of work that has: see FinishMail.
 	if inReplyToPath != nil {
-		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		var answered provider.MessageID
+		err := ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 			parsedReplyUid, err := p.ParseMessageID(inReplyToPath.Uid)
 			if err != nil {
 				return err
 			}
-			return markMessageAnsweredWithProvider(p, inReplyToPath.Mailbox, parsedReplyUid)
+			if err := markMessageAnsweredWithProvider(p, inReplyToPath.Mailbox, parsedReplyUid); err != nil {
+				return err
+			}
+			answered = parsedReplyUid
+			return nil
 		})
 		if err != nil {
 			// The reply is sent; the mark is only a mark.
 			ctx.Server.Logger().Printf("marking %s/%s answered failed: %v", inReplyToPath.Mailbox, inReplyToPath.Uid, err)
+		} else {
+			// The mark is patched into the pages the session holds, as a star
+			// is. The answered message's folder used to be dropped for it, and
+			// read again whole for one flag.
+			updateCachedMessageFlags(ctx, inReplyToPath.Mailbox, answered, []imap.Flag{imap.FlagAnswered}, nil)
 		}
-		answered = err == nil
 	}
 
+	// FinishMail runs the filing again after a network error, on another
+	// connection: from where it was, without filing the copy again once it
+	// is in Sent (see storeOnce).
 	var sentName string
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
-		if err != nil {
-			return err
-		}
-		sentName = sent.Name()
-		if draftPath != nil {
-			parsedDraftUid, err := p.ParseMessageID(draftPath.Uid)
+	var tried bool
+	err = ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+		defer func() {
+			forgetAppendOutcome(ctx.Session.Cache(), sentName, tried, draftPath)
+		}()
+		if sentName == "" {
+			held, err := storeOnce(p, &tried, provider.MailboxTypeSent, msg.MessageID, nil, func() error {
+				sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
+				if err == nil {
+					sentName = sent.Name()
+				}
+				return err
+			})
 			if err != nil {
 				return err
 			}
-			if err := deleteMessagesWithProvider(p, draftPath.Mailbox, []provider.MessageID{parsedDraftUid}); err != nil {
-				return err
+			if held != "" {
+				// The copy the lost answer was for.
+				sentName = held
 			}
 		}
-		return nil
+		return deleteDraft(p, draftPath)
 	})
 	if err != nil {
+		// As above, an abandoned callback can still be finishing its write.
+		ctx.Session.Cache().Clear()
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save message to Sent mailbox: " + err.Error()})
 	}
 
-	// The account's own Sent, which is not always named so, and the answered
-	// message's mailbox, whose cached pages would still show it unanswered.
+	// The account's own Sent, which is not always named so, and the folder the
+	// sent draft was taken from.
 	mailboxesToInvalidate := []string{sentName}
 	if draftPath != nil {
 		mailboxesToInvalidate = append(mailboxesToInvalidate, draftPath.Mailbox)
 	}
-	if answered {
-		mailboxesToInvalidate = append(mailboxesToInvalidate, inReplyToPath.Mailbox)
-	}
 	invalidateMailboxCache(ctx, mailboxesToInvalidate...)
+	if draftPath != nil {
+		forgetMessages(ctx.Session.Cache(), draftPath.Mailbox, draftPath.Uid)
+	}
+	if inReplyToPath != nil {
+		// The answered message's folder keeps its pages, with the mark patched
+		// in above, but not its conversations: each was assembled with the
+		// replies Sent held then, and reopened, it would not show this one.
+		dropConversationsHolding(ctx.Session.Cache(), inReplyToPath.Mailbox)
+	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
 }
@@ -1953,22 +3474,21 @@ func handleComposeAttachment(ctx *alps.Context) error {
 
 	composerID := ctx.QueryParam("composer_id")
 
-	var uuids []string
-	for _, fh := range form.File["attachments"] {
-		uuid, err := ctx.Session.PutAttachment(composerID, fh, form)
-		if errors.Is(err, alps.ErrAttachmentCacheSize) {
-			form.RemoveAll()
-			return ctx.JSON(http.StatusBadRequest, map[string]string{
-				"error": "Your attachments exceed the maximum file size. Remove some and try again.",
-			})
-		} else if err != nil {
-			form.RemoveAll()
-			ctx.Logger().Printf("PutAttachment: %v\n", err)
-			return ctx.JSON(http.StatusBadRequest, map[string]string{
-				"error": "failed to store attachment",
-			})
-		}
-		uuids = append(uuids, uuid)
+	// One call for the request's files: they share one file on disk, which
+	// the session removes when the last of them goes, and they are stored
+	// whole or not at all. A refused request's files are removed by it.
+	uuids, err := ctx.Session.PutAttachments(composerID, form)
+	if errors.Is(err, alps.ErrAttachmentCacheSize) {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Your attachments exceed the maximum file size. Remove some and try again.",
+		})
+	} else if errors.Is(err, alps.ErrSessionExpired) {
+		return alps.NewHTTPError(http.StatusUnauthorized, "session expired")
+	} else if err != nil {
+		ctx.Logger().Printf("PutAttachments: %v\n", err)
+		return ctx.JSON(http.StatusBadRequest, map[string]string{
+			"error": "failed to store attachment",
+		})
 	}
 
 	return ctx.JSON(http.StatusOK, &uuids)
@@ -1978,7 +3498,7 @@ func handleCancelAttachment(ctx *alps.Context) error {
 	uuid := ctx.Param("uuid")
 	a := ctx.Session.PopAttachment(uuid)
 	if a != nil {
-		a.Form.RemoveAll()
+		a.Remove()
 	}
 	return ctx.JSON(http.StatusOK, nil)
 }
@@ -2032,7 +3552,7 @@ func (scope messageScope) resolve(p provider.MailProvider, mboxName string) ([]p
 		for i, uidStr := range scope.Uids {
 			uid, err := p.ParseMessageID(uidStr)
 			if err != nil {
-				return nil, err
+				return nil, alps.NewHTTPError(http.StatusBadRequest, err)
 			}
 			ids[i] = uid
 		}
@@ -2069,6 +3589,19 @@ const maxScopeBatch = 500
 // for. The client offers Undo with them; past that the table is larger than the
 // undo is worth, and the client says so instead.
 const maxReportedMapping = 1000
+
+// filedCount is how many messages of batch a move or a copy filed: those the
+// provider names in its answer. A message gone since the page listed it is
+// passed over by an IMAP server without an error, and was counted all the
+// same. A nil answer, from a server that does not name its copies, says
+// nothing either way, and the batch counts as asked; an empty one is a batch
+// that had all gone (see provider.MailProvider).
+func filedCount(mapping map[provider.MessageID]provider.MessageID, batch []provider.MessageID) int {
+	if mapping == nil {
+		return len(batch)
+	}
+	return len(mapping)
+}
 
 // inBatches runs fn over the ids, at most maxScopeBatch at a time.
 func inBatches(ids []provider.MessageID, fn func([]provider.MessageID) error) error {
@@ -2131,8 +3664,9 @@ func handleMove(ctx *alps.Context) error {
 	}
 
 	moved := 0
+	var movedIDs []provider.MessageID
 	uidMapping := make(map[string]string)
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
@@ -2141,9 +3675,18 @@ func handleMove(ctx *alps.Context) error {
 		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
 			mapping, err := moveMessagesWithProvider(p, mboxName, to, batch)
 			if err != nil {
-				return fmt.Errorf("failed to move messages: %v", err)
+				// What may have moved is forgotten below all the same: the
+				// whole batch, as a delete forgets it. A MOVE whose reply was
+				// lost has moved its messages and named none of them, and
+				// they went on opening from the parts cached here.
+				movedIDs = append(movedIDs, batch...)
+				// Wrapped, here as for a copy and a delete, so that the kind
+				// of failure the provider names is answered as such: a
+				// message that is gone is a 404, as when it is read.
+				return fmt.Errorf("failed to move messages: %w", err)
 			}
-			moved += len(batch)
+			moved += filedCount(mapping, batch)
+			movedIDs = append(movedIDs, batch...)
 			if !withMapping {
 				return nil
 			}
@@ -2153,12 +3696,14 @@ func handleMove(ctx *alps.Context) error {
 			return nil
 		})
 	})
+	// The folders are read again after a move that failed too: it may have
+	// moved some of the messages first, in an earlier batch, or one by one as
+	// the maildir provider moves them. They went on listing what had left.
+	invalidateMailboxCache(ctx, mboxName, to)
+	forgetMessages(ctx.Session.Cache(), mboxName, idStrings(movedIDs)...)
 	if err != nil {
 		return err
 	}
-
-	// Invalidate cache for affected mailboxes
-	invalidateMailboxCache(ctx, mboxName, to)
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"ok":         true,
@@ -2208,7 +3753,7 @@ func handleCopy(ctx *alps.Context) error {
 
 	copied := 0
 	uidMapping := make(map[string]string)
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
@@ -2217,9 +3762,9 @@ func handleCopy(ctx *alps.Context) error {
 		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
 			mapping, err := copyMessagesWithProvider(p, mboxName, to, batch)
 			if err != nil {
-				return fmt.Errorf("failed to copy messages: %v", err)
+				return fmt.Errorf("failed to copy messages: %w", err)
 			}
-			copied += len(batch)
+			copied += filedCount(mapping, batch)
 			if !withMapping {
 				return nil
 			}
@@ -2229,12 +3774,12 @@ func handleCopy(ctx *alps.Context) error {
 			return nil
 		})
 	})
+	// The destination is read again after a copy that failed too: it may hold
+	// some of the copies (see handleMove).
+	invalidateMailboxCache(ctx, to)
 	if err != nil {
 		return err
 	}
-
-	// Invalidate cache for affected mailboxes
-	invalidateMailboxCache(ctx, to)
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"ok":         true,
@@ -2271,25 +3816,32 @@ func handleDelete(ctx *alps.Context) error {
 	}
 
 	deleted := 0
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	var deletedIDs []provider.MessageID
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
 		}
 		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
-			if err := deleteMessagesWithProvider(p, mboxName, batch); err != nil {
-				return fmt.Errorf("failed to delete messages: %v", err)
+			err := deleteMessagesWithProvider(p, mboxName, batch)
+			// A batch that failed may have deleted some of its messages:
+			// what the session holds of any of them is forgotten.
+			deletedIDs = append(deletedIDs, batch...)
+			if err != nil {
+				return fmt.Errorf("failed to delete messages: %w", err)
 			}
 			deleted += len(batch)
 			return nil
 		})
 	})
+
+	// The folder is read again after a delete that failed too (see
+	// handleMove).
+	invalidateMailboxCache(ctx, mboxName)
+	forgetMessages(ctx.Session.Cache(), mboxName, idStrings(deletedIDs)...)
 	if err != nil {
 		return err
 	}
-
-	// Invalidate cache for the mailbox
-	invalidateMailboxCache(ctx, mboxName)
 
 	return ctx.JSON(http.StatusOK, map[string]any{"ok": "true", "count": deleted})
 }
@@ -2346,6 +3898,14 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 		discarded, err = p.EmptyMailbox(mboxName)
 		return err
 	})
+	// Invalidate cache for the mailbox, and every message it held: after an
+	// emptying that failed too, unless it was refused here. The server may
+	// have expunged the messages before it failed, and the folder went on
+	// listing them.
+	if !errors.Is(err, errEmptyNotAllowed) {
+		invalidateMailboxCache(ctx, mboxName)
+		deleteFolderEntries(ctx.Session.Cache(), "message", mboxName)
+	}
 	if err != nil {
 		// A refusal is the user asking for something this endpoint does not do,
 		// not a server fault. It used to come back as a 500 whose body repeated
@@ -2356,9 +3916,6 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 		}
 		return respondMailboxError(ctx, "empty mailbox", err)
 	}
-
-	// Invalidate cache for the mailbox
-	invalidateMailboxCache(ctx, mboxName)
 
 	// How many went, so the client can tell an emptied folder from one that had
 	// nothing in it. The two are the same 200 otherwise, and "Mailbox emptied"
@@ -2385,6 +3942,7 @@ func handleGetSession(ctx *alps.Context) error {
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Username":              ctx.Session.Username(),
+		"Address":               ctx.Session.Address(),
 		"PasswordChangeEnabled": passwordChangeEnabled,
 		"EnabledPlugins":        enabledPlugins,
 		"MaxAttachmentMiB":      maxAttachmentMiB,
@@ -2552,25 +4110,38 @@ func handleSetFlags(ctx *alps.Context) error {
 		})
 	})
 	if err != nil {
+		// A change refused after its first batch has been made to that batch,
+		// and one whose answer was lost may have been made: the copies the
+		// session holds of the messages say nothing reliable now. They go, and
+		// the folder is read again, as after a change to the whole folder.
+		if len(alpsMsgIDs) > 0 {
+			invalidateMailboxCache(ctx, mboxName)
+			forgetMessages(ctx.Session.Cache(), mboxName, idStrings(alpsMsgIDs)...)
+		}
 		return err
 	}
 
 	// A whole folder's worth of messages is not patched into the cache one at a
-	// time: the listing is dropped instead, and read again.
-	if scope.All {
+	// time: the listing is dropped instead, and read again. So is a change
+	// that replaces every flag (StoreFlagsSet), whose result is not worked out
+	// here. The messages' cached copies carry their flags, and go with it.
+	if scope.All || op == imap.StoreFlagsSet {
 		invalidateMailboxCache(ctx, mboxName)
+		deleteFolderEntries(ctx.Session.Cache(), "message", mboxName)
 	} else {
 		// Update cached message flags instead of full invalidation
+		recount := false
 		for _, uid := range alpsMsgIDs {
-			switch op {
-			case imap.StoreFlagsAdd:
-				updateCachedMessageFlags(ctx, mboxName, uid, l, nil)
-			case imap.StoreFlagsDel:
-				updateCachedMessageFlags(ctx, mboxName, uid, nil, l)
-			default:
-				// StoreFlagsSet is complex (replaces all flags), so invalidate
-				invalidateMailboxCache(ctx, mboxName)
+			if op == imap.StoreFlagsAdd {
+				recount = updateCachedMessageFlags(ctx, mboxName, uid, l, nil) || recount
+			} else {
+				recount = updateCachedMessageFlags(ctx, mboxName, uid, nil, l) || recount
 			}
+		}
+		// Once for the request, however many messages' earlier state was
+		// unknown.
+		if recount {
+			rereadMailboxCounts(ctx, []string{mboxName})
 		}
 	}
 
@@ -2587,18 +4158,64 @@ func handleSetFlags(ctx *alps.Context) error {
 // accord, so the HTTP layer can answer 403 instead of relaying it as a 500.
 var errEmptyNotAllowed = errors.New("emptying is only allowed for Trash and Junk mailboxes")
 
-// isMoveIntoTrash reports whether `name` is the Trash mailbox or sits beneath
-// it, with Trash identified by its \Trash special-use attribute and only
-// falling back to the English name when the server advertises none.
-func isMoveIntoTrash(p provider.MailProvider, name string) bool {
-	mailboxes, err := p.ListMailboxes()
-	if err != nil {
-		// Unknown rather than false would be more honest, but the only
-		// consequence of guessing wrong here is a missed unsubscribe, and the
-		// English name is the best guess available.
-		return strings.HasPrefix(strings.ToLower(name), "trash")
-	}
+// renameSubscriptions is what a folder rename does to subscriptions, worked
+// out before the RENAME from the listing as it stood.
+type renameSubscriptions struct {
+	// unsubscribeOld: the folder is going into Trash, and leaves the
+	// subscriptions on its way, so that other clients stop showing a deleted
+	// folder among the live ones.
+	unsubscribeOld bool
+	// subscribe: the names, after the rename, to subscribe to.
+	subscribe []string
+}
 
+// planRenameSubscriptions keeps a renamed folder's subscriptions with it.
+//
+// IMAP does not say whether a subscription follows a RENAME, and a server is
+// forbidden to drop one by itself (RFC 3501 §6.3.6), so on a server that does
+// not carry them over the old name stays subscribed and the new one is not: a
+// folder renamed here dropped out of every client that shows subscribed
+// folders only. So every folder of the renamed subtree that was subscribed is
+// subscribed again under its new name, which is harmless where the server
+// has already done it.
+//
+// Two cases are Trash's. A folder deleted into Trash leaves the subscriptions,
+// as it always has here. One taken back out of Trash — the deletion's Undo,
+// or a rename by hand — is subscribed again, because it was this unsubscribe
+// that took it out of them, and a restored folder would otherwise come back
+// missing from those clients.
+//
+// "Is this rename a move into Trash?" is resolved by IMAP special-use, not by
+// testing whether the new name starts with the English word "trash". The
+// frontend already resolves the real Trash folder by attribute — see
+// findMailboxNameByRole and the issue #4 comment it carries — so the two
+// halves of one feature disagreed: on Gmail, where Trash is `[Gmail]/Trash`,
+// the unsubscribe that is supposed to accompany the move never happened, and a
+// user's own folder named "Trash notes" got it when it should not have.
+func planRenameSubscriptions(mailboxes []provider.Mailbox, oldName, newName string) renameSubscriptions {
+	if isInTrash(mailboxes, newName) {
+		return renameSubscriptions{unsubscribeOld: true}
+	}
+	outOfTrash := isInTrash(mailboxes, oldName)
+	var plan renameSubscriptions
+	for _, mb := range mailboxes {
+		rest, ok := strings.CutPrefix(mb.Name, oldName)
+		if !ok || (rest != "" && (mb.Delimiter == 0 || !strings.HasPrefix(rest, string(mb.Delimiter)))) {
+			continue
+		}
+		if mb.Subscribed || (rest == "" && outOfTrash) {
+			plan.subscribe = append(plan.subscribe, newName+rest)
+		}
+	}
+	return plan
+}
+
+// isInTrash reports whether `name` is the Trash mailbox or sits beneath it,
+// with Trash identified by its \Trash special-use attribute and only falling
+// back to the English name when the server advertises none — or when there is
+// no listing to read, where unknown would be more honest, but the English name
+// is the best guess available.
+func isInTrash(mailboxes []provider.Mailbox, name string) bool {
 	trash := ""
 	for _, mb := range mailboxes {
 		for _, attr := range mb.Attributes {
@@ -2658,6 +4275,15 @@ func isValidIMAPKeyword(s string) bool {
 const settingsKey = "base.settings"
 const maxMessagesPerPage = 100
 
+// The most folders UnsubscribedFolders holds, and the most bytes their names
+// take together. The record is one METADATA entry, which servers cap (64 KiB
+// on sora), and every other setting has to fit in it as well. The frontend
+// keeps the newest names that fit.
+const (
+	maxUnsubscribedFolders      = 200
+	maxUnsubscribedFoldersBytes = 16 << 10
+)
+
 // The largest UID list a single flag/delete/move/copy request may carry. The
 // frontend chunks at the same number, so an ordinary selection is still one
 // round trip and only a select-everything gesture is split.
@@ -2672,6 +4298,14 @@ type UIPreferences struct {
 	ThemeIframeContent *bool    `json:"themeIframeContent,omitempty"`
 	ShowSenderAvatars  *bool    `json:"showSenderAvatars,omitempty"`
 	CustomMailboxOrder []string `json:"customMailboxOrder,omitempty"`
+
+	// UnsubscribedFolders names the folders the user unsubscribed from in
+	// alps, oldest first. The sidebar puts such a folder behind its More row
+	// for as long as the server still lists it unsubscribed. The server's own
+	// subscription list cannot answer that by itself: it also holds every
+	// folder unsubscribed in another client, and every folder a server that
+	// does not subscribe on CREATE was given unsubscribed.
+	UnsubscribedFolders []string `json:"unsubscribedFolders,omitempty"`
 }
 
 type Settings struct {
@@ -2828,6 +4462,33 @@ func (s *Settings) check() error {
 	if s.WeekStart != nil && *s.WeekStart != 0 && *s.WeekStart != 1 {
 		return fmt.Errorf("week_start must be 0 or 1")
 	}
+	if err := checkUnsubscribedFolders(s.UI.UnsubscribedFolders); err != nil {
+		return err
+	}
+	return nil
+}
+
+// checkUnsubscribedFolders holds the list to its caps, and to one entry per
+// folder: a name is a folder's, and the list is a set kept in order.
+func checkUnsubscribedFolders(names []string) error {
+	if len(names) > maxUnsubscribedFolders {
+		return fmt.Errorf("unsubscribed folders: at most %d, not %d", maxUnsubscribedFolders, len(names))
+	}
+	seen := make(map[string]bool, len(names))
+	size := 0
+	for _, name := range names {
+		if name == "" {
+			return fmt.Errorf("unsubscribed folders: a folder without a name")
+		}
+		if seen[name] {
+			return fmt.Errorf("unsubscribed folders: %q twice", name)
+		}
+		seen[name] = true
+		size += len(name)
+	}
+	if size > maxUnsubscribedFoldersBytes {
+		return fmt.Errorf("unsubscribed folders: names take %d bytes, at most %d", size, maxUnsubscribedFoldersBytes)
+	}
 	return nil
 }
 
@@ -2945,6 +4606,10 @@ func handleSettings(ctx *alps.Context) error {
 				}
 				if req.UI.CustomMailboxOrder != nil {
 					settings.UI.CustomMailboxOrder = req.UI.CustomMailboxOrder
+				}
+				// An empty list is a list: the last folder subscribed to again.
+				if req.UI.UnsubscribedFolders != nil {
+					settings.UI.UnsubscribedFolders = req.UI.UnsubscribedFolders
 				}
 			}
 
@@ -3108,6 +4773,8 @@ func handleSettings(ctx *alps.Context) error {
 		"MaxAttachmentMiB":     maxAttachmentMiB,
 		"HasThreadCapability":  hasThreadCapability,
 		"HasESearchCapability": hasESearchCapability,
+		// Whether the pages are to open the event stream (see handleEvents).
+		"PushNewMail": ctx.Server.Sessions.PushNewMail(),
 	})
 }
 
@@ -3214,7 +4881,6 @@ func handleSwitchAccount(ctx *alps.Context) error {
 		// 2. Current session was authenticated with 2FA
 		if trustLinked && ctx.Session.IsAuthenticated2FA() {
 			skipTwoFA = true
-			ctx.Server.Logger().Printf("Skipping 2FA for %s (trusted linked account, source authenticated)", targetUsername)
 		}
 	}
 
@@ -3237,8 +4903,14 @@ func handleSwitchAccount(ctx *alps.Context) error {
 			"password": password,
 		})
 
+		ctx.Server.Logger().Slog().Info("account switch awaits second factor",
+			"user", ctx.Session.Username(),
+			"to", targetUsername,
+			"ip", ctx.ClientIP(),
+			"session", newSession.ID())
+
 		// Close the old session
-		ctx.Session.Close()
+		ctx.Session.CloseWithReason("switched")
 
 		// Clear the old session cookie so Auth middleware doesn't try to restore it
 		ctx.SetSession(nil)
@@ -3248,8 +4920,15 @@ func handleSwitchAccount(ctx *alps.Context) error {
 	}
 
 	// No 2FA (or trusted linked account) - complete the switch immediately
+	ctx.Server.Logger().Slog().Info("account switch",
+		"user", ctx.Session.Username(),
+		"to", targetUsername,
+		"ip", ctx.ClientIP(),
+		"session", newSession.ID(),
+		"2fa_trusted", skipTwoFA)
+
 	// Close the old session
-	ctx.Session.Close()
+	ctx.Session.CloseWithReason("switched")
 
 	// If we skipped 2FA due to trust, mark new session as 2FA authenticated
 	if skipTwoFA {

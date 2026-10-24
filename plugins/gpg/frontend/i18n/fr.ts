@@ -22,9 +22,10 @@ export default {
     publicKey: 'Clé publique',
     purgeKeys: 'Purger la paire de clés',
     generateNewKeypair: 'Générer une nouvelle paire de clés',
+    generating: 'Génération de la paire de clés...',
     enableEncryptionDesc: 'Pour activer le chiffrement de bout en bout entre les contacts qui le prennent en charge, vous aurez besoin d\'une paire de clés GPG.',
     noKeyPresent: 'Aucune clé présente',
-    passphraseRequiredLabel: 'Mot de passe (Requis)',
+    passphraseRequiredLabel: 'Mot de passe (requis)',
     generateKeysBtn: 'Générer les clés',
     importExistingKeys: 'Importer une paire de clés GPG existante',
     publicKeyBlock: 'Bloc de clé publique',
@@ -35,11 +36,12 @@ export default {
     purgeConfirm: 'Êtes-vous sûr de vouloir supprimer définitivement vos clés GPG du serveur ? Les anciens e-mails chiffrés deviendront illisibles.',
     passphraseMissing: 'Le mot de passe est requis pour chiffrer votre nouvelle clé privée.',
     importMissing: 'Les blocs public et privé sont requis pour l\'importation.',
-    generateFailed: 'Échec de la génération des clés: {error}',
-    importFailed: 'Échec de l\'importation: {error}',
+    generateFailed: 'Échec de la génération des clés : {error}',
+    importFailed: 'Échec de l\'importation : {error}',
+    purgeFailed: 'Échec de la suppression des clés : {error}',
     importFailedTitle: 'Échec de l\'importation',
     passphraseMismatch: 'Les mots de passe ne correspondent pas. Veuillez réessayer.',
-    missingPublicKeys: 'Impossible de chiffrer: Clés publiques manquantes pour:\n{keys}',
+    missingPublicKeys: 'Impossible de chiffrer : clés publiques manquantes pour :\n{keys}',
     attachmentsNotEncryptable: 'Les pièces jointes ne peuvent pas être chiffrées avec PGP en ligne et seraient envoyées non chiffrées. Supprimez les pièces jointes ou désactivez le chiffrement pour les envoyer.'
   }
 };

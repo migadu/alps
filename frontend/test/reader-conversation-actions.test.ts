@@ -25,6 +25,7 @@ import { messageKey } from '../src/utils/message-key';
 type El = HTMLElement & Record<string, any>;
 
 const SEEN = '\\Seen';
+const FLAGGED = '\\Flagged';
 const DRAFT = '\\Draft';
 
 const envelope = (subject: string, date: string, from: string, id: string) => ({
@@ -55,9 +56,15 @@ function settingsStore(extra: Record<string, unknown> = {}) {
   return Object.assign(new EventTarget(), { getState: () => state });
 }
 
-const server: { thread: any[]; flagWrites: { mailbox: string; uids: string[]; flags: string[]; action: string }[] } = {
+const server: {
+  thread: any[];
+  flagWrites: { mailbox: string; uids: string[]; flags: string[]; action: string }[];
+  /** What a flag write is answered with. */
+  flagStatus: number;
+} = {
   thread: [],
   flagWrites: [],
+  flagStatus: 200,
 };
 
 function json(body: unknown) {
@@ -71,12 +78,16 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   server.thread = [];
   server.flagWrites = [];
+  server.flagStatus = 200;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
     const u = String(url);
     const flag = /^\/mailboxes\/([^/]+)\/messages\/flag$/.exec(u);
     if (flag) {
       const body = JSON.parse(String(init.body));
       server.flagWrites.push({ mailbox: decodeURIComponent(flag[1]), ...body });
+      if (server.flagStatus !== 200) {
+        return new Response(JSON.stringify({ error: 'internal error' }), { status: server.flagStatus, headers: { 'Content-Type': 'application/json' } });
+      }
       return json({ ok: true });
     }
     if (/\/messages\/\d+\/thread$/.test(u)) return json({ Messages: server.thread });
@@ -360,6 +371,129 @@ describe('a card\'s own menu', () => {
       expect(seen[0].detail).toMatchObject({ action: 'delete', uid: '9', mailbox: 'INBOX', nextUid: '5' });
     });
 
+    describe('of the message being read', () => {
+      /** Deletes the open card, the page agrees, and opens the message it was
+       * told to stay on, from the list as it still stands: the list is read
+       * again only after the delete. */
+      async function deleteOpenCard(el: El, open: { mailbox: string; uid: string }) {
+        const seen = actions(el);
+        const doomed = card(el, open.mailbox, open.uid);
+        doomed.dispatchEvent(new CustomEvent('delete-item', { detail: { item: doomed.item } }));
+        const detail = seen[0].detail;
+        detail.done!(true);
+        return detail;
+      }
+      const threadReads = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/thread')).length;
+
+      it('stays on the rest of the conversation, without the card it deleted', async () => {
+        // The page opens the message to stay on, and the reader took that for
+        // a new conversation: it threw the cards away, read the conversation
+        // again, and drew the deleted message back from the list, which still
+        // held it.
+        const el = await openConversation();
+        const reads = threadReads();
+        const detail = await deleteOpenCard(el, { mailbox: 'INBOX', uid: '9' });
+        expect(detail.nextUid).toBe('5');
+
+        await update(el, { message: el.messages[0] });
+        await settle();
+
+        expect(cards(el).map(c => `${c.item.mailbox}/${c.item.message.UID}`)).toEqual(['INBOX/5', 'Sent/7']);
+        expect(card(el, 'INBOX', '5').item.expanded).toBe(true);
+        expect(card(el, 'INBOX', '5').item.content).toBe('the body');
+        expect(threadReads()).toBe(reads);
+
+        // And when the list moves before it is read again.
+        await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+        await settle();
+        expect(cards(el).map(c => `${c.item.mailbox}/${c.item.message.UID}`)).toEqual(['INBOX/5', 'Sent/7']);
+      });
+
+      it('keeps a pending conversation answer when deleting the open card and staying on another', async () => {
+        server.thread = [older(), reply(), newer()];
+        const normal = fetch;
+        let answer!: (value: Response) => void;
+        vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+          String(input).endsWith('/messages/9/thread')
+            ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+        const listed = [{ ...older(), SubMessages: [newer()] }];
+        const el = await mount<El>('alps-message-reader', {
+          settingsStore: settingsStore(), i18nStore, composeStore: new EventTarget(),
+          mailbox: 'INBOX', messages: listed, message: newer(),
+          mailboxes: [{ Name: 'INBOX', Attrs: [] }, { Name: 'Sent', Attrs: ['\\Sent'] }],
+        });
+        await waitFor(() => !!answer, 'the pending conversation request');
+        const detail = await deleteOpenCard(el, { mailbox: 'INBOX', uid: '9' });
+        expect(detail.nextUid).toBe('5');
+        await update(el, { message: listed[0] });
+        answer(json({ Messages: server.thread }));
+        await waitFor(() => cards(el).some(c => c.item.mailbox === 'Sent'), 'the other-folder reply from the pending conversation');
+        expect(cards(el).map(c => `${c.item.mailbox}/${c.item.message.UID}`)).toEqual(['INBOX/5', 'Sent/7']);
+        expect(el._conversation?.key).toBe(messageKey('INBOX', '5'));
+      });
+
+      it('continues opening the conversation when the deleted card was still reading its first body', async () => {
+        server.thread = [older(), reply(), newer()];
+        const normal = fetch;
+        let answer!: (value: Response) => void;
+        vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+          /^\/mailboxes\/INBOX\/messages\/9\?/.test(String(input))
+            ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+        const listed = [{ ...older(), SubMessages: [newer()] }];
+        const el = await mount<El>('alps-message-reader', {
+          settingsStore: settingsStore(), i18nStore, composeStore: new EventTarget(),
+          mailbox: 'INBOX', messages: listed, message: newer(),
+        });
+        await waitFor(() => !!answer, 'the initial body request');
+        await deleteOpenCard(el, { mailbox: 'INBOX', uid: '9' });
+        await update(el, { message: listed[0] });
+        answer(json({ Message: newer(), Body: 'deleted body', Part: { Path: [1], MIMEType: 'text/plain' } }));
+        await waitFor(() => cards(el).some(c => c.item.mailbox === 'Sent'), 'the continued conversation');
+        expect(cards(el).map(c => `${c.item.mailbox}/${c.item.message.UID}`)).toEqual(['INBOX/5', 'Sent/7']);
+        expect(el.content).toBe('the body');
+      });
+
+      for (const departure of ['another conversation', 'another account', 'disconnected'] as const) {
+        it(`does not carry a pending delete-successor answer into ${departure}`, async () => {
+          const members = [older(), reply(), newer()];
+          server.thread = members;
+          const normal = fetch;
+          let answer!: (value: Response) => void;
+          vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+            String(input).endsWith('/messages/9/thread')
+              ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+          const listed = [{ ...older(), SubMessages: [newer()] }];
+          const el = await mount<El>('alps-message-reader', {
+            settingsStore: settingsStore(), i18nStore, composeStore: new EventTarget(),
+            mailbox: 'INBOX', messages: listed, message: newer(),
+          });
+          await waitFor(() => !!answer, 'the pending conversation request');
+          await deleteOpenCard(el, { mailbox: 'INBOX', uid: '9' });
+          await update(el, { message: listed[0] });
+          if (departure === 'another conversation') {
+            const other = { ...newer(), UID: '21' };
+            server.thread = [other];
+            await update(el, { message: other, messages: [other] });
+          } else if (departure === 'another account') MessageCache.clear();
+          else el.remove();
+          answer(json({ Messages: members }));
+          await waitFor(() => el.conversationReads.size === 0, 'all conversation answers settled');
+          expect(el.threadItems.some((item: any) => item.mailbox === 'Sent')).toBe(false);
+          expect(el._conversation?.messages.some((m: any) => m.Mailbox === 'Sent')).not.toBe(true);
+        });
+      }
+
+      it('in a search of every folder, stays on the newest other card, in its own folder', async () => {
+        // Only the cards in the folder being viewed were candidates, and a
+        // search of every folder is no one folder: there were none, and the
+        // reader closed with the rest of the conversation still there.
+        const el = await openConversation({ mailbox: '*', listed: [{ ...newer(), SubMessages: [older(), reply()] }] });
+        const detail = await deleteOpenCard(el, { mailbox: 'INBOX', uid: '9' });
+
+        expect(detail).toMatchObject({ nextUid: '7', nextMailbox: 'Sent' });
+      });
+    });
+
     it('never deletes on its own, and never asks the browser to confirm', async () => {
       const confirm = vi.spyOn(window, 'confirm');
       const el = await openConversation();
@@ -484,6 +618,265 @@ describe('reading a conversation', () => {
 
     expect(card(el, 'Sent', '7').item.message.Flags).toContain(SEEN);
     expect(readWrites()).toHaveLength(1);
+  });
+
+  describe('a flag on a card the list does not hold', () => {
+    // The reply from Sent is no row of the list, so the cards rebuilt on a
+    // list change take it from the conversation the server returned, which
+    // still had its old flags.
+    it('stays when it was starred on its card', async () => {
+      const el = await openConversation();
+      // Once the list has moved, the card holds its own copy of the message.
+      await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+      await settle();
+      const sent = card(el, 'Sent', '7');
+      sent.dispatchEvent(new CustomEvent('toggle-star', { detail: { item: sent.item } }));
+      await settle();
+      expect(card(el, 'Sent', '7').item.message.Flags).toContain(FLAGGED);
+
+      await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+      await settle();
+
+      expect(card(el, 'Sent', '7').item.message.Flags).toContain(FLAGGED);
+    });
+
+    for (const change of ['successful star', 'page add', 'page remove', 'refused star'] as const) {
+      it(`keeps ${change} newer than a pending conversation refresh`, async () => {
+        const initiallyStarred = change === 'page remove';
+        const el = await openConversation({ members: [older(), reply(initiallyStarred ? [SEEN, FLAGGED] : [SEEN]), newer()] });
+        await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+        const stale = server.thread.map(m => ({ ...m, Flags: [...m.Flags] }));
+        const normal = fetch;
+        let answer!: (value: Response) => void;
+        vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+          String(input).endsWith('/messages/9/thread')
+            ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+        el.reloadConversation();
+        await waitFor(() => !!answer, 'the pending conversation refresh');
+        if (change.startsWith('page')) {
+          window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
+            detail: { keys: [messageKey('Sent', '7')], flag: FLAGGED, action: initiallyStarred ? 'remove' : 'add' },
+          }));
+        } else {
+          if (change === 'refused star') server.flagStatus = 500;
+          const sent = card(el, 'Sent', '7');
+          sent.dispatchEvent(new CustomEvent('toggle-star', { detail: { item: sent.item } }));
+          await waitFor(() => server.flagWrites.some(w => w.mailbox === 'Sent'), 'the star write');
+          await settle();
+        }
+        answer(json({ Messages: stale }));
+        await waitFor(() => el.conversationReads.size === 0, 'the refreshed conversation');
+        const starred = change === 'successful star' || change === 'page add';
+        expect(card(el, 'Sent', '7').item.message.Flags.includes(FLAGGED)).toBe(starred);
+        expect(card(el, 'Sent', '7').item.message.Flags).toContain(SEEN);
+        await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+        expect(card(el, 'Sent', '7').item.message.Flags.includes(FLAGGED)).toBe(starred);
+      });
+    }
+
+    it('stays when the page changed it', async () => {
+      const el = await openConversation();
+      window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
+        detail: { keys: [messageKey('Sent', '7')], flag: FLAGGED, action: 'add' },
+      }));
+      await settle();
+      expect(card(el, 'Sent', '7').item.message.Flags).toContain(FLAGGED);
+
+      await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+      await settle();
+
+      expect(card(el, 'Sent', '7').item.message.Flags).toContain(FLAGGED);
+    });
+  });
+
+  describe('when the server refuses the write', () => {
+    // A refused mark-read put the card back to unread, and the next render
+    // found an expanded unread card and marked it read again: with the default
+    // "at once", a write on every tick, hundreds a second, each one turning
+    // the list's row bold and back, until the conversation was closed.
+    const refusals = () => record<CustomEvent>(window, 'show-toast');
+    const said = (toasts: CustomEvent[]) => toasts.map(t => t.detail.message);
+
+    it('sends it once, leaves the card unread, and says so', async () => {
+      server.flagStatus = 500;
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await settle(40);
+
+      expect(readWrites()).toEqual([{ mailbox: 'INBOX', uids: ['5'], flags: [SEEN], action: 'add' }]);
+      expect(card(el, 'INBOX', '5').item.message.Flags).not.toContain(SEEN);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed']);
+    });
+
+    it('says so once for every unread card of the conversation', async () => {
+      server.flagStatus = 500;
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply([]), newer()] });
+      await settle(40);
+
+      // One write per folder, as for a write that lands.
+      expect(readWrites()).toEqual([
+        { mailbox: 'INBOX', uids: ['5'], flags: [SEEN], action: 'add' },
+        { mailbox: 'Sent', uids: ['7'], flags: [SEEN], action: 'add' },
+      ]);
+      expect(card(el, 'INBOX', '5').item.message.Flags).not.toContain(SEEN);
+      expect(card(el, 'Sent', '7').item.message.Flags).not.toContain(SEEN);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed']);
+    });
+
+    it('says a fresh refusal after another message was opened in between', async () => {
+      server.flagStatus = 500;
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await settle(20);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed']);
+
+      const other = { ...newer(), UID: '19' };
+      server.thread = [other];
+      await update(el, { messages: [other], message: other });
+      await settle(20);
+      expect(readWrites()).toHaveLength(1);
+
+      const members = [older([]), reply(), newer()];
+      server.thread = members;
+      await update(el, { messages: [{ ...members[0], SubMessages: [members[2]] }], message: members[2] });
+      await settle(20);
+
+      expect(readWrites()).toHaveLength(2);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed', 'toast.flagChangeFailed']);
+    });
+
+    it("does not say a departed conversation's late refusal for the current message", async () => {
+      let release!: (response: Response) => void;
+      const fetchNormally = fetch;
+      vi.stubGlobal('fetch', vi.fn((url: string, init: RequestInit = {}) => {
+        if (String(url) === '/mailboxes/INBOX/messages/flag') {
+          const body = JSON.parse(String(init.body));
+          if (body.uids.includes('5')) {
+            server.flagWrites.push({ mailbox: 'INBOX', ...body });
+            return new Promise<Response>(resolve => { release = resolve; });
+          }
+        }
+        return fetchNormally(url, init);
+      }));
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await waitFor(() => !!release, "the first conversation's held flag write");
+
+      // Open a different conversation while that write is out. Its automatic
+      // read waits until after the older failure, so both refusals are observed.
+      el.settingsStore.getState().markReadTimeout = -1;
+      const members = [{ ...older([]), UID: '15' }, { ...newer(), UID: '19' }];
+      server.thread = members;
+      await update(el, { messages: [{ ...members[0], SubMessages: [members[1]] }], message: members[1] });
+      await settle(20);
+      release(new Response('{}', { status: 500 }));
+      await settle(20);
+      expect.soft(said(toasts)).toEqual([]);
+      const beforeCurrentRefusal = toasts.length;
+
+      server.flagStatus = 500;
+      el.settingsStore.getState().markReadTimeout = 0;
+      el.requestUpdate();
+      await settle(20);
+      expect(readWrites().map(write => write.uids)).toEqual([['5'], ['15']]);
+      expect(said(toasts).slice(beforeCurrentRefusal)).toEqual(['toast.flagChangeFailed']);
+    });
+
+    it('does not announce a held refusal after the reader has left the page', async () => {
+      let release!: (response: Response) => void;
+      const fetchNormally = fetch;
+      vi.stubGlobal('fetch', vi.fn((url: string, init: RequestInit = {}) => {
+        if (String(url) === '/mailboxes/INBOX/messages/flag') {
+          const body = JSON.parse(String(init.body));
+          server.flagWrites.push({ mailbox: 'INBOX', ...body });
+          return new Promise<Response>(resolve => { release = resolve; });
+        }
+        return fetchNormally(url, init);
+      }));
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await waitFor(() => !!release, 'the held flag write');
+      el.remove();
+
+      release(new Response('{}', { status: 500 }));
+      await settle(20);
+
+      expect(readWrites()).toHaveLength(1);
+      expect(said(toasts)).toEqual([]);
+    });
+
+    it('waits the set delay once, and does not try again after it', async () => {
+      server.flagStatus = 500;
+      const el = await openConversation({ members: [older([]), reply(), newer()], settings: { markReadTimeout: 1 } });
+      await new Promise(resolve => setTimeout(resolve, 1100));
+      await settle();
+      expect(readWrites()).toHaveLength(1);
+
+      await new Promise(resolve => setTimeout(resolve, 1100));
+      await settle();
+      expect(readWrites()).toHaveLength(1);
+      expect(card(el, 'INBOX', '5').item.message.Flags).not.toContain(SEEN);
+    });
+
+    it('is still marked read from the card\'s menu, which says again when refused', async () => {
+      server.flagStatus = 500;
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await settle(20);
+      const first = card(el, 'INBOX', '5');
+
+      first.dispatchEvent(new CustomEvent('action-for-item', { detail: { action: 'markRead', item: first.item } }));
+      await settle(20);
+      expect(readWrites()).toHaveLength(2);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed', 'toast.flagChangeFailed']);
+
+      server.flagStatus = 200;
+      const again = card(el, 'INBOX', '5');
+      again.dispatchEvent(new CustomEvent('action-for-item', { detail: { action: 'markRead', item: again.item } }));
+      await settle(20);
+      expect(readWrites()).toHaveLength(3);
+      expect(card(el, 'INBOX', '5').item.message.Flags).toContain(SEEN);
+    });
+
+    it('tries again when the card is opened again', async () => {
+      server.flagStatus = 500;
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await settle(20);
+      expect(readWrites()).toHaveLength(1);
+
+      server.flagStatus = 200;
+      const toggle = () => {
+        const c = card(el, 'INBOX', '5');
+        c.dispatchEvent(new CustomEvent('toggle-expansion', { detail: { item: c.item } }));
+      };
+      toggle();
+      await settle();
+      toggle();
+      await settle(20);
+
+      expect(readWrites()).toHaveLength(2);
+      expect(card(el, 'INBOX', '5').item.message.Flags).toContain(SEEN);
+    });
+  });
+
+  it('takes no flags for a card the list says has none, and keeps those it leaves out', async () => {
+    // The server writes a message with no flags as `Flags: null`, which was
+    // taken for flags not given: the card kept those it had, after another
+    // client had cleared them.
+    const el = await openConversation({ members: [older([SEEN, '\\Flagged']), reply(), newer()] });
+
+    await update(el, { messages: [{ ...older(null as any), SubMessages: [newer()] }] });
+    await settle();
+    expect(card(el, 'INBOX', '5').item.message.Flags).toEqual([]);
+
+    const unsaid = older([SEEN]) as any;
+    delete unsaid.Flags;
+    await update(el, { messages: [{ ...older([SEEN]), SubMessages: [newer()] }] });
+    await settle();
+    await update(el, { messages: [{ ...unsaid, SubMessages: [newer()] }] });
+    await settle();
+    expect(card(el, 'INBOX', '5').item.message.Flags).toEqual([SEEN]);
   });
 
   it('starts at the first unread message when that is not the open one', async () => {

@@ -13,8 +13,8 @@ export class UIConfirm extends LitElement {
   @consume({ context: i18nContext })
   i18nStore!: I18nStore;
 
-  // eslint-disable-next-line lit/no-native-attributes
-  @property({ type: String }) title: string = 'Confirm';
+  /** The heading, passed on to ui-modal; not HTML's `title` (see there). */
+  @property({ type: String }) heading: string = 'Confirm';
   @property({ type: String }) message: string = 'Are you sure?';
   @property({ type: String }) confirmText: string = 'Confirm';
   @property({ type: String }) cancelText: string = '';
@@ -42,9 +42,10 @@ export class UIConfirm extends LitElement {
   render() {
     return html`
       <ui-modal 
-        .title=${this.title}
+        .heading=${this.heading}
         .isDanger=${this.isDanger}
         .dismissible=${this.dismissible}
+        .bodyDescribes=${true}
         @cancel=${this._handleCancel}
       >
         <slot>${this.message}</slot>

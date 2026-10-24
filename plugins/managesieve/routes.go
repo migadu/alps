@@ -13,8 +13,8 @@ import (
 )
 
 // defaultScriptName is the name alps uses when creating a script for an
-// account that has none yet. When a script already exists, alps edits that
-// one in place rather than creating a separate script.
+// account that has none active. When a script is active, alps edits that one
+// in place rather than creating a separate script.
 const defaultScriptName = "alps-filters"
 
 type ScriptPayload struct {
@@ -97,12 +97,24 @@ func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 	return c, nil
 }
 
+// sieveExtensions is the server's SIEVE capability as a list: the extensions a
+// script may require. The page reads it to offer only what the server runs —
+// an auto-reply needs "vacation", and its dates "date" and "relational" — and
+// it is never nil, so a server that advertises nothing answers [] and not null.
+func sieveExtensions(c *MSClient) []string {
+	return append([]string{}, strings.Fields(c.capabilities["SIEVE"])...)
+}
+
 func (p *plugin) handleGetScript(ctx *alps.Context) error {
 	c, err := p.connectClient(ctx)
 	if err != nil {
 		return sieveError(ctx, "connect to the sieve server", err)
 	}
 	defer c.Close()
+
+	// Taken before the first command: every response read through
+	// readResponse starts the capability map afresh.
+	extensions := sieveExtensions(c)
 
 	scripts, err := c.ListScripts()
 	if err != nil {
@@ -114,18 +126,18 @@ func (p *plugin) handleGetScript(ctx *alps.Context) error {
 	// showing "No rules defined". If nothing is active there's nothing to show.
 	name := activeScript(scripts)
 	if name == "" {
-		return ctx.JSON(http.StatusOK, map[string]string{"content": ""})
+		return ctx.JSON(http.StatusOK, map[string]any{"content": "", "extensions": extensions})
 	}
 
 	content, err := c.GetScript(name)
 	if err != nil {
 		if strings.Contains(err.Error(), "script not found") {
-			return ctx.JSON(http.StatusOK, map[string]string{"content": ""})
+			return ctx.JSON(http.StatusOK, map[string]any{"content": "", "extensions": extensions})
 		}
 		return sieveError(ctx, "get script", err)
 	}
 
-	return ctx.JSON(http.StatusOK, map[string]string{"content": content})
+	return ctx.JSON(http.StatusOK, map[string]any{"content": content, "extensions": extensions})
 }
 
 // The largest Sieve script this endpoint will read. Real filter sets are a few
@@ -154,11 +166,25 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 	allowedExts := strings.Fields(sieveCaps)
 
 	if strings.TrimSpace(payload.Content) == "" {
+		scripts, err := c.ListScripts()
+		if err != nil {
+			return sieveError(ctx, "list scripts", err)
+		}
+		active := activeScript(scripts)
 		// Deactivate script if empty
 		if err := c.SetActive(""); err != nil {
 			return sieveError(ctx, "deactivate script", err)
 		}
-		// Optionally delete it
+		// And empty it: the rules were removed, and rules left in a script that
+		// is switched off read as filters paused elsewhere, which a later save
+		// keeps (see scriptNameToCreate). Filtering is off either way, so a
+		// server that refuses the empty script only costs the next save a new
+		// name.
+		if active != "" {
+			if err := c.PutScript(active, ""); err != nil {
+				ctx.Server.Logger().Printf("managesieve: failed to empty the deactivated script %q: %v", active, err)
+			}
+		}
 
 		return ctx.JSON(http.StatusOK, map[string]string{"message": "Script deactivated successfully"})
 	}
@@ -169,15 +195,17 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 	}
 
 	// Edit the currently active script in place rather than creating a
-	// separate one. Only fall back to the default name when the account has
-	// no active script yet.
+	// separate one. Only fall back to a name of alps's own when the account
+	// has no active script.
 	scripts, err := c.ListScripts()
 	if err != nil {
 		return sieveError(ctx, "list scripts", err)
 	}
 	name := activeScript(scripts)
 	if name == "" {
-		name = defaultScriptName
+		if name, err = scriptNameToCreate(c, scripts); err != nil {
+			return sieveError(ctx, "get script", err)
+		}
 	}
 
 	// Upload the script
@@ -191,6 +219,39 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"message": "Script saved and activated successfully"})
+}
+
+// scriptNameToCreate is the name to save the filters under when no script is
+// active: alps-filters, or, when that holds rules, alps-filters-2, -3 and so
+// on, the first that is not stored or holds nothing.
+//
+// With no script active the page shows no rules, as handleGetScript reads
+// only the active script, and a save to alps-filters replaced whatever it
+// held with the rules on the page: filters paused from another client, or by
+// an administrator, were lost unseen. Those are left as they are, switched
+// off, and the rules saved go beside them. alps empties a script it switches
+// off itself, so that one is used again.
+func scriptNameToCreate(c *MSClient, scripts []Script) (string, error) {
+	stored := make(map[string]bool, len(scripts))
+	for _, s := range scripts {
+		stored[s.Name] = true
+	}
+	for n := 1; ; n++ {
+		name := defaultScriptName
+		if n > 1 {
+			name = fmt.Sprintf("%s-%d", defaultScriptName, n)
+		}
+		if !stored[name] {
+			return name, nil
+		}
+		content, err := c.GetScript(name)
+		if err != nil && !strings.Contains(err.Error(), "script not found") {
+			return "", err
+		}
+		if strings.TrimSpace(content) == "" {
+			return name, nil
+		}
+	}
 }
 
 func (p *plugin) handleValidate(ctx *alps.Context) error {

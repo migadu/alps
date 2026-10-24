@@ -121,6 +121,31 @@ describe('quoting into the composer', () => {
     expect(parse(sent.html).querySelector('div.gmail_quote')?.textContent).toContain('Forwarded message');
   });
 
+  it('reports no change of its own as it opens', async () => {
+    // Any change of html marks a composer as unsaved, so a report here would
+    // file every reply opened and left unanswered as a draft.
+    const changes = record<CustomEvent>(document, 'text-changed');
+    const composer = await openComposer(reply());
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(composer.editor).toBeTruthy();
+    expect(changes).toEqual([]);
+  });
+
+  it('reports the paragraph it adds after the quote as its own, not as an edit', async () => {
+    // The compose window focuses the editor as it opens, and on that first
+    // transaction the editor adds an empty paragraph after a quote that ends
+    // the message. Reported as an edit, it had every untouched reply saved.
+    const composer = await openComposer(reply());
+    const changes = record<CustomEvent>(composer, 'text-changed');
+    composer.focusEditor();
+
+    expect(changes.map((e) => e.detail.initial)).toEqual([true]);
+    expect(changes[0].detail.html).toMatch(/<p dir="auto"><\/p>$/);
+    // What the user types is an edit.
+    expect(typeLine(composer, 'Sounds good.')).not.toHaveProperty('initial');
+  });
+
   it('keeps the quote whole when a saved draft is reopened', async () => {
     const saved = typeLine(await openComposer(forward()), 'Sounds good.').html;
     cleanup();
@@ -316,6 +341,40 @@ describe('the quote frame', () => {
     expect(readerUtils.applyThemeToIframe).toHaveBeenCalledWith(frame, false);
   });
 
+  it('lets go of its observers when it loads again and when the quote goes', async () => {
+    // Each load sized the frame with two new observers, of its height and of
+    // its width, and the width one was never disconnected: not on the next
+    // load, and not when the quote was deleted or the composer closed.
+    const observers: { disconnect: ReturnType<typeof vi.fn> }[] = [];
+    const Original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+      constructor() {
+        observers.push(this);
+      }
+    } as unknown as typeof ResizeObserver;
+    try {
+      const composer = await openComposer(forward());
+      const frame = composer.shadowRoot!.querySelector<HTMLIFrameElement>('.quoted-message iframe')!;
+      Object.defineProperty(frame, 'contentDocument', { value: parse('<p>quote</p>'), configurable: true });
+
+      frame.dispatchEvent(new Event('load'));
+      expect(observers).toHaveLength(2);
+      frame.dispatchEvent(new Event('load'));
+      expect(observers).toHaveLength(4);
+      expect(observers[0].disconnect, 'the first height observer').toHaveBeenCalledOnce();
+      expect(observers[1].disconnect, 'the first width observer').toHaveBeenCalledOnce();
+
+      composer.editor!.commands.clearContent();
+      expect(observers[2].disconnect, 'the height observer').toHaveBeenCalledOnce();
+      expect(observers[3].disconnect, 'the width observer').toHaveBeenCalledOnce();
+    } finally {
+      globalThis.ResizeObserver = Original;
+    }
+  });
+
   it("carries the editor's own selection and cursor rules, which it no longer injects into the page", async () => {
     await openComposer(forward());
     // Injected into document.head, the editor's stylesheet never reaches this
@@ -341,5 +400,39 @@ describe('a text-only original', () => {
     expect(quote?.getAttribute('style')).toContain('border-left');
     expect(quote?.textContent).toContain('line one');
     expect(sent.body.textContent).toContain('Ada Lovelace wrote:');
+  });
+
+  it('loses a url() in its style whole, even one with a parenthesis in it', async () => {
+    const composer = await openComposer(
+      '<blockquote class="gmail_quote" style=\'border-left:1px solid #ccc; background-image: url("https://tracker.test/p.gif?(1)"); color: red\'>' +
+      '<p>quoted</p></blockquote>',
+    );
+    const style = parse(typeLine(composer, 'Agreed.').html).querySelector('blockquote')?.getAttribute('style') ?? '';
+    expect(style).not.toContain('tracker.test');
+    // Left behind, `")` opens a CSS string that swallows the rest of the style.
+    expect(style).not.toContain('")');
+    expect(style).toContain('border-left');
+    expect(style).toContain('color: red');
+  });
+
+  it('loses a url() written with escapes as well', async () => {
+    // `\75 rl(` is `url(` to a browser, and to the recipient's client.
+    const composer = await openComposer(
+      '<blockquote class="gmail_quote" style=\'border-left:1px solid #ccc; background-image: \\75 rl("https://tracker.test/p.gif"); color: red\'>' +
+      '<p>quoted</p></blockquote>',
+    );
+    // Read off the node, as the editor holds it: the HTML handed on below
+    // passes through jsdom's style parser, which drops what it cannot read,
+    // where a browser's would read this one as a plain url().
+    let held = '';
+    composer.editor!.state.doc.descendants((node) => {
+      if (node.type.name === 'blockquote') held = node.attrs.style ?? '';
+      return !held;
+    });
+    expect(held).toBe('border-left:1px solid #ccc; color: red');
+    const style = parse(typeLine(composer, 'Agreed.').html).querySelector('blockquote')?.getAttribute('style') ?? '';
+    expect(style).not.toContain('tracker.test');
+    expect(style).toContain('border-left');
+    expect(style).toContain('color: red');
   });
 });

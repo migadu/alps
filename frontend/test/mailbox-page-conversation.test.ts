@@ -56,6 +56,8 @@ let requests: Request[] = [];
 let moveMapping: (uids: string[]) => Record<string, string> = (uids) =>
   Object.fromEntries(uids.map(uid => [uid, String(Number(uid) + 100)]));
 let moveStatus = 200;
+/** What the next flag write answers. */
+let flagStatus = 200;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -68,6 +70,7 @@ beforeEach(() => {
   vi.spyOn(messageSync, 'sync').mockImplementation(() => {});
   requests = [];
   moveStatus = 200;
+  flagStatus = 200;
   moveMapping = (uids) => Object.fromEntries(uids.map(uid => [uid, String(Number(uid) + 100)]));
   history.replaceState(null, '', '/#/mailbox/INBOX');
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
@@ -78,7 +81,7 @@ beforeEach(() => {
     if (u.endsWith('/messages/move')) {
       return moveStatus === 200 ? json({ uidMapping: moveMapping(body.uids) }) : json({ error: 'nope' }, moveStatus);
     }
-    if (u.endsWith('/messages/flag')) return json({ ok: true });
+    if (u.endsWith('/messages/flag')) return flagStatus === 200 ? json({ ok: true }) : json({ error: 'nope' }, flagStatus);
     if (method === 'DELETE') return json({ ok: true });
     return new Response('{}', { status: 404 });
   }));
@@ -138,7 +141,7 @@ describe('the conversation toolbar\'s gestures', () => {
     expect(writes()).toEqual([
       { url: '/mailboxes/INBOX/messages/move', method: 'PUT', body: { uids: ['5', '9'], to: 'Archive' } },
     ]);
-    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToArchive');
+    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToFolder');
     expect(el.selectedMessage).toBeNull();
   });
 
@@ -232,7 +235,7 @@ describe('a card\'s own verbs', () => {
       expect(writes()).toEqual([{ url: '/mailboxes/INBOX/messages/move', method: 'PUT', body: { uids: ['5'], to: 'Trash' } }]);
       expect(done).toHaveBeenCalledWith(true);
       expect(el.selectedMessage).toBe(open);
-      expect(toasts.at(-1)!.detail.message).toBe('toast.messageMovedToTrash');
+      expect(toasts.at(-1)!.detail.message).toBe('toast.messageMovedToFolder');
     });
 
     it('beats a checked row: the card names what it deletes', async () => {
@@ -275,6 +278,17 @@ describe('a card\'s own verbs', () => {
       expect(went).toEqual(['5']);
     });
 
+    it('in a search of every folder, stays on the next card, in its own folder', async () => {
+      // A UID alone names a message only within its folder, and a search of
+      // every folder shows several.
+      const el = await page('*');
+      const urls = vi.spyOn(el, 'updateUrl').mockImplementation(() => {});
+
+      await act(el, { action: 'delete', uid: '9', mailbox: 'INBOX', nextUid: '7', nextMailbox: 'Sent', done: vi.fn() });
+
+      expect(urls.mock.calls.at(-1)).toEqual(['*', 0, '7', undefined, 'Sent']);
+    });
+
     it('goes back to the list when nothing of the conversation is left here', async () => {
       const el = await page();
 
@@ -309,6 +323,45 @@ describe('a card\'s own verbs', () => {
       expect(writes()).toEqual([{ url: '/mailboxes/Trash/messages', method: 'DELETE', body: { uids: ['5'] } }]);
       expect(done).toHaveBeenCalledWith(true);
       expect(el.selectedMessage).toBe(open);
+    });
+
+    it('asks to discard a draft, in the words the composer\'s Discard uses', async () => {
+      // The same deletion as the composer's Discard, which asks "Discard
+      // Draft?". The page asked "Permanently Delete?" over a body about
+      // messages.
+      const el = await page();
+      el.mailboxes = [...MAILBOXES, { Name: 'Drafts', Attrs: ['\\Drafts'] }];
+      const trash = await page('Trash');
+
+      await act(el, { action: 'delete', uid: '5', mailbox: 'Drafts', done: vi.fn() });
+      await act(trash, { action: 'delete', uid: '5', mailbox: 'Trash', done: vi.fn() });
+      await el.updateComplete;
+      await trash.updateComplete;
+
+      const asked = el.shadowRoot!.querySelector('ui-confirm')!;
+      expect(asked.getAttribute('heading')).toBe('floatingComposer.discardDraftTitle');
+      expect(asked.getAttribute('message')).toBe('floatingComposer.discardDraftMessage');
+      expect(asked.getAttribute('confirmText')).toBe('floatingComposer.discard');
+      // Trash keeps its own words: what it holds is mail, deleted for good.
+      const fromTrash = trash.shadowRoot!.querySelector('ui-confirm')!;
+      expect(fromTrash.getAttribute('heading')).toBe('mailboxPage.permanentlyDelete');
+      expect(fromTrash.getAttribute('confirmText')).toBe('mailboxPage.deletePermanently');
+
+      await el._confirmDelete();
+      expect(writes()).toContainEqual({ url: '/mailboxes/Drafts/messages', method: 'DELETE', body: { uids: ['5'] } });
+    });
+
+    it('asks to discard several drafts as drafts', async () => {
+      const el = await page('Drafts');
+      el.mailboxes = [...MAILBOXES, { Name: 'Drafts', Attrs: ['\\Drafts'] }];
+
+      await act(el, { action: 'delete', uids: ['5', '9'] });
+      await el.updateComplete;
+
+      const asked = el.shadowRoot!.querySelector('ui-confirm')!;
+      expect(asked.getAttribute('heading')).toBe('mailboxPage.discardDraftsTitle');
+      expect(asked.getAttribute('message')).toBe('mailboxPage.discardDraftsMessage');
+      expect(asked.getAttribute('confirmText')).toBe('floatingComposer.discard');
     });
   });
 });
@@ -379,16 +432,18 @@ describe('the star on a list row', () => {
   });
 
   it('puts the star back, and says why, when the server refuses', async () => {
-    vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
-      requests.push({ url: String(url), method: init.method || 'GET', body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined });
-      return json({ error: 'nope' }, 500);
-    });
+    // The flag write alone is refused. A 500 for every request also failed
+    // the page's own first listing, and that failure, held back 200ms so a
+    // dim can be seen, emptied the rows the test had set whenever the test
+    // took longer than that.
+    flagStatus = 500;
     const toasts = record<CustomEvent>(window, 'show-toast');
 
     const el = await pressed({ row: [SEEN], under: [SEEN, FLAGGED] });
 
+    expect(flagWrites()).toEqual([{ uids: ['9'], action: 'remove', flags: [FLAGGED] }]);
     expect(el.messages[0].SubMessages[0].Flags).toContain(FLAGGED);
-    expect(toasts.length).toBeGreaterThan(0);
+    expect(toasts.map(t => t.detail.message)).toContain('toast.flagChangeFailed');
   });
 });
 
@@ -509,7 +564,7 @@ describe('a checked thread row', () => {
     expect(writes()).toEqual([
       { url: '/mailboxes/INBOX/messages/move', method: 'PUT', body: { uids: ['5', '9'], to: 'Archive' } },
     ]);
-    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToArchive');
+    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToFolder');
     expect(el.selectedKeys.size).toBe(0);
   });
 });

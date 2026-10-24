@@ -4,9 +4,10 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
+import { isolatedCaption, isolatedEmail, isolatedSentence } from '../../../frontend/src/utils/bidi';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-select';
-import { invitationService, type InvitationPerson, type InvitationView } from './invitation-service';
+import { invitationService, type InvitationView } from './invitation-service';
 
 type Answer = 'accepted' | 'tentative' | 'declined';
 
@@ -41,8 +42,6 @@ const STATE_KEYS: Record<string, string> = {
     'unsupported': 'unsupported',
 };
 
-const personName = (person: InvitationPerson) => person.name || person.email;
-
 /**
  * The invitation a message carries, above the message: what it is, when, who
  * asks, whether it clashes with the calendar, and the answers.
@@ -68,6 +67,14 @@ export class CalendarInvitationBanner extends LitElement {
 
     /** Drops a read that a newer one for another message has overtaken. */
     private loadSeq = 0;
+    /**
+     * Counts the messages the banner has been handed. The reader keeps one
+     * banner and hands it each message it opens, so an answer or an update can
+     * come back after the user moved on, or moved on and came back to the same
+     * message. What it says belongs to the visit that asked, and so does the
+     * lock it holds on the buttons.
+     */
+    private visit = 0;
     /** Messages applied on opening once already, so a failure is not retried in a loop. */
     private autoApplied = new Set<string>();
 
@@ -140,10 +147,18 @@ export class CalendarInvitationBanner extends LitElement {
 
     protected willUpdate(changed: PropertyValues<this>) {
         if (changed.has('mailbox') || changed.has('uid')) {
+            this.visit++;
             this.view = null;
             this.notice = null;
+            // A request still on its way for the last message must not keep
+            // this one's buttons disabled.
+            this.busy = false;
             void this.load();
         }
+    }
+
+    private isCurrent(visit: number): boolean {
+        return visit === this.visit;
     }
 
     private t(key: string, params?: Record<string, unknown>): string {
@@ -178,6 +193,7 @@ export class CalendarInvitationBanner extends LitElement {
     private async respond(status: Answer) {
         const view = this.view;
         if (!view || this.busy) return;
+        const visit = this.visit;
         this.busy = true;
         this.notice = null;
         try {
@@ -188,14 +204,18 @@ export class CalendarInvitationBanner extends LitElement {
                 calendarPath: view.copy ? undefined : this.calendarPath,
                 lang: this.i18nStore?.getLanguage?.(),
             });
+            // Answered all the same once the user has moved on: the next read
+            // of that message shows the answer.
+            if (!this.isCurrent(visit)) return;
             this.notice = saved.sendFailed
                 ? { key: 'invitations.sendFailed', tone: 'error' }
                 : { key: saved.sent ? 'invitations.sent' : 'invitations.saved', tone: 'info' };
         } catch (err) {
             console.error('Failed to answer the invitation', err);
+            if (!this.isCurrent(visit)) return;
             this.notice = { key: isVersionConflict(err) ? 'invitations.changedElsewhere' : 'invitations.answerFailed', tone: 'error' };
         } finally {
-            this.busy = false;
+            if (this.isCurrent(visit)) this.busy = false;
         }
         await this.load();
     }
@@ -203,17 +223,20 @@ export class CalendarInvitationBanner extends LitElement {
     private async apply() {
         const view = this.view;
         if (!view || this.busy) return;
+        const visit = this.visit;
         this.busy = true;
         this.notice = null;
         try {
             const saved = await invitationService.apply({ mailbox: this.mailbox, uid: this.uid, calendarPath: this.calendarPath });
+            if (!this.isCurrent(visit)) return;
             const key = saved.removed ? 'invitations.removed' : view.state === 'add' ? 'invitations.added' : 'invitations.updated';
             this.notice = { key, tone: 'info' };
         } catch (err) {
             console.error('Failed to update the calendar', err);
+            if (!this.isCurrent(visit)) return;
             this.notice = { key: isVersionConflict(err) ? 'invitations.changedElsewhere' : 'invitations.applyFailed', tone: 'error' };
         } finally {
-            this.busy = false;
+            if (this.isCurrent(visit)) this.busy = false;
         }
         await this.load();
     }
@@ -237,7 +260,7 @@ export class CalendarInvitationBanner extends LitElement {
         if (v.kind === 'task' && !v.start) {
             if (!v.end) return '';
             const due = v.allDay ? day.format(dateOnly(v.end)) : new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(v.end));
-            return `${this.t('tasks.due')}: ${due}`;
+            return this.t('invitations.dueOn', { date: due });
         }
         if (!v.start) return '';
         if (v.allDay) {
@@ -254,16 +277,23 @@ export class CalendarInvitationBanner extends LitElement {
         return end > start && range ? range.call(format, start, end) : format.format(start);
     }
 
+    /** "Your answer: Accepted", with the colon as its language writes it:
+     * French puts a space before one, and a colon written in the code had
+     * none. */
+    private answerLine(status: string) {
+        return this.t('invitations.yourAnswerIs', { status: this.t(`invitations.statuses.${statusKey(status)}`) });
+    }
+
     private renderStateLine(v: InvitationView) {
         if (v.ended) {
             return html`
                 <div class="muted state ended">${this.t('invitations.states.ended')}</div>
-                ${v.status && v.status !== 'needs-action' ? html`<div class="muted answer">${this.t('invitations.yourAnswer')}: ${this.t(`invitations.statuses.${statusKey(v.status)}`)}</div>` : nothing}
+                ${v.status && v.status !== 'needs-action' ? html`<div class="muted answer">${this.answerLine(v.status)}</div>` : nothing}
             `;
         }
         if (v.state === 'answer') {
             if (!v.status || v.status === 'needs-action') return nothing;
-            return html`<div class="muted answer">${this.t('invitations.yourAnswer')}: ${this.t(`invitations.statuses.${statusKey(v.status)}`)}</div>`;
+            return html`<div class="muted answer">${this.answerLine(v.status)}</div>`;
         }
         const key = STATE_KEYS[v.state];
         return key ? html`<div class="muted state">${this.t(`invitations.states.${key}`)}</div>` : nothing;
@@ -276,15 +306,21 @@ export class CalendarInvitationBanner extends LitElement {
         if (!v.clashes.length) {
             return html`<div class="muted clashes">${this.t('invitations.noConflicts')}</div>`;
         }
-        const names = v.clashes.map(c => c.summary || this.t('calendar.noTitle')).join(', ');
-        return html`<div class="clash clashes">${this.t('invitations.conflictsWith', { names })}</div>`;
+        // Each name in an isolate, and the sentence built around them. A
+        // summary is whatever the event's author wrote; given to t() as text,
+        // an override or a right-to-left title in one reordered "Conflicts
+        // with" and the names after it.
+        const names = html`${v.clashes.map((c, i) => html`${i ? ', ' : ''}<bdi>${c.summary || this.t('calendar.noTitle')}</bdi>`)}`;
+        return html`<div class="clash clashes">${isolatedSentence(this.i18nStore, 'invitations.conflictsWith', { names })}</div>`;
     }
 
     /** Only where the sender is who may change the calendar: a first invitation, an update, a cancellation, a reply. */
     private renderSender(v: InvitationView) {
         if (v.ended || v.senderVerified || !v.sender || !['answer', 'update', 'cancel', 'reply'].includes(v.state)) return nothing;
         const key = v.method === 'reply' ? 'invitations.unverifiedReply' : 'invitations.unverified';
-        return html`<div class="warning sender">${this.t(key, { sender: v.sender })}</div>`;
+        // Isolated, so that an override in the address cannot scramble the
+        // warning about it.
+        return html`<div class="warning sender">${isolatedSentence(this.i18nStore, key, { sender: isolatedEmail(v.sender) })}</div>`;
     }
 
     private renderPicker(v: InvitationView) {
@@ -294,6 +330,7 @@ export class CalendarInvitationBanner extends LitElement {
                 .value=${this.calendarPath}
                 .options=${v.calendars.map(c => ({ value: c.path, label: c.name }))}
                 title=${this.t('invitations.calendar')}
+                label=${this.t('invitations.calendar')}
                 ?disabled=${this.busy}
                 @change=${(e: Event) => { this.calendarPath = (e.target as HTMLSelectElement).value; }}
             ></alps-select>
@@ -350,8 +387,8 @@ export class CalendarInvitationBanner extends LitElement {
                     ${when ? html`<div class="when">${when}${v.rrule ? html`, ${this.t('invitations.repeats')}` : nothing}</div>` : nothing}
                     ${v.location ? html`<div class="muted where">${v.location}</div>` : nothing}
                     ${v.method === 'reply' && v.replier
-                        ? html`<div class="replier">${this.t(`invitations.answered.${statusKey(v.replier.status)}`, { name: personName(v.replier) })}</div>`
-                        : v.organizer ? html`<div class="muted organizer">${this.t('invitations.organizer')}: ${personName(v.organizer)}</div>` : nothing}
+                        ? html`<div class="replier">${isolatedSentence(this.i18nStore, `invitations.answered.${statusKey(v.replier.status)}`, { name: isolatedCaption(v.replier.name, v.replier.email) })}</div>`
+                        : v.organizer ? html`<div class="muted organizer">${isolatedSentence(this.i18nStore, 'invitations.organizerIs', { name: isolatedCaption(v.organizer.name, v.organizer.email) })}</div>` : nothing}
                     ${this.renderClashes(v)}
                     ${this.renderStateLine(v)}
                     ${this.renderSender(v)}

@@ -9,7 +9,7 @@
 // answer and read what the SMTP server was actually handed.
 
 import type { Locator, Page } from "@playwright/test";
-import { deliver, expect, login, resetDav, test, toast, USER, waitForSent, type SentMessage } from "./fixtures";
+import { allowConsoleErrors, deliver, expect, login, resetDav, test, toast, USER, waitForSent, type SentMessage } from "./fixtures";
 
 /** The fixtures' default sender for delivered mail. */
 const SENDER = "Ada Lovelace <ada@remote.test>";
@@ -42,8 +42,11 @@ async function deliverText(opts: {
   return messageId;
 }
 
-/** A message with one real, non-inline attachment — the kind a forward must carry. */
-function mailWithAttachment(opts: { subject: string; body: string; filename: string; contents: string }): string {
+/**
+ * A message with one real, non-inline attachment — the kind a forward must
+ * carry. `contentId` gives the file a Content-ID, as Exchange gives its files.
+ */
+function mailWithAttachment(opts: { subject: string; body: string; filename: string; contents: string; contentId?: string }): string {
   const boundary = "alps-e2e-mixed-boundary";
   return [
     `From: ${SENDER}`,
@@ -62,6 +65,7 @@ function mailWithAttachment(opts: { subject: string; body: string; filename: str
     `--${boundary}`,
     `Content-Type: text/plain; charset=utf-8; name="${opts.filename}"`,
     `Content-Disposition: attachment; filename="${opts.filename}"`,
+    ...(opts.contentId ? [`Content-ID: <${opts.contentId}>`] : []),
     "Content-Transfer-Encoding: base64",
     "",
     Buffer.from(opts.contents, "utf8").toString("base64"),
@@ -292,6 +296,27 @@ test("replying answers Reply-To, not From", async ({ page }) => {
   expect(sent.recipients).toEqual(["support@remote.test"]);
 });
 
+test("replying to a sender named \"Lovelace, Ada\" sends, under that name", async ({ page }) => {
+  // The reply's pill wrote the name bare, `Lovelace, Ada <ada@remote.test>`,
+  // and the comma read as the end of a recipient: the server was handed
+  // "Lovelace" and "Ada <ada@remote.test>", and the reply could not be sent.
+  const subject = `Directory reply ${Date.now()}`;
+  const body = "Signed the way the directory writes it.";
+  await deliver({ subject, body, from: '"Lovelace, Ada" <ada@remote.test>' });
+
+  await login(page);
+  await openMessage(page, subject, body);
+  await replyButton(page).click();
+
+  await expect(shown(toPills(page))).toHaveText(["Lovelace, Ada"]);
+  await expect(toPills(page)).toHaveAttribute("title", '"Lovelace, Ada" <ada@remote.test>');
+
+  await sendNow(page);
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  expect(sent.recipients).toEqual(["ada@remote.test"]);
+  expect(header(sent, "To")).toBe('"Lovelace, Ada" <ada@remote.test>');
+});
+
 test("replying to a Re: subject does not stack a second prefix", async ({ page }) => {
   const subject = `Re: Quarterly review ${Date.now()}`;
   const body = "Agreed, let us meet on Thursday.";
@@ -465,6 +490,76 @@ test("replying leaves the original's attachment behind", async ({ page }) => {
   expect(sent.data).not.toContain(filename);
 });
 
+// Exchange gives ordinary attachments a Content-ID too. A reply carried every
+// part with one, as the quote's images, out of sight: the composer showed no
+// attachment, and the recipients got the file again.
+test("replying leaves behind an attachment that has a Content-ID", async ({ page }) => {
+  const subject = `Report attached ${Date.now()}`;
+  const body = "The report is attached.";
+  const filename = "report.txt";
+  await deliver({ subject, raw: mailWithAttachment({ subject, body, filename, contents: "figures\n", contentId: `${unique()}@exchange.test` }) });
+
+  await login(page);
+  await openMessage(page, subject, body);
+  await expect(page.locator("alps-message-reader alps-attachment-list.desktop-attachments")).toContainText(filename);
+
+  await replyButton(page).click();
+  await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+  await expect(composerAttachments(page)).toHaveCount(0);
+
+  await sendNow(page);
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  expect(sent.data).toContain(body);
+  expect(sent.data).not.toContain(filename);
+});
+
+for (const attribute of ['data-note', 'src']) {
+  test(`replying leaves behind a file named only by a paragraph's ${attribute}`, async ({ page }) => {
+    const subject = `Report metadata ${attribute} ${Date.now()}`;
+    const body = 'Please review the notes.';
+    const contentId = `${unique()}@exchange.test`;
+    const filename = 'private-report.txt';
+    const raw = mailWithAttachment({ subject, body: `<p ${attribute}="cid:${contentId}">${body}</p>`, filename, contents: 'Private figures\n', contentId })
+      .replace('Content-Type: text/plain; charset=utf-8', 'Content-Type: text/html; charset=utf-8');
+    await deliver({ subject, raw });
+    await login(page);
+    await page.locator('alps-message-list .message-subject', { hasText: subject }).first().click();
+    await expect.poll(async () => (await frameLayout(readerFrame(page))).text).toContain(body);
+    await expect(page.locator('alps-message-reader alps-attachment-list.desktop-attachments')).toContainText(filename);
+    await replyButton(page).click();
+    await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+    await expect(composerAttachments(page)).toHaveCount(0);
+    await sendNow(page);
+    const sent = await sentWithSubject(`Re: ${subject}`);
+    expect(sent.data).toContain(body);
+    expect(sent.data).not.toContain(filename);
+    expect(sent.data).not.toContain(Buffer.from('Private figures\n').toString('base64'));
+  });
+}
+
+test("forwarding carries an attachment that has a Content-ID once, as a file", async ({ page }) => {
+  const subject = `Report to pass on ${Date.now()}`;
+  const body = "The report is attached.";
+  const filename = "report.txt";
+  const contents = `figures\n${unique()}\n`;
+  await deliver({ subject, raw: mailWithAttachment({ subject, body, filename, contents, contentId: `${unique()}@exchange.test` }) });
+
+  await login(page);
+  await openMessage(page, subject, body);
+  await expect(page.locator("alps-message-reader alps-attachment-list.desktop-attachments")).toContainText(filename);
+
+  await chooseFromMoreMenu(page, "Forward");
+  await expect(composerSubject(page)).toHaveValue(`Fwd: ${subject}`);
+  await expect(composerAttachments(page)).toHaveCount(1);
+  await expect(composerAttachments(page)).toContainText(filename);
+
+  await addTo(page, USER.address);
+  await sendNow(page);
+  const sent = await sentWithSubject(`Fwd: ${subject}`);
+  const encoded = Buffer.from(contents, "utf8").toString("base64");
+  expect(sent.data.split(encoded)).toHaveLength(2);
+});
+
 /** A 1×1 PNG, carried as the HTML message's inline image. */
 const PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
@@ -477,7 +572,7 @@ const WIDE_TABLE_PX = 900;
  * remote image that could be a tracking pixel. The composer's editor has no
  * node for most of that, which is what the tests below are about.
  */
-function htmlMail(subject: string): string {
+function htmlMail(subject: string, file?: { filename: string; contents: string }): string {
   const boundary = "alps-e2e-related-boundary";
   const html =
     "<html><body>" +
@@ -489,13 +584,7 @@ function htmlMail(subject: string): string {
     '<img src="cid:chart@remote.test" alt="chart">' +
     '<img src="https://tracker.remote.test/open.gif" alt="pixel" width="1" height="1">' +
     "</body></html>";
-  return [
-    `From: ${SENDER}`,
-    `To: ${USER.address}`,
-    `Subject: ${subject}`,
-    `Message-ID: <${unique()}@remote.test>`,
-    `Date: ${new Date().toUTCString()}`,
-    "MIME-Version: 1.0",
+  const related = [
     `Content-Type: multipart/related; boundary="${boundary}"`,
     "",
     `--${boundary}`,
@@ -513,6 +602,34 @@ function htmlMail(subject: string): string {
     "",
     `--${boundary}--`,
     "",
+  ];
+  // With a file, the body and its image are the first part of a mixed one.
+  const mixed = "alps-e2e-mixed-boundary";
+  const body = file
+    ? [
+        `Content-Type: multipart/mixed; boundary="${mixed}"`,
+        "",
+        `--${mixed}`,
+        ...related,
+        `--${mixed}`,
+        `Content-Type: text/plain; charset=utf-8; name="${file.filename}"`,
+        `Content-Disposition: attachment; filename="${file.filename}"`,
+        "Content-Transfer-Encoding: base64",
+        "",
+        Buffer.from(file.contents, "utf8").toString("base64"),
+        "",
+        `--${mixed}--`,
+        "",
+      ]
+    : related;
+  return [
+    `From: ${SENDER}`,
+    `To: ${USER.address}`,
+    `Subject: ${subject}`,
+    `Message-ID: <${unique()}@remote.test>`,
+    `Date: ${new Date().toUTCString()}`,
+    "MIME-Version: 1.0",
+    ...body,
   ].join("\r\n");
 }
 
@@ -591,6 +708,325 @@ test("replying to an HTML message keeps its layout and its images in the quote",
   await expect.poll(async () => (await frameLayout(quoteFrame(page))).cells).toEqual(["cell A", "cell B"]);
 });
 
+// A reply carries the quote's images as inline parts, which the composer
+// shows no chip for. In plain text nothing shows them, and the server, with no
+// HTML to embed them in, wrote them as files: the recipients got a chart.png
+// nobody attached, and the saved draft held it as an attachment, which the
+// reader then listed and Edit draft brought back as a chip.
+test("a reply in plain text carries none of the quote's images, saved or sent", async ({ page }) => {
+  const subject = `Figures in plain text ${Date.now()}`;
+  await deliver({ subject, raw: htmlMail(subject) });
+  await login(page);
+  await openHtmlMessage(page, subject);
+  await replyButton(page).click();
+  await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+
+  // Switched to plain text, as a composer opens with the compose format set
+  // to it: the same composer either way.
+  await composer(page).getByRole("button", { name: "Toggle Formatting Options", exact: true }).click();
+  const textarea = composer(page).locator("alps-message-composer textarea");
+  await expect(textarea).toBeVisible();
+  await textarea.press("Home");
+  await textarea.pressSequentially("Looks right to me. ");
+  await expect(composer(page).locator(".saving-indicator")).toHaveText("Autosaved", { timeout: 10_000 });
+  await expect(composerAttachments(page)).toHaveCount(0);
+  await composer(page).locator('alps-icon-btn[title="Save & close"]').click();
+  await expect(composer(page)).toHaveCount(0);
+
+  // The draft, as Drafts holds it.
+  await page.locator('alps-folder-list .folder-item[title="Drafts"]').click();
+  await page.locator("alps-message-list .message-item").filter({ hasText: `Re: ${subject}` }).first().click();
+  const reader = page.locator("alps-message-reader");
+  await expect(reader.locator("pre.reader-preformatted")).toContainText("Looks right to me.");
+  // No attachment at all: the list is drawn only for one.
+  await expect(reader.locator("alps-attachment-list.desktop-attachments")).toHaveCount(0);
+
+  await reader.getByRole("button", { name: "Edit Draft" }).first().click();
+  await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+  await expect(composerAttachments(page)).toHaveCount(0);
+  await sendNow(page);
+
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  expect(sent.data).toContain("Looks right to me.");
+  expect(sent.data).not.toMatch(/chart\.png|chart@remote\.test/);
+});
+
+/** Each part's Content-Type, Content-Disposition and Content-ID line, in order. */
+const mimeOutline = (data: string) =>
+  data.split(/\r?\n/).filter((line) => /^(Content-Type|Content-Disposition|Content-ID):/i.test(line)).map((line) => line.trim());
+
+/** The draft a composer last stored, whole, as the server holds it. */
+async function storedDraftOf(page: Page): Promise<string> {
+  const uid = await composer(page).evaluate((el) => (el as HTMLElement & { instance: { draftUid?: string } }).instance.draftUid);
+  const res = await page.request.get(`/mailboxes/Drafts/messages/${uid}/raw`);
+  expect(res.status(), `draft ${uid}`).toBe(200);
+  return res.text();
+}
+
+/** The composer's draft, once a save it is waiting for has landed and stored a new one. */
+async function savedAgain(page: Page, before: string | undefined): Promise<void> {
+  const uid = () => composer(page).evaluate((el) => (el as HTMLElement & { instance: { draftUid?: string } }).instance.draftUid);
+  await expect.poll(uid, { timeout: 10_000 }).not.toBe(before);
+  await expect(composer(page).locator(".saving-indicator")).toHaveText("Autosaved", { timeout: 10_000 });
+}
+
+/** The quote's chart as the composer shows it: drawn from the part its source names. */
+const quotedChart = (page: Page) =>
+  quoteFrame(page).evaluate((frame) => {
+    const img = (frame as HTMLIFrameElement).contentDocument?.querySelector<HTMLImageElement>('img[alt="chart"]');
+    return img ? { src: img.getAttribute("src"), drawn: img.complete && img.naturalWidth > 0 } : null;
+  });
+
+// A draft's own images are its embedded parts, which the server's attachment
+// list leaves out. Edit Draft gave the composer that list alone, and as each
+// save builds the new draft's parts from the one it replaces, the reopened
+// draft's next save stored it without its images, and a send delivered it
+// with broken ones. Its quote, shown from the draft the save replaced, went
+// blank once drawn again.
+for (const kind of ["a reply", "a forward with a file"] as const) {
+  test(`${kind}, saved, reopened and saved again, keeps the quote's images`, async ({ page }) => {
+    const subject = `Reopened ${kind} ${Date.now()}`;
+    const file = kind === "a forward with a file" ? { filename: "ledger.txt", contents: `one\ntwo\n${unique()}\n` } : undefined;
+    await deliver({ subject, raw: htmlMail(subject, file) });
+    await login(page);
+    await openHtmlMessage(page, subject);
+    const answer = kind === "a reply" ? `Re: ${subject}` : `Fwd: ${subject}`;
+    if (file) {
+      await chooseFromMoreMenu(page, "Forward");
+      await expect(composerSubject(page)).toHaveValue(answer);
+      await addTo(page, USER.address);
+    } else {
+      await replyButton(page).click();
+      await expect(composerSubject(page)).toHaveValue(answer);
+    }
+    const editor = composer(page).locator(".ProseMirror");
+    await editor.locator("p").first().click();
+    await editor.pressSequentially("Looks right to me.");
+    await savedAgain(page, undefined);
+    await composer(page).locator('alps-icon-btn[title="Save & close"]').click();
+    await expect(composer(page)).toHaveCount(0);
+
+    await page.locator('alps-folder-list .folder-item[title="Drafts"]').click();
+    await page.locator("alps-message-list .message-item").filter({ hasText: answer }).first().click();
+    const reader = page.locator("alps-message-reader");
+    await expect(reader.locator("iframe.reader-iframe").first()).toBeVisible({ timeout: 15_000 });
+    await reader.getByRole("button", { name: "Edit Draft" }).first().click();
+    await expect(composerSubject(page)).toHaveValue(answer);
+    await expect(composerAttachments(page)).toHaveCount(file ? 1 : 0);
+
+    const first = await composer(page).evaluate((el) => (el as HTMLElement & { instance: { draftUid?: string } }).instance.draftUid);
+    await editor.locator("p").first().click();
+    await editor.press("End");
+    await editor.pressSequentially(" Indeed.");
+    await savedAgain(page, first);
+
+    const stored = mimeOutline(await storedDraftOf(page));
+    expect(stored, "the draft saved again").toContain("Content-Id: <chart@remote.test>");
+    if (file) expect(stored.join("\n")).toContain(`filename=${file.filename}`);
+
+    // Drawn again, as after a reload, the quote shows its images from the
+    // draft that replaced the one it was opened from. The window is kept in
+    // this browser a moment after each change, and the Inbox has no frame
+    // of its own to draw.
+    const latest = await composer(page).evaluate((el) => (el as HTMLElement & { instance: { draftUid?: string } }).instance.draftUid);
+    await expect
+      .poll(() => page.evaluate(() => Object.keys(localStorage)
+        .filter((key) => key.startsWith("alps_compose_drafts_"))
+        .flatMap((key) => (JSON.parse(localStorage.getItem(key) ?? "[]") as { draftUid?: string }[]).map((c) => c.draftUid))))
+      .toContain(latest);
+    await page.locator('alps-folder-list .folder-item[title="Inbox"]').click();
+    // The fixture's 'about:srcdoc' refusal, met a moment earlier: a sandboxed
+    // frame the reloading page draws is still 'about:blank' when Playwright
+    // instruments it now and then.
+    allowConsoleErrors(page, /Blocked script execution in 'about:blank'/i);
+    await page.reload();
+    await expect(composerSubject(page)).toHaveValue(answer);
+    await expect.poll(() => quotedChart(page), { timeout: 10_000 }).toMatchObject({ drawn: true });
+
+    await sendNow(page);
+    const sent = await sentWithSubject(answer);
+    expect(mimeOutline(sent.data), "what was sent").toContain("Content-Id: <chart@remote.test>");
+    if (file) expect(sent.data).toContain(Buffer.from(file.contents, "utf8").toString("base64"));
+  });
+}
+
+/** An HTML message showing an image filed as an attachment, as Outlook and Apple Mail file theirs. */
+function filedImageMail(subject: string): string {
+  const boundary = "alps-e2e-filed-image-boundary";
+  return [
+    `From: ${SENDER}`,
+    `To: ${USER.address}`,
+    `Subject: ${subject}`,
+    `Message-ID: <${unique()}@remote.test>`,
+    `Date: ${new Date().toUTCString()}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/related; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/html; charset=utf-8",
+    "",
+    '<html><body><p>Our new logo:</p><table><tr><td>cell A</td><td>cell B</td></tr></table><img src="cid:logo@remote.test" alt="logo"></body></html>',
+    "",
+    `--${boundary}`,
+    'Content-Type: image/png; name="logo.png"',
+    'Content-Disposition: attachment; filename="logo.png"',
+    "Content-ID: <logo@remote.test>",
+    "Content-Transfer-Encoding: base64",
+    "",
+    PIXEL_PNG,
+    "",
+    `--${boundary}--`,
+    "",
+  ].join("\r\n");
+}
+
+// The reply carries the quote's image unseen, as the body's. Named to the
+// server by its path alone, it was taken for a file by its disposition: the
+// draft saved held it as an attachment, which the composer then showed as a
+// chip three seconds into the reply, and the reply went out with the image
+// beside the body.
+test("a reply quoting an image filed as an attachment keeps it in the body, saved and sent", async ({ page }) => {
+  const subject = `Filed logo ${Date.now()}`;
+  await deliver({ subject, raw: filedImageMail(subject) });
+  await login(page);
+  await openHtmlMessage(page, subject);
+  await replyButton(page).click();
+  await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+
+  const editor = composer(page).locator(".ProseMirror");
+  await editor.locator("p").first().click();
+  await editor.pressSequentially("Looks good.");
+  await savedAgain(page, undefined);
+  await expect(composerAttachments(page)).toHaveCount(0);
+  const stored = mimeOutline(await storedDraftOf(page));
+  expect(stored, "the draft").toContain('Content-Disposition: inline; filename=logo.png');
+
+  await sendNow(page);
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  const outline = mimeOutline(sent.data);
+  expect(outline[0], "what was sent").toMatch(/^Content-Type: multipart\/related/);
+  expect(outline).toContain('Content-Disposition: inline; filename=logo.png');
+});
+
+/** The text/html part of a submission, its quoted-printable undone. */
+function htmlPart(message: SentMessage): string {
+  const start = message.data.search(/Content-Type:\s*text\/html/i);
+  const decoded = message.data
+    .slice(start)
+    .replace(/=\r?\n/g, "")
+    .replace(/=([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  return Buffer.from(decoded, "latin1").toString("utf8");
+}
+
+/**
+ * Delivers an HTML message whose body is `html`, forwards it to this account,
+ * and returns the HTML that was sent. `shown` is text in the body, waited for
+ * in the reader before Forward and in the quote before Send.
+ */
+async function forwardHtml(page: Page, subject: string, html: string, shown: string): Promise<string> {
+  await deliver({
+    subject,
+    raw: [
+      `From: ${SENDER}`,
+      `To: ${USER.address}`,
+      `Subject: ${subject}`,
+      `Message-ID: <${unique()}@remote.test>`,
+      `Date: ${new Date().toUTCString()}`,
+      "MIME-Version: 1.0",
+      'Content-Type: text/html; charset="utf-8"',
+      "",
+      html,
+      "",
+    ].join("\r\n"),
+  });
+  const text = (frame: Locator) =>
+    frame.evaluate((el) => (el as HTMLIFrameElement).contentDocument?.body?.innerText ?? "");
+
+  await login(page);
+  await page.locator("alps-message-list .message-subject", { hasText: subject }).first().click();
+  await expect.poll(() => text(readerFrame(page))).toContain(shown);
+  await chooseFromMoreMenu(page, "Forward");
+  await expect(composerSubject(page)).toHaveValue(`Fwd: ${subject}`);
+  await expect.poll(() => text(quoteFrame(page))).toContain(shown);
+
+  await addTo(page, USER.address);
+  await sendNow(page);
+  return htmlPart(await sentWithSubject(`Fwd: ${subject}`));
+}
+
+test("forwarding leaves an SVG animation behind, and keeps the drawing it was in", async ({ page }) => {
+  // An animation changes an attribute after the quote has been checked, so a
+  // link it rode out on would point at a script in the recipient's client.
+  const script = "javascript:alert(document.domain)";
+  const sent = await forwardHtml(
+    page,
+    `Animated chart ${Date.now()}`,
+    '<p>Chart below.</p><svg width="200" height="40"><a>' +
+      `<set attributeName="href" to="${script}"/><animate attributeName="href" values="${script}"/>` +
+      '<rect width="200" height="40" fill="#36c"/></a></svg>',
+    "Chart below.",
+  );
+  expect(sent).toContain("Chart below.");
+  expect(sent).toMatch(/<svg[^>]*>\s*<a[^>]*>\s*<rect/);
+  expect(sent).not.toMatch(/<set|<animate|javascript:/i);
+});
+
+test("forwarding leaves a CSS address written with escapes behind, and keeps the formatting around it", async ({ page }) => {
+  // `\75 rl(` is `url(` to the recipient's client, which would fetch it; so
+  // are the plain strings of an image-set().
+  const sent = await forwardHtml(
+    page,
+    `Hidden pixel ${Date.now()}`,
+    '<p>See the notes.</p>' +
+      '<div style="color:#c00;background:\\75 rl(https://tracker.remote.test/escaped.gif)">red note</div>' +
+      "<div style=\"background-image:image-set('https://tracker.remote.test/set.gif' 1x);font-weight:bold\">bold note</div>",
+    "red note",
+  );
+  expect(sent).toMatch(/<div style="color:\s*(?:#c00|rgb\(204, 0, 0\));?">red note</);
+  expect(sent).toMatch(/<div style="font-weight:\s*(?:bold|700);?">bold note</);
+  expect(sent).not.toContain("tracker.remote.test");
+});
+
+test("forwarding leaves a remote background and an SVG paint behind, and keeps the table and the drawing", async ({ page }) => {
+  // Each is a fetch in the recipient's client that is not content. A
+  // reference to an element of the drawing itself fetches nothing, and stays.
+  const sent = await forwardHtml(
+    page,
+    `Backgrounds ${Date.now()}`,
+    '<table background="https://tracker.remote.test/table.gif" bgcolor="#eeeeee"><tr>' +
+      '<td background="//tracker.remote.test/cell.gif">table cell</td></tr></table>' +
+      '<svg width="20" height="20"><defs><linearGradient id="g"><stop offset="0" stop-color="#c00"/></linearGradient></defs>' +
+      '<rect width="20" height="20" fill="url(#g)" stroke="url(https://tracker.remote.test/paint.svg#p)"/></svg>',
+    "table cell",
+  );
+  expect(sent).toMatch(/<table bgcolor="#eeeeee"><tbody><tr><td>table cell<\/td>/);
+  expect(sent).toMatch(/<rect width="20" height="20" fill="url\(#g\)"><\/rect>/);
+  expect(sent).not.toContain("tracker.remote.test");
+});
+
+test("forwarding leaves a noscript behind, which a client that runs script reads differently", async ({ page }) => {
+  // The quote is parsed with scripting disabled, so what a <noscript> holds
+  // is markup to it, and checked as markup. A client that runs script reads
+  // it as text up to the first `</noscript>`, here the one in a comment, and
+  // what follows is live markup in the recipient's client.
+  const sent = await forwardHtml(
+    page,
+    `Fallback ${Date.now()}`,
+    '<p>See below.</p><noscript><!-- </noscript><b id="live">live</b> --></noscript><p>The end.</p>',
+    "The end.",
+  );
+  expect(sent).toContain("See below.");
+  expect(sent).toContain("The end.");
+  expect(sent).not.toMatch(/noscript|id="live"/i);
+  // This page runs script, so it reads the HTML as such a client does.
+  const live = await page.evaluate((html) => {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div.querySelector("#live") !== null;
+  }, sent);
+  expect(live).toBe(false);
+});
+
 // The image has to leave under the Content-ID the quote names it by: without
 // it the reference resolves for nobody, and the arrived copy's frame logs a
 // CSP refusal for the unresolved `cid:` image, which fails this test too.
@@ -634,3 +1070,209 @@ test("forwarding an HTML message sends its layout and its inline image", async (
   // reader shows it blocked, as it shows any remote image.
   expect(layout.pixel).toMatch(/^data:/);
 });
+
+/** The draft saves the page sends from now on: POSTs to /messages that store, not send. */
+function draftSaves(page: Page): string[] {
+  const saves: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() !== "POST" || new URL(request.url()).pathname !== "/messages") return;
+    const body = request.postData() ?? "";
+    if (body.includes('name="save_as_draft"')) saves.push(body);
+  });
+  return saves;
+}
+
+// An answer the user has not touched is not a draft. The editor takes the
+// keyboard as the window opens, and on that first transaction adds an empty
+// paragraph after the quote, for the user to write below it. Reported as an
+// edit, it had the autosave file every reply and forward as a draft three
+// seconds after it opened.
+for (const kind of ["a reply to an HTML message", "a reply to a plain-text message", "a forward"] as const) {
+  test(`${kind}, left untouched, is not saved as a draft`, async ({ page }) => {
+    const subject = `Left untouched ${Date.now()}`;
+    const body = "The figures are in.";
+    const plain = kind === "a reply to a plain-text message";
+    if (plain) await deliverText({ subject, body });
+    else await deliver({ subject, raw: htmlMail(subject) });
+    await login(page);
+    if (plain) await openMessage(page, subject, body);
+    else await openHtmlMessage(page, subject);
+    const saves = draftSaves(page);
+    if (kind === "a forward") await chooseFromMoreMenu(page, "Forward");
+    else await replyButton(page).click();
+    await expect(composerSubject(page)).toHaveValue(`${kind === "a forward" ? "Fwd" : "Re"}: ${subject}`);
+    await expect(composer(page).locator(".ProseMirror")).toBeFocused();
+
+    // Absence takes waiting: the autosave runs three seconds after a change.
+    await page.waitForTimeout(4_000);
+    expect(saves.length, "draft saves sent").toBe(0);
+    await expect(composer(page).locator(".saving-indicator")).toHaveCount(0);
+
+    // Nor does closing it save it.
+    await composer(page).locator('alps-icon-btn[title="Save & close"]').click();
+    await expect(composer(page)).toHaveCount(0);
+    expect(saves.length, "draft saves sent").toBe(0);
+  });
+}
+
+test("an answer is saved as a draft once something is typed in it", async ({ page }) => {
+  const subject = `Answered ${Date.now()}`;
+  await deliver({ subject, raw: htmlMail(subject) });
+  await login(page);
+  await openHtmlMessage(page, subject);
+  const saves = draftSaves(page);
+  await replyButton(page).click();
+  await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+
+  const editor = composer(page).locator(".ProseMirror");
+  await editor.locator("p").first().click();
+  await editor.pressSequentially("Sounds good.");
+
+  await expect(composer(page).locator(".saving-indicator")).toHaveText("Autosaved", { timeout: 10_000 });
+  expect(saves.length, "draft saves sent").toBe(1);
+  expect(saves[0]).toContain("Sounds good.");
+});
+
+test('switching back to HTML after a text save does not restore discarded CID images', async ({ page }) => {
+  const subject = `Text saved then rich ${Date.now()}`;
+  await deliver({ subject, raw: htmlMail(subject) });
+  await login(page);
+  await openHtmlMessage(page, subject);
+  await replyButton(page).click();
+  await composer(page).getByRole('button', { name: 'Toggle Formatting Options', exact: true }).click();
+  const textarea = composer(page).locator('alps-message-composer textarea');
+  await textarea.press('ControlOrMeta+Home');
+  await textarea.pressSequentially('Agreed. ');
+  await expect(composer(page).locator('.saving-indicator')).toHaveText('Autosaved', { timeout: 10_000 });
+  await composer(page).getByRole('button', { name: 'Toggle Formatting Options', exact: true }).click();
+  await sendNow(page);
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  // The discarded text-save image cannot return as a dangling CID in HTML.
+  expect(sent.data).not.toMatch(/cid:chart@remote\.test|cid:chart=40remote/);
+  expect(sent.data).toContain('cell A');
+  expect(sent.data).toContain('Agreed.');
+});
+
+
+test('a pending plain-text save keeps newer rich edits while discarding only the old CID image', async ({ page }) => {
+  const subject = `Pending text then rich ${Date.now()}`;
+  await deliver({ subject, raw: htmlMail(subject) });
+  await login(page);
+  await openHtmlMessage(page, subject);
+  await replyButton(page).click();
+  await composer(page).getByRole('button', { name: 'Toggle Formatting Options', exact: true }).click();
+  let release!: () => void;
+  let held = false;
+  await page.route('**/messages', async route => {
+    const request = route.request();
+    if (!held && request.method() === 'POST' && request.postData()?.includes('name="save_as_draft"') && !request.postData()?.includes('name="html"')) {
+      held = true;
+      const response = await route.fetch();
+      await new Promise<void>(resolve => { release = resolve; });
+      await route.fulfill({ response });
+    } else await route.continue();
+  });
+  const textarea = composer(page).locator('alps-message-composer textarea');
+  await textarea.press('ControlOrMeta+Home');
+  await textarea.pressSequentially('Agreed. ');
+  await expect.poll(() => !!release).toBe(true);
+  await composer(page).getByRole('button', { name: 'Toggle Formatting Options', exact: true }).click();
+  const editor = composer(page).locator('.ProseMirror');
+  await editor.locator('p').first().click();
+  await editor.press('ControlOrMeta+Home');
+  await editor.press('ControlOrMeta+b');
+  await editor.pressSequentially('New rich words. ');
+  await editor.press('ControlOrMeta+b');
+  release();
+  await expect(composer(page).locator('.saving-indicator')).toHaveText('Autosaved', { timeout: 15_000 });
+  await expect(editor).toContainText('New rich words.');
+  await expect.poll(async () => (await frameLayout(quoteFrame(page))).cells).toEqual(['cell A', 'cell B']);
+  await sendNow(page);
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  expect(sent.data).toMatch(/<strong[^>]*>New rich words\. /);
+  expect(sent.data).toContain('cell A');
+  expect(sent.data).not.toMatch(/cid:chart@remote\.test|cid:chart=40remote/);
+});
+
+test('a plain-text reply switched before saving retains the rich quote and its inline bytes', async ({ page }) => {
+  const subject = `Plain reply rich ${Date.now()}`;
+  await deliver({ subject, raw: htmlMail(subject) });
+  await login(page);
+  const origin = { Origin: new URL(page.url()).origin };
+  expect((await page.request.put('/settings', { headers: origin, data: { compose_format: 'text' } })).ok()).toBe(true);
+  await page.reload();
+  await openHtmlMessage(page, subject);
+  await replyButton(page).click();
+  await expect(composer(page).locator('alps-message-composer textarea')).toBeVisible();
+  await composer(page).getByRole('button', { name: 'Toggle Formatting Options', exact: true }).click();
+  await expect.poll(async () => (await frameLayout(quoteFrame(page))).cells).toEqual(['cell A', 'cell B']);
+  await sendNow(page);
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  expect(mimeOutline(sent.data)).toContain('Content-Id: <chart@remote.test>');
+  expect(sent.data).toContain('cell A');
+  expect((await page.request.put('/settings', { headers: origin, data: { compose_format: 'html' } })).ok()).toBe(true);
+});
+
+test('Edit Draft reads and preserves HTML while both preferred formats are plain text', async ({ page }) => {
+  const subject = `Read text edit HTML ${Date.now()}`;
+  await deliver({ subject, raw: htmlMail(subject) });
+  await login(page);
+  await openHtmlMessage(page, subject);
+  await replyButton(page).click();
+  const editor = composer(page).locator('.ProseMirror');
+  await editor.locator('p').first().click();
+  await editor.pressSequentially('Agreed.');
+  await savedAgain(page, undefined);
+  await composer(page).locator('alps-icon-btn[title="Save & close"]').click();
+  await expect(composer(page)).toHaveCount(0);
+  const origin = { Origin: new URL(page.url()).origin };
+  expect((await page.request.put('/settings', { headers: origin, data: { compose_format: 'text', preferred_view: 'text' } })).ok()).toBe(true);
+  await page.reload();
+  await page.locator('alps-folder-list .folder-item[title="Drafts"]').click();
+  await page.locator('alps-message-list .message-item').filter({ hasText: `Re: ${subject}` }).first().click();
+  const reader = page.locator('alps-message-reader');
+  await expect(reader.locator('pre.reader-preformatted')).toContainText('Agreed.');
+  await reader.getByRole('button', { name: 'Edit Draft' }).first().click();
+  await expect(editor).toBeVisible();
+  await expect(composer(page).locator('alps-message-composer textarea')).toBeHidden();
+  await expect.poll(async () => (await frameLayout(quoteFrame(page))).cells).toEqual(['cell A', 'cell B']);
+  await sendNow(page);
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  expect(mimeOutline(sent.data)).toContain('Content-Id: <chart@remote.test>');
+  expect(sent.data).toContain('cell A');
+  expect((await page.request.put('/settings', { headers: origin, data: { compose_format: 'html', preferred_view: 'html' } })).ok()).toBe(true);
+});
+
+for (const savedAsHtml of [false, true]) {
+  test(`a retained file's CID link survives a text save that drops its inline image (prior HTML save: ${savedAsHtml})`, async ({ page }) => {
+    const subject = `File link and image ${Date.now()}`;
+    const file = { filename: 'manual.txt', contents: `manual bytes ${unique()}` };
+    const raw = htmlMail(subject, file)
+      .replace('</body>', '<a href="cid:manual@remote.test">Open manual</a></body>')
+      .replace('Content-Disposition: attachment; filename="manual.txt"', 'Content-Disposition: attachment; filename="manual.txt"\r\nContent-ID: <manual@remote.test>');
+    await deliver({ subject, raw });
+    await login(page);
+    await openHtmlMessage(page, subject);
+    await chooseFromMoreMenu(page, 'Forward');
+    await addTo(page, USER.address);
+    if (savedAsHtml) {
+      const editor = composer(page).locator('.ProseMirror');
+      await editor.locator('p').first().click();
+      await editor.pressSequentially('Rich first. ');
+      await savedAgain(page, undefined);
+    }
+    const previousUid = await composer(page).evaluate(el => (el as HTMLElement & { instance: { draftUid?: string } }).instance.draftUid);
+    await composer(page).getByRole('button', { name: 'Toggle Formatting Options', exact: true }).click();
+    const textarea = composer(page).locator('alps-message-composer textarea');
+    await textarea.press('ControlOrMeta+Home');
+    await textarea.pressSequentially('Text saved. ');
+    await savedAgain(page, previousUid);
+    await composer(page).getByRole('button', { name: 'Toggle Formatting Options', exact: true }).click();
+    await sendNow(page);
+    const sent = await sentWithSubject(`Fwd: ${subject}`);
+    expect(htmlPart(sent)).toContain('href="cid:manual@remote.test"');
+    expect(htmlPart(sent)).not.toContain('cid:chart@remote.test');
+    expect(mimeOutline(sent.data)).toContain('Content-Id: <manual@remote.test>');
+    expect(sent.data).toContain(Buffer.from(file.contents).toString('base64'));
+  });
+}

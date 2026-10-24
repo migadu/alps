@@ -1,14 +1,17 @@
 export default {
   "settings": {
     "categories": {
-      "filters": "Filtros"
+      "filters": "Filtros",
+      "autoReply": "Resposta automática"
     }
   },
   "managesieve": {
     "title": "Filtros",
     "description": "Adicione regras personalizadas sobre como as mensagens são processadas e arquivadas.",
+    "loadError": "Não foi possível carregar os filtros.",
+    "loadErrorRetry": "Tentar novamente",
     "tabs": {
-      "switchToRaw": "Editor Bruto"
+      "switchToRaw": "Editor bruto"
     },
     "warningRawSwitchTitle": "Mudar para modo bruto",
     "warningRawSwitchConfirm": "Mudar",
@@ -17,13 +20,14 @@ export default {
       "saved": "Regras salvas e ativadas.",
       "deactivated": "Regras desativadas.",
       "valid": "O script é válido!",
-      "networkError": "Ocorreu um erro de rede."
+      "networkError": "Ocorreu um erro de rede.",
+      "autoReplyOn": "A resposta automática está ativada e precisa ser desativada em Resposta automática antes que os filtros enviem uma própria."
     },
     "visual": {
-      "newRule": "Nova Regra",
+      "newRule": "Nova regra",
       "noRules": "Nenhuma regra definida.",
-      "saveFilters": "Salvar Regras",
-      "deleteRule": "Excluir Regra",
+      "saveFilters": "Salvar regras",
+      "deleteRule": "Excluir regra",
       "remove": "Remover",
       "add": "Adicionar",
       "if": "SE",
@@ -31,9 +35,18 @@ export default {
       "any": "QUALQUER",
       "ofTheFollowing": "das seguintes condições corresponderem",
       "then": "ENTÃO",
+      "value": "Valor",
+      "ruleNumber": "Regra {number}",
+      "conditionNumber": "Condição {number}",
+      "actionNumber": "Ação {number}",
+      "matchMode": "Condições a cumprir",
+      "field": "Campo",
+      "operator": "Comparação",
+      "action": "Ação",
+      "folder": "Pasta",
       "actions": {
         "fileinto": "Mover para pasta",
-        "discard": "Descartar (Excluir)",
+        "discard": "Descartar (excluir)",
         "redirect": "Redirecionar para e-mail",
         "stop": "Parar de avaliar regras"
       },
@@ -56,7 +69,44 @@ export default {
     },
     "raw": {
       "validate": "Validar",
-      "save": "Salvar"
+      "save": "Salvar",
+      "script": "Script dos filtros"
+    },
+    "autoReply": {
+      "title": "Resposta automática",
+      "description": "Responde automaticamente a quem escreve durante uma ausência.",
+      "enable": "Enviar resposta automática",
+      "stateActive": "Os remetentes recebem uma resposta agora.",
+      "stateActiveUntil": "Os remetentes recebem uma resposta até {date}.",
+      "stateScheduled": "Início programado para {date}.",
+      "stateFinished": "A data de término já passou, então ninguém recebe resposta.",
+      "subject": "Assunto",
+      "subjectDesc": "Opcional. Se ficar vazio, o servidor de e-mail escolhe um.",
+      "subjectPlaceholder": "Fora do escritório",
+      "message": "Mensagem",
+      "messageDesc": "O que recebe cada pessoa que escreve.",
+      "messagePlaceholder": "Estou fora até o dia 15 e responderei quando voltar.",
+      "dates": "Datas",
+      "datesDesc": "Opcional. Uma data vazia deixa aquele extremo em aberto. Cada dia vai da meia-noite à meia-noite no fuso horário local.",
+      "startDate": "Data de início",
+      "endDate": "Data de término",
+      "interval": "Nova resposta ao mesmo remetente após",
+      "intervalDesc": "Quem escreve várias vezes nesse período recebe uma única resposta. Listas de e-mail e mensagens automáticas nunca recebem.",
+      "days": {
+        "one": "{count} dia",
+        "other": "{count} dias"
+      },
+      "save": "Salvar",
+      "saved": "Resposta automática salva.",
+      "turnedOff": "Resposta automática desativada.",
+      "unsupported": "Este servidor de e-mail não oferece respostas automáticas.",
+      "ownVacation": "Os filtros já enviam uma resposta automática própria, que precisa ser removida no editor bruto em Filtros antes de configurar uma aqui.",
+      "errors": {
+        "emptyMessage": "Sem mensagem, a resposta automática não pode ser ativada.",
+        "invalidWindow": "A data de início não pode ser posterior à data de término.",
+        "loadError": "Não foi possível carregar a resposta automática.",
+        "saveError": "Não foi possível salvar a resposta automática."
+      }
     }
   }
 };

@@ -5,11 +5,13 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { settingsContext, SettingsStore, clearSessionSettings } from '../store/settings-store';
 import { linkedAccountsContext, LinkedAccountsStore } from '../store/linked-accounts-store';
 import './alps-avatar';
-import { popupStyles } from './alps-popup';
+import { popupStyles, type AlpsPopup } from './alps-popup';
 import './alps-popup';
 import './alps-icon-btn';
 import { renderIcon } from '../utils/ui';
+import { MessageCache } from '../utils/message-cache';
 import { registry } from '../plugin-registry';
+import { matchesTabRoute } from '../utils/routes';
 
 @customElement('user-profile-menu')
 export class UserProfileMenu extends LitElement {
@@ -126,8 +128,17 @@ export class UserProfileMenu extends LitElement {
     if (popup) popup.close();
   }
 
-  private _handleSettings() {
+  private async _handleSettings() {
+    const popup = this.shadowRoot?.querySelector<AlpsPopup>('alps-popup');
     this._closePopup();
+    // Settings records where to return focus. The popup closes on its next
+    // update and blurs the trigger then; wait for that before giving the
+    // window the persistent profile button as its return target, rather than
+    // the now-hidden Settings menu item (or the body).
+    await popup?.updateComplete;
+    if (!this.isConnected) return;
+    this.shadowRoot?.querySelector('alps-icon-btn[slot="trigger"]')
+      ?.shadowRoot?.querySelector<HTMLButtonElement>('button')?.focus();
     this.dispatchEvent(new CustomEvent('open-settings', { bubbles: true, composed: true }));
   }
 
@@ -142,7 +153,10 @@ export class UserProfileMenu extends LitElement {
       if (!window.location.hash.startsWith('#/mailbox/')) {
         window.location.hash = '#/';
       }
-    } else {
+    } else if (!matchesTabRoute(window.location.hash, tab)) {
+      // A plugin's entry on its own page stays put, as Messages does on an
+      // open folder: its bare `#/<tab>` would be a second history entry for
+      // the page already on screen.
       window.location.hash = '#/' + tab;
     }
     this.dispatchEvent(new CustomEvent('change-tab', { detail: { tab }, bubbles: true, composed: true }));
@@ -192,7 +206,12 @@ export class UserProfileMenu extends LitElement {
          // new account's inbox could render the old account's message. The
          // per-user settings pointer likewise still named the old account, so
          // the compose store would restore THEIR drafts.
+         //
+         // Through MessageCache as well as wholesale: this page stays up through
+         // the second factor, and a body the old account's reader is still
+         // waiting on must not be written back for the new one to open.
          clearSessionSettings(false);
+         MessageCache.clear();
          sessionStorage.clear();
          try {
            sessionStorage.setItem('pending_2fa_username', username);
@@ -256,16 +275,24 @@ export class UserProfileMenu extends LitElement {
             `;
           })()}
           
-          <button class="dropdown-item ${this.currentTab === 'messages' ? 'active' : ''}" @click="${() => this._handleTabChange('messages')}">
-            ${renderIcon('envelopeSimple')} <span class="item-text">${this.i18nStore?.t('navigation.messages')}</span>
-          </button>
-          ${registry.getNavTabs().map(tab => html`
-            <button class="dropdown-item ${this.currentTab === tab.id ? 'active' : ''}" @click="${() => this._handleTabChange(tab.id)}">
-              ${renderIcon(tab.icon || 'star')} <span class="item-text">${this.i18nStore?.t(tab.labelKey)}</span>
+          <!-- The pages, on a PHONE only. A desktop's header switches between
+               Messages, Contacts, Calendar and Tasks itself, and the menu does
+               not repeat it; a phone's header has no room for the tabs, and
+               this menu is then the only way between them. -->
+          ${this.isMobile ? html`
+            <button class="dropdown-item ${this.currentTab === 'messages' ? 'active' : ''}" @click="${() => this._handleTabChange('messages')}">
+              ${renderIcon('envelopeSimple')} <span class="item-text">${this.i18nStore?.t('navigation.messages')}</span>
             </button>
-          `)}
-          <div class="dropdown-divider"></div>
-          <button class="dropdown-item ${this.currentTab === 'settings' ? 'active' : ''}" @click="${this._handleSettings}">
+            ${registry.getNavTabs().map(tab => html`
+              <button class="dropdown-item ${this.currentTab === tab.id ? 'active' : ''}" @click="${() => this._handleTabChange(tab.id)}">
+                ${renderIcon(tab.icon || 'star')} <span class="item-text">${this.i18nStore?.t(tab.labelKey)}</span>
+              </button>
+            `)}
+            <div class="dropdown-divider"></div>
+          ` : ''}
+          <!-- Never the current item: Settings is a window over the page, and
+               the page's tab stays the current one. -->
+          <button class="dropdown-item" @click="${this._handleSettings}">
             ${renderIcon('gear')} <span class="item-text">${this.i18nStore?.t('userMenu.settings')}</span>
           </button>
           <div class="dropdown-divider"></div>

@@ -110,6 +110,35 @@ func TestAllDayEvents(t *testing.T) {
 		}
 	})
 
+	t.Run("one that ends where it starts lasts its one day", func(t *testing.T) {
+		atStart := ical.NewEvent()
+		atStart.Props.SetDate(ical.PropDateTimeStart, day)
+		atStart.Props.SetDate(ical.PropDateTimeEnd, day)
+		noLength := ical.NewEvent()
+		noLength.Props.SetDate(ical.PropDateTimeStart, day)
+		noLength.Props.SetText(ical.PropDuration, "PT0S")
+
+		for name, event := range map[string]*ical.Event{"DTEND on DTSTART": atStart, "DURATION:PT0S": noLength} {
+			data, err := extractEventData(calendarObjectOf(event))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !data.AllDay || data.Start != "2024-09-08T00:00:00Z" || data.End != "2024-09-09T00:00:00Z" {
+				t.Fatalf("%s: got allDay=%v %s..%s", name, data.AllDay, data.Start, data.End)
+			}
+		}
+	})
+
+	t.Run("one saved with no length is written as its one day", func(t *testing.T) {
+		for _, end := range []time.Time{day, day.Add(12 * time.Hour)} {
+			event := ical.NewEvent()
+			setEventTimes(event, day, end, true)
+			if got := event.Props.Get(ical.PropDateTimeEnd).Value; got != "20240909" {
+				t.Fatalf("ending at %s: DTEND = %q, want the exclusive DATE 20240909", end, got)
+			}
+		}
+	})
+
 	t.Run("events already stored as UTC-midnight date-times stay all-day", func(t *testing.T) {
 		event := ical.NewEvent()
 		event.Props.SetDateTime(ical.PropDateTimeStart, day)

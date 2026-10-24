@@ -38,10 +38,6 @@ export class AlpsSidebarCalendar extends LitElement {
             font-weight: 500;
             font-size: 14px;
         }
-
-        alps-icon-btn {
-            --btn-padding: 4px;
-        }
     `;
 
     updated(changedProperties: Map<string, any>) {
@@ -66,24 +62,20 @@ export class AlpsSidebarCalendar extends LitElement {
         return html`
             <div class="mini-calendar-wrapper">
                 <div class="mini-header">
-                    <alps-icon-btn icon="caretLeft" @click=${() => this.changeMonth(-1)}></alps-icon-btn>
+                    <alps-icon-btn icon="caretLeft" title=${this.i18nStore?.t('calendar.previousMonth')} @click=${() => this.changeMonth(-1)}></alps-icon-btn>
                     <span>${monthName} ${year}</span>
-                    <alps-icon-btn icon="caretRight" @click=${() => this.changeMonth(1)}></alps-icon-btn>
+                    <alps-icon-btn icon="caretRight" title=${this.i18nStore?.t('calendar.nextMonth')} @click=${() => this.changeMonth(1)}></alps-icon-btn>
                 </div>
+                <!-- The month's date-selected bubbles out of this shadow root
+                     by itself, as it does out of the year view's. A second
+                     one sent from here made the calendar page take every day
+                     picked twice, and read the calendar twice for it. -->
                 <calendar-mini-month
                     .year=${year}
                     .month=${month}
                     .events=${this.events}
                     .currentDate=${this.selectedDate}
                     .weekStart=${this.weekStart}
-                    @date-selected=${(e: CustomEvent) => {
-                // Forward the event to the parent
-                this.dispatchEvent(new CustomEvent('date-selected', {
-                    detail: e.detail,
-                    bubbles: true,
-                    composed: true
-                }));
-            }}
                 ></calendar-mini-month>
             </div>
         `;

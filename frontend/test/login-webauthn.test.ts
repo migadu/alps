@@ -145,4 +145,255 @@ describe('login-webauthn-page', () => {
       (window as any).location = origLocation;
     }
   });
+
+  describe('an answer that is not a verdict on the key', () => {
+    const answer = (status: number, body?: unknown) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => {
+        if (body === undefined) throw new SyntaxError('Unexpected token < in JSON at position 0');
+        return body;
+      },
+    }) as any;
+
+    const options = () => answer(200, { publicKey: { challenge: 'challenge' } });
+
+    /** Mounts the page with the two answers, and waits for what it says. */
+    async function verify(begin: () => any, finish: () => any = () => answer(200, { success: true })) {
+      vi.spyOn(webauthnUtils, 'isWebAuthnSupported').mockReturnValue(true);
+      const key = vi.spyOn(webauthnUtils, 'authenticateCredential').mockResolvedValue({ id: 'cred-1' } as any);
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        if (String(url).endsWith('/webauthn/verify/begin')) return begin();
+        if (String(url).endsWith('/webauthn/verify/finish')) return finish();
+        return answer(404, {});
+      });
+      const el = document.createElement('login-webauthn-page') as LoginWebAuthnPage & Record<string, any>;
+      el.i18nStore = { t: (k: string) => k, addEventListener() {}, removeEventListener() {} };
+      document.body.appendChild(el);
+      return { el, key };
+    }
+
+    const said = async (el: Record<string, any>, message: string) => {
+      await vi.waitFor(() => expect(el.statusMessage).toBe(message), { timeout: 2000 });
+      expect(el.statusType).toBe('error');
+      // Still on the key: Verify runs the ceremony again, no password asked.
+      expect(window.location.hash).toBe('#/login/webauthn');
+    };
+
+    it('says the server could not check the key when the options cannot be had', async () => {
+      const { el, key } = await verify(() => answer(503, { error: 'Service temporarily unavailable' }));
+      try {
+        await said(el, 'webauthn.errors.unavailable');
+        expect(key).not.toHaveBeenCalled();
+      } finally {
+        el.remove();
+      }
+    });
+
+    it('does not call an outage during verification a failed verification', async () => {
+      const { el } = await verify(options, () => answer(500, { error: 'An internal error occurred' }));
+      try {
+        await said(el, 'webauthn.errors.unavailable');
+      } finally {
+        el.remove();
+      }
+    });
+
+    it('does not show a proxy\'s error page as a parser error', async () => {
+      const { el } = await verify(options, () => answer(502));
+      try {
+        await said(el, 'webauthn.errors.unavailable');
+      } finally {
+        el.remove();
+      }
+    });
+
+    it('says the network failed, not the browser\'s "Failed to fetch", when nothing answered', async () => {
+      const { el } = await verify(options, () => { throw new TypeError('Failed to fetch'); });
+      try {
+        await said(el, 'login.networkError');
+      } finally {
+        el.remove();
+      }
+    });
+
+    it('still says a key the server refused failed verification', async () => {
+      const { el } = await verify(options, () => answer(400, { error: 'verification failed' }));
+      try {
+        await said(el, 'webauthn.errors.verification_failed');
+      } finally {
+        el.remove();
+      }
+    });
+
+    // Cancelling the browser's prompt, or letting it time out, rejects with a
+    // NotAllowedError whose message is the browser's own, in English whatever
+    // the language here, with a link to the WebAuthn specification.
+    it('says the key was not used, in the user\'s language, when the prompt is cancelled or times out', async () => {
+      for (const name of ['NotAllowedError', 'AbortError']) {
+        const { el, key } = await verify(options);
+        key.mockRejectedValue(new DOMException(
+          'The operation either timed out or was not allowed. See: https://www.w3.org/TR/webauthn-2/#sctn-privacy-considerations-client.',
+          name,
+        ));
+        try {
+          await said(el, 'webauthn.errors.cancelled');
+        } finally {
+          el.remove();
+          vi.restoreAllMocks();
+        }
+      }
+    });
+
+    it('says an error occurred, not the browser\'s words, when the key fails otherwise', async () => {
+      const { el, key } = await verify(options);
+      key.mockRejectedValue(new DOMException('The relying party ID is not a registrable domain suffix of, nor equal to the current domain.', 'SecurityError'));
+      try {
+        await said(el, 'webauthn.errors.general');
+      } finally {
+        el.remove();
+      }
+    });
+
+    it('says the key was not used when the browser hands back no credential', async () => {
+      const get = vi.fn(async () => null);
+      Object.defineProperty(navigator, 'credentials', { value: { get }, configurable: true });
+      // The challenge is decoded on the way to the browser, so it is base64url.
+      const { el, key } = await verify(() => answer(200, { publicKey: { challenge: 'AAAA' } }));
+      key.mockRestore();
+      try {
+        await said(el, 'webauthn.errors.cancelled');
+        expect(get).toHaveBeenCalled();
+      } finally {
+        el.remove();
+        delete (navigator as any).credentials;
+      }
+    });
+
+    // The options are decoded on the way to the browser. A challenge or a
+    // credential id that was missing failed with the decoder's own English
+    // sentence, "base64url is null or undefined"; one that was not base64url
+    // failed in atob, and read as a general error.
+    it.each([
+      ['without a challenge', { allowCredentials: [] }],
+      ['with a credential that has no id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key' }] }],
+      ['with a challenge that is not base64url', { challenge: '!!!' }],
+      ['with only whitespace for a challenge', { challenge: ' \t\n' }],
+      ['with whitespace inside a challenge', { challenge: 'AA AA' }],
+      ['with only whitespace for a credential id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key', id: ' \t' }] }],
+      ['with a plus sign in a challenge', { challenge: 'AA+_' }],
+      ['with a slash in a credential id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key', id: '/w' }] }],
+    ])('says the options cannot be used, in the user\'s language, when they come %s', async (_, publicKey) => {
+      const get = vi.fn(async () => null);
+      Object.defineProperty(navigator, 'credentials', { value: { get }, configurable: true });
+      const { el, key } = await verify(() => answer(200, { publicKey }));
+      key.mockRestore();
+      try {
+        await said(el, 'webauthn.errors.invalid_options');
+        expect(get).not.toHaveBeenCalled();
+      } finally {
+        el.remove();
+        delete (navigator as any).credentials;
+      }
+    });
+
+    it('goes back to the password, and says why, when the pending sign-in is gone', async () => {
+      sessionStorage.setItem('pending_2fa_username', 'ada@example.com');
+      const { el } = await verify(options, () => answer(401, { error: 'no pending 2FA session' }));
+      try {
+        await vi.waitFor(() => expect(window.location.hash).toBe('#/login'), { timeout: 2000 });
+        expect(sessionStorage.getItem('alps-login-notice')).toBe('secondFactorExpired');
+        expect(sessionStorage.getItem('pending_2fa_username')).toBeNull();
+      } finally {
+        el.remove();
+      }
+    });
+  });
+
+  /**
+   * The page starts the ceremony by itself 300 ms after it is attached. A
+   * second ceremony replaces the challenge the server keeps for the session,
+   * so the first one's assertion is checked against the wrong challenge, and
+   * the browser shows only one of the two prompts.
+   */
+  describe('one ceremony at a time', () => {
+    let begins = 0;
+    let get: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      begins = 0;
+      // The browser's prompt stays up until a test says otherwise.
+      get = vi.fn(() => new Promise(() => {}));
+      Object.defineProperty(navigator, 'credentials', { value: { get }, configurable: true });
+      vi.spyOn(webauthnUtils, 'isWebAuthnSupported').mockReturnValue(true);
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        if (String(url).endsWith('/webauthn/verify/begin')) begins++;
+        return { ok: true, status: 200, json: async () => ({ publicKey: { challenge: 'AAAA' } }) } as any;
+      });
+    });
+
+    afterEach(() => {
+      document.body.innerHTML = '';
+      vi.useRealTimers();
+      delete (navigator as any).credentials;
+    });
+
+    async function page() {
+      const el = document.createElement('login-webauthn-page') as LoginWebAuthnPage & Record<string, any>;
+      el.i18nStore = { t: (k: string) => k, addEventListener() {}, removeEventListener() {} };
+      document.body.appendChild(el);
+      await el.updateComplete;
+      return el;
+    }
+
+    const verifyButton = (el: HTMLElement) => el.shadowRoot!.querySelector('alps-button[variant="primary"]') as HTMLElement;
+
+    it('starts no second ceremony when Verify is clicked before the automatic one', async () => {
+      const el = await page();
+      verifyButton(el).click();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(begins).toBe(1);
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not start the automatic ceremony after one the user started has ended', async () => {
+      get.mockRejectedValue(new DOMException('The operation was not allowed.', 'NotAllowedError'));
+      const el = await page();
+      verifyButton(el).click();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(begins).toBe(1);
+      expect(el.statusMessage).toBe('webauthn.errors.cancelled');
+    });
+
+    it('starts no second ceremony when Verify is clicked while one runs', async () => {
+      const el = await page();
+      await vi.advanceTimersByTimeAsync(300);
+      expect(get).toHaveBeenCalledTimes(1);
+      verifyButton(el).click();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(begins).toBe(1);
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts nothing once the page is left before the automatic ceremony', async () => {
+      const el = await page();
+      el.remove();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(begins).toBe(0);
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('still starts the ceremony by itself, and Verify runs it again once it has ended', async () => {
+      get.mockRejectedValue(new DOMException('The operation was not allowed.', 'NotAllowedError'));
+      const el = await page();
+      await vi.advanceTimersByTimeAsync(300);
+      expect(begins).toBe(1);
+      await vi.waitFor(() => expect(el.statusMessage).toBe('webauthn.errors.cancelled'));
+      verifyButton(el).click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(begins).toBe(2);
+      expect(get).toHaveBeenCalledTimes(2);
+    });
+  });
 });

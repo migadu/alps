@@ -1,4 +1,4 @@
-import { LitElement, html, css, type TemplateResult } from 'lit';
+import { LitElement, html, css, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { renderIcon } from '../utils/ui';
@@ -6,8 +6,10 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages, advertisedRoles, mailboxRole, reportsSubscriptions, specialMailboxName, type MailboxRole } from '../utils/folders';
+import { carriesMessages, dropCopies, readMessageDrag } from '../utils/message-drag';
 import { settingsContext, SettingsStore } from '../store/settings-store';
+import { confirmUnsubscribed, forgetUnsubscribedTree, renameUnsubscribedTree, settleUnsubscribedFolders, withUnsubscribedFolder, withoutUnsubscribedFolder } from '../utils/unsubscribed-folders';
 import './alps-icon-btn';
 import './ui-prompt';
 import './alps-toolbar';
@@ -17,6 +19,8 @@ import { popupStyles } from './alps-popup';
 import './alps-icon-btn';
 import './alps-create-button';
 import { sidebarLayoutStyles } from './alps-sidebar';
+import { sidebarStripContext } from './alps-sidebar-strip';
+import { sectionHeadingStyles } from './alps-sidebar-heading';
 import './alps-popup';
 
 @customElement('alps-folder-list')
@@ -35,7 +39,9 @@ export class FolderList extends LitElement {
   @property({ type: Object }) expandedFolders = new Set<string>();
   @property({ type: String }) layoutMode = 'vertical';
   @property({ type: Boolean }) syncing = false;
-  @property({ type: Boolean, reflect: true }) collapsed = false;
+  /** Whether the sidebar above is the collapsed strip, which takes no drop. */
+  @consume({ context: sidebarStripContext, subscribe: true })
+  @state() private strip = false;
   @state() private isScrolled = false;
 
   @state() private showCreatePrompt = false;
@@ -48,10 +54,89 @@ export class FolderList extends LitElement {
   @state() private mailboxToDelete = '';
   @state() private parentForNewFolder = '';
   @state() private activeKebabMenu: string | null = null;
+  /** The folder a drag of messages is over and may be dropped on, by name. */
+  @state() private dropTarget: string | null = null;
+  /** Whether that drop would copy (Alt held) rather than move. */
+  @state() private dropCopy = false;
+  /** Stops watching the window for the end of the drag that lit a folder;
+   * null when no folder is lit. */
+  private stopDropWatch: (() => void) | null = null;
+  /**
+   * Whether the unsubscribed folders are showing under More. Not kept between
+   * visits: it is a disclosure, and a sidebar that remembered it open would
+   * soon stop putting anything away.
+   */
+  @state() private showUnsubscribed = false;
+  /** Folders just unsubscribed here that no listing has yet shown
+   * unsubscribed; see confirmUnsubscribed. */
+  private unconfirmedUnsubscribes = new Set<string>();
   private primaryFullNames = new Set<string>();
 
   willUpdate(changedProperties: Map<string, any>) {
     super.willUpdate(changedProperties);
+  }
+
+  updated(changedProperties: Map<string, any>) {
+    super.updated(changedProperties);
+    this.settleUnsubscribed();
+  }
+
+  /** The folders unsubscribed from here, as the account's settings hold them;
+   * see utils/unsubscribed-folders. */
+  private get unsubscribedHere(): string[] {
+    return this.settingsStore?.getState()?.unsubscribedFolders ?? [];
+  }
+
+  private saveUnsubscribedHere(list: string[]) {
+    const current = this.unsubscribedHere;
+    if (list.length === current.length && list.every((name, i) => name === current[i])) return;
+    void this.settingsStore?.updateSettings({ unsubscribedFolders: list });
+  }
+
+  /**
+   * Drops the entries of folders the listing shows subscribed again, by
+   * another client or by this one in another browser.
+   *
+   * Only once the account's record has been read: before that, the list is
+   * this browser's copy, and one worked out from it would be saved over the
+   * account's.
+   */
+  private settleUnsubscribed() {
+    if (!this.settingsStore?.recordRead || this.mailboxes.length === 0) return;
+    if (this.unsubscribedHere.length === 0 && this.unconfirmedUnsubscribes.size === 0) return;
+    confirmUnsubscribed(this.unconfirmedUnsubscribes, this.mailboxes);
+    this.saveUnsubscribedHere(settleUnsubscribedFolders(this.unsubscribedHere, this.mailboxes, this.unconfirmedUnsubscribes));
+  }
+
+  /** A subscription changed here, and the server took it. */
+  private subscriptionChanged(name: string, subscribed: boolean) {
+    if (subscribed) {
+      this.unconfirmedUnsubscribes.delete(name);
+      this.saveUnsubscribedHere(withoutUnsubscribedFolder(this.unsubscribedHere, name));
+    } else {
+      this.unconfirmedUnsubscribes.add(name);
+      this.saveUnsubscribedHere(withUnsubscribedFolder(this.unsubscribedHere, name));
+    }
+  }
+
+  /** A folder renamed here: what was unsubscribed under the old names is
+   * unsubscribed under the new ones. */
+  private renamedHere(from: string, to: string, delimiter: string) {
+    for (const name of [...this.unconfirmedUnsubscribes]) {
+      if (!isSelfOrDescendantMailbox(name, from, delimiter)) continue;
+      this.unconfirmedUnsubscribes.delete(name);
+      this.unconfirmedUnsubscribes.add(to + name.slice(from.length));
+    }
+    this.saveUnsubscribedHere(renameUnsubscribedTree(this.unsubscribedHere, from, to, delimiter));
+  }
+
+  /** A folder deleted here, or moved to Trash: it and what was under it are
+   * not unsubscribed folders of this account any more. */
+  private goneHere(name: string, delimiter: string) {
+    for (const entry of [...this.unconfirmedUnsubscribes]) {
+      if (isSelfOrDescendantMailbox(entry, name, delimiter)) this.unconfirmedUnsubscribes.delete(entry);
+    }
+    this.saveUnsubscribedHere(forgetUnsubscribedTree(this.unsubscribedHere, name, delimiter));
   }
 
 
@@ -82,6 +167,9 @@ export class FolderList extends LitElement {
     }
     this.i18nStore?.removeEventListener('change', this._handleStoreChange);
     this.settingsStore?.removeEventListener('change', this._handleStoreChange);
+    // A list that leaves the page while a folder is lit would otherwise keep
+    // its window listeners until some later drag ended.
+    this.clearDropTarget();
   }
 
   private _handleStoreChange = () => {
@@ -91,6 +179,7 @@ export class FolderList extends LitElement {
   static styles = [
     popupStyles,
     sidebarLayoutStyles,
+    sectionHeadingStyles,
     css`
     :host {
       display: flex;
@@ -99,8 +188,13 @@ export class FolderList extends LitElement {
       width: 100%;
       min-height: 0;
       box-sizing: border-box;
+      /* The collapsed strip's slide (sidebarLayoutStyles): a folder's icon
+         sits 46px in, after the content's 8px padding, the row's 4px, the
+         30px expander and the 4px gap, so it slides 38px to stand 8px inside
+         the strip. */
+      --strip-slide: 38px;
     }
-    
+
     .sidebar-wrapper {
       background-color: var(--bg-secondary);
     }
@@ -114,10 +208,6 @@ export class FolderList extends LitElement {
       overflow-y: auto;
       overflow-x: hidden;
       padding: 12px 8px;
-    }
-
-    :host([collapsed]) .sidebar-content {
-      transition: opacity 0.2s ease;
     }
 
     .sidebar-wrapper.collapsed .folder-item {
@@ -136,13 +226,22 @@ export class FolderList extends LitElement {
       color: var(--text-color);
       margin-bottom: 2px;
       user-select: none;
-      transition: background 0.15s;
       gap: 4px;
     }
 
+    /* The fade belongs to the hover only. On the base rule it also eased the
+       row that lost .active down over 150ms while the new one came up, so a
+       folder switch showed two rows lit at once, the old one reading as still
+       selected. A transition is taken from the state being entered, so the
+       base and .active have none, and only entering :hover animates. */
     @media (hover: hover) {
       .folder-item:hover {
         background: var(--hover-color);
+        transition: background 0.15s;
+      }
+
+      .folder-item.active:hover {
+        transition: none;
       }
     }
 
@@ -150,6 +249,33 @@ export class FolderList extends LitElement {
       background: var(--bg-selected);
       color: var(--accent-hover);
       font-weight: 600;
+    }
+
+    /* The folder a drop would file into. Dashed for a move, and in another
+       colour for a copy, so the modifier can be seen to have been taken. */
+    .folder-item.drop-target {
+      background: var(--hover-color);
+      outline: 2px dashed var(--accent-color);
+      outline-offset: -2px;
+    }
+
+    .folder-item.drop-target.drop-copy {
+      outline-color: var(--success);
+    }
+
+    /* The More row: a button, so the keyboard reaches it, drawn as a row. */
+    button.more-row {
+      width: 100%;
+      border: none;
+      background: none;
+      font: inherit;
+      color: var(--text-muted);
+      text-align: start;
+    }
+
+    .more-caret {
+      display: flex;
+      padding: 2px;
     }
 
     .folder-item .icon {
@@ -229,6 +355,22 @@ export class FolderList extends LitElement {
       display: none;
     }
 
+    /* The menu is shown while the keyboard is in its row, so that Tab
+       reaches it from the folder's name: a button inside display: none is no
+       Tab stop, and so it could never take the focus that shows it. Not
+       while a click has put the focus on the name, or on the expander, whose
+       button a click focuses too: a click leaves the row as it was. Keyed on
+       :focus-within, which holds while the focus moves from the name to the
+       menu; keyed on the name's :focus-visible alone, the menu was hidden
+       again before Tab reached it. */
+    .folder-item:focus-within:not(:has(.folder-name:focus:not(:focus-visible), .folder-toggle-btn:focus)) .folder-actions {
+      display: flex;
+    }
+
+    .folder-item.has-actions:focus-within:not(:has(.folder-name:focus:not(:focus-visible), .folder-toggle-btn:focus)) .folder-badge {
+      display: none;
+    }
+
     @media (max-width: 768px) {
       .folder-item.active .folder-actions {
         display: flex;
@@ -239,18 +381,6 @@ export class FolderList extends LitElement {
       .folder-item.active .folder-badge {
         display: block; /* keep badge visible alongside actions on mobile */
       }
-    }
-
-    .sidebar-header-title {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 14px 4px 14px;
-      font-size: 12px;
-      text-transform: uppercase;
-      font-weight: 600;
-      color: var(--text-muted);
-      letter-spacing: 0.5px;
     }
 
     .folder-separator {
@@ -287,15 +417,6 @@ export class FolderList extends LitElement {
       display: flex;
       align-items: center;
     }
-
-    /* Standard icon colors */
-    .icon-inbox { color: var(--icon-inbox, #3b82f6); }
-    .icon-sent { color: var(--icon-sent, #10b981); }
-    .icon-drafts { color: var(--icon-drafts, #f59e0b); }
-    .icon-spam { color: var(--icon-spam, #ef4444); }
-    .icon-trash { color: var(--icon-trash, #6b7280); }
-    .icon-archive { color: var(--icon-archive, #8b5cf6); }
-    .icon-default { color: var(--icon-default, #9ca3af); }
 
     /* Submenu trigger styling inside popup trigger slot */
     .dropdown-item.submenu-trigger {
@@ -367,7 +488,11 @@ export class FolderList extends LitElement {
       // The result was discarded entirely: creating a folder that already
       // exists, or any server refusal, closed the prompt and said nothing.
       const outcome = await mailboxOperations.createMailbox(name);
-      if (outcome === 'exists') {
+      if (outcome === 'ok') {
+        // An entry left by a folder of the same name deleted elsewhere is not
+        // this one's.
+        this.saveUnsubscribedHere(withoutUnsubscribedFolder(this.unsubscribedHere, name));
+      } else if (outcome === 'exists') {
         this.toast(this.i18nStore?.t('toast.folderExists'), 'A folder with that name already exists', { type: 'error' });
       } else if (outcome === 'failed') {
         this.toast(this.i18nStore?.t('toast.folderCreateFailed'), 'Could not create the folder', { type: 'error' });
@@ -394,6 +519,7 @@ export class FolderList extends LitElement {
     const newName = e.detail.name;
     if (newName && this.mailboxToRename) {
       const oldName = this.mailboxToRename;
+      const delimiter = delimiterOf(this.mailboxes.find(m => (m.Name || m.Mailbox) === oldName));
       // Taken down before the request here, so there is no double-submit window
       // to guard — unlike the create path above.
       this.showRenamePrompt = false;
@@ -404,6 +530,7 @@ export class FolderList extends LitElement {
       } else if (outcome === 'failed') {
         this.toast(this.i18nStore?.t('toast.folderRenameFailed'), 'Could not rename the folder', { type: 'error' });
       } else {
+        this.renamedHere(oldName, newName, delimiter);
         if (isSelfOrDescendantMailbox(this.currentMailbox, oldName)) {
           this.selectMailbox(newName + this.currentMailbox.slice(oldName.length));
         }
@@ -414,6 +541,7 @@ export class FolderList extends LitElement {
             this.toast(this.i18nStore?.t('toast.folderUndoFailed'), 'Could not undo that', { type: 'error' });
             return;
           }
+          this.renamedHere(newName, oldName, delimiter);
           if (isSelfOrDescendantMailbox(this.currentMailbox, newName)) {
             this.selectMailbox(oldName + this.currentMailbox.slice(newName.length));
           }
@@ -438,8 +566,11 @@ export class FolderList extends LitElement {
 
   private async handleDeleteConfirm() {
     if (this.mailboxToDelete) {
-      const success = await mailboxOperations.deleteMailbox(this.mailboxToDelete);
+      const deleted = this.mailboxToDelete;
+      const delimiter = delimiterOf(this.mailboxes.find(m => (m.Name || m.Mailbox) === deleted));
+      const success = await mailboxOperations.deleteMailbox(deleted);
       if (success) {
+        this.goneHere(deleted, delimiter);
         // `startsWith` alone also matched a sibling that merely shares a prefix,
         // so deleting `Arch` navigated away from `Archive`.
         if (isSelfOrDescendantMailbox(this.currentMailbox, this.mailboxToDelete)) {
@@ -489,6 +620,10 @@ export class FolderList extends LitElement {
       if (outcome !== 'ok') {
         this.toast(this.i18nStore?.t('toast.folderRenameFailed'), 'Could not rename the folder', { type: 'error' });
       } else {
+        // The server takes a folder moved into Trash out of the subscriptions,
+        // and puts it back when it leaves, by Undo or by hand: there is
+        // nothing left for the list to hold.
+        this.goneHere(this.mailboxToDelete, delimiter);
         // Same prefix guard as the permanent delete above.
         if (isSelfOrDescendantMailbox(this.currentMailbox, this.mailboxToDelete, delimiter)) {
           this.selectMailbox(FOLDER_INBOX);
@@ -589,33 +724,117 @@ export class FolderList extends LitElement {
     this.settingsStore?.updateSettings({ customMailboxOrder: updatedOrder });
   }
 
+  /**
+   * Whether the drag over a folder's row is messages that may be filed there.
+   * The rules are in {@link acceptsDroppedMessages}; a collapsed strip takes
+   * nothing, being inert.
+   */
+  private takesDrop(e: DragEvent, mb: any): boolean {
+    return !this.strip && carriesMessages(e.dataTransfer) && acceptsDroppedMessages(mb, this.mailboxes, this.currentMailbox);
+  }
+
+  /**
+   * dragenter and dragover alike. Refusing to call preventDefault is how a row
+   * says no: the browser then shows the no-drop cursor and never sends it the
+   * drop. Asked on every dragover, so that letting go of Alt over a row turns
+   * a copy back into a move as the pointer rests there.
+   */
+  private handleDragOver(e: DragEvent, name: string, mb: any) {
+    if (!this.takesDrop(e, mb)) {
+      if (this.dropTarget === name) this.clearDropTarget();
+      return;
+    }
+    e.preventDefault();
+    const copy = dropCopies(e);
+    e.dataTransfer!.dropEffect = copy ? 'copy' : 'move';
+    if (this.dropTarget !== name) this.dropTarget = name;
+    if (this.dropCopy !== copy) this.dropCopy = copy;
+    this.watchDragEnd();
+  }
+
+  private handleDragLeave(e: DragEvent, name: string) {
+    // Into the row's own caret or caption is still over the row.
+    const row = e.currentTarget as HTMLElement | null;
+    const into = e.relatedTarget as Node | null;
+    if (row && into && row.contains(into)) return;
+    if (this.dropTarget === name) this.clearDropTarget();
+  }
+
+  private handleDrop(e: DragEvent, name: string, mb: any) {
+    if (!this.takesDrop(e, mb)) return;
+    e.preventDefault();
+    const copy = dropCopies(e);
+    const drag = readMessageDrag(e.dataTransfer);
+    this.clearDropTarget();
+    if (!drag || drag.keys.length === 0) return;
+    this.dispatchEvent(new CustomEvent('drop-messages', {
+      detail: { folder: name, copy, keys: drag.keys, selection: drag.selection },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
+  /**
+   * Puts the lit row out however the drag ends without leaving it: dropped
+   * somewhere else, or called off with Escape, which the browser reports as a
+   * dragend at the row the drag started from. The key itself is watched too,
+   * for a browser that lets the page see it. Held only while a row is lit,
+   * and let go with it.
+   */
+  private watchDragEnd() {
+    if (this.stopDropWatch) return;
+    const end = () => this.clearDropTarget();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') end(); };
+    window.addEventListener('dragend', end, true);
+    window.addEventListener('drop', end, true);
+    window.addEventListener('keydown', onKey, true);
+    this.stopDropWatch = () => {
+      window.removeEventListener('dragend', end, true);
+      window.removeEventListener('drop', end, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }
+
+  private clearDropTarget() {
+    this.stopDropWatch?.();
+    this.stopDropWatch = null;
+    this.dropTarget = null;
+    this.dropCopy = false;
+  }
+
 
   render() {
-    // A special-mailbox "slot" can be claimed by an IMAP special-use attribute
+    // A special-mailbox "slot" is claimed by a mailbox with that role, decided
+    // by mailboxRole as every action decides it: by IMAP special-use attribute
     // (authoritative) or, as a fallback, by a well-known name. Several names map
     // to the same slot (Archive/Archives, Spam/Junk); each slot is collapsed to a
     // single primary entry below so the same special mailbox is never shown twice.
-    const specialSlots: { attr: string; names: string[]; display: { icon: string; colorClass: string; label: string } }[] = [
-      { attr: '\\inbox', names: [FOLDER_INBOX], display: { icon: 'tray', colorClass: 'icon-inbox', label: this.i18nStore?.t('folderList.inbox') } },
-      { attr: '\\drafts', names: [FOLDER_DRAFTS], display: { icon: 'fileText', colorClass: 'icon-drafts', label: this.i18nStore?.t('folderList.drafts') } },
-      { attr: '\\sent', names: [FOLDER_SENT], display: { icon: 'paperPlaneTilt', colorClass: 'icon-sent', label: this.i18nStore?.t('folderList.sent') } },
-      { attr: '\\archive', names: [FOLDER_ARCHIVE, FOLDER_ARCHIVES], display: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') } },
-      { attr: '\\junk', names: [FOLDER_JUNK, FOLDER_SPAM], display: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.junk') } },
-      { attr: '\\trash', names: [FOLDER_TRASH], display: { icon: 'trash', colorClass: 'icon-trash', label: this.i18nStore?.t('folderList.trash') } },
+    const specialSlots: { role: MailboxRole; names: string[]; display: { icon: string; label: string } }[] = [
+      { role: 'inbox', names: [FOLDER_INBOX], display: { icon: 'tray', label: this.i18nStore?.t('folderList.inbox') } },
+      { role: 'drafts', names: [FOLDER_DRAFTS], display: { icon: 'fileText', label: this.i18nStore?.t('folderList.drafts') } },
+      { role: 'sent', names: [FOLDER_SENT], display: { icon: 'paperPlaneTilt', label: this.i18nStore?.t('folderList.sent') } },
+      { role: 'archive', names: [FOLDER_ARCHIVE, FOLDER_ARCHIVES], display: { icon: 'archiveBox', label: this.i18nStore?.t('folderList.archive') } },
+      { role: 'junk', names: [FOLDER_JUNK, FOLDER_SPAM], display: { icon: 'warningDiamond', label: this.i18nStore?.t('folderList.junk') } },
+      { role: 'trash', names: [FOLDER_TRASH], display: { icon: 'trash', label: this.i18nStore?.t('folderList.trash') } },
     ];
-    const stdMap: Record<string, { icon: string, colorClass: string, label: string }> = {
-      [FOLDER_INBOX]: { icon: 'tray', colorClass: 'icon-inbox', label: this.i18nStore?.t('folderList.inbox') },
-      [FOLDER_DRAFTS]: { icon: 'fileText', colorClass: 'icon-drafts', label: this.i18nStore?.t('folderList.drafts') },
-      [FOLDER_SENT]: { icon: 'paperPlaneTilt', colorClass: 'icon-sent', label: this.i18nStore?.t('folderList.sent') },
-      [FOLDER_ARCHIVE]: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') },
-      [FOLDER_ARCHIVES]: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') },
-      [FOLDER_SPAM]: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.spam') },
-      [FOLDER_JUNK]: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.junk') },
-      [FOLDER_TRASH]: { icon: 'trash', colorClass: 'icon-trash', label: this.i18nStore?.t('folderList.trash') }
+    const stdMap: Record<string, { icon: string, label: string }> = {
+      [FOLDER_INBOX]: { icon: 'tray', label: this.i18nStore?.t('folderList.inbox') },
+      [FOLDER_DRAFTS]: { icon: 'fileText', label: this.i18nStore?.t('folderList.drafts') },
+      [FOLDER_SENT]: { icon: 'paperPlaneTilt', label: this.i18nStore?.t('folderList.sent') },
+      [FOLDER_ARCHIVE]: { icon: 'archiveBox', label: this.i18nStore?.t('folderList.archive') },
+      [FOLDER_ARCHIVES]: { icon: 'archiveBox', label: this.i18nStore?.t('folderList.archive') },
+      [FOLDER_SPAM]: { icon: 'warningDiamond', label: this.i18nStore?.t('folderList.spam') },
+      [FOLDER_JUNK]: { icon: 'warningDiamond', label: this.i18nStore?.t('folderList.junk') },
+      [FOLDER_TRASH]: { icon: 'trash', label: this.i18nStore?.t('folderList.trash') }
     };
 
-    type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode>; primary?: { icon: string; colorClass: string; label: string } };
-    const root: Record<string, TreeNode> = {};
+    type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode>; primary?: { icon: string; label: string } };
+    // Keyed by name, so without a prototype. On a plain object a folder called
+    // "constructor" or "toString" found an inherited function where its node
+    // should be and was never drawn, and one called "__proto__" was written onto
+    // Object.prototype itself, handing every object in the app its mailbox.
+    const level = (): Record<string, TreeNode> => Object.create(null);
+    const root = level();
 
     this.mailboxes.forEach(mb => {
       const fullName = mb.Name || mb.Mailbox || '';
@@ -633,7 +852,7 @@ export class FolderList extends LitElement {
           currentLevel[part] = {
             name: part,
             fullName: pathAcc,
-            children: {}
+            children: level()
           };
         }
         if (i === parts.length - 1) {
@@ -643,75 +862,60 @@ export class FolderList extends LitElement {
       }
     });
 
-    const normalizedAttrs = (node: TreeNode): string[] =>
-      (node.mb?.Attrs || []).map((a: any) => (typeof a === 'string' ? a.toLowerCase() : ''));
-    // Tolerate both single- (\Sent) and double-escaped (\\Sent) attribute forms.
-    const hasSlotAttr = (node: TreeNode, attr: string): boolean => {
-      const attrs = normalizedAttrs(node);
-      return attrs.includes(attr) || attrs.includes('\\' + attr);
-    };
-    const slotIndexForNode = (node: TreeNode): number => {
-      const attrs = normalizedAttrs(node);
-      // Special-use attribute is authoritative.
-      for (let i = 0; i < specialSlots.length; i++) {
-        const s = specialSlots[i];
-        if (attrs.includes(s.attr) || attrs.includes('\\' + s.attr)) return i;
-      }
-      // Name fallback only for real, selectable mailboxes — never for synthetic
-      // parents (e.g. "Archives" when only "Archives/2025" exists) or \Noselect
-      // placeholders, which must not masquerade as a primary special mailbox.
-      const selectable = !!node.mb && !attrs.includes('\\noselect') && !attrs.includes('\\nonexistent');
-      if (selectable) {
-        for (let i = 0; i < specialSlots.length; i++) {
-          if (specialSlots[i].names.includes(node.name)) return i;
-        }
-      }
-      return -1;
-    };
+    // The roles the server assigns itself: a name stands only for a role no
+    // folder carries.
+    const advertised = advertisedRoles(this.mailboxes);
+    // Each role's special folder, the one the header and the toasts name by
+    // the role too: specialMailboxName. Two can claim a role, and the other is
+    // a regular folder, drawn under its own name rather than duplicating the
+    // first. Beside a "Deleted Items" listed first, a folder called "Trash" is
+    // not the Trash Delete uses, and is not drawn as it. The role is the one
+    // the actions act on (mailboxRole): this matched names itself, exactly and
+    // case included, and knew no Exchange "Deleted Items", so Delete filed
+    // mail into a folder called "trash" that the sidebar listed as an ordinary
+    // folder, under its raw name. A synthetic parent (e.g. "Archives" when only
+    // "Archives/2025" exists) or a \Noselect placeholder has no role and must
+    // not masquerade as a primary special mailbox; a \All folder has a role
+    // but no slot.
+    const specialSlotOf = new Map<string, number>();
+    specialSlots.forEach((slot, i) => {
+      const name = specialMailboxName(slot.role, this.mailboxes);
+      if (name !== null) specialSlotOf.set(name, i);
+    });
 
     const standardBySlot = new Map<number, TreeNode>();
     const customNodes: TreeNode[] = [];
 
     Object.values(root).forEach(node => {
-      const idx = slotIndexForNode(node);
-      if (idx < 0) {
-        customNodes.push(node);
-        return;
-      }
-      const existing = standardBySlot.get(idx);
-      if (!existing) {
-        standardBySlot.set(idx, node);
-        return;
-      }
-      // Two mailboxes claim the same slot: keep the one carrying the real
-      // special-use attribute, else the higher-priority name. The loser is
-      // demoted to a regular folder rather than duplicating the primary.
-      const slotDef = specialSlots[idx];
-      const nodeAttr = hasSlotAttr(node, slotDef.attr);
-      const existingAttr = hasSlotAttr(existing, slotDef.attr);
-      const nodeRank = slotDef.names.indexOf(node.name);
-      const existingRank = slotDef.names.indexOf(existing.name);
-      const nodeWins =
-        (nodeAttr && !existingAttr) ||
-        (nodeAttr === existingAttr &&
-          nodeRank !== -1 &&
-          (existingRank === -1 || nodeRank < existingRank));
-      if (nodeWins) {
-        standardBySlot.set(idx, node);
-        customNodes.push(existing);
-      } else {
-        customNodes.push(node);
-      }
+      const idx = node.mb ? specialSlotOf.get(node.fullName) : undefined;
+      if (idx === undefined) customNodes.push(node);
+      else standardBySlot.set(idx, node);
     });
+
+    // How a folder in slot `i` is drawn: the name's own entry only when the
+    // name is one of this slot's, which is how a \Junk called Spam keeps that
+    // word. Looked up by any name, a \Trash called "constructor" found
+    // Object's function in the table and drew a row with no caption and no icon.
+    const slotDisplay = (node: TreeNode, i: number) =>
+      (specialSlots[i].names.includes(node.name) && stdMap[node.name]) || specialSlots[i].display;
 
     const standardNodes: TreeNode[] = [];
     for (let i = 0; i < specialSlots.length; i++) {
       const node = standardBySlot.get(i);
       if (!node) continue;
-      node.primary = stdMap[node.name] || specialSlots[i].display;
+      node.primary = slotDisplay(node, i);
       standardNodes.push(node);
     }
     this.primaryFullNames = new Set(standardNodes.map(n => n.fullName));
+
+    // Below the top level, too, one folder per role is drawn as special: for
+    // each role no top-level folder holds, the one the actions use. Two can
+    // carry the same attribute (Dovecot's stock INBOX.Sent and INBOX.Sent
+    // Messages are both \Sent), and drawn alike they could not be told apart,
+    // though the actions file into only one. Every other folder of the role
+    // keeps its own name. Only nested folders are found here: a role a
+    // top-level folder has is a slot held above.
+    const nestedSlots = new Map([...specialSlotOf].filter(([, i]) => !standardBySlot.has(i)));
 
     const customOrder = this.settingsStore?.getState()?.customMailboxOrder || [];
 
@@ -723,6 +927,51 @@ export class FolderList extends LitElement {
       if (idxB !== -1) return 1;
       return a.name.localeCompare(b.name);
     });
+
+    /*
+     * UNSUBSCRIBED FOLDERS, and where they go.
+     *
+     * IMAP keeps a list of the folders the user is subscribed to, and the
+     * folder menu's Unsubscribe has always written to it. The sidebar ignored
+     * it: the row stayed exactly where it was, and the only sign the gesture
+     * had landed was that the menu now said Subscribe. So a folder unsubscribed
+     * here goes behind a More row at the end of the list, and Subscribe brings
+     * it back.
+     *
+     * UNSUBSCRIBED HERE, AND STILL UNSUBSCRIBED. The server's list alone would
+     * also send behind More every folder unsubscribed in another client, and
+     * every folder a server that does not subscribe on CREATE made
+     * unsubscribed, which is most folders ever created here. So a folder goes
+     * only when alps's own list has it (see utils/unsubscribed-folders) and
+     * the server still lists it unsubscribed; subscribed again anywhere, it
+     * is back.
+     *
+     * TOP LEVEL ONLY, with its subfolders. A row is captioned with the last
+     * level of its name, and the parent it sits under is what says which
+     * folder it is; pulled out to sit flat under More, it would lose that. A
+     * nested folder unsubscribed stays under its parent.
+     *
+     * NEVER ONE WITH A SPECIAL USE, the Inbox included, nor a folder that
+     * holds one: Gmail's "[Gmail]" holds Sent and Trash.
+     *
+     * ONLY ON A LISTING THAT SAYS: see reportsSubscriptions. Without an
+     * answer every folder reads as unsubscribed, the one subscribed again
+     * elsewhere included.
+     *
+     * More is open WHILE THE FOLDER ON SCREEN IS UNDER IT. Unsubscribing the
+     * folder being read is one menu away, and a sidebar that answered by
+     * taking the current row away would read as having lost it.
+     */
+    const unsubscribedHere = new Set(this.unsubscribedHere);
+    const holdsSpecialUse = (node: TreeNode): boolean =>
+      mailboxRole(node.mb, advertised) !== null || Object.values(node.children).some(holdsSpecialUse);
+    const behindMore = (node: TreeNode): boolean =>
+      !!node.mb && node.mb.Subscribed !== true && unsubscribedHere.has(node.fullName) && !holdsSpecialUse(node);
+    const unsubscribedNodes = reportsSubscriptions(this.mailboxes) ? customNodes.filter(behindMore) : [];
+    const subscribedNodes = customNodes.filter(node => !unsubscribedNodes.includes(node));
+    const viewingUnsubscribed = unsubscribedNodes.some(node =>
+      isSelfOrDescendantMailbox(this.currentMailbox, node.fullName, delimiterOf(node.mb)));
+    const unsubscribedOpen = this.showUnsubscribed || viewingUnsubscribed;
 
     const renderTree = (nodes: TreeNode[], depth: number = 0): TemplateResult[] => {
       return nodes.map(node => {
@@ -767,19 +1016,27 @@ export class FolderList extends LitElement {
           isLast = index === -1 || index === siblings.length - 1;
         }
 
+        // A special folder below the top level, such as Gmail's [Gmail]/Sent
+        // Mail or INBOX.Trash on a server that keeps every folder under the
+        // Inbox, stays under its parent but is drawn as the folder it is. Only
+        // top-level folders were asked for a role, so it had the folder icon
+        // and the server's name for it, whatever alps's language, while the
+        // actions filed mail into it by its role.
+        const slot = nestedSlots.get(node.fullName);
+        const display = node.primary ?? (slot !== undefined ? slotDisplay(node, slot) : undefined);
+
         let icon = renderIcon('folder');
-        let colorClass = 'icon-default';
         let label = node.name;
 
-        if (node.primary) {
-          icon = renderIcon(node.primary.icon);
-          colorClass = node.primary.colorClass;
-          label = node.primary.label;
+        if (display) {
+          icon = renderIcon(display.icon);
+          label = display.label;
         }
 
         const unseenCount = node.mb?.Unseen || 0;
         const attrs: string[] = node.mb?.Attrs || [];
         const isNoSelect = attrs.some(a => typeof a === 'string' && a.toLowerCase() === '\\noselect');
+        const isDropTarget = this.dropTarget === node.fullName;
 
         const handleClick = (e: Event) => {
           if (isNoSelect) {
@@ -790,26 +1047,50 @@ export class FolderList extends LitElement {
             this.selectMailbox(node.fullName);
           }
         };
+        // The folder's name is its button, answering Enter and Space as a
+        // <button> does, and Space once while it is held. Not the whole row,
+        // which also holds the expander and the folder's menu: a button may
+        // not contain other controls. A placeholder with nothing below it does
+        // nothing, and is no button; one with folders below it says whether
+        // they are shown.
+        const isControl = !isNoSelect || hasChildren;
+        const handleKeyDown = (e: KeyboardEvent) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          if (e.key === ' ' && e.repeat) return;
+          handleClick(e);
+        };
 
 
         return html`
           <div 
-            class="folder-item ${isActive ? 'active' : ''} ${isNoSelect ? 'no-select' : ''} ${hasActions ? 'has-actions' : ''}"
+            class="folder-item ${isActive ? 'active' : ''} ${isNoSelect ? 'no-select' : ''} ${hasActions ? 'has-actions' : ''} ${isDropTarget ? 'drop-target' : ''} ${isDropTarget && this.dropCopy ? 'drop-copy' : ''}"
             title=${label}
             @click=${handleClick}
+            @dragenter=${(e: DragEvent) => this.handleDragOver(e, node.fullName, node.mb)}
+            @dragover=${(e: DragEvent) => this.handleDragOver(e, node.fullName, node.mb)}
+            @dragleave=${(e: DragEvent) => this.handleDragLeave(e, node.fullName)}
+            @drop=${(e: DragEvent) => this.handleDrop(e, node.fullName, node.mb)}
           >
             <alps-icon-btn 
               class="folder-toggle-btn" 
+              title=${this.i18nStore?.t(isExpanded ? 'general.collapse' : 'general.expand')}
               icon=${isExpanded ? 'caretDown' : 'caretRight'}
-              style="visibility: ${hasChildren ? 'visible' : 'hidden'}; --btn-padding: 2px;" 
+              style="visibility: ${hasChildren ? 'visible' : 'hidden'};"
               @click=${(e: Event) => {
             e.stopPropagation();
             if (hasChildren) this.toggleFolder(e, node.fullName);
           }}
             ></alps-icon-btn>
             
-            <div class="folder-icon ${colorClass}">${icon}</div>
-            <div class="folder-name">${label}</div>
+            <div class="folder-icon">${icon}</div>
+            <div class="folder-name"
+              role=${isControl ? 'button' : nothing}
+              tabindex=${isControl ? '0' : nothing}
+              aria-current=${isActive ? 'true' : nothing}
+              aria-expanded=${isNoSelect && hasChildren ? String(isExpanded) : nothing}
+              @keydown=${isControl ? handleKeyDown : nothing}
+            >${label}</div>
             
             ${hasActions ? html`
               <div class="folder-actions ${this.activeKebabMenu === node.fullName ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
@@ -819,7 +1100,7 @@ export class FolderList extends LitElement {
                   @popup-open=${() => { this.activeKebabMenu = node.fullName; }}
                   @popup-close=${() => { if (this.activeKebabMenu === node.fullName) this.activeKebabMenu = null; }}
                 >
-                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" style="--btn-padding: 8px;"></alps-icon-btn>
+                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" title=${this.i18nStore?.t('general.moreOptions')}></alps-icon-btn>
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
@@ -843,6 +1124,7 @@ export class FolderList extends LitElement {
               // on screen and said nothing. Quiet on `auth`, which the shell answers.
               const subscribing = !node.mb?.Subscribed;
               void mailboxOperations.setSubscribed(node.fullName, subscribing).then(result => {
+                if (result.ok) this.subscriptionChanged(node.fullName, subscribing);
                 if (result.ok || result.reason === 'auth') return;
                 if (subscribing) this.toast(this.i18nStore?.t('toast.subscribeFailed'), 'Could not subscribe');
                 else this.toast(this.i18nStore?.t('toast.unsubscribeFailed'), 'Could not unsubscribe');
@@ -968,33 +1250,50 @@ export class FolderList extends LitElement {
     };
 
     return html`
-      <div class="sidebar-wrapper ${this.collapsed ? 'collapsed' : ''}">
+      <!-- Frame and content follow the strip state alps-sidebar provides.
+           In the strip the content is inert, not only dimmed:
+           sidebarLayoutStyles gives it pointer-events: none, which keeps the
+           mouse out; inert keeps the keyboard out too, so Tab cannot walk
+           into folder carets clipped past the strip's edge. Compose, above,
+           stays live. -->
+      <alps-sidebar-frame class="sidebar-wrapper">
         <alps-toolbar class="sidebar-header" ?scrolled=${this.isScrolled}>
           <alps-create-button 
             icon="pen"
             ?disabled=${(this.composeStore?.getState()?.activeComposers?.length || 0) >= 3}
             title=${this.i18nStore?.t('folderList.compose')}
-            ?collapsed=${this.hasAttribute('collapsed')}
             @click=${() => this.dispatchEvent(new CustomEvent('compose'))}
           >${this.i18nStore?.t('folderList.compose')}</alps-create-button>
         </alps-toolbar>
-        <div class="sidebar-content" @scroll=${this.handleScroll}>
+        <alps-sidebar-content class="sidebar-content" @scroll=${this.handleScroll}>
           <div class="sidebar-scroll-content">
             ${renderTree(standardNodes)}
             ${standardNodes.length > 0 && customNodes.length > 0 ? html`
               <div class="folder-separator"></div>
             ` : ''}
-            <div class="sidebar-header-title">
-              <span>${this.i18nStore?.t('folderList.title')}</span>
-            </div>
-            ${renderTree(customNodes)}
+            <alps-sidebar-heading heading=${this.i18nStore?.t('folderList.title') ?? ''}></alps-sidebar-heading>
+            ${renderTree(subscribedNodes)}
+            ${unsubscribedNodes.length > 0 ? html`
+              <button
+                type="button"
+                class="folder-item more-row"
+                aria-expanded=${unsubscribedOpen ? 'true' : 'false'}
+                title=${this.i18nStore?.t('folderList.unsubscribedFolders')}
+                @click=${() => { this.showUnsubscribed = !unsubscribedOpen; }}
+              >
+                <div class="more-caret">${renderIcon(unsubscribedOpen ? 'caretDown' : 'caretRight')}</div>
+                <div class="folder-icon">${renderIcon('eyeSlash')}</div>
+                <div class="folder-name">${unsubscribedOpen ? this.i18nStore?.t('folderList.less') : this.i18nStore?.t('folderList.more')}</div>
+              </button>
+              ${unsubscribedOpen ? renderTree(unsubscribedNodes) : ''}
+            ` : ''}
           </div>
-        </div>
-      </div>
+        </alps-sidebar-content>
+      </alps-sidebar-frame>
 
       ${this.showCreatePrompt ? html`
         <ui-prompt
-          title=${this.parentForNewFolder ?
+          heading=${this.parentForNewFolder ?
           this.i18nStore?.t('folderList.createSubfolderUnder', { folder: this.parentForNewFolder }) :
           this.i18nStore?.t('folderList.createFolder')}
           confirmText=${this.i18nStore?.t('folderList.createFolder')}
@@ -1010,7 +1309,7 @@ export class FolderList extends LitElement {
 
       ${this.showRenamePrompt ? html`
         <ui-prompt
-          title="${this.i18nStore?.t('folderList.renameFolder')}"
+          heading="${this.i18nStore?.t('folderList.renameFolder')}"
           confirmText=${this.i18nStore?.t('folderList.rename')}
           .fields=${[{ id: 'name', label: this.i18nStore?.t('folderList.folderName') || 'Folder name', autofocus: true, value: this.mailboxToRename }]}
           @submit=${this.handleRenameSubmit}
@@ -1020,7 +1319,7 @@ export class FolderList extends LitElement {
 
       ${this.showMoveToTrashConfirm ? html`
         <ui-confirm
-          title=${this.i18nStore?.t('folderList.moveToTrash')}
+          heading=${this.i18nStore?.t('folderList.moveToTrash')}
           message=${this.i18nStore?.t('folderList.moveToTrashConfirm', { folder: this.mailboxToDelete })}
           confirmText=${this.i18nStore?.t('folderList.moveToTrash')}
           isDanger=${false}
@@ -1031,7 +1330,7 @@ export class FolderList extends LitElement {
 
       ${this.showDeleteConfirm ? html`
         <ui-confirm
-          title="${this.i18nStore?.t('folderList.deleteFolder')}"
+          heading="${this.i18nStore?.t('folderList.deleteFolder')}"
           message=${this.i18nStore?.t('folderList.deleteFolderConfirm', { folder: this.mailboxToDelete })}
           confirmText=${this.i18nStore?.t('folderList.delete')}
           isDanger=${true}

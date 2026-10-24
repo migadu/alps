@@ -1,10 +1,11 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { logoStyles, renderLogo } from '../utils/branding';
 
 @customElement('alps-auth-card')
 export class AlpsAuthCard extends LitElement {
-  static styles = css`
+  static styles = [logoStyles, css`
     :host {
       display: flex;
       justify-content: center;
@@ -34,7 +35,8 @@ export class AlpsAuthCard extends LitElement {
       margin-bottom: 12px;
     }
 
-    .logo-container svg {
+    .logo-container svg,
+    .logo-container img.logo {
       width: var(--auth-card-icon-size, 40px);
       height: var(--auth-card-icon-size, 40px);
       fill: var(--auth-card-icon-color, currentColor);
@@ -68,18 +70,20 @@ export class AlpsAuthCard extends LitElement {
         box-shadow: none;
       }
     }
-  `;
+  `];
 
   @property({ type: String }) icon = '';
+  /** Shows the deployment's logo in place of the icon. */
+  @property({ type: Boolean }) branded = false;
   @property({ type: String }) title = '';
   @property({ type: String }) subtitle = '';
 
   render() {
     return html`
       <div class="card">
-        ${this.icon ? html`
+        ${this.branded || this.icon ? html`
           <div class="logo-container">
-            ${renderIcon(this.icon)}
+            ${this.branded ? renderLogo() : renderIcon(this.icon)}
           </div>
         ` : ''}
         ${this.title ? html`<h1>${this.title}</h1>` : ''}

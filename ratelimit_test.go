@@ -29,6 +29,7 @@ func (m *mockLogger) Fatal(v ...interface{})                 { m.logs = append(m
 func (m *mockLogger) Fatalf(format string, v ...interface{}) { m.logs = append(m.logs, "fatalf") }
 func (m *mockLogger) SetLevel(level slog.Level)              { m.logs = append(m.logs, "setlevel") }
 func (m *mockLogger) Reopen() error                          { m.logs = append(m.logs, "reopen"); return nil }
+func (m *mockLogger) Slog() *slog.Logger                     { return slog.New(slog.DiscardHandler) }
 
 // Ensure http is used
 var _ = http.StatusOK

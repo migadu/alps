@@ -139,17 +139,31 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 			return nil, resolveErr
 		}
 
-		client, err := Connect(address, tls, insecure, timeout, debugMode, guard)
+		news := &mailboxNews{}
+		client, err := connect(address, tls, insecure, timeout, debugMode, guard, news.handler())
 		if err != nil {
 			return nil, err
 		}
+		news.client.Store(client)
 
 		if err := client.Login(username, password).Wait(); err != nil {
 			client.Logout()
 			return nil, provider.AuthError{Cause: err}
 		}
 
-		return NewIMAPProvider(client, debugMode).WithAuthservIDs(authservIDs), nil
+		p := NewIMAPProvider(client, debugMode).WithAuthservIDs(authservIDs)
+		p.news = news
+		p.responseTimeout = timeout
+		p.lsub = &lsubLogin{
+			address:  address,
+			tls:      tls,
+			insecure: insecure,
+			timeout:  timeout,
+			guard:    guard,
+			username: username,
+			password: password,
+		}
+		return p, nil
 	}
 }
 

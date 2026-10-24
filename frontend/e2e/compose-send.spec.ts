@@ -14,7 +14,7 @@
 // arriving in the inbox.
 
 import type { Locator, Page } from "@playwright/test";
-import { expect, login, resetDav, test, toast, USER, waitForSent, type SentMessage } from "./fixtures";
+import { expect, login, resetDav, resetSettings, test, toast, USER, waitForSent, type SentMessage } from "./fixtures";
 
 /** The floating composer window. These tests keep at most one open. */
 const composerOf = (page: Page) => page.locator("alps-floating-composer");
@@ -248,6 +248,64 @@ test("a message sent to your own address comes back to the inbox", async ({ page
   await expect(page.locator("alps-message-list").getByText(subject).first()).toBeVisible({ timeout: 20_000 });
 });
 
+test("a message the autosave had stored is sent without moving the list to Drafts", async ({ page }) => {
+  const subject = `Compose autosaved ${Date.now()}`;
+  await login(page);
+  const composer = await openComposer(page);
+  await addRecipient(composer, USER.address);
+
+  // The first autosave is what tells the composer where its draft lives.
+  // Until a send, every POST of a message is a draft save.
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === "/messages" && response.ok(),
+  );
+  await fillMessage(composer, subject, "Stored as a draft before it went.");
+  await saved;
+
+  // Every folder a listing is asked for from here on, by name.
+  const listed: string[] = [];
+  page.on("request", (request) => {
+    const match = /^\/mailboxes\/([^/]+)$/.exec(new URL(request.url()).pathname);
+    if (request.method() === "GET" && match) listed.push(decodeURIComponent(decodeURIComponent(match[1])));
+  });
+
+  await sendNow(page, composer);
+  await expect(composer).toHaveCount(0, { timeout: 20_000 });
+
+  // The list is still the inbox's, and the message comes back to it, as it
+  // does when no draft was stored.
+  await expect(page.locator("alps-message-list").getByText(subject).first()).toBeVisible({ timeout: 20_000 });
+  expect(page.url()).toContain("INBOX");
+  // Nothing was pointed at Drafts, so the next poll and the next refresh
+  // read the inbox too.
+  expect(listed).not.toContain("Drafts");
+});
+
+test("a recipient whose name holds a comma is sent to, under that name", async ({ page }) => {
+  // "Lovelace, Ada" is how a company directory writes a name. A field's
+  // recipients travel as one string, separated by commas, and the server
+  // split it at the comma inside the quotes too: neither half was an address,
+  // so the send failed, and so did every draft save.
+  const subject = `Compose directory name ${Date.now()}`;
+  await login(page);
+  const composer = await openComposer(page);
+  const input = composer.locator("alps-address-input input").first();
+  for (const address of ['"Lovelace, Ada" <ada@remote.test>', USER.address]) {
+    await input.fill(address);
+    await input.press("Enter");
+  }
+  await expect(pills(composer).locator(".pill-addr")).toHaveText(["Lovelace, Ada", USER.address]);
+  await fillMessage(composer, subject, "Names as the directory writes them.");
+
+  await sendNow(page, composer);
+  await expect(composer).toHaveCount(0, { timeout: 20_000 });
+
+  const sent = await sentWithSubject(subject);
+  expect(sent.recipients).toEqual(["ada@remote.test", USER.address]);
+  expect(header(sent, "To")).toContain('"Lovelace, Ada" <ada@remote.test>');
+});
+
 test("Undo cancels the send and gives the composer back intact", async ({ page }) => {
   const subject = `Compose undo ${Date.now()}`;
   const body = "This one should never leave.";
@@ -322,5 +380,180 @@ test("a link inserted from the toolbar is sent as a link", async ({ page }) => {
 
   await sendNow(page, composer);
   const sent = await sentWithSubject(subject);
-  expect(sent.data).toMatch(/<p>See <a [^>]*href="https:\/\/plans\.example\/friday"[^>]*>the plan<\/a><\/p>/);
+  expect(sent.data).toMatch(/<p[^>]*>See <a [^>]*href="https:\/\/plans\.example\/friday"[^>]*>the plan<\/a><\/p>/);
+});
+
+/**
+ * A text part of a submission, its quoted-printable undone and its line ends
+ * LF. It ends at the next boundary, and a line of the part's own can start
+ * with dashes too: the signature separator does.
+ */
+function textPart(message: SentMessage, subtype: "plain" | "html"): string {
+  const boundaries = [...message.data.matchAll(/boundary="?([^";\r\n]+)"?/gi)].map((m) => m[1]);
+  const from = message.data.slice(message.data.search(new RegExp(`Content-Type:\\s*text/${subtype}`, "i")));
+  const body = from.slice(from.search(/\r?\n\r?\n/)).replace(/^\r?\n\r?\n/, "");
+  const end = Math.min(...boundaries.map((b) => body.indexOf(`--${b}`)).filter((i) => i >= 0));
+  const decoded = body
+    .slice(0, end)
+    .replace(/\r?\n$/, "")
+    .replace(/=\r?\n/g, "")
+    .replace(/=([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  return Buffer.from(decoded, "latin1").toString("utf8").replace(/\r\n/g, "\n");
+}
+
+test("a plain-text message switched to HTML keeps its signature separator and its lines", async ({ page }) => {
+  // The separator is dash, dash, space (RFC 3676 §4.3): a recipient's client
+  // finds the signature by it, and drops what follows from a reply's quote.
+  await login(page);
+  const origin = { Origin: new URL(page.url()).origin, "Content-Type": "application/json" };
+  await page.request.put("/settings", { headers: origin, data: { signature: "Grace\nAnalytical Engines", compose_format: "text" } });
+  try {
+    // A composer takes its format and signature from the settings as read: one
+    // opened before the read has answered is an HTML composer with none.
+    const read = page.waitForResponse((r) => new URL(r.url()).pathname === "/settings" && r.request().method() === "GET");
+    await page.reload();
+    expect((await read).ok(), "the account's settings could not be read").toBe(true);
+    const composer = await openComposer(page);
+    const subject = `Plain to HTML ${Date.now()}`;
+    await addRecipient(composer, USER.address);
+    await composer.getByPlaceholder("Subject").fill(subject);
+    const textarea = composer.locator("alps-message-composer textarea");
+    await expect(textarea).toHaveValue("\n\n-- \nGrace\nAnalytical Engines\n");
+    await textarea.fill(`Hi Ada,\nthe figures are in.${await textarea.inputValue()}`);
+
+    await composer.getByRole("button", { name: "Toggle Formatting Options", exact: true }).click();
+    await expect(composer.locator(".ProseMirror")).toContainText("Analytical Engines");
+
+    await sendNow(page, composer);
+    const sent = await sentWithSubject(subject);
+    // As written: no blank line between lines that had none, and the space
+    // after the dashes kept.
+    expect(textPart(sent, "plain")).toBe("Hi Ada,\nthe figures are in.\n\n-- \nGrace\nAnalytical Engines\n");
+    expect(textPart(sent, "html")).toContain("-- <br>Grace<br>Analytical Engines");
+  } finally {
+    await resetSettings();
+  }
+});
+
+/**
+ * Picks files through the composer's paperclip, as a user does. The button
+ * opens a file input the composer never adds to the page, so the chooser is
+ * caught on the page rather than on an element.
+ */
+async function attachFiles(
+  page: Page,
+  composer: Locator,
+  files: { name: string; mimeType: string; buffer: Buffer }[],
+): Promise<void> {
+  const chooser = page.waitForEvent("filechooser");
+  await composer.locator('alps-icon-btn[icon="paperclip"]').click();
+  await (await chooser).setFiles(files);
+}
+
+/** Slows every upload from the page to `bytesPerSecond`, until the returned function lifts it. */
+async function throttleUploads(page: Page, bytesPerSecond: number): Promise<() => Promise<void>> {
+  const cdp = await page.context().newCDPSession(page);
+  const conditions = (uploadThroughput: number) => ({ offline: false, latency: 0, downloadThroughput: -1, uploadThroughput });
+  await cdp.send("Network.enable");
+  await cdp.send("Network.emulateNetworkConditions", conditions(bytesPerSecond));
+  return async () => {
+    await cdp.send("Network.emulateNetworkConditions", conditions(-1));
+    await cdp.detach();
+  };
+}
+
+/**
+ * The colour the progress fill paints over its pill, composited, and its
+ * contrast with the pill's own background (WCAG relative luminance). Parses
+ * the computed forms Chromium returns: rgb()/rgba(), and color(srgb …) for a
+ * color-mix().
+ */
+function fillContrast(pill: Locator) {
+  return pill.evaluate((host) => {
+    const root = host.shadowRoot!;
+    const bar = root.querySelector<HTMLElement>(".progress-bar")!;
+    const chip = root.querySelector<HTMLElement>(".attachment-chip")!;
+    const rgba = (css: string): [number, number, number, number] => {
+      const srgb = css.match(/^color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/);
+      if (srgb) return [+srgb[1] * 255, +srgb[2] * 255, +srgb[3] * 255, srgb[4] === undefined ? 1 : +srgb[4]];
+      const n = css.match(/[\d.]+/g)!.map(Number);
+      return [n[0], n[1], n[2], n[3] ?? 1];
+    };
+    const [br, bg, bb] = rgba(getComputedStyle(chip).backgroundColor);
+    const [fr, fg, fb, fa] = rgba(getComputedStyle(bar).backgroundColor);
+    const alpha = fa * Number(getComputedStyle(bar).opacity);
+    const mix = (f: number, b: number) => f * alpha + b * (1 - alpha);
+    const lum = (r: number, g: number, b: number) => {
+      const lin = (c: number) => {
+        c /= 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    };
+    const a = lum(br, bg, bb);
+    const b = lum(mix(fr, br), mix(fg, bg), mix(fb, bb));
+    return {
+      contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+      barWidth: bar.getBoundingClientRect().width,
+      chipWidth: chip.getBoundingClientRect().width,
+    };
+  });
+}
+
+test("an upload in flight fills its pill with a fill you can see", async ({ page }) => {
+  // The fill was drawn at the right width all along, in --bg-selected at 30%
+  // over a white pill: about 1.03:1, so the pill read as its percentage alone.
+  await login(page);
+  const composer = await openComposer(page);
+  const pill = composer.locator("alps-attachment-pill");
+
+  const lift = await throttleUploads(page, 64 * 1024);
+  try {
+    await attachFiles(page, composer, [
+      { name: "slow.bin", mimeType: "application/octet-stream", buffer: Buffer.alloc(768 * 1024, 7) },
+    ]);
+    await expect(pill.locator(".attachment-size")).toHaveText(/^[2-7]\d% of /, { timeout: 15_000 });
+
+    const seen = await fillContrast(pill);
+    // Filled from the start edge, part of the way.
+    expect(seen.barWidth).toBeGreaterThan(seen.chipWidth * 0.15);
+    expect(seen.barWidth).toBeLessThan(seen.chipWidth * 0.9);
+    // And a tint the eye picks out against the pill.
+    expect(seen.contrast).toBeGreaterThanOrEqual(1.15);
+  } finally {
+    await lift();
+  }
+  await expect(pill.locator(".progress-bar")).toHaveCount(0, { timeout: 15_000 });
+  await discardDraft(composer);
+});
+
+test("eight files picked at once all upload, and all eight go out", async ({ page }) => {
+  await login(page);
+  const composer = await openComposer(page);
+  const subject = `Eight attachments ${Date.now()}`;
+  await addRecipient(composer, USER.address);
+  await fillMessage(composer, subject, "Eight files.");
+
+  // Slowed so that all eight are in flight together: more than the six
+  // connections a browser opens to one host, so some wait in its queue.
+  const names = Array.from({ length: 8 }, (_, i) => `file-${i + 1}.bin`);
+  const lift = await throttleUploads(page, 256 * 1024);
+  try {
+    await attachFiles(page, composer, names.map((name, i) => ({
+      name, mimeType: "application/octet-stream", buffer: Buffer.alloc(128 * 1024, i + 1),
+    })));
+    await expect(composer.locator("alps-attachment-pill")).toHaveCount(8);
+    // Every one finishes: no fill left, and each shows its size, not a percentage.
+    await expect(composer.locator("alps-attachment-pill .progress-bar")).toHaveCount(0, { timeout: 30_000 });
+  } finally {
+    await lift();
+  }
+  // Once a draft save has stored them, each reads the size of its stored
+  // part, which is still the file's: the base64 line breaks are not counted.
+  await expect(composer.locator("alps-attachment-pill .attachment-size")).toHaveText(Array(8).fill("128 KB"));
+
+  await sendNow(page, composer);
+  const sent = await sentWithSubject(subject);
+  const filed = [...sent.data.matchAll(/^Content-Disposition: attachment; filename="?([^"\r\n]+?)"?\r?$/gm)].map((m) => m[1]);
+  expect(filed.sort()).toEqual(names);
 });

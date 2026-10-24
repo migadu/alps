@@ -1,11 +1,11 @@
 import { html, type TemplateResult } from 'lit';
 import type { I18nStore } from '../store/i18n-store';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH } from './folders';
+import { ALL_MAILBOXES, FOLDER_SPAM, mailboxDelimiter, specialMailboxRole, type MailboxRole } from './folders';
 
 export function renderIcon(name: string): TemplateResult {
   return html`
     <svg class="icon">
-      <use href="/assets/icons/sprite.svg?v=12#${name}"></use>
+      <use href="/assets/icons/sprite.svg?v=13#${name}"></use>
     </svg>
   `;
 }
@@ -79,36 +79,115 @@ export function formatFullDate(dateInput: string | Date, dateFormatStr: string =
   return `${datePart} ${timePart}`;
 }
 
-export function getMailboxLabel(name: string, i18nStore?: I18nStore, delimiter?: string): string {
+/**
+ * A day of the year with no year to it, such as a birthday whose year the
+ * card does not give: the date format without its year.
+ */
+export function formatDayMonth(month: number, day: number, dateFormatStr: string = 'YYYY-MM-DD'): string {
+  const m = String(month).padStart(2, '0');
+  const d = String(day).padStart(2, '0');
+  if (dateFormatStr === 'MM/DD/YYYY') return `${m}/${d}`;
+  if (dateFormatStr === 'DD.MM.YYYY') return `${d}.${m}.`;
+  return `${m}-${d}`;
+}
+
+/** The caption of each special folder, by its role. A \All folder has none:
+ * the sidebar draws it under its own name. */
+const ROLE_CAPTIONS: Partial<Record<MailboxRole, string>> = {
+  inbox: 'folderList.inbox',
+  drafts: 'folderList.drafts',
+  sent: 'folderList.sent',
+  archive: 'folderList.archive',
+  junk: 'folderList.junk',
+  trash: 'folderList.trash',
+};
+
+/**
+ * A special folder's caption, by its role; null for a folder without one, and
+ * for a second folder of a role, which the sidebar draws under its own name.
+ * A junk folder whose own name is Spam keeps that word, as its row does, below
+ * the top level too ([Gmail]/Spam).
+ */
+function roleCaption(name: string, i18nStore: I18nStore | undefined, mailboxes: any[]): string | null {
+  const role = specialMailboxRole(name, mailboxes);
+  const key = role === 'junk' && leafName(name, mailboxes) === FOLDER_SPAM ? 'folderList.spam' : role ? ROLE_CAPTIONS[role] : undefined;
+  return (key && i18nStore?.t(key)) || null;
+}
+
+/** A folder's own name, its last level; see getMailboxLabel for the split. */
+function leafName(name: string, mailboxes: any[]): string {
+  const delimiter = mailboxDelimiter(name, mailboxes);
+  const parts = delimiter ? name.split(delimiter) : name.split(/[.\/]/);
+  return parts[parts.length - 1] || name;
+}
+
+/**
+ * What a folder is CALLED on screen: in the header's search box, above the
+ * list, and in what the list and the page say about it.
+ *
+ * A special folder is named by its ROLE, in the user's language, whatever the
+ * server calls it ("Papierkorb", "[Gmail]/Sent Mail"). A folder without a role
+ * keeps its own name, even one that spells a special folder's. This used to
+ * read the name alone, so beside a \Trash called "Papierkorb" the user's own
+ * folder called "Trash" was captioned as the Trash, while the sidebar drew it
+ * as the ordinary folder it is and Delete filed mail into Papierkorb. Of two
+ * folders with one role, only the one the sidebar draws as the special folder
+ * is named by the role (specialMailboxName); the other keeps its own name, as
+ * its row does. A junk folder that is literally called Spam keeps that word,
+ * as its sidebar row does.
+ *
+ * `mailboxes` is the folder list the name belongs to; its entry gives both the
+ * role and the delimiter. Before a list has loaded, a well-known English name
+ * stands for its role, the same guess `mailboxRoleByName` makes.
+ */
+export function getMailboxLabel(name: string, i18nStore?: I18nStore, mailboxes: any[] = []): string {
   if (!name) return '';
-  const stdMap: Record<string, string | undefined> = {
-    [FOLDER_INBOX]: i18nStore?.t('folderList.inbox'),
-    [FOLDER_DRAFTS]: i18nStore?.t('folderList.drafts'),
-    [FOLDER_SENT]: i18nStore?.t('folderList.sent'),
-    [FOLDER_ARCHIVE]: i18nStore?.t('folderList.archive'),
-    [FOLDER_ARCHIVES]: i18nStore?.t('folderList.archive'),
-    [FOLDER_SPAM]: i18nStore?.t('folderList.spam'),
-    [FOLDER_JUNK]: i18nStore?.t('folderList.junk'),
-    [FOLDER_TRASH]: i18nStore?.t('folderList.trash')
-  };
-  if (stdMap[name]) return stdMap[name] as string;
-  // Split on the delimiter the SERVER reported, when the caller knows it.
+  // Not a folder, so there is no name to split: the header and the caption
+  // above the list read a bare `*` through a search across every folder.
+  if (name === ALL_MAILBOXES) return i18nStore?.t('folderList.allFolders') || 'All Folders';
+  const caption = roleCaption(name, i18nStore, mailboxes);
+  if (caption) return caption;
+  // Split on the delimiter the SERVER reported for this folder.
   //
   // This split on `[.\/]` unconditionally, which is a guess at two of the
   // several delimiters IMAP allows — and it is wrong in both directions. On a
   // `/`-delimited server a folder legitimately named "Invoices v1.2" was drawn
   // whole in the sidebar (which has always used `mb.Delimiter`) and truncated
   // to "2" in the header and the search placeholder: the same folder, two
-  // different names, in the same app. The loose split stays as the fallback for
-  // callers that cannot reach the mailbox list.
-  const parts = delimiter ? name.split(delimiter) : name.split(/[.\/]/);
-  return parts[parts.length - 1] || name;
+  // different names, in the same app. The loose split stays as the fallback
+  // for a name the list does not hold.
+  return leafName(name, mailboxes);
 }
 
-const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+/**
+ * What a folder is called in a list of destinations, and in the toast that
+ * says where mail went: a special folder by its role, as everywhere else, and
+ * any other folder by its whole path. A flat list has no tree to tell
+ * "Clients/Receipts" from "Vendors/Receipts", so the last level alone would
+ * not do.
+ */
+export function getDestinationLabel(name: string, i18nStore?: I18nStore, mailboxes: any[] = []): string {
+  return roleCaption(name, i18nStore, mailboxes) ?? name;
+}
 
 /**
- * A byte count as a short human string.
+ * Each unit's dictionary key, beside the English symbol a caller without a
+ * store gets. The symbols are the dictionaries' because they differ by
+ * language: French counts in octets ("768 Ko"), and Cyrillic Serbian writes
+ * "КБ" where a Latin "KB" would stand out inside its text. The browser's own
+ * unit formatting does not cover this: it prints "kB" in Serbian Cyrillic too.
+ */
+const SIZE_UNITS: [key: string, symbol: string][] = [
+  ['sizeUnits.bytes', 'B'],
+  ['sizeUnits.kilobytes', 'KB'],
+  ['sizeUnits.megabytes', 'MB'],
+  ['sizeUnits.gigabytes', 'GB'],
+  ['sizeUnits.terabytes', 'TB'],
+  ['sizeUnits.petabytes', 'PB'],
+];
+
+/**
+ * A byte count as a short human string, in the units of the store's language.
  *
  * The unit list used to stop at `GB` and the index was used unclamped, so
  * anything at or above a terabyte read `1 undefined` — reachable on a quota
@@ -120,8 +199,9 @@ const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
  * rounds to 1024 — printed as `1024 KB` rather than `1 MB`. Re-stepping after
  * the rounding is what keeps the mantissa under 1024.
  */
-export function formatSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+export function formatSize(bytes: number, i18nStore?: I18nStore): string {
+  const unit = (i: number) => (i18nStore ? i18nStore.t(SIZE_UNITS[i][0]) : SIZE_UNITS[i][1]);
+  if (!Number.isFinite(bytes) || bytes <= 0) return `0 ${unit(0)}`;
   const k = 1024;
   const raw = Math.floor(Math.log(bytes) / Math.log(k));
   let i = Math.min(Math.max(raw, 0), SIZE_UNITS.length - 1);
@@ -130,7 +210,7 @@ export function formatSize(bytes: number): string {
     value = Math.round(value / k);
     i++;
   }
-  return `${value} ${SIZE_UNITS[i]}`;
+  return `${value} ${unit(i)}`;
 }
 
 export const freemailDomains = new Set([

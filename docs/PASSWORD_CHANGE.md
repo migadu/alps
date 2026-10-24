@@ -1,10 +1,10 @@
 # Password Change Plugin
 
-ALPS provides a built-in mechanism to proxy password change requests to an external HTTP API. This allows ALPS to integrate with various backend identity providers or mail server management interfaces, offering users a seamless way to update their credentials directly from the ALPS settings page.
+ALPS provides a built-in mechanism to proxy password change requests to an external HTTP API. This allows ALPS to integrate with various backend identity providers or mail server management interfaces, offering users a seamless way to update their credentials directly from ALPS Settings.
 
 ## How It Works
 
-1. The user navigates to the **Settings** > **Security** section in the ALPS web interface.
+1. The user opens **Settings** > **Password** in the ALPS web interface.
 2. The user inputs their current password and their new password.
 3. ALPS intercepts the request and forwards it to the configured external HTTP endpoint according to your configuration (`config.toml`).
 4. If the upstream server responds with a success status code (HTTP 200-399), ALPS assumes the password has been changed.

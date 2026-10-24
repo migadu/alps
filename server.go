@@ -64,10 +64,27 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	providerFactory := options.Provider.CreateFactory(options.ProviderTimeout, options.Debug)
 
 	s.Sessions = newSessionManager(providerFactory, s.dialSMTP, logger, options.CacheTTL, options.CacheEnabled, options.LoginKey, options.SessionDuration, options.MaxSessionDuration, options.MaxSessions, options.MaxSessionsPerUser, options.MaxAttachmentMiB, options.MaxSessionAttachmentMiB, options.MaxGlobalAttachmentMiB)
+	// A provider that knows the address of a bare login says it: see
+	// Session.Address.
+	if r, ok := options.Provider.(provider.AddressResolver); ok {
+		s.Sessions.addresses = r
+	}
 	// Set after construction rather than as a fourteenth positional argument to
 	// newSessionManager, which every session test already calls.
 	if options.AbsoluteSessionDuration != 0 {
 		s.Sessions.absoluteSessionDuration = options.AbsoluteSessionDuration
+	}
+	s.Sessions.broadcaster = options.ClusterBroadcaster
+	s.Sessions.backgroundConnections = !options.DisableBackgroundConnection
+	// Push waits on the background connection, and needs it.
+	s.Sessions.pushNewMail = options.PushNewMail && s.Sessions.backgroundConnections
+	if options.PushNewMail && !s.Sessions.pushNewMail {
+		logger.Printf("push_new_mail needs background_connection, which is off: new mail is not pushed")
+	}
+	s.Sessions.trackChanges = options.CondStore
+	s.Sessions.pushFolders = options.PushSubscribedFolders && s.Sessions.pushNewMail
+	if options.PushSubscribedFolders && !options.PushNewMail {
+		logger.Printf("push_subscribed_folders needs push_new_mail, which is off: no news of the folders is pushed")
 	}
 
 	// Initialize rate limiter if enabled
@@ -115,6 +132,13 @@ func cleanupTempAttachments() error {
 		}
 	}
 	return nil
+}
+
+// EndEventStreams ends the pages' event streams, which would otherwise hold a
+// graceful shutdown of the HTTP server for as long as it waits: register it
+// with http.Server.RegisterOnShutdown. The sessions go on until Close.
+func (s *Server) EndEventStreams() {
+	s.Sessions.endInboxWatches()
 }
 
 func (s *Server) Close() {
@@ -252,8 +276,14 @@ func (s *Server) loadPlugins() error {
 	if err != nil {
 		return fmt.Errorf("failed to get frontend/dist sub-filesystem: %v", err)
 	}
-	router.StaticFS("", http.FS(distFS))
-	router.build = frontendBuild(distFS)
+	site, icons := fs.FS(distFS), []string(nil)
+	if s.Options != nil {
+		if site, icons, err = brandedFrontend(distFS, s.Options.Branding); err != nil {
+			return err
+		}
+	}
+	router.Frontend(site, icons...)
+	router.build = frontendBuild(site)
 
 	s.router = router
 	s.plugins = plugins
@@ -315,6 +345,24 @@ func handleUnauthenticated(next HandlerFunc, ctx *Context) error {
 	}
 }
 
+// DefaultCacheMaxPartKiB is the largest message part the session cache keeps
+// when the config does not say: 1 MiB, above the text and the inline images
+// of most messages, below most attachments.
+const DefaultCacheMaxPartKiB = 1024
+
+// CacheMaxPartBytes is the largest message part, its header and body as they
+// are stored, that the session cache keeps. The cache has no limit of its own,
+// and every part read was kept for the life of its entry, attachments of any
+// size among them, so a few large attachments opened in one session held their
+// whole bytes in the server's memory. A larger part is read again when it is
+// asked for again; the browser's copy, revalidated with a 304, saves that.
+func (o *Options) CacheMaxPartBytes() int64 {
+	if o == nil || o.CacheMaxPartKiB <= 0 {
+		return DefaultCacheMaxPartKiB << 10
+	}
+	return int64(o.CacheMaxPartKiB) << 10
+}
+
 type Options struct {
 	SMTP               SMTPOptions // SMTP configuration
 	Debug              bool
@@ -322,6 +370,7 @@ type Options struct {
 	EnabledPlugins     []string      // If empty, all plugins are enabled
 	CacheTTL           time.Duration // Cache TTL, 0 means use default (10 minutes)
 	CacheEnabled       bool          // If false, caching is disabled
+	CacheMaxPartKiB    int           // Largest message part the session cache keeps, in KiB; 0 means the default (see CacheMaxPartBytes)
 	SessionDuration    time.Duration // Session timeout, 0 means use default (30 minutes)
 	MaxSessionDuration time.Duration // Maximum session duration users can set, 0 means no limit
 	// How long a session may live no matter how much it is used. 0 means use
@@ -335,6 +384,7 @@ type Options struct {
 	MaxGlobalAttachmentMiB  int                     // Max global attachment size in MiB
 	RateLimitConfig         *RateLimitConfig        // Rate limiting config, nil = use defaults
 	RateLimitEnabled        bool                    // If false, rate limiting is disabled
+	AccessLog               bool                    // If true, every request is logged at info level: who, from where, how answered
 	TrustedProxies          []*net.IPNet            // Proxy IPs/CIDRs whose X-Forwarded-Proto/Host headers are trusted (e.g. for CSRF origin computation behind a TLS-terminating reverse proxy)
 	TrustedOrigins          []string                // Additional origins accepted by the CSRF check (e.g. "https://webmail.example.com"), normalized to lowercase without a trailing slash
 	ReadTimeout             time.Duration           // HTTP read timeout, 0 means use default (10 seconds)
@@ -343,9 +393,28 @@ type Options struct {
 	ProviderTimeout         time.Duration           // Provider connect timeout, 0 means use default (30 seconds)
 	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
 	WebAuthn                WebAuthnOptions         // WebAuthn configuration
+	Branding                BrandingOptions         // Default theme and login logo; the zero value is alps as it ships
 	Plugins                 map[string]PluginConfig // Generic plugin configuration
 	Provider                provider.Options        // Mail provider configuration
 	ClusterBroadcaster      ClusterBroadcaster      // Optional interface for cluster message broadcasting
+	// If true, each session does all its mail work on one connection. By
+	// default a session opens a second one, when it is first needed, for the
+	// work the user is not waiting for: see Session.DoBackgroundMail.
+	DisableBackgroundConnection bool
+	// If true, a session waits on its background connection for the mail
+	// server's news of the Inbox (IMAP IDLE) while one of its pages holds an
+	// event stream open, and tells the page as the news comes: see
+	// Session.WatchInbox. Off when DisableBackgroundConnection is set.
+	PushNewMail bool
+	// If true, each mail connection has the server number the changes to
+	// the mailboxes' messages, where the server can (IMAP CONDSTORE), so that
+	// a listing whose messages are all still there has only its flags read
+	// again: see SessionManager.connectProvider.
+	CondStore bool
+	// If true, with PushNewMail, the session waits for the news of the
+	// subscribed folders as well, where the mail server can tell of them
+	// (IMAP NOTIFY): see Session.WatchInbox.
+	PushSubscribedFolders bool
 }
 
 type SMTPOptions struct {
@@ -387,6 +456,9 @@ func (s *Server) setupMiddleware(router *Router) {
 
 			s.logger.Debugf("Auth middleware: found cookie for %s", ctx.Request.URL.Path)
 			ctx.Session, err = ctx.Server.Sessions.get(cookie.Value)
+			if err == nil {
+				ctx.access.noteSession(ctx.Session)
+			}
 			if errors.Is(err, ErrSessionExpired) {
 				s.logger.Debugf("Auth middleware: session expired for %s", ctx.Request.URL.Path)
 				ctx.SetSession(nil)
@@ -406,6 +478,10 @@ func (s *Server) setupMiddleware(router *Router) {
 					session.SetAuthenticated2FA(verified2FA)
 
 					s.logger.Debugf("Auth middleware: session restored successfully for %s", ctx.Request.URL.Path)
+					s.logger.Slog().Info("session restored",
+						"user", username,
+						"ip", ctx.ClientIP(),
+						"session", session.ID())
 					// Restore session with original persistence setting
 					ctx.Session = session
 					ctx.SetSessionWithExpiry(session, persistent)
@@ -430,7 +506,7 @@ func (s *Server) setupMiddleware(router *Router) {
 					})
 					// The restored session takes the same gate as every other:
 					// the request that restored it used to run regardless.
-					if session.Requires2FA() && !session.IsAuthenticated2FA() {
+					if session.needsSecondFactor() {
 						s.logger.Debugf("Auth middleware: restored session needs 2FA for %s", ctx.Request.URL.Path)
 						return handleUnauthenticated(next, ctx)
 					}
@@ -448,8 +524,10 @@ func (s *Server) setupMiddleware(router *Router) {
 			}
 			s.logger.Debugf("Auth middleware: session OK for %s", ctx.Request.URL.Path)
 
-			// Enforce 2FA verification if required
-			if ctx.Session.Requires2FA() && !ctx.Session.IsAuthenticated2FA() {
+			// Enforce 2FA verification if required. The account may have
+			// enrolled a key since this session was opened, on another node;
+			// needsSecondFactor looks again, now and then.
+			if ctx.Session.needsSecondFactor() {
 				s.logger.Debugf("Auth middleware: 2FA required but not verified for %s", ctx.Request.URL.Path)
 				return handleUnauthenticated(next, ctx)
 			}
@@ -491,8 +569,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // sanitizeError returns a safe error message for client consumption.
 // Full error details are logged server-side only.
 func sanitizeError(err error, code int) string {
-	// For HTTPError, use the internal message if available
-	if he, ok := err.(*HTTPError); ok {
+	// For HTTPError, use the internal message if available. One a route has
+	// wrapped, to say what it was doing, is the route's answer all the same.
+	var he *HTTPError
+	if errors.As(err, &he) {
 		if he.Message != nil {
 			if msg, ok := he.Message.(string); ok && msg != "" {
 				return msg
@@ -532,19 +612,19 @@ func (s *Server) handleError(err error, ctx *Context) {
 	// Check if this is an authentication or connection error - if so, log out the user
 	// to prevent endless loops
 	var authErr provider.AuthError
-	shouldLogout := false
+	logoutReason := ""
 
 	if errors.As(err, &authErr) {
 		s.logger.Debugf("Authentication error detected, logging out user")
-		shouldLogout = true
+		logoutReason = "auth-error"
 	} else if errors.Is(err, ErrMailProviderUnavailable) {
 		s.logger.Debugf("Mail provider connection lost, logging out user")
-		shouldLogout = true
+		logoutReason = "mail-server-unavailable"
 	}
 
-	if shouldLogout {
+	if logoutReason != "" {
 		if ctx.Session != nil {
-			ctx.Session.Close()
+			ctx.Session.CloseWithReason(logoutReason)
 			ctx.SetSession(nil)
 		}
 		ctx.SetLoginToken("", "", false, false)
@@ -563,7 +643,8 @@ func (s *Server) handleError(err error, ctx *Context) {
 	}
 
 	code := http.StatusInternalServerError
-	if he, ok := err.(*HTTPError); ok {
+	var he *HTTPError
+	if errors.As(err, &he) {
 		code = he.Code
 	}
 

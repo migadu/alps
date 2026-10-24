@@ -60,10 +60,46 @@ func TestParseAddressList(t *testing.T) {
 		// an empty recipient for the SMTP transaction to refuse.
 		"a@example.com, ": {"a@example.com"},
 		" , ":             {},
+		// A comma inside a quoted name is part of the name.
+		`"Lovelace, Ada" <ada@example.com>, b@example.com`: {`"Lovelace, Ada" <ada@example.com>`, "b@example.com"},
+		`"Jane \"JJ\" Doe" <jj@example.com>`:               {`"Jane \"JJ\" Doe" <jj@example.com>`},
+		`Ada Lovelace <ada@example.com>`:                   {`"Ada Lovelace" <ada@example.com>`},
+		// A quoted local part stays quoted, or it no longer reads back.
+		`"a;b"@example.com, <c@example.com>`: {`"a;b"@example.com`, "c@example.com"},
 	}
 	for in, want := range cases {
-		if got := parseAddressList(in); !reflect.DeepEqual(got, want) {
-			t.Errorf("parseAddressList(%q) = %q, want %q", in, got, want)
+		if got, err := parseAddressList(in); err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("parseAddressList(%q) = %q, %v, want %q", in, got, err, want)
 		}
+	}
+	// Written bare, as an earlier composer wrote a reply's recipients, the
+	// comma ends the first address, which has no address part.
+	for _, in := range []string{"Lovelace, Ada <ada@example.com>", "ada", "a@example.com; b@example.com"} {
+		if got, err := parseAddressList(in); err == nil {
+			t.Errorf("parseAddressList(%q) = %q, want an error", in, got)
+		}
+	}
+}
+
+// A draft keeps the Bcc entries that read as addresses when one does not.
+// Split at every comma, a quoted name or a quoted local part that holds one
+// would be two entries, neither an address.
+func TestReadableAddresses(t *testing.T) {
+	cases := map[string][]string{
+		`"Hopper, Grace" <grace@example.com>, eve@, hidden@example.com`: {`"Hopper, Grace" <grace@example.com>`, "hidden@example.com"},
+		`"a,b"@example.com, <c@example.com>; , d@example.com`:           {`"a,b"@example.com`, "d@example.com"},
+		`"Jane \"J,J\" Doe" <jj@example.com>, nobody`:                   {`"Jane \"J,J\" Doe" <jj@example.com>`},
+		`hidden@example.com;`: {},
+		"":                    {},
+	}
+	for in, want := range cases {
+		if got := readableAddresses(in); !reflect.DeepEqual(got, want) {
+			t.Errorf("readableAddresses(%q) = %q, want %q", in, got, want)
+		}
+	}
+	split := splitAddressList(`"Lovelace, Ada" <ada@x.test>, (Babbage, Charles) c@x.test, <d,e@x.test>, f@x.test`)
+	want := []string{`"Lovelace, Ada" <ada@x.test>`, ` (Babbage, Charles) c@x.test`, ` <d,e@x.test>`, ` f@x.test`}
+	if !reflect.DeepEqual(split, want) {
+		t.Errorf("splitAddressList = %q, want %q", split, want)
 	}
 }

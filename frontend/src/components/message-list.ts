@@ -1,13 +1,17 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { formatDateList, formatSize, getMailboxLabel, renderIcon, bimiAvatarUrlFor, mayShowBimiLogo } from '../utils/ui';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags } from '../utils/flags';
 import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
 import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
+import { fetchWithTimeout, foregroundSettled } from '../utils/fetch-utils';
 import { mailboxOf, messageKey } from '../utils/message-key';
+import { addressText, addressWarning, displayAddress, mixedScriptStyles } from '../utils/address-display';
+import { ALL_MAILBOXES, encodeMailboxPath, specialMailboxName } from '../utils/folders';
+import { MESSAGE_DRAG_TYPE, type MessageDrag } from '../utils/message-drag';
 import { consume } from '@lit/context';
-import { settingsContext, SettingsStore } from '../store/settings-store';
+import { ownAddress, settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import './alps-avatar';
 import './alps-tag';
@@ -22,6 +26,30 @@ import { repeat } from 'lit/directives/repeat.js';
 /** The filter bar's own toggles, which narrow a FOLDER rather than search it. */
 const FILTER_TOGGLES = new Set(['is:starred', 'is:unread']);
 
+/** How many sender verdicts the list keeps across folder switches; a switch
+ * past it starts over. */
+const MAX_KEPT_VERDICTS = 5000;
+
+/**
+ * Moves whenever the account signed in may have changed, and the list's
+ * verdicts with it: they are keyed by mailbox and UID and no account, and
+ * INBOX and UID 1 are in every account. On `user-logged-in` as well as on
+ * `session-cleared`: a switch to a linked account that asks for its second
+ * factor ends nothing, and the sign-in its "Back to Login" leads to comes
+ * back to the same mail page. That page is off the document meanwhile, so the
+ * list could not hear either event itself.
+ */
+let signIns = 0;
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('session-cleared', () => {
+    signIns++;
+  });
+  window.addEventListener('user-logged-in', () => {
+    signIns++;
+  });
+}
+
 @customElement('alps-message-list')
 export class MessageList extends LitElement {
   @consume({ context: settingsContext })
@@ -32,11 +60,22 @@ export class MessageList extends LitElement {
 
   @property({ type: Array }) messages: any[] = [];
   @property({ type: String }) currentMailbox = '';
-  /** As in `app-header` — the delimiter the server reported for this mailbox. */
-  @property({ type: String }) currentMailboxDelimiter = '';
+  /** The folder list, which says what a folder is called: see `getMailboxLabel`. */
+  @property({ type: Array }) mailboxes: any[] = [];
   // Special-use role of the current mailbox ('drafts'|'sent'|...), resolved by the
   // parent from IMAP attributes so Gmail's "[Gmail]/Sent Mail" etc. are recognized.
   @property({ type: String }) currentMailboxRole = '';
+  /**
+   * The folder the ROWS were read from. It trails `currentMailbox` while a
+   * folder switch loads: the previous folder's rows stay up, dimmed, until
+   * the new listing replaces them, and each is drawn by the rules of the
+   * folder it came from. '' is the folder on screen.
+   */
+  @property({ type: String }) listedMailbox = '';
+  /** The accepted listing's UID epoch: the same UID may name another message after it changes. */
+  @property({ type: Number }) listedUIDValidity = 0;
+  /** `listedMailbox`'s role, resolved by the parent as `currentMailboxRole` is. */
+  @property({ type: String }) listedMailboxRole = '';
   @property({ type: Boolean }) loading = false;
   @property({ type: Object }) selectedMessage: any = null;
   @property({ type: String }) layoutMode = 'vertical';
@@ -71,6 +110,8 @@ export class MessageList extends LitElement {
   @property({ type: Boolean }) syncing = false;
   /** The last listing failed: say so, rather than claim the folder is empty. */
   @property({ type: Boolean }) loadFailed = false;
+  /** It failed because the mail server is limiting searches, which is said instead. */
+  @property({ type: Boolean }) loadLimited = false;
   @state() private isSpinning = false;
   @state() private isScrolled = false;
   @state() private isAtBottom = false;
@@ -87,6 +128,21 @@ export class MessageList extends LitElement {
    */
   @state() private emptying = false;
   @state() private expandedThreads = new Set<string>();
+  /**
+   * What the list shows of an expanded thread's older messages that its page
+   * does not carry, by key. A threaded listing gives them with their flags and
+   * envelope, not their structure, so whether one has attachments is read
+   * from the conversation when the thread is first expanded (see
+   * readMembers).
+   */
+  @state() private memberDetails = new Map<string, { HasAttachments: boolean }>();
+  /** The threads whose conversation has been asked for, by key. */
+  private membersAsked = new Set<string>();
+  private membersSignIn = signIns;
+  private membersNeedRead = false;
+  /** The messages a drag out of the list is carrying, by key; their rows are
+   * dimmed until it ends. Null when nothing is being dragged. */
+  @state() private draggingKeys: string[] | null = null;
   // Verdicts for listed messages and the earlier messages of expanded threads,
   // keyed by mailbox and UID, as answered under that mailbox's scope. Listings
   // carry none: a mail server reads the header from each stored message, and
@@ -96,9 +152,17 @@ export class MessageList extends LitElement {
   // logo, and once each: a reload asks only about messages not asked about.
   // A new scope means the mailbox's UIDs name other messages, and that
   // mailbox's answers are dropped.
+  //
+  // The answers outlive a folder switch, in memory only: a message's headers
+  // never change, and going back to a folder asked about every row again. They
+  // are drawn again once an answer in that folder has shown its scope is still
+  // the one they were answered under (verdictsConfirmed).
   @state() private verdicts = new Map<string, AuthVerdict>();
   private verdictScopes = new Map<string, string>();
   private verdictsAsked = new Set<string>();
+  private verdictsConfirmed = new Set<string>();
+  /** The sign-in the verdicts were answered in (see signIns). */
+  private verdictsSignIn = signIns;
   private verdictGeneration = 0;
   private verdictsRunning = false;
   private verdictsRerun = false;
@@ -110,7 +174,7 @@ export class MessageList extends LitElement {
   // The row of the first message that check found, to be scrolled to once drawn.
   private _arrivedIndex = -1;
 
-  static styles = css`
+  static styles = [mixedScriptStyles, css`
     :host {
       display: flex;
       flex-direction: column;
@@ -169,6 +233,11 @@ export class MessageList extends LitElement {
       align-items: center;
       gap: 16px;
       transition: background 0.15s, padding 0.2s, gap 0.2s;
+    }
+
+    /* What a drag is carrying, left in place until the drop files it. */
+    .message-item.is-dragging {
+      opacity: 0.4;
     }
 
     /* Density: Loose */
@@ -316,6 +385,7 @@ export class MessageList extends LitElement {
     }
 
     .message-date {
+      font-family: var(--font-label);
       font-size: 12px;
       color: var(--text-muted);
       white-space: nowrap;
@@ -325,6 +395,7 @@ export class MessageList extends LitElement {
     }
 
     .message-size {
+      font-family: var(--font-label);
       font-size: 11px;
       color: var(--text-muted);
       white-space: nowrap;
@@ -625,7 +696,7 @@ export class MessageList extends LitElement {
     }
     
     .message-item.unread .thread-count-caret-badge {
-      background: var(--accent-color, #eab308);
+      background: var(--accent-fill, #eab308);
       color: #fff;
     }
 
@@ -675,7 +746,7 @@ export class MessageList extends LitElement {
     .message-item.sub-message-item.active {
       background: var(--bg-selected);
     }
-  `;
+  `];
 
   private get visibleMessages(): any[] {
     const list: any[] = [];
@@ -688,12 +759,33 @@ export class MessageList extends LitElement {
     return list;
   }
 
-  /** Drops every verdict, and stops any request still asking for them. */
-  private resetVerdicts() {
-    this.verdicts = new Map();
-    this.verdictsAsked = new Set();
-    this.verdictScopes = new Map();
+  /**
+   * Another folder is shown: stops any request still asking for verdicts, and
+   * keeps the answers, undrawn until each folder's scope is confirmed again.
+   * What was asked and not answered is asked again on the way back.
+   */
+  private leaveVerdicts() {
     this.verdictGeneration++;
+    this.verdictsConfirmed = new Set();
+    if (this.verdicts.size > MAX_KEPT_VERDICTS) {
+      this.verdicts = new Map();
+      this.verdictScopes = new Map();
+    }
+    this.verdictsAsked = new Set([...this.verdictsAsked].filter((key) => this.verdicts.has(key)));
+  }
+
+  /**
+   * Another sign-in since the verdicts were answered: drops every one of them,
+   * and stops any request still asking, whose answer is about the messages of
+   * the account signed in when it was asked.
+   */
+  private forgetVerdicts() {
+    this.verdictGeneration++;
+    this.verdictsSignIn = signIns;
+    this.verdicts = new Map();
+    this.verdictScopes = new Map();
+    this.verdictsAsked = new Set();
+    this.verdictsConfirmed = new Set();
   }
 
   /** The mailbox a listed message is in: its own, since a search across mailboxes lists several. */
@@ -732,19 +824,27 @@ export class MessageList extends LitElement {
     const shown = this.currentMailbox;
     if (!shown || !this.drawsAvatars) return;
     const generation = this.verdictGeneration;
-    const current = () => shown === this.currentMailbox && generation === this.verdictGeneration;
+    const signIn = signIns;
+    const current = () => shown === this.currentMailbox && generation === this.verdictGeneration && signIn === signIns;
 
     // Each message is asked about in its own mailbox. A row from another
     // mailbox than the one shown belongs to the previous folder, still on
     // screen until the new folder's list arrives, and asking the new folder
     // about its UID would answer for a different message.
     const byMailbox = new Map<string, string[]>();
+    // A message per mailbox whose kept answer can confirm the scope, for a
+    // mailbox with nothing new to ask about.
+    const confirmers = new Map<string, string>();
     const consider = (msg: any) => {
       const uid = msg?.UID == null ? '' : String(msg.UID);
       const mailbox = this.mailboxOf(msg);
       if (!uid || (shown !== '*' && mailbox !== shown)) return;
       const key = messageKey(mailbox, uid);
-      if (this.verdictsAsked.has(key) || !mayShowBimiLogo(msg)) return;
+      if (!mayShowBimiLogo(msg)) return;
+      if (this.verdictsAsked.has(key)) {
+        if (!this.verdictsConfirmed.has(mailbox) && this.verdicts.has(key) && !confirmers.has(mailbox)) confirmers.set(mailbox, uid);
+        return;
+      }
       this.verdictsAsked.add(key);
       if (!byMailbox.has(mailbox)) byMailbox.set(mailbox, []);
       byMailbox.get(mailbox)!.push(uid);
@@ -752,6 +852,11 @@ export class MessageList extends LitElement {
     for (const msg of this.messages || []) {
       consider(msg);
       if (msg?.SubMessages?.length && this.isThreadExpanded(String(msg.UID))) msg.SubMessages.forEach(consider);
+    }
+    // One message asked again is enough to learn whether the kept answers
+    // still stand: the scope comes with every answer.
+    for (const [mailbox, uid] of confirmers) {
+      if (!byMailbox.has(mailbox)) byMailbox.set(mailbox, [uid]);
     }
 
     const queue: { mailbox: string; uid: string }[] = [];
@@ -762,6 +867,11 @@ export class MessageList extends LitElement {
 
     let i = 0;
     while (i < queue.length) {
+      // Nothing is sent while a request the user waits on is out either, a
+      // message being opened above all: on the session's one connection to
+      // the mail server, it would wait behind the batch.
+      await foregroundSettled();
+      if (!current()) return;
       // A folder's list is loading. Its request waits behind every verdict
       // request sent before it, so nothing more is sent until the list has
       // arrived; the rest is asked for then.
@@ -798,6 +908,7 @@ export class MessageList extends LitElement {
         startOver = true;
       }
       if (answer.scope) this.verdictScopes.set(mailbox, answer.scope);
+      this.verdictsConfirmed.add(mailbox);
       for (const [uid, verdict] of answer.verdicts) next.set(messageKey(mailbox, uid), verdict);
       this.verdicts = next;
       if (startOver) {
@@ -808,9 +919,11 @@ export class MessageList extends LitElement {
     }
   }
 
-  /** msg with the verdict answered for it, if one has arrived. */
+  /** msg with the verdict answered for it, if one has arrived under its mailbox's current scope. */
   private withVerdict(msg: any): any {
-    const verdict = this.verdicts.get(messageKey(this.mailboxOf(msg), String(msg?.UID)));
+    const mailbox = this.mailboxOf(msg);
+    if (!this.verdictsConfirmed.has(mailbox)) return msg;
+    const verdict = this.verdicts.get(messageKey(mailbox, String(msg?.UID)));
     return verdict ? { ...msg, ...verdict } : msg;
   }
 
@@ -825,8 +938,48 @@ export class MessageList extends LitElement {
       newSet.delete(uid);
     } else {
       newSet.add(uid);
+      this.readMembers(uid);
     }
     this.expandedThreads = newSet;
+  }
+
+  private forgetMembers() {
+    this.memberDetails = new Map();
+    this.membersAsked = new Set();
+    this.membersSignIn = signIns;
+    this.membersNeedRead = true;
+  }
+
+  /**
+   * Asks, once, for the conversation of the thread row uid names, when its
+   * older messages came without their structure, and keeps what each one's row
+   * shows from it. A failed read is asked again the next time the thread opens.
+   */
+  private async readMembers(uid: string) {
+    if (!this.isConnected || !this.rowsAreCurrent || this.loading) return;
+    if (this.membersSignIn !== signIns) this.forgetMembers();
+    const row = this.messages?.find((m: any) => String(m.UID) === uid);
+    if (!row?.SubMessages?.some((sub: any) => !sub.BodyStructure)) return;
+    const key = this.keyOf(row);
+    if (this.membersAsked.has(key)) return;
+    const asked = this.membersAsked;
+    const signIn = signIns;
+    asked.add(key);
+    try {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailboxOf(row))}/messages/${row.UID}/thread`);
+      if (!res.ok) throw new Error(`answered ${res.status}`);
+      const data = await res.json();
+      // The same key can be asked again after a folder visit, sign-in or
+      // UIDVALIDITY change. Only the collection that started this read owns it.
+      if (!this.isConnected || this.membersAsked !== asked || signIns !== signIn) return;
+      const details = new Map(this.memberDetails);
+      for (const m of Array.isArray(data?.Messages) ? data.Messages : []) {
+        details.set(this.keyOf(m), { HasAttachments: !!m.HasAttachments });
+      }
+      this.memberDetails = details;
+    } catch {
+      asked.delete(key);
+    }
   }
 
   /**
@@ -918,9 +1071,11 @@ export class MessageList extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    if (this.membersNeedRead) this.requestUpdate();
     messageSync.addEventListener('sync-start', this.handleSyncStart);
     messageSync.addEventListener('sync-success', this.handleSyncEnd);
     messageSync.addEventListener('sync-error', this.handleSyncEnd);
+    messageSync.addEventListener('sync-unchanged', this.handleSyncEnd);
     this.updateComplete.then(() => {
       if (!this.isConnected) return;
       this.i18nStore?.addEventListener('change', this._handleStoreChange);
@@ -929,9 +1084,14 @@ export class MessageList extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    // A list that leaves the page mid-drag would keep its window listeners
+    // until some later drag ended.
+    this.endDrag();
+    this.forgetMembers();
     messageSync.removeEventListener('sync-start', this.handleSyncStart);
     messageSync.removeEventListener('sync-success', this.handleSyncEnd);
     messageSync.removeEventListener('sync-error', this.handleSyncEnd);
+    messageSync.removeEventListener('sync-unchanged', this.handleSyncEnd);
     this.i18nStore?.removeEventListener('change', this._handleStoreChange);
   }
 
@@ -950,8 +1110,19 @@ export class MessageList extends LitElement {
 
   willUpdate(changedProperties: Map<string, any>) {
     super.willUpdate(changedProperties);
-    if (changedProperties.has('currentMailbox')) {
-      this.resetVerdicts();
+    if (this.verdictsSignIn !== signIns) {
+      this.forgetVerdicts();
+    } else if (changedProperties.has('currentMailbox')) {
+      this.leaveVerdicts();
+    }
+    if (this.membersSignIn !== signIns || changedProperties.has('currentMailbox') || changedProperties.has('listedUIDValidity')) {
+      this.forgetMembers();
+    }
+    // An expanded row can survive a replacement listing or reconnect. Read its
+    // current members when they arrive, without fetching the dimmed old folder.
+    if (this.isConnected && (this.membersNeedRead || changedProperties.has('messages') || changedProperties.has('loading'))) {
+      this.membersNeedRead = false;
+      for (const uid of this.expandedThreads) this.readMembers(uid);
     }
     if (changedProperties.has('currentMailbox') ||
       changedProperties.has('currentPage') ||
@@ -962,6 +1133,9 @@ export class MessageList extends LitElement {
       // query changes. Clearing it here would report every row of the new page
       // as unchecked, which the page would take for exceptions.
       if (!this.selectAllMatching && this.selectedMessages.size > 0) this.setSelection(new Set());
+      // The previous listing's row means nothing in this one: the first arrow
+      // key went to row N of the folder left behind instead of the first row.
+      this.focusedIndex = -1;
       this._shouldScrollToTop = true;
       // Another listing altogether, already shown from its top.
       this._uidsBeforeCheck = null;
@@ -982,6 +1156,13 @@ export class MessageList extends LitElement {
       }
     }
 
+    // Every dragged row has left the list, so the drag is over as far as the
+    // list can tell, whether or not its dragend ever arrives (see endDrag).
+    if (changedProperties.has('messages') && this.draggingKeys) {
+      const listed = new Set(this.pageKeys);
+      if (!this.draggingKeys.some(key => listed.has(key))) this.endDrag();
+    }
+
     if (changedProperties.has('selectedMessage') || changedProperties.has('messages')) {
       if (changedProperties.has('messages') && this.messages) {
         if (!this.selectAllMatching && this.selectedMessages.size > 0) {
@@ -1000,6 +1181,7 @@ export class MessageList extends LitElement {
               const uid = String(m.UID);
               if (!newSet.has(uid)) {
                 newSet.add(uid);
+                this.readMembers(uid);
                 expandedChanged = true;
               }
             }
@@ -1117,18 +1299,36 @@ export class MessageList extends LitElement {
     }));
   }
 
+  /** Moves the keyboard cursor one row down (1) or up (-1), and shows the row. */
+  private moveCursor(direction: 1 | -1) {
+    const visible = this.visibleMessages;
+    this.focusedIndex = direction > 0
+      ? Math.min(visible.length - 1, this.focusedIndex + 1)
+      : Math.max(0, this.focusedIndex - 1);
+    this.scrollToFocused();
+  }
+
+  /**
+   * An arrow key pressed outside the list, which the page passes on: the
+   * cursor moves, and focus goes into the list so the next key, Enter
+   * included, is the list's own.
+   */
+  step(direction: 1 | -1) {
+    if (this.visibleMessages.length === 0) return;
+    this.renderRoot.querySelector<HTMLElement>('.list-content')?.focus({ preventScroll: true });
+    this.moveCursor(direction);
+  }
+
   private handleKeyDown(e: KeyboardEvent) {
     const visible = this.visibleMessages;
     if (!visible || visible.length === 0) return;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      this.focusedIndex = Math.min(visible.length - 1, this.focusedIndex + 1);
-      this.scrollToFocused();
+      this.moveCursor(1);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      this.focusedIndex = Math.max(0, this.focusedIndex - 1);
-      this.scrollToFocused();
+      this.moveCursor(-1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (this.focusedIndex >= 0 && this.focusedIndex < visible.length) {
@@ -1177,8 +1377,21 @@ export class MessageList extends LitElement {
     return this.messages.some((msg: any) => (msg?.ThreadCount ?? 0) > 0);
   }
 
+  /**
+   * What the folder on screen is called, as the sidebar and the header call it.
+   *
+   * The Delete All banner, its confirmation and the toasts after it printed
+   * the IMAP path itself. The last sentence before a delete that cannot be
+   * undone read "Trash" beside a sidebar saying "Papierkorb", and "INBOX.Trash"
+   * or "[Gmail]/Spam" on a server that files its folders under a prefix. The
+   * path is still what the request names.
+   */
+  private get folderTitle(): string {
+    return getMailboxLabel(this.currentMailbox, this.i18nStore, this.mailboxes);
+  }
+
   private get emptyConfirmMessage(): string {
-    const folder = this.currentMailbox;
+    const folder = this.folderTitle;
     const count = this.totalMessages;
     const key = this.countsConversations
       ? 'messageList.emptyMailboxConfirmConversations'
@@ -1219,24 +1432,28 @@ export class MessageList extends LitElement {
     this.showEmptyConfirm = false;
     this.emptying = true;
     const folder = this.currentMailbox;
-    this.toast('info', this.i18nStore?.t('messageList.emptyingMailbox') || 'Emptying mailbox...');
+    // Named now: the user may be in another folder by the time this answers.
+    // Every report names it, from the first to the last: these said "mailbox",
+    // which to a user is the whole account, not the Trash they just emptied.
+    const title = this.folderTitle;
+    this.toast('info', this.i18nStore?.t('messageList.emptyingMailbox', { folder: title }) || `Emptying ${title}...`);
 
     try {
       const outcome = await mailboxOperations.emptyMailbox(folder);
 
       if (outcome.ok && outcome.discarded === 0) {
-        this.toast('info', this.i18nStore?.t('messageList.mailboxAlreadyEmpty', { folder })
-          || `${folder} was already empty — nothing was deleted.`);
+        this.toast('info', this.i18nStore?.t('messageList.mailboxAlreadyEmpty', { folder: title })
+          || `${title} was already empty — nothing was deleted.`);
       } else if (outcome.ok) {
-        this.toast('success', this.i18nStore?.t('messageList.mailboxEmptied') || 'Mailbox emptied successfully.');
+        this.toast('success', this.i18nStore?.t('messageList.mailboxEmptied', { folder: title }) || `${title} emptied.`);
       } else if (outcome.reason === 'timeout') {
-        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxSlow', { folder })
-          || `Still emptying ${folder}. The server is working on it — check the folder again in a moment.`);
+        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxSlow', { folder: title })
+          || `Still emptying ${title}. The server is working on it — check the folder again in a moment.`);
       } else if (outcome.reason !== 'auth') {
         // `auth` is silent: the session has ended, the shell says so, and a
         // second notice beside it sends the user looking for a fault they
         // do not have.
-        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxFailed') || 'Failed to empty mailbox. Make sure it is Trash or Junk.');
+        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxFailed', { folder: title }) || `Failed to empty ${title}.`);
       }
     } finally {
       this.emptying = false;
@@ -1272,15 +1489,60 @@ export class MessageList extends LitElement {
    * attributes, and that fallback lives in one place — `mailboxRoleByName`, which
    * only guesses a role by name when the server has not assigned it. A second
    * name test here would re-open the override it now prevents.
+   *
+   * Only the Trash or the Junk the sidebar draws as one, though. Of two folders
+   * with the role (an Exchange "Deleted Items" and a "Trash" on a server
+   * without special-use attributes, two folders marked \Junk), the other is
+   * drawn as an ordinary folder under its own name, and it offered to delete
+   * everything in it for good all the same. Its role is still handed down as
+   * it is: a second \Sent folder holds sent mail, and its rows name the
+   * recipients.
    */
   private get isDiscardableFolder(): boolean {
-    return this.currentMailboxRole === 'trash' || this.currentMailboxRole === 'junk';
+    const role = this.currentMailboxRole;
+    if (role !== 'trash' && role !== 'junk') return false;
+    return (specialMailboxName(role, this.mailboxes) ?? this.currentMailbox) === this.currentMailbox;
+  }
+
+  /**
+   * Whether the rows on screen were read from the folder on screen.
+   *
+   * False for the length of a folder switch. The Delete All banner reports on
+   * the rows and their count, and during a switch into Trash or Junk it showed
+   * "N total messages in Trash, Delete All Now" over the previous folder's
+   * rows and with that folder's count, until the real listing replaced both.
+   */
+  private get rowsAreCurrent(): boolean {
+    return !this.listedMailbox || this.listedMailbox === this.currentMailbox;
+  }
+
+  /**
+   * The folder a row is drawn by: the one it was read from.
+   *
+   * Everything inside a row reads these; the caption, the banners and the
+   * actions above the rows read `currentMailbox`. Drawn by the folder just
+   * clicked, the Inbox rows kept up during a switch to Sent named their
+   * recipients, which is the user, for the length of the read, and Sent rows
+   * on the way into the Inbox turned from recipients into the user's own name.
+   */
+  private get rowMailbox(): string {
+    return this.rowsAreCurrent ? this.currentMailbox : this.listedMailbox;
+  }
+
+  private get rowRole(): string {
+    return this.rowsAreCurrent ? this.currentMailboxRole : this.listedMailboxRole;
   }
 
   private renderMessageItem(msg: any, isSubMessage: boolean = false, isFirstSub: boolean = false, isLastSub: boolean = false) {
+    if (isSubMessage) {
+      const details = this.memberDetails.get(this.keyOf(msg));
+      if (details) msg = { ...msg, ...details };
+    }
     // Role only. OR-ing the names in here let a user folder called "Sent" show
     // recipients even where the server's own Sent is "[Gmail]/Sent Mail".
-    const isDraftOrSent = this.currentMailboxRole === 'drafts' || this.currentMailboxRole === 'sent';
+    const rowRole = this.rowRole;
+    const isDraftOrSent = rowRole === 'drafts' || rowRole === 'sent';
+    const showsFolder = this.rowMailbox === ALL_MAILBOXES;
 
     let rawContacts: any[] = [];
     if (isDraftOrSent) {
@@ -1303,7 +1565,7 @@ export class MessageList extends LitElement {
       }
     }
 
-    const loginUser = this.settingsStore?.getState()?.loginUsername?.toLowerCase() || '';
+    const loginUser = ownAddress(this.settingsStore?.getState()).toLowerCase();
 
     const isSelf = (c: any) => {
       const email = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}`.toLowerCase() : '';
@@ -1327,11 +1589,21 @@ export class MessageList extends LitElement {
     // reaches t() through a variable, as this one does.
     const fallbackKey = isDraftOrSent ? 'messageReader.noRecipients' : 'messageList.unknownSender';
 
-    const displayNames = allContacts.map(c => {
+    // Each name in an isolate of its own. Joined into one string, a direction
+    // override in one name reversed every name after it.
+    //
+    // An address that may not be the one it looks like is warned about, and
+    // shown beside the sender's name, which alone would hide what the warning
+    // is about. The title keeps the address as the message carries it.
+    const senderCaption = allContacts.map((c, i) => {
       const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
-      return c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
+      const caption = c.Name
+        ? html`<bdi>${c.Name}</bdi>${addr && displayAddress(addr).warning ? html` &lt;${addressText(addr)}&gt;` : ''}`
+        : addr
+          ? addressText(addr)
+          : (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
+      return html`${i ? ', ' : ''}<span title=${addr || nothing}>${caption}${addressWarning(addr, this.i18nStore)}</span>`;
     });
-    const senderName = displayNames.join(', ');
 
     const maxAvatars = this.isMobile ? 1 : 3;
     const displayAvatars = allContacts.slice(0, maxAvatars);
@@ -1343,7 +1615,7 @@ export class MessageList extends LitElement {
     const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
     const dateStr = msg.Envelope?.Date ? formatDateList(msg.Envelope.Date, dateFormat, hourFormat) : '';
     const msgSize = msg.RFC822Size || msg.Size;
-    const sizeStr = msgSize ? formatSize(msgSize) : '';
+    const sizeStr = msgSize ? formatSize(msgSize, this.i18nStore) : '';
 
     const hasSubMessages = msg.SubMessages && msg.SubMessages.length > 0;
     const expanded = this.isThreadExpanded(String(msg.UID));
@@ -1369,7 +1641,11 @@ export class MessageList extends LitElement {
 
     if (this.densityMode === 'ultra-compact') {
       return html`
-      <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.isOpen(msg)) || rowSelection !== 'none' ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
+      <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.isOpen(msg)) || rowSelection !== 'none' ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''} ${this.isDragged(msg) ? 'is-dragging' : ''}"
+        draggable=${this.isMobile ? 'false' : 'true'}
+        @dragstart=${(e: DragEvent) => this.handleDragStart(e, msg)}
+        @dragend=${this.endDrag}
+        @click=${() => this.selectMessage(msg)}>
         <div class="checkbox-col" @click=${(e: Event) => {
           e.stopPropagation();
           this.toggleRow(msg);
@@ -1389,7 +1665,7 @@ export class MessageList extends LitElement {
           </div>
         ` : isSubMessage ? html`<div class="caret-col empty"></div>` : ''}
 
-        <div class="message-sender">${senderName}</div>
+        <div class="message-sender">${senderCaption}</div>
         <div @click=${(e: Event) => this.toggleStar(e, msg)} class="star-btn ${isStarred ? 'starred' : ''} star-btn-wrapper-ultra">
           ${renderIcon(isStarred ? 'starFourFill' : 'starFour')}
         </div>
@@ -1406,10 +1682,10 @@ export class MessageList extends LitElement {
             `)}
           </div>
         ` : ''}
-        ${this.currentMailbox === '*' && msg.Mailbox ? html`
+        ${showsFolder && msg.Mailbox ? html`
           <span class="mailbox-badge" title="Folder: ${msg.Mailbox}">${msg.Mailbox}</span>
         ` : ''}
-        <div class="message-subject">
+        <div class="message-subject" dir="auto">
           ${subject}
         </div>
         <div class="message-indicators">
@@ -1423,7 +1699,11 @@ export class MessageList extends LitElement {
     }
 
     return html`
-    <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.isOpen(msg)) || rowSelection !== 'none' ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
+    <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.isOpen(msg)) || rowSelection !== 'none' ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''} ${this.isDragged(msg) ? 'is-dragging' : ''}"
+        draggable=${this.isMobile ? 'false' : 'true'}
+        @dragstart=${(e: DragEvent) => this.handleDragStart(e, msg)}
+        @dragend=${this.endDrag}
+        @click=${() => this.selectMessage(msg)}>
       <div class="checkbox-col" @click=${(e: Event) => {
         e.stopPropagation();
         this.toggleRow(msg);
@@ -1465,7 +1745,7 @@ export class MessageList extends LitElement {
       <div class="message-details">
         <div class="message-header-row">
           <div class="message-header-inner">
-            <div class="message-sender">${senderName}</div>
+            <div class="message-sender">${senderCaption}</div>
             <div @click=${(e: Event) => this.toggleStar(e, msg)} class="star-btn ${isStarred ? 'starred' : ''}">
               ${renderIcon(isStarred ? 'starFourFill' : 'starFour')}
             </div>
@@ -1491,10 +1771,10 @@ export class MessageList extends LitElement {
               `)}
             </div>
           ` : ''}
-          ${this.currentMailbox === '*' && msg.Mailbox ? html`
+          ${showsFolder && msg.Mailbox ? html`
             <span class="mailbox-badge" title="Folder: ${msg.Mailbox}">${msg.Mailbox}</span>
           ` : ''}
-          <div class="message-subject">
+          <div class="message-subject" dir="auto">
             ${subject}
           </div>
           ${sizeStr ? html`<div class="message-size">${sizeStr}</div>` : ''}
@@ -1502,6 +1782,95 @@ export class MessageList extends LitElement {
       </div>
     </div>
     `;
+  }
+
+  /**
+   * A row dragged towards a folder in the sidebar.
+   *
+   * It carries the checked rows when it is one of them, as the selection bar
+   * would act on them, and otherwise what the row stands for: the whole
+   * conversation when it is collapsed, each message under its own key and so
+   * from its own folder. The drop is the folder list's to decide.
+   *
+   * Rows are draggable on a desktop layout only. On a phone the sidebar is
+   * shut while the list is up, so there is nowhere to drop, and a long press
+   * that began a drag would be taken from scrolling.
+   */
+  private handleDragStart(e: DragEvent, msg: any) {
+    const data = e.dataTransfer;
+    if (!data) return;
+    const own = this.rowKeys(msg);
+    const selection = own.some(key => this.selectedMessages.has(key));
+    const keys = selection ? [...this.selectedMessages] : own;
+    const drag: MessageDrag = { keys, selection };
+    // A whole-folder selection is more than the page holds; say how much.
+    const count = selection && this.selectAllMatching ? this.matchingCount : keys.length;
+    const caption = count > 1
+      ? this.i18nStore?.t('messageList.dragCount', { count }) || `${count}`
+      : msg.Envelope?.Subject || this.i18nStore?.t('messageList.noSubject') || '';
+
+    data.setData(MESSAGE_DRAG_TYPE, JSON.stringify(drag));
+    // Plain text as well, which some browsers need before they start a drag
+    // at all; dropped into another application it is only the caption.
+    data.setData('text/plain', caption);
+    data.effectAllowed = 'copyMove';
+    this.setDragImage(data, caption);
+
+    this.draggingKeys = keys;
+    window.addEventListener('drop', this.endDrag, true);
+    window.addEventListener('dragend', this.endDrag, true);
+  }
+
+  /**
+   * What follows the pointer: a pill saying what is being carried, rather than
+   * a picture of the one row the drag started on, which for a selection of
+   * twenty showed one message. The browser takes its picture of the element
+   * at once, so it is in the document only for this turn.
+   */
+  private setDragImage(data: DataTransfer, caption: string) {
+    if (typeof data.setDragImage !== 'function') return;
+    const pill = document.createElement('div');
+    pill.textContent = caption;
+    Object.assign(pill.style, {
+      position: 'absolute',
+      top: '-1000px',
+      left: '-1000px',
+      maxWidth: '280px',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      padding: '6px 12px',
+      borderRadius: '16px',
+      background: 'var(--accent-fill, #005A9E)',
+      color: '#fff',
+      font: '500 13px/1.4 var(--font-base, sans-serif)',
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.18)',
+      pointerEvents: 'none',
+    });
+    pill.dir = 'auto';
+    document.body.appendChild(pill);
+    data.setDragImage(pill, 15, 15);
+    setTimeout(() => pill.remove(), 0);
+  }
+
+  /**
+   * Undims the dragged rows however the drag ends.
+   *
+   * The row's own dragend is not enough. A drop that moves the messages takes
+   * their rows off the list while the drag is still finishing, and an event
+   * fired at a node that has left the document reaches no listener. The drop
+   * itself reaches the window, and a drag abandoned after its rows left the
+   * list is caught in willUpdate.
+   */
+  private endDrag = () => {
+    this.draggingKeys = null;
+    window.removeEventListener('drop', this.endDrag, true);
+    window.removeEventListener('dragend', this.endDrag, true);
+  };
+
+  /** Whether a row is part of the drag in progress. */
+  private isDragged(msg: any): boolean {
+    return !!this.draggingKeys && this.rowKeys(msg).some(key => this.draggingKeys!.includes(key));
   }
 
   /**
@@ -1557,7 +1926,7 @@ export class MessageList extends LitElement {
           ></alps-icon-btn>
           ${this.sidebarCollapsed ? html`
             <div class="current-mailbox-label">
-              ${getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter)}
+              ${this.folderTitle}
             </div>
           ` : ''}
           <alps-pagination 
@@ -1585,7 +1954,7 @@ export class MessageList extends LitElement {
         ` : ''}
         ${this.selectAllMatching ? html`
           <alps-banner>
-            <span>${this.i18nStore?.t('messageList.allMatchingSelected', { count: this.matchingCount, folder: getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter) })}</span>
+            <span>${this.i18nStore?.t('messageList.allMatchingSelected', { count: this.matchingCount, folder: this.folderTitle })}</span>
             <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('clear-selection'))}>
               ${this.i18nStore?.t('messageList.clearSelection')}
             </alps-button>
@@ -1594,16 +1963,16 @@ export class MessageList extends LitElement {
           <alps-banner>
             <span>${this.i18nStore?.t('messageList.allOnPageSelected', { count: this.pageKeys.length })}</span>
             <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('select-all-matching'))}>
-              ${this.i18nStore?.t('messageList.selectAllMatching', { count: this.totalMessages, folder: getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter) })}
+              ${this.i18nStore?.t('messageList.selectAllMatching', { count: this.totalMessages, folder: this.folderTitle })}
             </alps-button>
           </alps-banner>
         ` : ''}
-        ${!this.filterQuery && this.isDiscardableFolder && this.totalMessages > 0 ? html`
+        ${!this.filterQuery && this.isDiscardableFolder && this.totalMessages > 0 && this.rowsAreCurrent ? html`
           <alps-banner variant="warning">
             <span>${this.i18nStore?.t(
               this.countsConversations ? 'messageList.totalConversationsIn' : 'messageList.totalMessagesIn',
-              { count: this.totalMessages, folder: this.currentMailbox },
-            ) || `${this.totalMessages} total ${this.countsConversations ? 'conversations' : 'messages'} in ${this.currentMailbox}`}</span>
+              { count: this.totalMessages, folder: this.folderTitle },
+            ) || `${this.totalMessages} total ${this.countsConversations ? 'conversations' : 'messages'} in ${this.folderTitle}`}</span>
             <alps-button slot="action" variant="normal"
               ?spinning=${this.emptying}
               @click=${() => this.showEmptyConfirm = true}>
@@ -1615,7 +1984,7 @@ export class MessageList extends LitElement {
           <alps-loader full-height .text=${this.i18nStore?.t('messageList.loading') || 'Loading...'}></alps-loader>
         ` :
         this.messages.length === 0 && this.loadFailed ? html`<div class="empty-state load-error">
-          <div>${this.i18nStore?.t('messageList.loadError')}</div>
+          <div>${this.i18nStore?.t(this.loadLimited ? 'messageList.searchLimited' : 'messageList.loadError')}</div>
           <alps-button variant="normal" @click=${() => this.checkForNew()}>
             ${this.i18nStore?.t('messageList.loadErrorRetry')}
           </alps-button>
@@ -1675,7 +2044,7 @@ export class MessageList extends LitElement {
       ` : ''}
       ${this.showEmptyConfirm ? html`
         <ui-confirm
-          title=${this.i18nStore?.t('messageList.emptyMailboxTitle', { folder: this.currentMailbox }) || `Empty ${this.currentMailbox}`}
+          heading=${this.i18nStore?.t('messageList.emptyMailboxTitle', { folder: this.folderTitle }) || `Empty ${this.folderTitle}`}
           message=${this.emptyConfirmMessage}
           confirmText=${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
           .isDanger=${true}

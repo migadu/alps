@@ -221,7 +221,7 @@ export class CalendarTimeGrid extends LitElement {
             box-sizing: border-box;
         }
         .time-event:hover {
-            background-color: var(--accent-color, #2563eb);
+            background-color: var(--accent-fill, #2563eb);
         }
         .time-event-title {
             font-weight: 500;
@@ -438,13 +438,20 @@ export class CalendarTimeGrid extends LitElement {
                                             const renderStart = start < dayStart ? dayStart : start;
                                             const renderEnd = end > dayEnd ? dayEnd : end;
 
-                                            const top = (renderStart.getHours() * 48) + (renderStart.getMinutes() / 60 * 48);
                                             // Both ends read off the wall clock, like the hour lines behind
                                             // them. Elapsed time is not wall-clock distance on a DST day: an
                                             // 01:00-04:00 event on a spring-forward Sunday is two real hours,
                                             // so a height from milliseconds stopped at the 03:00 line.
-                                            const bottom = (renderEnd.getHours() * 48) + (renderEnd.getMinutes() / 60 * 48);
-                                            let height = bottom - top;
+                                            // What runs on past the day's last instant ends at the grid's
+                                            // foot, not at 23:59, and what began on an earlier day starts at
+                                            // its head even where the day's first hour is 01:00.
+                                            const top = start <= dayStart ? 0 : (renderStart.getHours() * 48) + (renderStart.getMinutes() / 60 * 48);
+                                            const bottom = end > dayEnd ? 24 * 48 : (renderEnd.getHours() * 48) + (renderEnd.getMinutes() / 60 * 48);
+                                            // Inside the hour a fall-back night repeats, the wall clock can
+                                            // end before it starts; there the real length is the measure.
+                                            let height = bottom <= top && renderEnd > renderStart
+                                                ? (renderEnd.getTime() - renderStart.getTime()) / 3_600_000 * 48
+                                                : bottom - top;
                                             
                                             // Ensure minimum height for visibility, but don't overflow bottom
                                             if (height < 20) height = 20;

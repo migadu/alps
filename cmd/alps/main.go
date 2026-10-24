@@ -164,8 +164,8 @@ func main() {
 		logger.Fatal(err)
 	}
 
-	if clusterMgr != nil && s.RateLimiter != nil {
-		clusterMgr.SetMessageHandler(s.RateLimiter.HandleClusterMessage)
+	if clusterMgr != nil {
+		clusterMgr.SetMessageHandler(s.HandleClusterMessage)
 	}
 
 	// Initialize WebAuthn
@@ -273,6 +273,9 @@ func main() {
 	if tlsMgr != nil && tlsMgr.IsEnabled() {
 		httpServer.TLSConfig = tlsMgr.GetTLSConfig()
 	}
+	// An event stream lasts until the page goes, and the shutdown below
+	// would wait out its deadline for them.
+	httpServer.RegisterOnShutdown(s.EndEventStreams)
 
 	go func() {
 		logger.Infof("Starting server on %s", config.Server.Addr)

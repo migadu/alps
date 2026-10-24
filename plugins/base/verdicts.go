@@ -45,7 +45,8 @@ func handleAuthVerdicts(ctx *alps.Context) error {
 	verdicts := map[string]authVerdictJSON{}
 	scope := ""
 	if len(uids) > 0 {
-		err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		// Nobody waits for a verdict, which only picks an avatar's logo.
+		err = ctx.Session.DoBackgroundMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 			vp, ok := p.(provider.AuthVerdictProvider)
 			if !ok {
 				return nil

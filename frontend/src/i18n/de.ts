@@ -4,6 +4,10 @@ export const de: TranslationDictionary = {
   settings: {
     saveFailed: 'Diese Einstellung konnte nicht gespeichert werden — sie überlebt das Abmelden möglicherweise nicht',
     title: 'Einstellungen',
+    unsavedTitle: 'Änderungen verwerfen?',
+    unsavedMessage: 'Sie haben ungespeicherte Änderungen. Beim Verlassen dieses Bereichs gehen sie verloren.',
+    discard: 'Verwerfen',
+    keepEditing: 'Weiter bearbeiten',
     categories: {
       general: 'Allgemein',
       identity: 'Identität',
@@ -17,7 +21,7 @@ export const de: TranslationDictionary = {
     },
     loading: 'Laden...',
     placeholderName: 'Ihr Name',
-    placeholderReplyTo: 'antwort@beispiel.de',
+    placeholderReplyTo: 'antwort@beispiel.example',
     general: {
       checkMailInterval: 'Intervall für E-Mail-Prüfung',
       checkMailIntervalDesc: 'Wie oft automatisch nach neuen E-Mails gesucht werden soll.',
@@ -102,15 +106,15 @@ export const de: TranslationDictionary = {
       monday: 'Montag',
       format12h: '12-Stunden (AM/PM)',
       format24h: '24-Stunden',
-      english: 'Englisch',
+      english: 'English',
       german: 'Deutsch',
-      italian: 'Italienisch',
-      spanish: 'Spanisch',
-      serbian: 'Serbisch',
-      serbianLatin: 'Serbisch (Lateinisch)',
-      french: 'Französisch',
-      portuguese: 'Portugiesisch',
-      danish: 'Dänisch'
+      italian: 'Italiano',
+      spanish: 'Español',
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
+      french: 'Français',
+      portuguese: 'Português',
+      danish: 'Dansk'
     },
   },
   linkedAccounts: {
@@ -141,10 +145,11 @@ export const de: TranslationDictionary = {
     pleaseWait: 'Bitte warten',
     wait: 'Warten',
     signedOut: 'Sie wurden abgemeldet.',
-    signedOutDraftsLost: 'Sie wurden abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren.',
+    signedOutDraftsKept: 'Sie wurden abgemeldet. Einige ungesendete Entwürfe konnten nicht auf dem Server gespeichert werden. Sie bleiben auf diesem Gerät und werden bei der nächsten Anmeldung wieder geöffnet.',
     sessionExpired: 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.',
+    secondFactorExpired: 'Ihre Anmeldung ist abgelaufen, bevor der Sicherheitsschlüssel geprüft wurde. Bitte melden Sie sich erneut an.',
     inactivitySignedOut: 'Sie wurden wegen Inaktivität abgemeldet.',
-    inactivitySignedOutDraftsLost: "Sie wurden wegen Inaktivität abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren."
+    inactivitySignedOutDraftsKept: "Sie wurden wegen Inaktivität abgemeldet. Einige ungesendete Entwürfe konnten nicht auf dem Server gespeichert werden. Sie bleiben auf diesem Gerät und werden bei der nächsten Anmeldung wieder geöffnet."
   },
   folderList: {
     compose: 'Verfassen',
@@ -155,6 +160,7 @@ export const de: TranslationDictionary = {
     spam: 'Spam',
     junk: 'Junk',
     trash: 'Papierkorb',
+    allFolders: 'Alle Ordner',
     title: 'Ordner',
     rename: 'Umbenennen',
     delete: 'Löschen',
@@ -175,7 +181,10 @@ export const de: TranslationDictionary = {
     moveToTop: "Ganz nach oben",
     moveUp: "Nach oben",
     moveDown: "Nach unten",
-    moveToBottom: "Ganz nach unten"
+    moveToBottom: "Ganz nach unten",
+    more: "Mehr",
+    less: "Weniger",
+    unsubscribedFolders: "Nicht abonnierte Ordner"
   },
   search: {
     placeholder: 'E-Mails durchsuchen',
@@ -183,10 +192,23 @@ export const de: TranslationDictionary = {
   messageList: {
     menu: 'Menü',
     selectAll: 'Alle Nachrichten auswählen',
-    allOnPageSelected: 'Alle {count} Nachrichten auf dieser Seite sind ausgewählt',
-    selectAllMatching: 'Alle {count} in {folder} auswählen',
-    allMatchingSelected: 'Alle {count} Nachrichten in {folder} sind ausgewählt',
+    allOnPageSelected: {
+      one: '{count} Nachricht auf dieser Seite ist ausgewählt',
+      other: 'Alle {count} Nachrichten auf dieser Seite sind ausgewählt'
+    },
+    selectAllMatching: {
+      one: '{count} in {folder} auswählen',
+      other: 'Alle {count} in {folder} auswählen'
+    },
+    allMatchingSelected: {
+      one: '{count} Nachricht in {folder} ist ausgewählt',
+      other: 'Alle {count} Nachrichten in {folder} sind ausgewählt'
+    },
     clearSelection: 'Auswahl aufheben',
+    dragCount: {
+      one: '{count} Nachricht',
+      other: '{count} Nachrichten'
+    },
     checkNew: 'Nach neuen Nachrichten suchen',
     sortDesc: 'Nach Datum absteigend sortieren',
     sortAsc: 'Nach Datum aufsteigend sortieren',
@@ -195,6 +217,7 @@ export const de: TranslationDictionary = {
     noMessages: 'Keine Nachrichten',
     loadError: 'Dieser Ordner konnte nicht geladen werden.',
     loadErrorRetry: 'Erneut versuchen',
+    searchLimited: 'Der Mailserver begrenzt gerade die Suchanfragen. Versuchen Sie es gleich noch einmal.',
     loading: 'Wird geladen...',
     unknownSender: 'Unbekannter Absender',
     unknown: 'Unbekannt',
@@ -205,14 +228,20 @@ export const de: TranslationDictionary = {
     searchResultsFor: 'Suchergebnisse für:',
     clearSearch: 'Suche löschen',
     searchAllMailboxes: 'Alle durchsuchen',
-    totalMessagesIn: '{count} Nachrichten insgesamt in {folder}',
+    totalMessagesIn: {
+      one: '{count} Nachricht in {folder}',
+      other: '{count} Nachrichten insgesamt in {folder}'
+    },
     totalConversationsIn: {
       one: '{count} Konversation in {folder}',
       other: '{count} Konversationen insgesamt in {folder}'
     },
     deleteAllNow: 'Jetzt alle löschen',
     emptyMailboxTitle: '{folder} leeren',
-    emptyMailboxConfirm: 'Sind Sie sicher, dass Sie alle {count} Nachrichten in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+    emptyMailboxConfirm: {
+      one: 'Sind Sie sicher, dass Sie die eine Nachricht in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+      other: 'Sind Sie sicher, dass Sie alle {count} Nachrichten in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Sind Sie sicher, dass Sie die eine Konversation in {folder} mit allen ihren Nachrichten dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
       other: 'Sind Sie sicher, dass Sie alle {count} Konversationen in {folder} mit allen ihren Nachrichten dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.'
@@ -221,17 +250,22 @@ export const de: TranslationDictionary = {
       one: 'Die markierte Nachricht ist darin enthalten.',
       other: 'Die {count} markierten Nachrichten sind darin enthalten.'
     },
-    emptyingMailbox: 'Postfach wird geleert...',
-    mailboxEmptied: 'Postfach erfolgreich geleert.',
-    emptyMailboxFailed: 'Postfach konnte nicht geleert werden. Stellen Sie sicher, dass es sich um Papierkorb oder Spam handelt.',
+    emptyingMailbox: '{folder} wird geleert...',
+    mailboxEmptied: '{folder} wurde geleert.',
+    emptyMailboxFailed: '{folder} konnte nicht geleert werden.',
     mailboxAlreadyEmpty: '{folder} war bereits leer – es wurde nichts gelöscht.',
     emptyMailboxSlow: '{folder} wird noch geleert. Der Server arbeitet daran – sehen Sie gleich noch einmal nach.'
   },
   composer: {
+    windowLoadFailed: 'Das Nachrichtenfenster konnte nicht geladen werden.',
     discardFailed: 'Der Entwurf konnte nicht vom Server gelöscht werden und liegt weiterhin in den Entwürfen.',
     attachmentsTooLarge: 'Die Anhänge überschreiten die maximal zulässige Größe.',
     draftSaveFailedKeepOpen: 'Entwurf konnte nicht gespeichert werden — das Fenster bleibt offen, damit nichts verloren geht',
     attachmentsWait: 'Bitte warten Sie, bis die Anhänge hochgeladen sind, bevor Sie senden.',
+    attachmentsGone: {
+      one: '{count} Anhang muss erneut angehängt werden: Der Server hat die hochgeladene Datei nicht mehr.',
+      other: '{count} Anhänge müssen erneut angehängt werden: Der Server hat die hochgeladenen Dateien nicht mehr.'
+    },
     sending: 'Nachricht wird gesendet...',
     undo: 'Rückgängig',
     sendError: 'Nachricht konnte nicht gesendet werden: {error}',
@@ -311,7 +345,10 @@ export const de: TranslationDictionary = {
     removeAllTags: 'Alle Schlagwörter entfernen',
     removeTag: 'Schlagwort entfernen',
     selectMessage: 'Wählen Sie eine Nachricht zum Lesen aus',
-    messagesSelected: 'Nachrichten ausgewählt',
+    messagesSelected: {
+      one: '{count} Nachricht ausgewählt',
+      other: '{count} Nachrichten ausgewählt'
+    },
     back: 'Zurück',
     reply: 'Antworten',
     replyAll: 'Allen antworten',
@@ -350,7 +387,18 @@ export const de: TranslationDictionary = {
     verifiedSender: 'Verifizierter Absender',
     unverifiedSender: 'Unverifizierter Absender',
     senderUnverifiedWarning: 'Ihr Mailserver konnte diesen Absender nicht verifizieren. Die Nachricht stammt möglicherweise nicht von dem, der sie zu senden vorgibt. Seien Sie daher vorsichtig mit Links und Anhängen.',
-    clickToExpand: 'Klicken, um den Nachrichteninhalt zu erweitern'
+    clickToExpand: 'Klicken, um den Nachrichteninhalt zu erweitern',
+    loadError: 'Diese Nachricht konnte nicht geladen werden.',
+    loadErrorRetry: 'Erneut versuchen'
+  },
+  address: {
+    directionalControl: 'versteckte Richtungszeichen',
+    directionalControlTooltip: 'Versteckte Richtungszeichen können die angezeigte Reihenfolge dieser Adresse verändern.',
+    mixedScript: 'Adresse mischt Alphabete',
+    mixedScriptTooltip: 'Diese Adresse mischt Buchstaben aus verschiedenen Alphabeten und kann dadurch wie eine Adresse aussehen, die Sie kennen.',
+    mixedScriptAscii: 'Die Domain {domain} lautet in ASCII {ascii}.',
+    unusualDomain: 'ungewöhnliche Domain',
+    unusualDomainTooltip: 'Diese Domain ist kein gültiger Internet-Domainname und enthält Zeichen außerhalb von einfachem ASCII. Sie ist daher möglicherweise nicht die Domain, nach der sie aussieht.'
   },
   originalMessage: {
     title: 'Originalnachricht',
@@ -383,6 +431,7 @@ export const de: TranslationDictionary = {
   },
   attachment: {
     remove: 'Entfernen',
+    addAgain: 'Erneut anhängen',
     preview: 'Vorschau',
     download: 'Herunterladen',
     zoomIn: 'Vergrößern',
@@ -397,7 +446,17 @@ export const de: TranslationDictionary = {
     cannotPreview: 'Keine Vorschau für diesen Dateityp verfügbar',
     loadingPreview: 'Vorschau wird geladen...',
     errorLoading: 'Fehler beim Laden der Vorschau',
-    close: 'Schließen'
+    close: 'Schließen',
+    uploadProgress: '{percent}\u00a0% von {size}'
+  },
+
+  sizeUnits: {
+    bytes: 'B',
+    kilobytes: 'KB',
+    megabytes: 'MB',
+    gigabytes: 'GB',
+    terabytes: 'TB',
+    petabytes: 'PB'
   },
 
   navigation: {
@@ -409,6 +468,9 @@ export const de: TranslationDictionary = {
   userMenu: {
     settings: 'Einstellungen',
     signOut: 'Abmelden',
+    unsavedDraftsTitle: 'Mit ungespeicherten Entwürfen abmelden?',
+    unsavedDraftsMessage: 'Ein Entwurf konnte nicht auf dem Server gespeichert werden. Wenn Sie sich jetzt abmelden, bleibt er auf diesem Gerät und wird bei der nächsten Anmeldung bei diesem Konto wieder geöffnet.',
+    signOutAnyway: 'Trotzdem abmelden',
     profileOptions: 'Profiloptionen'
   },
   pagination: {
@@ -416,7 +478,10 @@ export const de: TranslationDictionary = {
     nextPage: 'Nächste Seite',
     zeroMessages: '0 Nachrichten',
     totalCount: '{total} insgesamt',
-    searchResults: '{total} Ergebnisse',
+    searchResults: {
+      one: '{count} Ergebnis',
+      other: '{count} Ergebnisse'
+    },
     rangeOfTotal: '{start}–{end} von {total}'
   },
   toast: {
@@ -435,26 +500,6 @@ export const de: TranslationDictionary = {
     folderPermanentlyDeleted: 'Ordner endgültig gelöscht',
     undo: 'Rückgängig',
     dismiss: 'Schließen',
-    messageMovedToArchive: 'Nachricht ins Archiv verschoben',
-    messagesMovedToArchive: {
-      one: "{count} Nachricht ins Archiv verschoben",
-      other: "{count} Nachrichten ins Archiv verschoben"
-    },
-    messageMovedToSpam: 'Nachricht in Spam verschoben',
-    messagesMovedToSpam: {
-      one: "{count} Nachricht in Spam verschoben",
-      other: "{count} Nachrichten in Spam verschoben"
-    },
-    messageMovedToInbox: 'Nachricht in Posteingang verschoben',
-    messagesMovedToInbox: {
-      one: "{count} Nachricht in Posteingang verschoben",
-      other: "{count} Nachrichten in Posteingang verschoben"
-    },
-    messageMovedToTrash: 'Nachricht in Papierkorb verschoben',
-    messagesMovedToTrash: {
-      one: "{count} Nachricht in Papierkorb verschoben",
-      other: "{count} Nachrichten in Papierkorb verschoben"
-    },
     messageMovedToFolder: 'Nachricht nach {folder} verschoben',
     messagesMovedToFolder: {
       one: "{count} Nachricht nach {folder} verschoben",
@@ -494,18 +539,26 @@ export const de: TranslationDictionary = {
     refresh: 'Aktualisieren',
     permanentlyDelete: 'Endgültig löschen?',
     deletePermanently: 'Endgültig löschen',
+    discardDraftsTitle: 'Entwürfe verwerfen?',
+    discardDraftsMessage: 'Sind Sie sicher, dass Sie diese Entwürfe verwerfen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
     undo: 'Rückgängig'
   },
   offline: {
     title: 'Verbindung verloren',
     description: 'Netzwerkverbindung unterbrochen',
-    tryingAgain: 'Nächster Versuch in {seconds} Sekunden...'
+    tryingAgain: {
+      one: 'Nächster Versuch in {count} Sekunde...',
+      other: 'Nächster Versuch in {count} Sekunden...'
+    }
   },
   update: {
     available: 'Eine neue Version ist verfügbar.',
     reload: 'Neu laden'
   },
   general: {
+    pageLoadFailed: 'Diese Seite konnte nicht geladen werden.',
+    pageLoadFailedHint: 'Prüfen Sie Ihre Verbindung und laden Sie dann neu. Nachrichten, die Sie gerade schreiben, bleiben erhalten.',
+    backToMail: "Zurück zu Mail",
     error: 'Fehler',
     cancel: 'Abbrechen',
     save: 'Speichern',
@@ -518,7 +571,9 @@ export const de: TranslationDictionary = {
     next: "Weiter",
     expand: "Aufklappen",
     collapse: "Zuklappen",
-    notFound: "Seite nicht gefunden"
+    moreOptions: "Weitere Optionen",
+    notFound: "Seite nicht gefunden",
+    close: "Schließen"
   },
   webauthn: {
     title: 'Sicherheitsschlüssel-Überprüfung',
@@ -538,13 +593,25 @@ export const de: TranslationDictionary = {
     trust_linked: 'Verknüpften Konten vertrauen',
     trust_linked_desc: 'Wenn aktiviert, können Sie von einem verknüpften Konto zu diesem Konto wechseln, ohne erneut 2FA-Anmeldeinformationen anzugeben.',
     trust_linked_checkbox: 'Wechsel zu diesem Konto ohne 2FA erlauben',
+    trust_password_label: 'Geben Sie zur Bestätigung Ihr Passwort ein',
     confirm_remove: 'Möchten Sie diesen Sicherheitsschlüssel wirklich entfernen?',
+    remove_password_label: 'Geben Sie Ihr Passwort ein, um diesen Sicherheitsschlüssel zu entfernen',
     errors: {
       begin_failed: 'Fehler beim Starten der Authentifizierung.',
       invalid_options: 'Ungültige Authentifizierungsoptionen erhalten.',
       verification_failed: 'Überprüfung fehlgeschlagen. Bitte versuchen Sie es erneut.',
+      cancelled: 'Der Sicherheitsschlüssel wurde nicht verwendet. Klicken Sie auf "Identität überprüfen", um es erneut zu versuchen.',
+      unavailable: 'Der Server konnte Ihren Sicherheitsschlüssel gerade nicht prüfen. Bitte versuchen Sie es gleich noch einmal.',
       register_failed: 'Beim Registrieren Ihres Sicherheitsschlüssels ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.',
       remove_failed: 'Fehler beim Entfernen des Sicherheitsschlüssels.',
+      wrong_password: 'Dieses Passwort ist nicht richtig.',
+      password_required: 'Geben Sie Ihr aktuelles Passwort ein.',
+      rate_limited: 'Zu viele Versuche. Bitte warten Sie einige Minuten und versuchen Sie es dann erneut.',
+      two_factor_required: 'Melden Sie sich mit Ihrem Sicherheitsschlüssel an, um diese Einstellung zu ändern.',
+      no_security_key: 'Fügen Sie zuerst einen Sicherheitsschlüssel hinzu.',
+      trust_failed: 'Die Einstellung konnte nicht geändert werden. Bitte versuchen Sie es erneut.',
+      remove_unavailable: 'Der Sicherheitsschlüssel konnte gerade nicht entfernt werden. Bitte versuchen Sie es gleich noch einmal.',
+      load_failed: 'Die Einstellungen für Sicherheitsschlüssel konnten nicht geladen werden.',
       general: 'Ein Fehler ist aufgetreten.',
     },
     settings: {

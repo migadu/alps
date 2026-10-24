@@ -5,6 +5,7 @@ import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-select';
 import '../../../frontend/src/components/alps-icon-btn';
+import { renderIcon } from '../../../frontend/src/utils/ui';
 
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
@@ -95,7 +96,9 @@ export class VisualEditor extends LitElement {
 			padding: 8px 0;
 			margin-left: 40px;
 		}
-		.connector-icon {
+		.connector-icon svg {
+			width: 24px;
+			height: 24px;
 			fill: none;
 			color: currentColor;
 		}
@@ -220,7 +223,10 @@ export class VisualEditor extends LitElement {
 				${this.state.rules.length === 0 ? html`
 					<div class="empty-state">${this.i18nStore.t('managesieve.visual.noRules')}</div>
 				` : this.state.rules.map((rule, rIdx) => html`
-					<div class="rule-card">
+					<!-- Each rule a group, and each condition and action one within
+					     it, numbered: the same choices repeat from one to the next,
+					     and a screen reader could not tell which it was in. -->
+					<div class="rule-card" role="group" aria-label=${this.i18nStore.t('managesieve.visual.ruleNumber', { number: rIdx + 1 })}>
 						<div class="rule-header">
 							<alps-icon-btn icon="x" title=${this.i18nStore.t('managesieve.visual.deleteRule')} @click=${() => this.deleteRule(rIdx)}></alps-icon-btn>
 						</div>
@@ -229,6 +235,7 @@ export class VisualEditor extends LitElement {
 							<div class="row-label">${this.i18nStore.t('managesieve.visual.if')}</div>
 							<div class="row-content">
 								<alps-select 
+									label=${this.i18nStore.t('managesieve.visual.matchMode')}
 									.value=${rule.matchType}
 									.options=${[
 				{ value: 'all', label: this.i18nStore.t('managesieve.visual.all') },
@@ -242,9 +249,10 @@ export class VisualEditor extends LitElement {
 						
 
 						${rule.conditions.map((cond, cIdx) => html`
-							<div class="condition-row">
+							<div class="condition-row" role="group" aria-label=${this.i18nStore.t('managesieve.visual.conditionNumber', { number: cIdx + 1 })}>
 								<div class="row-label"></div>
 								<alps-select 
+									label=${this.i18nStore.t('managesieve.visual.field')}
 									.value=${cond.field}
 									.options=${[
 					{ value: 'Subject', label: this.i18nStore.t('managesieve.visual.fields.subject') },
@@ -256,6 +264,7 @@ export class VisualEditor extends LitElement {
 									@change=${(e: Event) => this.updateCondition(rIdx, cIdx, { field: (e.target as HTMLSelectElement).value as any })}>
 								</alps-select>
 								<alps-select 
+									label=${this.i18nStore.t('managesieve.visual.operator')}
 									.value=${cond.operator}
 									.options=${cond.field === 'Size' ? [
 										{ value: 'over', label: this.i18nStore.t('managesieve.visual.operators.over') },
@@ -268,22 +277,25 @@ export class VisualEditor extends LitElement {
 									]}
 									@change=${(e: Event) => this.updateCondition(rIdx, cIdx, { operator: (e.target as HTMLSelectElement).value as any })}>
 								</alps-select>
-								<alps-input class="flex-1" .value=${cond.value} @input=${(e: Event) => this.updateCondition(rIdx, cIdx, { value: (e.target as any).value })}></alps-input>
+								<alps-input class="flex-1" label=${this.i18nStore.t('managesieve.visual.value')} .value=${cond.value} @input=${(e: Event) => this.updateCondition(rIdx, cIdx, { value: (e.target as any).value })}></alps-input>
 								${rule.conditions.length > 1 ? html`<alps-icon-btn icon="minus-square" title=${this.i18nStore.t('managesieve.visual.remove')} @click=${() => this.deleteCondition(rIdx, cIdx)}></alps-icon-btn>` : ''}
 								<alps-icon-btn icon="plus-square" title=${this.i18nStore.t('managesieve.visual.add')} @click=${() => this.addCondition(rIdx, cIdx + 1)}></alps-icon-btn>
 							</div>
 						`)}
 
 						<div class="connector">
-							<svg width="24" height="24" class="connector-icon"><use href="/assets/icons/sprite.svg?v=10#arrow-fat-lines-down"></use></svg>
+							<!-- From the sprite as every icon is: an address of its own named
+							     an older version, which a browser may hold in its cache. -->
+							<span class="connector-icon">${renderIcon('arrow-fat-lines-down')}</span>
 						</div>
 
 						${rule.actions.map((act, aIdx) => html`
-							<div class="action-row">
+							<div class="action-row" role="group" aria-label=${this.i18nStore.t('managesieve.visual.actionNumber', { number: aIdx + 1 })}>
 								<div class="row-label">
 									${aIdx === 0 ? this.i18nStore.t('managesieve.visual.then') : ''}
 								</div>
 								<alps-select 
+									label=${this.i18nStore.t('managesieve.visual.action')}
 									.value=${act.type}
 									.options=${[
 						{ value: 'fileinto', label: this.i18nStore.t('managesieve.visual.actions.fileinto') },
@@ -296,6 +308,7 @@ export class VisualEditor extends LitElement {
 								${act.type === 'fileinto' ? html`
 									<alps-select 
 										class="flex-1" 
+										label=${this.i18nStore.t('managesieve.visual.folder')}
 										.value=${act.value || ''}
 										.options=${[
 							
@@ -304,7 +317,7 @@ export class VisualEditor extends LitElement {
 										@change=${(e: Event) => this.updateAction(rIdx, aIdx, { value: (e.target as HTMLSelectElement).value })}>
 									</alps-select>
 								` : act.type === 'redirect' ? html`
-									<alps-input type="email" class="flex-1" placeholder=${this.i18nStore.t('managesieve.visual.fields.emailAddress')} .value=${act.value || ''} @input=${(e: Event) => this.updateAction(rIdx, aIdx, { value: (e.target as any).value })}></alps-input>
+									<alps-input type="email" class="flex-1" label=${this.i18nStore.t('managesieve.visual.fields.emailAddress')} placeholder=${this.i18nStore.t('managesieve.visual.fields.emailAddress')} .value=${act.value || ''} @input=${(e: Event) => this.updateAction(rIdx, aIdx, { value: (e.target as any).value })}></alps-input>
 								` : ''}
 								${rule.actions.length > 1 ? html`<alps-icon-btn icon="minus-square" title=${this.i18nStore.t('managesieve.visual.remove')} @click=${() => this.deleteAction(rIdx, aIdx)}></alps-icon-btn>` : ''}
 								${act.type !== 'stop' ? html`<alps-icon-btn icon="plus-square" title=${this.i18nStore.t('managesieve.visual.add')} @click=${() => this.addAction(rIdx, aIdx + 1)}></alps-icon-btn>` : ''}

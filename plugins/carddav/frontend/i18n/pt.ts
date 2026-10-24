@@ -1,12 +1,33 @@
 export default {
   contacts: {
-    deleteFailed: 'Não foi possível eliminar {failed} de {total} contactos.',
-    categoryRenameFailed: 'Não foi possível atualizar {failed} de {total} contactos, a categoria foi renomeada apenas parcialmente.',
-    categoryDeleteFailed: 'Não foi possível atualizar {failed} de {total} contactos, a categoria foi removida apenas parcialmente.',
-    categoryUpdateFailed: 'Não foi possível atualizar {failed} de {total} contactos.',
+    deleteFailed: {
+      one: 'Não foi possível eliminar {count} de {total} contactos.',
+      other: 'Não foi possível eliminar {count} de {total} contactos.'
+    },
+    categoryRenameFailed: {
+      one: 'Não foi possível atualizar {count} de {total} contactos, a categoria foi renomeada apenas parcialmente.',
+      other: 'Não foi possível atualizar {count} de {total} contactos, a categoria foi renomeada apenas parcialmente.'
+    },
+    categoryDeleteFailed: {
+      one: 'Não foi possível atualizar {count} de {total} contactos, a categoria foi removida apenas parcialmente.',
+      other: 'Não foi possível atualizar {count} de {total} contactos, a categoria foi removida apenas parcialmente.'
+    },
+    categoryUpdateFailed: {
+      one: 'Não foi possível atualizar {count} de {total} contactos.',
+      other: 'Não foi possível atualizar {count} de {total} contactos.'
+    },
+    deleteOneFailed: 'Não foi possível eliminar o contacto.',
+    categoryRenameOneFailed: 'Não foi possível atualizar um contacto, a categoria foi renomeada apenas parcialmente.',
+    categoryDeleteOneFailed: 'Não foi possível atualizar um contacto, a categoria foi removida apenas parcialmente.',
+    categoryUpdateOneFailed: 'Não foi possível atualizar o contacto.',
     saveFailed: 'Não foi possível guardar o contacto.',
+    loadFailed: 'Não foi possível carregar o contacto, pelo que ainda não pode ser editado.',
     saveConflict: 'O contacto foi alterado noutro dispositivo, por isso a sua alteração não foi guardada. Cancele a edição para ver a versão mais recente.',
-    starFailed: 'Não foi possível atualizar o contacto.',
+    starFailed: {
+      one: 'Não foi possível atualizar {count} de {total} contactos.',
+      other: 'Não foi possível atualizar {count} de {total} contactos.'
+    },
+    starOneFailed: 'Não foi possível atualizar o contacto.',
     unnamedContact: 'Contato sem nome',
     title: 'Contatos',
     allContacts: 'Todos os contatos',
@@ -54,6 +75,9 @@ export default {
     address: 'Endereço',
     url: 'URL',
     birthday: 'Aniversário',
+    birthdayDay: 'Dia',
+    birthdayMonth: 'Mês',
+    birthdayYear: 'Ano',
     back: 'Voltar',
     toggleStar: 'Alternar favorito',
     publicKey: 'Chave pública',

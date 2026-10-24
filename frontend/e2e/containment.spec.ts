@@ -61,6 +61,54 @@ async function deliverHtml(subject: string, html: string): Promise<void> {
   });
 }
 
+/** The reader's remote-content banner, which carries "Load remote content". */
+function remoteBanner(page: Page): Locator {
+  return page.locator("alps-message-reader .message-content alps-banner", { hasText: "remote content" });
+}
+
+/** A 1×1 GIF, what the routed proxy answers with. */
+const GIF = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
+
+/**
+ * Routes the sender's host and the proxy. A request straight to the sender is
+ * recorded and refused; one through the proxy is recorded by the address it
+ * names and answered with a GIF. Routed rather than watched: a request the
+ * frame's policy refuses is still reported as a request, and only one that
+ * reaches the network is routed.
+ */
+async function watchRemote(page: Page): Promise<{ direct: string[]; proxied: string[] }> {
+  const remote = { direct: [] as string[], proxied: [] as string[] };
+  await page.route(
+    (url) => url.hostname === "tracker.remote.test",
+    (route) => {
+      remote.direct.push(route.request().url());
+      return route.abort();
+    },
+  );
+  await page.route(
+    (url) => url.pathname === "/proxy",
+    (route) => {
+      remote.proxied.push(new URL(route.request().url()).searchParams.get("url") ?? "");
+      return route.fulfill({ status: 200, contentType: "image/gif", body: GIF });
+    },
+  );
+  return remote;
+}
+
+/**
+ * Waits for the message frame to finish loading, and then two rendering
+ * turns, so a fetch its styles start after load has had its chance to go out
+ * before its absence is concluded.
+ */
+async function frameSettled(page: Page): Promise<void> {
+  await expect
+    .poll(() => frame(page).evaluate((el) => (el as HTMLIFrameElement).contentDocument?.readyState))
+    .toBe("complete");
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+}
+
 test.describe("the containment checks can actually detect execution", () => {
   test("the same payload DOES run when the sandbox permits scripts", async ({ page }) => {
     // A control, and the reason to trust every assertion below it.
@@ -145,12 +193,53 @@ test.describe("a message cannot run code", () => {
        <img src="x" onerror="document.getElementById('safe').textContent='EXECUTED'">`,
     );
     await login(page);
-    allowConsoleErrors(page, /Blocked script execution/i, /ERR_|Failed to load/i);
+    // The image is refused by the message's policy, which only lets in its
+    // own parts: the error event fires all the same.
+    allowConsoleErrors(page, /Blocked script execution/i, /ERR_|Failed to load|Content Security Policy/i);
     await open(page, subject);
 
     const body = frame(page).contentFrame().locator("body");
     await expect(body).toContainText("Ordinary text.");
     await expect(body).not.toContainText("EXECUTED");
+  });
+
+  test("an SVG animation cannot turn a link into script", async ({ page }) => {
+    // An animation sets the link's address while the message is shown, after
+    // the sanitizer has read it. The frame's policy and sandbox would each
+    // refuse the script it names; the animation itself never reaches the
+    // frame, so the link is left with no address at all and a click does
+    // nothing.
+    const subject = `SVG animation ${Date.now()}`;
+    const script = "javascript:document.getElementById('safe').textContent='EXECUTED'";
+    await deliverHtml(
+      subject,
+      `<p id="safe">This is the message.</p>
+       <svg width="200" height="40"><a id="link">
+         <set attributeName="href" to="${script}"/>
+         <animate attributeName="href" values="${script}" dur="1s" fill="freeze"/>
+         <rect width="200" height="40" fill="#36c"/>
+       </a></svg>`,
+    );
+    await login(page);
+    await open(page, subject);
+
+    const doc = frame(page).contentFrame();
+    await expect(doc.locator("body")).toContainText("This is the message.");
+    const link = await frame(page).evaluate((el) => {
+      const inner = (el as HTMLIFrameElement).contentDocument;
+      const anchor = inner?.querySelector<SVGAElement>("a#link");
+      return { animations: inner?.querySelectorAll("set, animate").length, href: anchor?.href.animVal ?? null };
+    });
+    expect(link).toEqual({ animations: 0, href: "" });
+
+    await doc.locator("rect").click();
+    // Two rendering turns, so a navigation the click queued has had its
+    // chance to run before its absence is concluded.
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    await expect(doc.locator("body")).toContainText("This is the message.");
+    await expect(doc.locator("body")).not.toContainText("EXECUTED");
   });
 
   test("the frame is sandboxed, and never granted script permission", async ({ page }) => {
@@ -224,6 +313,214 @@ test.describe("a message cannot run code", () => {
     expect(page.url()).toContain("#/mailbox");
     await expect(doc.locator("body")).toContainText("Body");
     expect(offsite).toEqual([]);
+  });
+});
+
+test.describe("a message cannot fetch around the remote-content block", () => {
+  test("a relative proxy URL fetches nothing, and the message's own image still loads", async ({ page }) => {
+    // The sanitizer counts and rewrites absolute and `//` URLs only, so a
+    // relative `/proxy?url=…` reaches the frame as the sender wrote it. Under a
+    // policy that let in the whole origin, the browser fetched the tracker
+    // through alps's own proxy while remote content was blocked. The inline
+    // image is the control: the policy that refuses the proxy still has to let
+    // the message's own parts in.
+    const subject = `Relative proxy ${Date.now()}`;
+    const proxy = "/proxy?url=https%3A%2F%2Ftracker.remote.test%2Fopen.gif";
+    const boundary = "alps-e2e-relative-proxy";
+    const html =
+      "<p>Body</p>" +
+      '<img src="cid:logo@remote.test" alt="logo">' +
+      `<img src="${proxy}&amp;via=img" alt="pixel">` +
+      `<img srcset="${proxy}&amp;via=srcset 2x" alt="pixel">` +
+      `<div style="width:10px;height:10px;background:url('${proxy}&amp;via=css')"></div>` +
+      `<style>body { background: image-set('${proxy}&via=image-set' 1x) }</style>` +
+      `<svg width="10" height="10"><image href="${proxy}&amp;via=svg" width="10" height="10"/></svg>`;
+    await deliver({
+      subject,
+      raw: [
+        "From: Ada Lovelace <ada@remote.test>",
+        `To: ${USER.address}`,
+        `Subject: ${subject}`,
+        `Message-ID: <relativeproxy${Date.now()}@remote.test>`,
+        `Date: ${new Date().toUTCString()}`,
+        "MIME-Version: 1.0",
+        `Content-Type: multipart/related; boundary="${boundary}"`,
+        "",
+        `--${boundary}`,
+        "Content-Type: text/html; charset=utf-8",
+        "",
+        html,
+        "",
+        `--${boundary}`,
+        'Content-Type: image/png; name="logo.png"',
+        'Content-Disposition: inline; filename="logo.png"',
+        "Content-ID: <logo@remote.test>",
+        "Content-Transfer-Encoding: base64",
+        "",
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+        "",
+        `--${boundary}--`,
+        "",
+      ].join("\r\n"),
+    });
+    // Routed rather than watched: a request the policy refuses is still
+    // reported as a request, and only one that reaches the network is routed.
+    const proxied: string[] = [];
+    await page.route(
+      (url) => url.pathname === "/proxy",
+      (route) => {
+        proxied.push(route.request().url());
+        return route.fulfill({ status: 404 });
+      },
+    );
+
+    await login(page);
+    // Each refused fetch is a console line: the policy doing its job.
+    allowConsoleErrors(page, /Content Security Policy/i);
+    await open(page, subject);
+
+    await expect
+      .poll(() =>
+        frame(page).evaluate((el) => {
+          const doc = (el as HTMLIFrameElement).contentDocument;
+          const logo = doc?.querySelector<HTMLImageElement>('img[alt="logo"]');
+          return doc?.readyState === "complete" && logo?.complete ? logo.naturalWidth : 0;
+        }),
+      )
+      .toBeGreaterThan(0);
+    // Two rendering turns, so a fetch the styles start after load has had
+    // its chance to go out before its absence is concluded.
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    expect(proxied).toEqual([]);
+  });
+});
+
+test.describe("a message cannot hide remote content from the banner", () => {
+  test("a CSS address written with escapes is counted, and fetches nothing", async ({ page }) => {
+    // A browser reads `\75 rl(` and `u\rl(` as `url(`, and fetches the plain
+    // strings of an image-set(). Uncounted, a message whose only remote
+    // content was written that way showed no banner, so the reader was never
+    // told it had any. The policy refused the fetches all the same, each one
+    // a console error, which this test does not allow.
+    const subject = `Escaped CSS ${Date.now()}`;
+    const tracker = "https://tracker.remote.test";
+    await deliverHtml(
+      subject,
+      `<style>p { background: u\\rl(${tracker}/block.gif) }</style>
+       <p>Body</p>
+       <div style="width:10px;height:10px;background:\\75 rl(${tracker}/attribute.gif)"></div>
+       <div style="width:10px;height:10px;background-image:image-set('${tracker}/set.gif' 1x)"></div>`,
+    );
+    const fetched: string[] = [];
+    await page.route(
+      (url) => url.hostname === "tracker.remote.test",
+      (route) => {
+        fetched.push(route.request().url());
+        return route.abort();
+      },
+    );
+
+    await login(page);
+    await open(page, subject);
+
+    await expect(frame(page).contentFrame().locator("body")).toContainText("Body");
+    await expect(
+      page.locator("alps-message-reader .message-content alps-banner", { hasText: "remote content" }),
+    ).toBeVisible();
+    await expect
+      .poll(() => frame(page).evaluate((el) => (el as HTMLIFrameElement).contentDocument?.readyState))
+      .toBe("complete");
+    // Two rendering turns, so a fetch the styles start after load has had
+    // its chance to go out before its absence is concluded.
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    expect(fetched).toEqual([]);
+  });
+
+  test("an image address with a tab in its scheme is counted, and loads through the proxy as the browser reads it", async ({ page }) => {
+    // A browser removes a tab from an address before it reads the scheme, so
+    // this is an https image to it. Taken for a local one, it was neither
+    // counted, so no banner, nor rewritten, so the frame's policy refused it:
+    // a console error, which this test does not allow.
+    const subject = `Tab in address ${Date.now()}`;
+    await deliverHtml(
+      subject,
+      '<p>Body</p><img src="ht&#9;tps://tracker.remote.test/tab.gif" width="10" height="10" alt="pixel">',
+    );
+    const remote = await watchRemote(page);
+
+    await login(page);
+    await open(page, subject);
+    await expect(frame(page).contentFrame().locator("body")).toContainText("Body");
+    await expect(remoteBanner(page)).toBeVisible();
+    await frameSettled(page);
+    expect(remote).toEqual({ direct: [], proxied: [] });
+
+    await remoteBanner(page).locator("alps-button").click();
+    await expect.poll(() => remote.proxied).toEqual(["https://tracker.remote.test/tab.gif"]);
+    expect(remote.direct).toEqual([]);
+  });
+
+  test("a url() in an SVG attribute is counted, and loads only through the proxy", async ({ page }) => {
+    // An SVG presentation attribute is CSS, and a url() in it that names
+    // another document fetches it: here a cursor image, and a paint server
+    // whose fallback colour is drawn while it is not loaded. Neither was
+    // read, so neither was counted, and the frame's policy refused the
+    // cursor: a console error, which this test does not allow.
+    const subject = `SVG paint ${Date.now()}`;
+    await deliverHtml(
+      subject,
+      '<p>Body</p><svg width="40" height="40"><rect id="shape" width="40" height="40" ' +
+        'fill="url(https://tracker.remote.test/paint.svg#p) #c00" ' +
+        'cursor="url(https://tracker.remote.test/cursor.png), auto"/></svg>',
+    );
+    const remote = await watchRemote(page);
+
+    await login(page);
+    await open(page, subject);
+    const doc = frame(page).contentFrame();
+    await expect(doc.locator("body")).toContainText("Body");
+    await expect(remoteBanner(page)).toBeVisible();
+    await doc.locator("#shape").hover();
+    await frameSettled(page);
+    expect(remote).toEqual({ direct: [], proxied: [] });
+
+    await remoteBanner(page).locator("alps-button").click();
+    await doc.locator("#shape").hover();
+    await expect.poll(() => remote.proxied).toContain("https://tracker.remote.test/cursor.png");
+    expect(remote.direct).toEqual([]);
+  });
+
+  test("a background attribute is counted, and loads only through the proxy", async ({ page }) => {
+    // A table or a cell paints itself with the image its `background` names,
+    // fetched as an img's src is. Unread, it went uncounted, so no banner,
+    // and the frame's policy refused it: a console error, which this test
+    // does not allow.
+    const subject = `Background attribute ${Date.now()}`;
+    await deliverHtml(
+      subject,
+      '<table background="https://tracker.remote.test/table.gif" width="80" height="40"><tr>' +
+        '<td background="//tracker.remote.test/cell.gif">Body</td></tr></table>',
+    );
+    const remote = await watchRemote(page);
+
+    await login(page);
+    await open(page, subject);
+    await expect(frame(page).contentFrame().locator("body")).toContainText("Body");
+    await expect(remoteBanner(page)).toBeVisible();
+    await frameSettled(page);
+    expect(remote).toEqual({ direct: [], proxied: [] });
+
+    await remoteBanner(page).locator("alps-button").click();
+    // `//host` is resolved against the page, as the frame resolves it.
+    const scheme = new URL(page.url()).protocol;
+    await expect
+      .poll(() => [...remote.proxied].sort())
+      .toEqual([`${scheme}//tracker.remote.test/cell.gif`, "https://tracker.remote.test/table.gif"].sort());
+    expect(remote.direct).toEqual([]);
   });
 });
 

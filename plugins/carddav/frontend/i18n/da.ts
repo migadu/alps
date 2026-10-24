@@ -1,12 +1,33 @@
 export default {
   contacts: {
-    deleteFailed: '{failed} af {total} kontakter kunne ikke slettes.',
-    categoryRenameFailed: '{failed} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist omdøbt.',
-    categoryDeleteFailed: '{failed} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist fjernet.',
-    categoryUpdateFailed: '{failed} af {total} kontakter kunne ikke opdateres.',
+    deleteFailed: {
+      one: '{count} af {total} kontakter kunne ikke slettes.',
+      other: '{count} af {total} kontakter kunne ikke slettes.'
+    },
+    categoryRenameFailed: {
+      one: '{count} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist omdøbt.',
+      other: '{count} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist omdøbt.'
+    },
+    categoryDeleteFailed: {
+      one: '{count} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist fjernet.',
+      other: '{count} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist fjernet.'
+    },
+    categoryUpdateFailed: {
+      one: '{count} af {total} kontakter kunne ikke opdateres.',
+      other: '{count} af {total} kontakter kunne ikke opdateres.'
+    },
+    deleteOneFailed: 'Kontakten kunne ikke slettes.',
+    categoryRenameOneFailed: 'En kontakt kunne ikke opdateres, så kategorien blev kun delvist omdøbt.',
+    categoryDeleteOneFailed: 'En kontakt kunne ikke opdateres, så kategorien blev kun delvist fjernet.',
+    categoryUpdateOneFailed: 'Kontakten kunne ikke opdateres.',
     saveFailed: 'Kontakten kunne ikke gemmes.',
+    loadFailed: 'Kontakten kunne ikke indlæses, så den kan ikke redigeres endnu.',
     saveConflict: 'Kontakten er blevet ændret på en anden enhed, så din ændring blev ikke gemt. Annuller redigeringen for at se den nyeste version.',
-    starFailed: 'Kontakten kunne ikke opdateres.',
+    starFailed: {
+      one: '{count} af {total} kontakter kunne ikke opdateres.',
+      other: '{count} af {total} kontakter kunne ikke opdateres.'
+    },
+    starOneFailed: 'Kontakten kunne ikke opdateres.',
     unnamedContact: 'Unavngiven kontakt',
     title: 'Kontakter',
     allContacts: 'Alle kontakter',
@@ -54,6 +75,9 @@ export default {
     address: 'Adresse',
     url: 'URL',
     birthday: 'Fødselsdag',
+    birthdayDay: 'Dag',
+    birthdayMonth: 'Måned',
+    birthdayYear: 'År',
     back: 'Tilbage',
     toggleStar: 'Slå stjernemarkering til/fra',
     publicKey: 'Offentlig nøgle',

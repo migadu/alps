@@ -17,7 +17,7 @@
 //    every selected message, never on "something happened".
 
 import type { Page } from "@playwright/test";
-import { deliver, expect, login, test, toast } from "./fixtures";
+import { deliver, expect, login, resetSettings, test, toast } from "./fixtures";
 
 /**
  * The list row carrying a subject. Row state is on the row's own classes:
@@ -121,6 +121,51 @@ test("opening a message marks it read and it stays read", async ({ page }) => {
   await expect(message).not.toHaveClass(/unread/);
 });
 
+test.describe("the mark-as-read setting", () => {
+  // The preference lives on the IMAP server, shared by every test in the run,
+  // so it is put back after the test whatever happened in it.
+  test.afterEach(async () => {
+    await resetSettings();
+  });
+
+  test("set to Never, a message opened and read stays unread", async ({ page }) => {
+    const subject = `Flags never read ${Date.now()}`;
+    await deliver({ subject, body: "Read me, and leave me unread." });
+
+    await login(page);
+    const origin = new URL(page.url()).origin;
+    const set = await page.request.put("/settings", {
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      data: { mark_read_timeout: -1 },
+    });
+    expect(set.ok(), "the setting was not saved").toBe(true);
+    // The page mirrors preferences locally; without that copy it starts from
+    // the server's record.
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+
+    const message = row(page, subject);
+    await expect(message).toHaveClass(/unread/);
+    await message.locator(".message-subject").click();
+    // The body is on screen: whatever reading it does to the server is done.
+    await expect(reader(page).locator("pre.reader-preformatted")).toContainText("Read me, and leave me unread.");
+    await expect(message).toHaveClass(/unread/);
+
+    // Asked of the server, past the session's cached listing: the body was
+    // read and nothing marked the message read.
+    const listing = await page.request.get("/mailboxes/INBOX?page=0&refresh=1");
+    expect(listing.ok()).toBe(true);
+    const body = (await listing.json()) as { Messages?: { Flags?: string[]; Envelope?: { Subject?: string } }[] };
+    const listed = (body.Messages ?? []).find((m) => m.Envelope?.Subject === subject);
+    expect(listed, "the message is not listed").toBeTruthy();
+    expect(listed!.Flags ?? []).not.toContain("\\Seen");
+
+    await page.goto("/#/mailbox/INBOX");
+    await page.reload();
+    await expect(message).toHaveClass(/unread/);
+  });
+});
+
 test("marking a read message unread puts the row back to unread", async ({ page }) => {
   const subject = `Flags unread ${Date.now()}`;
   await deliver({ subject });
@@ -142,47 +187,51 @@ test("marking a read message unread puts the row back to unread", async ({ page 
   await expect(message).toHaveClass(/unread/);
 });
 
-test("select all checks every row and the reader counts the selection", async ({ page }) => {
+test("select all counts every message, including collapsed conversations", async ({ page }) => {
   const subject = `Flags selectall ${Date.now()}`;
-  await deliver({ subject });
+  const messageId = `flags-selectall-${Date.now()}@remote.test`;
+  await deliver({ subject, messageId });
+  await deliver({ subject: `Re: ${subject}`, headers: `In-Reply-To: <${messageId}>\r\nReferences: <${messageId}>` });
 
   await login(page);
+  await expect(row(page, subject)).toHaveCount(1);
   await expect(row(page, subject)).toBeVisible();
+  await expect(row(page, subject).locator('.thread-count-caret-badge')).toHaveText('2');
 
   await page.locator("alps-message-list input.select-all-checkbox").check();
 
-  // The seeded message is IN the selection: the only row this test knows by
-  // name, so it can say something definite before the counting below.
+  // Its collapsed row stands for both messages, and both must be selected.
   await expect(row(page, subject).locator("input.message-checkbox")).toBeChecked();
 
-  // The number itself is not knowable: the mailbox is shared and holds
-  // whatever the tests before this one left in it. What must hold is that the
-  // reader's count IS the number of rows on screen — select-all takes every
-  // row (alps-message-list's handleSelectAll walks visibleMessages, which is
-  // exactly the set rendered as `.message-item`, expanded thread rows
-  // included), not some of them.
-  //
-  // Both numbers are read together on every attempt, and deliberately not
-  // once up front: a count taken while the list is still rendering can
-  // disagree with a label read after the click for reasons that are not a bug,
-  // and that would be reported as a broken selection. Read as a pair, a
-  // disagreement can only mean the two actually disagree, and the mismatch
-  // names both numbers.
-  await expect
+  // The mailbox is shared, so count the messages its rows stand for, using
+  // each conversation's badge. A collapsed conversation is one row but all
+  // its messages are selected; expanded child rows must not count twice.
+  const expectEveryMessageSelected = () => expect
     .poll(async () => {
-      const [rows, labels] = await Promise.all([
-        page.locator("alps-message-list .message-item").count(),
-        // allInnerTexts() rather than innerText(): it yields [] instead of
-        // throwing while the reader is not showing a selection yet, and a throw
-        // inside poll() is not retried.
+      const [listed, labels] = await Promise.all([
+        page.locator("alps-message-list .message-item").evaluateAll(rows => ({
+          messages: rows.filter(row => !row.classList.contains('sub-message-item')).reduce((count, row) =>
+            count + Number(row.querySelector('.thread-count-caret-badge')?.textContent ?? '1'), 0),
+          allChecked: rows.length > 0 && rows.every(row => {
+            const box = row.querySelector<HTMLInputElement>('input.message-checkbox');
+            return box?.checked && !box.indeterminate;
+          }),
+        })),
         reader(page).getByText(/\d+ messages selected/).allInnerTexts(),
       ]);
       const selected = labels[0]?.match(/(\d+) messages selected/)?.[1];
-      return selected !== undefined && Number(selected) === rows
-        ? "every row"
-        : `${selected ?? "no"} selected of ${rows} rows`;
+      return listed.allChecked && selected !== undefined && Number(selected) === listed.messages
+        ? "every message"
+        : `${selected ?? "no"} selected of ${listed.messages} messages; every row checked: ${listed.allChecked}`;
     })
-    .toBe("every row");
+    .toBe("every message");
+  await expectEveryMessageSelected();
+
+  // Making those messages separate rows changes neither their selection nor
+  // the reader's count, and exposes either missing member checkbox.
+  await row(page, subject).locator('.caret-col').click();
+  await expect(row(page, subject)).toHaveCount(2);
+  await expectEveryMessageSelected();
 });
 
 test("a bulk mark-as-read applies to every selected message", async ({ page }) => {

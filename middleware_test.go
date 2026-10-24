@@ -2,6 +2,7 @@ package alps
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -407,4 +408,23 @@ func TestOriginInList(t *testing.T) {
 	assert.False(t, originInList("http://webmail.example.com", list))
 	assert.False(t, originInList("https://evil.com", list))
 	assert.False(t, originInList("https://webmail.example.com", nil))
+}
+
+// An HTTPError a route wraps keeps its status and its message. The error
+// handler matched only an HTTPError returned as it is, so one wrapped with
+// %w on its way out, as a route does to say what it was doing, was answered
+// 500 "An internal error occurred".
+func TestAWrappedHTTPErrorKeepsItsStatus(t *testing.T) {
+	server := &Server{logger: &NilLogger{}}
+	router := NewRouter(server)
+	router.PUT("/events/{path}", func(ctx *Context) error {
+		return fmt.Errorf("saving the event: %w", NewHTTPError(http.StatusConflict, "The event was changed elsewhere"))
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/events/standup.ics", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "The event was changed elsewhere") {
+		t.Errorf("answered %d: %s", w.Code, w.Body.String())
+	}
 }

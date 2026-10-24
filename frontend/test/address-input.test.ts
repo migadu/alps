@@ -147,6 +147,47 @@ describe('editing and removing', () => {
     expect(inputOf(el).value).toBe('not an address');
   });
 
+  it('commits it as the field is left, not 150ms later', async () => {
+    // Later, it raced whatever the press that took the focus away did next:
+    // Close saved the draft without it, and Send was still disabled.
+    vi.useFakeTimers();
+    const el = await mount<AddressInput>('alps-address-input');
+    const changes = record<CustomEvent>(el, 'addresses-changed');
+    await typeText(el, 'ada@example.com');
+    inputOf(el).dispatchEvent(new FocusEvent('blur'));
+
+    expect(el.addresses).toEqual(['ada@example.com']);
+    expect(changes.map((e) => e.detail.addresses)).toEqual([['ada@example.com']]);
+  });
+
+  it('commits nothing after it has been taken off the page', async () => {
+    vi.useFakeTimers();
+    const el = await mount<AddressInput>('alps-address-input');
+    await typeText(el, 'ada@example.com');
+    inputOf(el).dispatchEvent(new FocusEvent('blur'));
+    el.remove();
+    const late = record<CustomEvent>(el, 'addresses-changed');
+    await vi.advanceTimersByTimeAsync(150);
+
+    expect(late).toHaveLength(0);
+  });
+
+  it('takes what is typed when asked, and leaves what is not an address', async () => {
+    const el = await mount<AddressInput & { commitPending(): void }>('alps-address-input', { addresses: ['ada@example.com'] });
+    const changes = record<CustomEvent>(el, 'addresses-changed');
+    await typeText(el, 'bob');
+    el.commitPending();
+    expect(el.addresses).toEqual(['ada@example.com']);
+    expect(changes).toHaveLength(0);
+
+    await typeText(el, 'bob@example.com');
+    el.commitPending();
+    expect(el.addresses).toEqual(['ada@example.com', 'bob@example.com']);
+    expect(changes.map((e) => e.detail.addresses)).toEqual([['ada@example.com', 'bob@example.com']]);
+    await el.updateComplete;
+    expect(inputOf(el).value).toBe('');
+  });
+
   it('disables the field and the remove buttons', async () => {
     const el = await mount<AddressInput>('alps-address-input', { addresses: ['ada@example.com'] });
     await update(el, { disabled: true });
@@ -177,6 +218,22 @@ describe('suggestions', () => {
     expect(lookup).toHaveBeenCalledTimes(1);
     expect(lookup).toHaveBeenCalledWith({ query: 'alic' });
     expect(items(el)).toHaveLength(1);
+  });
+
+  it('asks nothing once the field is gone', async () => {
+    // A composer closed within the pause after a keystroke still asked the
+    // plugins about what its field had held: the lookup stayed scheduled. In
+    // this file it was also every earlier test's lookup, landing in a later
+    // test's hook whenever the run was slow enough.
+    vi.useFakeTimers();
+    const lookup = vi.fn(async () => []);
+    registry.registerHook('composer:suggest', lookup);
+    const el = await mount<AddressInput>('alps-address-input');
+
+    await typeText(el, 'alice');
+    el.remove();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(lookup).not.toHaveBeenCalled();
   });
 
   it('drops an answer that a newer query has superseded', async () => {
@@ -213,7 +270,7 @@ describe('suggestions', () => {
     await press(el, 'ArrowDown');
     expect(items(el)[0].classList.contains('active')).toBe(true);
     await press(el, 'Enter');
-    expect(el.addresses).toEqual(['"Alice" <alice@example.com>']);
+    expect(el.addresses).toEqual(['Alice <alice@example.com>']);
     expect(items(el)).toHaveLength(0);
 
     await typeText(el, 'al');
@@ -222,7 +279,7 @@ describe('suggestions', () => {
     await press(el, 'ArrowDown');
     await press(el, 'ArrowDown');
     await press(el, 'Enter');
-    expect(el.addresses).toEqual(['"Alice" <alice@example.com>', 'alan@example.com']);
+    expect(el.addresses).toEqual(['Alice <alice@example.com>', 'alan@example.com']);
   });
 
   it('closes the list on Escape and keeps the text', async () => {

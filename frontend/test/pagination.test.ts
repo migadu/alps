@@ -13,6 +13,7 @@ import { cleanup, mount, shadow, text, update } from './helpers/dom';
 import '../src/components/alps-pagination';
 import '../src/components/message-list';
 import { AlpsPagination } from '../src/components/alps-pagination';
+import { I18nStore } from '../src/store/i18n-store';
 
 const TAG = 'alps-pagination';
 const DASH = '–';
@@ -64,6 +65,29 @@ describe('the range it names', () => {
       currentPage: 0, itemsPerPage: 50, currentCount: 12, totalItems: 12, isSearch: true,
     });
     expect(text(el, '.pagination-text')).toBe('12 results');
+  });
+
+  it.each([
+    ['en', 1, '1 result'],
+    ['en', 12, '12 results'],
+    ['sr', 1, '1 rezultat'],
+    ['sr', 3, '3 rezultata'],
+  ])('counts a %s search of %i in words that agree with the number', async (language, count, expected) => {
+    // The dictionary's string, not the fallback: the key is a plural one, and
+    // asked for without its count it rendered "pagination.searchResults".
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage(language);
+    const el = await mount(TAG, {
+      i18nStore, currentPage: 0, itemsPerPage: 50, currentCount: count, totalItems: count, isSearch: true,
+    });
+    expect(text(el, '.pagination-text')).toBe(expected);
+  });
+
+  it('still states a folder total from the dictionary', async () => {
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage('sr');
+    const el = await mount(TAG, { i18nStore, currentPage: 0, itemsPerPage: 50, currentCount: 12, totalItems: 12 });
+    expect(text(el, '.pagination-text')).toBe('ukupno 12');
   });
 
   it('shows a bare range when nobody counted the whole of it', async () => {

@@ -1,8 +1,9 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { consume } from '@lit/context';
 import { customElement, property, state } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { focusOnLabelClick } from '../utils/label-focus';
 
 @customElement('alps-input')
 export class AlpsInput extends LitElement {
@@ -19,6 +20,14 @@ export class AlpsInput extends LitElement {
   @property({ type: Boolean }) required = false;
   @property({ type: String }) autocomplete = '';
   @property({ type: String }) inputId = '';
+  /**
+   * The field's accessible name, given to the input as its aria-label.
+   *
+   * A `<label for>` outside this element cannot name the input: `for` looks
+   * for the id in the label's own tree, and the input is in this shadow root.
+   * So a form passes the text of its label here as well.
+   */
+  @property({ type: String }) label = '';
   @property({ type: String }) icon = '';
   @property({ type: Boolean }) clearable = false;
   @property({ type: Boolean }) autofocus = false;
@@ -164,14 +173,20 @@ export class AlpsInput extends LitElement {
     if (input) input.focus();
   }
 
+  /** Stops the watch for a click on this field's label (see focusOnLabelClick). */
+  private stopLabelWatch: (() => void) | null = null;
+
   connectedCallback() {
     super.connectedCallback();
     this.i18nStore?.addEventListener('change', this._handleI18nChange);
+    this.stopLabelWatch = focusOnLabelClick(this);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
+    this.stopLabelWatch?.();
+    this.stopLabelWatch = null;
   }
 
   render() {
@@ -192,6 +207,7 @@ export class AlpsInput extends LitElement {
           type=${currentType} 
           .value=${this.value}
           placeholder=${this.placeholder}
+          aria-label=${this.label || nothing}
           ?required=${this.required}
           ?autofocus=${this.autofocus}
           autocomplete=${this.autocomplete}

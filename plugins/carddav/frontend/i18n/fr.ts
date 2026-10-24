@@ -1,12 +1,33 @@
 export default {
   contacts: {
-    deleteFailed: '{failed} contacts sur {total} n\'ont pas pu être supprimés.',
-    categoryRenameFailed: '{failed} contacts sur {total} n\'ont pas pu être mis à jour, la catégorie n\'a été renommée que partiellement.',
-    categoryDeleteFailed: '{failed} contacts sur {total} n\'ont pas pu être mis à jour, la catégorie n\'a été supprimée que partiellement.',
-    categoryUpdateFailed: '{failed} contacts sur {total} n\'ont pas pu être mis à jour.',
+    deleteFailed: {
+      one: 'Impossible de supprimer {count} contact sur {total}.',
+      other: 'Impossible de supprimer {count} contacts sur {total}.'
+    },
+    categoryRenameFailed: {
+      one: 'Impossible de mettre à jour {count} contact sur {total}, la catégorie n\'a été renommée que partiellement.',
+      other: 'Impossible de mettre à jour {count} contacts sur {total}, la catégorie n\'a été renommée que partiellement.'
+    },
+    categoryDeleteFailed: {
+      one: 'Impossible de mettre à jour {count} contact sur {total}, la catégorie n\'a été supprimée que partiellement.',
+      other: 'Impossible de mettre à jour {count} contacts sur {total}, la catégorie n\'a été supprimée que partiellement.'
+    },
+    categoryUpdateFailed: {
+      one: 'Impossible de mettre à jour {count} contact sur {total}.',
+      other: 'Impossible de mettre à jour {count} contacts sur {total}.'
+    },
+    deleteOneFailed: 'Le contact n\'a pas pu être supprimé.',
+    categoryRenameOneFailed: 'Un contact n\'a pas pu être mis à jour, la catégorie n\'a été renommée que partiellement.',
+    categoryDeleteOneFailed: 'Un contact n\'a pas pu être mis à jour, la catégorie n\'a été supprimée que partiellement.',
+    categoryUpdateOneFailed: 'Le contact n\'a pas pu être mis à jour.',
     saveFailed: 'Le contact n\'a pas pu être enregistré.',
+    loadFailed: 'Le contact n\'a pas pu être chargé, il ne peut donc pas encore être modifié.',
     saveConflict: 'Le contact a été modifié sur un autre appareil, votre modification n\'a donc pas été enregistrée. Annulez la modification pour voir la dernière version.',
-    starFailed: 'Le contact n\'a pas pu être mis à jour.',
+    starFailed: {
+      one: 'Impossible de mettre à jour {count} contact sur {total}.',
+      other: 'Impossible de mettre à jour {count} contacts sur {total}.'
+    },
+    starOneFailed: 'Le contact n\'a pas pu être mis à jour.',
     unnamedContact: 'Contact sans nom',
     title: 'Contacts',
     allContacts: 'Tous les contacts',
@@ -54,6 +75,9 @@ export default {
     address: 'Adresse',
     url: 'URL',
     birthday: 'Date de naissance',
+    birthdayDay: 'Jour',
+    birthdayMonth: 'Mois',
+    birthdayYear: 'Année',
     back: 'Retour',
     toggleStar: 'Basculer le favori',
     publicKey: 'Clé publique',

@@ -232,12 +232,36 @@ export async function resetSettings(account = USER): Promise<void> {
   if (account.address === USER.address) cachedCookies = null;
 }
 
+/**
+ * Does to a folder what another client would, behind alps's back: `create`
+ * makes it with CREATE alone, which sora leaves unsubscribed, as alps itself
+ * did before it subscribed the folders it made.
+ *
+ * alps keeps the folder list in its session for minutes, so a test that wants
+ * the sidebar to see the change asks for a refreshed listing first.
+ */
+export async function mailboxElsewhere(
+  verb: "create" | "subscribe" | "unsubscribe",
+  mailbox: string,
+  account = USER,
+): Promise<void> {
+  await control(`/mailbox/${verb}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: account.address, password: account.password, mailbox }),
+  });
+}
+
 /** Deactivates and deletes every Sieve script on the account. */
 export async function resetSieve(account = USER): Promise<void> {
   await control("/reset/sieve", asAccount(account));
 }
 
-/** Empties the account's calendar and address book. */
+/**
+ * Empties the account's calendar and address book, and drops the calendars
+ * made beside its own. Its own calendar keeps the path seeds go to, under its
+ * first name.
+ */
 export async function resetDav(account = USER): Promise<void> {
   await control("/reset/dav", asAccount(account));
 }
@@ -332,11 +356,18 @@ export async function readCalendarObject(uid: string, account = USER): Promise<s
   return (await checked(response, "read calendar object")).text();
 }
 
-/** Files a contact into the account's address book, as raw vCard. */
-export async function seedContact(opts: { uid: string; name: string; email: string }): Promise<void> {
-  const body = ["BEGIN:VCARD", "VERSION:3.0", `UID:${opts.uid}`, `FN:${opts.name}`, `EMAIL:${opts.email}`, "END:VCARD", ""].join(
-    "\r\n",
-  );
+/** Files a contact into the account's address book, as raw vCard; `lines` are further properties, as written. */
+export async function seedContact(opts: { uid: string; name: string; email: string; lines?: string[] }): Promise<void> {
+  const body = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `UID:${opts.uid}`,
+    `FN:${opts.name}`,
+    `EMAIL:${opts.email}`,
+    ...(opts.lines ?? []),
+    "END:VCARD",
+    "",
+  ].join("\r\n");
   await checked(
     await fetch(`${DAV_URL}/carddav/${USER.address}/contacts/default/${opts.uid}.vcf`, {
       method: "PUT",
@@ -344,6 +375,26 @@ export async function seedContact(opts: { uid: string; name: string; email: stri
       body,
     }),
     "seed contact",
+  );
+}
+
+/** Reads a contact back as the server holds it, or null. */
+export async function readContact(uid: string, account = USER): Promise<string | null> {
+  const response = await fetch(`${DAV_URL}/carddav/${account.address}/contacts/default/${uid}.vcf`, {
+    headers: { Authorization: davAuth(account) },
+  });
+  if (response.status === 404) return null;
+  return (await checked(response, "read contact")).text();
+}
+
+/** Deletes a contact from the address book behind alps's back, as another device would. */
+export async function removeContact(uid: string): Promise<void> {
+  await checked(
+    await fetch(`${DAV_URL}/carddav/${USER.address}/contacts/default/${uid}.vcf`, {
+      method: "DELETE",
+      headers: { Authorization: davAuth() },
+    }),
+    "remove contact",
   );
 }
 

@@ -1,6 +1,8 @@
 package alpscaldav
 
 import (
+	"encoding/xml"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -332,6 +334,116 @@ func TestCalendarsStateTheirComponents(t *testing.T) {
 	h.expect(h.do("GET", "/calendar/events?start=2026-09-01T00:00:00Z&end=2026-10-01T00:00:00Z", nil), http.StatusOK)
 	if strings.Join(h.dav.queried, ",") != testMeetings {
 		t.Fatalf("events were looked for in %v", h.dav.queried)
+	}
+}
+
+// mkcalendarProps reads what a MKCALENDAR body asks to set: the display name,
+// and the components its supported-calendar-component-set names, nil when it
+// has none.
+func mkcalendarProps(t *testing.T, body string) (name string, components []string) {
+	t.Helper()
+	const caldavNS = "urn:ietf:params:xml:ns:caldav"
+	d := xml.NewDecoder(strings.NewReader(body))
+	var stack []xml.Name
+	for {
+		tok, err := d.Token()
+		if err == io.EOF {
+			return name, components
+		}
+		if err != nil {
+			t.Fatalf("MKCALENDAR body %q: %v", body, err)
+		}
+		switch tok := tok.(type) {
+		case xml.StartElement:
+			parent := xml.Name{}
+			if len(stack) > 0 {
+				parent = stack[len(stack)-1]
+			}
+			if tok.Name == (xml.Name{Space: caldavNS, Local: "comp"}) && parent == (xml.Name{Space: caldavNS, Local: "supported-calendar-component-set"}) {
+				for _, attr := range tok.Attr {
+					if attr.Name.Local == "name" {
+						components = append(components, attr.Value)
+					}
+				}
+			}
+			stack = append(stack, tok.Name)
+		case xml.EndElement:
+			stack = stack[:len(stack)-1]
+		case xml.CharData:
+			if len(stack) > 0 && stack[len(stack)-1] == (xml.Name{Space: "DAV:", Local: "displayname"}) {
+				name += string(tok)
+			}
+		}
+	}
+}
+
+// A list made on the Tasks tab takes tasks alone, so the Calendar tab, which
+// shows every collection that takes events, does not show it as an empty
+// calendar.
+func TestNewTaskListTakesTasksOnly(t *testing.T) {
+	var mu sync.Mutex
+	var bodies []string
+	// refuse answers the next MKCALENDAR that restricts components with 403,
+	// as a server that cannot restrict them does.
+	refuse := false
+	h := startHarness(t, harnessOptions{wrap: func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != "MKCALENDAR" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			data, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			bodies = append(bodies, string(data))
+			restricted := strings.Contains(string(data), "supported-calendar-component-set")
+			refused := refuse && restricted
+			mu.Unlock()
+			if refused {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+		})
+	}})
+	created := func(n int) []string {
+		t.Helper()
+		mu.Lock()
+		defer mu.Unlock()
+		if len(bodies) != n {
+			t.Fatalf("%d MKCALENDAR requests, want %d: %q", len(bodies), n, bodies)
+		}
+		out := bodies
+		bodies = nil
+		return out
+	}
+
+	h.expect(h.do("POST", "/calendar/calendars", map[string]any{"name": "Errands & chores", "components": []string{"VTODO"}}), http.StatusOK)
+	name, components := mkcalendarProps(t, created(1)[0])
+	if name != "Errands & chores" || strings.Join(components, ",") != "VTODO" {
+		t.Fatalf("the list was asked for as %q taking %v", name, components)
+	}
+
+	// A calendar says nothing about what it takes: the server's default.
+	h.expect(h.do("POST", "/calendar/calendars", map[string]any{"name": "Holidays"}), http.StatusOK)
+	if name, components := mkcalendarProps(t, created(1)[0]); name != "Holidays" || components != nil {
+		t.Fatalf("the calendar was asked for as %q taking %v", name, components)
+	}
+
+	h.expect(h.do("POST", "/calendar/calendars", map[string]any{"name": "Journal", "components": []string{"VJOURNAL"}}), http.StatusBadRequest)
+	created(0)
+
+	// A server that will not restrict a collection still gets the list made,
+	// as one that takes events too.
+	mu.Lock()
+	refuse = true
+	mu.Unlock()
+	h.expect(h.do("POST", "/calendar/calendars", map[string]any{"name": "Errands", "components": []string{"VTODO"}}), http.StatusOK)
+	sent := created(2)
+	if _, components := mkcalendarProps(t, sent[0]); strings.Join(components, ",") != "VTODO" {
+		t.Fatalf("first asked for %v", components)
+	}
+	if name, components := mkcalendarProps(t, sent[1]); name != "Errands" || components != nil {
+		t.Fatalf("then asked for %q taking %v", name, components)
 	}
 }
 

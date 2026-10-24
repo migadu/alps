@@ -24,7 +24,19 @@ type memServer struct {
 	// threadErr, when set, is what THREAD is REFUSED with instead — a server
 	// that advertises the extension and still says no to one command.
 	threadErr error
-	traffic   lockedBuffer
+	// sortErr and searchErr, when set, are what SORT and SEARCH are refused
+	// with, as a server that rate-limits searching refuses them.
+	sortErr   error
+	searchErr error
+	// refuseSubscribe makes SUBSCRIBE answer NO, as a server that keeps no
+	// subscriptions of its own may.
+	refuseSubscribe bool
+	// password is ada's; "pass" when empty.
+	password string
+	traffic  lockedBuffer
+	// addr is where the account is served, for a test that logs in to it a
+	// second time, as another mail program would.
+	addr string
 }
 
 type lockedBuffer struct {
@@ -48,8 +60,19 @@ func (b *lockedBuffer) String() string {
 // server's own answer is a fixed placeholder.
 type threadedSession struct {
 	imapserver.Session
-	threads   []imap.ThreadData
-	threadErr error
+	threads         []imap.ThreadData
+	threadErr       error
+	sortErr         error
+	searchErr       error
+	refuseSubscribe bool
+}
+
+// Subscribe passes SUBSCRIBE through, or refuses it when the test says so.
+func (s *threadedSession) Subscribe(ctx context.Context, mailbox string) error {
+	if s.refuseSubscribe {
+		return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "subscriptions are not kept here"}
+	}
+	return s.Session.Subscribe(ctx, mailbox)
 }
 
 func (s *threadedSession) Thread(ctx context.Context, numKind imapserver.NumKind, algorithm imap.ThreadAlgorithm, charset string, criteria *imap.SearchCriteria) ([]imap.ThreadData, error) {
@@ -59,9 +82,20 @@ func (s *threadedSession) Thread(ctx context.Context, numKind imapserver.NumKind
 	return s.threads, nil
 }
 
+// Search passes SEARCH through, or refuses it when the test says so.
+func (s *threadedSession) Search(ctx context.Context, kind imapserver.NumKind, criteria *imap.SearchCriteria, options *imap.SearchOptions) (*imap.SearchData, error) {
+	if s.searchErr != nil {
+		return nil, s.searchErr
+	}
+	return s.Session.Search(ctx, kind, criteria, options)
+}
+
 // Sort passes SORT through to the in-memory server's session, which embedding
-// the Session interface alone would hide.
+// the Session interface alone would hide, or refuses it when the test says so.
 func (s *threadedSession) Sort(ctx context.Context, kind imapserver.NumKind, sortCriteria []imap.SortCriterion, charset string, searchCriteria *imap.SearchCriteria, options *imap.SortOptions) (*imap.SortData, error) {
+	if s.sortErr != nil {
+		return nil, s.sortErr
+	}
 	sorter, ok := s.Session.(interface {
 		Sort(context.Context, imapserver.NumKind, []imap.SortCriterion, string, *imap.SearchCriteria, *imap.SortOptions) (*imap.SortData, error)
 	})
@@ -81,11 +115,21 @@ func (s *threadedSession) SetMetadata(ctx context.Context, mailbox string, entri
 	return s.Session.(imapserver.SessionMetadata).SetMetadata(ctx, mailbox, entries)
 }
 
+// Move passes MOVE through too; a server offers it only when these tests list
+// imap.CapMove.
+func (s *threadedSession) Move(ctx context.Context, w *imapserver.MoveWriter, numSet imap.NumSet, dest string) error {
+	return s.Session.(imapserver.SessionMove).Move(ctx, w, numSet, dest)
+}
+
 // memIMAP serves the account with messages in INBOX and returns a provider
 // logged in to it.
 func memIMAP(t *testing.T, s *memServer, messages ...string) *IMAPProvider {
 	t.Helper()
-	user := imapmemserver.NewUser("ada", "pass")
+	password := s.password
+	if password == "" {
+		password = "pass"
+	}
+	user := imapmemserver.NewUser("ada", password)
 	if err := user.Create(context.Background(), "INBOX", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +141,7 @@ func memIMAP(t *testing.T, s *memServer, messages ...string) *IMAPProvider {
 	}
 	srv := imapserver.New(&imapserver.Options{
 		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
-			return &threadedSession{Session: mem.NewSession(), threads: s.threads, threadErr: s.threadErr}, nil, nil
+			return &threadedSession{Session: mem.NewSession(), threads: s.threads, threadErr: s.threadErr, sortErr: s.sortErr, searchErr: s.searchErr, refuseSubscribe: s.refuseSubscribe}, nil, nil
 		},
 		Caps:         caps,
 		InsecureAuth: true,
@@ -109,13 +153,14 @@ func memIMAP(t *testing.T, s *memServer, messages ...string) *IMAPProvider {
 	}
 	go srv.Serve(ln)
 	t.Cleanup(func() { srv.Close() })
+	s.addr = ln.Addr().String()
 
-	client, err := imapclient.DialInsecure(ln.Addr().String(), nil)
+	client, err := imapclient.DialInsecure(s.addr, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { client.Close() })
-	if err := client.Login("ada", "pass").Wait(); err != nil {
+	if err := client.Login("ada", password).Wait(); err != nil {
 		t.Fatal(err)
 	}
 	for _, m := range messages {

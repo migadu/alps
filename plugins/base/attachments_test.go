@@ -1,10 +1,14 @@
 package alpsbase
 
 import (
+	"bytes"
+	"encoding/base64"
+	"strings"
 	"testing"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-imap/v2/imapserver"
 )
 
 // newTestMessage wraps a body structure in an IMAPMessage for exercising the
@@ -125,5 +129,82 @@ func TestEmbeddedPartsAreTheBodysImages(t *testing.T) {
 	}
 	if len(files) != 2 || files[0] != "2" || files[1] != "3" {
 		t.Errorf("files = %v", files)
+	}
+}
+
+// base64Lines encodes data as a MIME body may: base64 in lines of 76
+// characters, each ended by CRLF (RFC 2045 §6.8), the last one included.
+func base64Lines(data []byte) string {
+	encoded := base64.StdEncoding.EncodeToString(data)
+	var b strings.Builder
+	for len(encoded) > 76 {
+		b.WriteString(encoded[:76] + "\r\n")
+		encoded = encoded[76:]
+	}
+	if encoded != "" {
+		b.WriteString(encoded + "\r\n")
+	}
+	return b.String()
+}
+
+// sizeAsWritten is the size BODYSTRUCTURE gives a file of n bytes that alps
+// attached: the message written as it is sent and saved, and its structure
+// read off it as the IMAP server reads it. The last line of base64 ends in no
+// CRLF of its own there, as the one before the next boundary belongs to the
+// boundary (RFC 2046 §5.1.1).
+func sizeAsWritten(t *testing.T, n int) uint32 {
+	t.Helper()
+	msg := outgoing()
+	msg.Attachments = []Attachment{memAttachment{name: "file.bin", mimeType: "application/octet-stream", body: bytes.Repeat([]byte{7}, n)}}
+	var buf bytes.Buffer
+	if _, err := msg.WriteTo(&buf); err != nil {
+		t.Fatal(err)
+	}
+	mixed, ok := imapserver.ExtractBodyStructure(&buf).(*imap.BodyStructureMultiPart)
+	if !ok || len(mixed.Children) != 2 {
+		t.Fatalf("%d bytes: unexpected structure %#v", n, mixed)
+	}
+	part, ok := mixed.Children[1].(*imap.BodyStructureSinglePart)
+	if !ok || !strings.EqualFold(part.Encoding, "base64") {
+		t.Fatalf("%d bytes: the attachment is not a base64 part: %#v", n, mixed.Children[1])
+	}
+	return part.Size
+}
+
+// BODYSTRUCTURE gives a base64 part's encoded size, line breaks included. The
+// size shown for the attachment is the file's: the line breaks are not data,
+// and counting them read a 128 KiB file as 131 KiB. Whether the last line
+// ends in a CRLF or not, the estimate may only be up to two bytes over, for
+// the padding a size alone cannot tell apart.
+func TestBase64AttachmentSizeLeavesOutLineBreaks(t *testing.T) {
+	sizes := []int{128 * 1024, 1 << 20, 57 * 20}
+	for n := 0; n <= 300; n++ {
+		sizes = append(sizes, n)
+	}
+	for _, n := range sizes {
+		framings := map[string]uint32{
+			"as alps writes it":            sizeAsWritten(t, n),
+			"with a CRLF on its last line": uint32(len(base64Lines(make([]byte, n)))),
+		}
+		for framing, encoded := range framings {
+			msg := newTestMessage(&imap.BodyStructureMultiPart{
+				Subtype: "mixed",
+				Children: []imap.BodyStructure{
+					&imap.BodyStructureSinglePart{Type: "text", Subtype: "plain"},
+					&imap.BodyStructureSinglePart{
+						Type: "application", Subtype: "octet-stream", Encoding: "base64",
+						Size:     encoded,
+						Extended: &imap.BodyStructureSinglePartExt{Disposition: &imap.BodyStructureDisposition{Value: "attachment", Params: map[string]string{"filename": "file.bin"}}},
+					},
+				},
+			})
+			atts := msg.Attachments()
+			if len(atts) != 1 {
+				t.Fatalf("%d bytes: expected 1 attachment, got %d", n, len(atts))
+			}
+			if got := int(atts[0].Size); got < n || got > n+2 {
+				t.Errorf("a %d-byte file encoded %s in %d octets reads %d bytes (%s)", n, framing, encoded, got, atts[0].SizeString())
+			}
+		}
 	}
 }

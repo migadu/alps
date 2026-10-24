@@ -1,15 +1,13 @@
 import { registry } from '../../../frontend/src/plugin-registry';
+import { parseWrittenAddress } from '../../../frontend/src/utils/address-display';
 import { contactsService } from './contacts-service';
-import './contacts-page';
-import './contact-view';
-import './contacts-categories';
-import './contacts-list';
 
 registry.registerRoute({
     path: '/contacts/*',
     component: 'contacts-page',
     // As caldav: the tab was gated, the route was not.
-    pluginId: 'carddav'
+    pluginId: 'carddav',
+    load: () => import('./contacts-page'),
 });
 
 registry.registerNavTab({
@@ -24,15 +22,10 @@ registry.registerHook('composer:send', async ({ recipients }: { recipients: stri
     if (!recipients || !Array.isArray(recipients)) return;
     
     for (const addr of recipients) {
-        let email = addr;
-        let name = '';
-        const match = addr.match(/^(.*?)\s*<([^>]+)>$/);
-        if (match && match[2]) {
-            name = match[1].replace(/^["']|["']$/g, '').trim();
-            email = match[2];
-        } else {
-            email = email.trim();
-        }
+        // Read as the pill reads it: a quoted name has a quote or backslash in
+        // it escaped, and stripping only the outer quotes saved the escapes
+        // into the contact's name.
+        const { name, email } = parseWrittenAddress(addr);
 
         try {
             await contactsService.createContact({

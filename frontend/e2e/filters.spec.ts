@@ -18,6 +18,8 @@
 //  4. A script written by another Sieve client is shown as it is and edited in
 //     place, never hidden behind "No rules defined." or replaced by a second
 //     script.
+//  5. Rules switched off from another client, which the page does not show,
+//     are not replaced by a rule saved there: they are kept, switched off.
 //
 // Selector note: buttons are addressed by ROLE + accessible name. `alps-button`
 // renders a real `<button>` in its shadow root, so a role locator lands on the
@@ -25,9 +27,9 @@
 // actionability check waits for. The icon buttons have no text; their `title`
 // is their name.
 
-import { connect, type Socket } from "node:net";
 import type { Locator, Page } from "@playwright/test";
-import { allowConsoleErrors, deliver, expect, login, resetSieve, test, toast, USER } from "./fixtures";
+import { allowConsoleErrors, deliver, expect, login, resetSieve, test, toast } from "./fixtures";
+import { storeActiveScript, storeSwitchedOffScript, storedScripts } from "./sieve-server";
 
 let counter = 0;
 const uniqueMarker = () => `filter-${Date.now()}-${String(counter++).padStart(2, "0")}`;
@@ -42,142 +44,6 @@ const INVALID = 'require ["fileinto"];\n\nfileintoo "Junk";\n';
  * The prose around them is the parser's to reword. */
 const POSITION = "3:1";
 const OFFENDER = "fileintoo";
-
-// ---------------------------------------------------------------------------
-// The ManageSieve server, spoken to directly.
-//
-// The page can only say what alps believes. Whether a script is stored, which
-// one is active and what it holds are the server's facts, so they are read
-// from the server — the way any other Sieve client would see them.
-// ---------------------------------------------------------------------------
-
-type SieveScript = { name: string; active: boolean; content: string };
-
-/** The ManageSieve server the harness started, as `host:port`. */
-function sieveAddress(): { host: string; port: number } {
-  const [host, port] = (process.env.SIEVE_ADDR ?? "127.0.0.1:8902").split(":");
-  return { host, port: Number(port) };
-}
-
-const quote = (value: string) => `"${value.replace(/[\\"]/g, "\\$&")}"`;
-
-/** A minimal RFC 5804 client session, signed in as {@link USER}. */
-class SieveSession {
-  private buffer = Buffer.alloc(0);
-  private failure: Error | null = null;
-  private wake: () => void = () => {};
-  private readonly socket: Socket;
-
-  private constructor(socket: Socket) {
-    this.socket = socket;
-    socket.on("data", (chunk: Buffer) => {
-      this.buffer = Buffer.concat([this.buffer, chunk]);
-      this.wake();
-    });
-    socket.on("error", (error) => {
-      this.failure = error;
-      this.wake();
-    });
-    socket.on("close", () => {
-      this.failure ??= new Error("the ManageSieve server closed the connection");
-      this.wake();
-    });
-  }
-
-  static async open(): Promise<SieveSession> {
-    const session = new SieveSession(connect(sieveAddress()));
-    await session.response(); // the greeting: capabilities, then OK
-    const token = Buffer.from(`\0${USER.address}\0${USER.password}`).toString("base64");
-    await session.command(`AUTHENTICATE "PLAIN" ${quote(token)}`);
-    return session;
-  }
-
-  close(): void {
-    this.socket.end("LOGOUT\r\n");
-  }
-
-  async scripts(): Promise<SieveScript[]> {
-    const scripts: SieveScript[] = [];
-    for (const entry of await this.command("LISTSCRIPTS")) {
-      const match = /^"((?:[^"\\]|\\.)*)"( ACTIVE)?$/i.exec(entry);
-      if (!match) throw new Error(`unexpected LISTSCRIPTS entry: ${entry}`);
-      const name = match[1].replace(/\\(.)/g, "$1");
-      const [content = ""] = await this.command(`GETSCRIPT ${quote(name)}`);
-      scripts.push({ name, active: Boolean(match[2]), content });
-    }
-    return scripts;
-  }
-
-  async putScript(name: string, content: string): Promise<void> {
-    this.socket.write(`PUTSCRIPT ${quote(name)} {${Buffer.byteLength(content)}+}\r\n${content}\r\n`);
-    await this.response();
-  }
-
-  async command(line: string): Promise<string[]> {
-    this.socket.write(`${line}\r\n`);
-    return this.response();
-  }
-
-  /** One response: its data lines with literals inlined, up to OK. NO and BYE
-   * throw, carrying the server's reason. */
-  private async response(): Promise<string[]> {
-    const data: string[] = [];
-    for (;;) {
-      const line = await this.line();
-      if (/^OK\b/i.test(line)) return data;
-      if (/^(NO|BYE)\b/i.test(line)) throw new Error(`ManageSieve: ${line}`);
-      const literal = /^\{(\d+)\+?\}$/.exec(line);
-      if (literal) data.push(await this.octets(Number(literal[1])));
-      else if (line !== "") data.push(line);
-    }
-  }
-
-  private async line(): Promise<string> {
-    for (;;) {
-      const end = this.buffer.indexOf("\r\n");
-      if (end >= 0) {
-        const line = this.buffer.subarray(0, end).toString("utf8");
-        this.buffer = this.buffer.subarray(end + 2);
-        return line;
-      }
-      await this.more();
-    }
-  }
-
-  private async octets(count: number): Promise<string> {
-    while (this.buffer.length < count) await this.more();
-    const text = this.buffer.subarray(0, count).toString("utf8");
-    this.buffer = this.buffer.subarray(count);
-    return text;
-  }
-
-  private async more(): Promise<void> {
-    if (this.failure) throw this.failure;
-    await new Promise<void>((resolve) => {
-      this.wake = resolve;
-    });
-  }
-}
-
-async function withSieve<T>(run: (session: SieveSession) => Promise<T>): Promise<T> {
-  const session = await SieveSession.open();
-  try {
-    return await run(session);
-  } finally {
-    session.close();
-  }
-}
-
-/** Every script stored for {@link USER}, with its body. */
-const storedScripts = () => withSieve((session) => session.scripts());
-
-/** Stores `content` under `name` and makes it the active script, as another
- * Sieve client would. */
-const storeActiveScript = (name: string, content: string) =>
-  withSieve(async (session) => {
-    await session.putScript(name, content);
-    await session.command(`SETACTIVE ${quote(name)}`);
-  });
 
 // ---------------------------------------------------------------------------
 // The page.
@@ -379,6 +245,9 @@ test("removing every rule turns filtering off", async ({ page }) => {
   const scripts = await storedScripts();
   expect(scripts.length).toBeGreaterThan(0);
   expect(scripts.filter((s) => s.active)).toEqual([]);
+  // Emptied too, so that it is not taken for rules switched off elsewhere,
+  // which a later save keeps.
+  expect(scripts.map((s) => s.content)).toEqual([""]);
 
   // And filtering really is off: mail the rule would have filed stays put.
   const subject = `${marker} stays`;
@@ -389,6 +258,40 @@ test("removing every rule turns filtering off", async ({ page }) => {
   await page.goto("/#/settings/managesieve");
   await expect(emptyState(page)).toBeVisible();
   await expect(rules(page)).toHaveCount(0);
+});
+
+// Filters paused from another client, or by an administrator, leave their
+// script stored with none active. The page reads only the active script, so it
+// shows no rules, and a rule saved there replaced the paused ones unseen.
+test("rules switched off elsewhere are kept when a rule is saved", async ({ page }) => {
+  const paused = uniqueMarker();
+  const added = uniqueMarker();
+  const written = [
+    'require ["fileinto"];',
+    `if header :contains "Subject" "${paused}" {`,
+    '\tfileinto "Junk";',
+    "}",
+    "",
+  ].join("\n");
+  await storeSwitchedOffScript("alps-filters", written);
+
+  await openFilters(page);
+  await expect(emptyState(page)).toBeVisible();
+  await addRule(page, added);
+  await saveRules(page);
+
+  // The paused rules are as they were, and still switched off.
+  const scripts = await storedScripts();
+  expect(scripts.find((s) => s.name === "alps-filters")).toEqual({
+    name: "alps-filters",
+    active: false,
+    content: written,
+  });
+  // The rule saved is in a script of its own, the one switched on.
+  const active = scripts.filter((s) => s.active);
+  expect(active).toHaveLength(1);
+  expect(active[0].content).toContain(`"${added}"`);
+  expect(active[0].content).not.toContain(`"${paused}"`);
 });
 
 test("switching to the raw editor asks first, then shows the script the rules compile to", async ({ page }) => {
@@ -460,6 +363,32 @@ test("a script written by another client is opened as it is and edited in place"
   expect(response.status()).toBe(200);
 
   // Saved into THAT script: still the only one, still active, now edited.
+  expect(await storedScripts()).toEqual([{ name, active: true, content: edited }]);
+});
+
+// A script name is a quoted string in the server's answers, with a quote or a
+// backslash in it escaped. Such a name was read cut short at its first escaped
+// quote, and the script could not be read by it: the page offered no editor.
+test("a script whose name holds a quote and a backslash is opened and edited in place", async ({ page }) => {
+  const marker = uniqueMarker();
+  const name = 'Kept "by hand" \\ here';
+  const written = [
+    'require ["fileinto"];',
+    `if address :is "from" "${marker}@remote.test" {`,
+    '\tfileinto "Junk";',
+    "}",
+    "",
+  ].join("\n");
+  await storeActiveScript(name, written);
+
+  await openFilters(page);
+  await expect(script(page)).toHaveValue(written);
+
+  const edited = written.replace('fileinto "Junk"', `fileinto "${FOLDER}"`);
+  await script(page).fill(edited);
+  const response = await clickAndAwaitSave(page, saveScriptBtn(page));
+  expect(response.status()).toBe(200);
+
   expect(await storedScripts()).toEqual([{ name, active: true, content: edited }]);
 });
 
@@ -551,6 +480,33 @@ test("saving a script that does not compile is refused and leaves the stored one
   expect(active.content).toBe(stored);
 });
 
+// A script's name goes to the server as a quoted string, and in one only a
+// quote and a backslash are escaped. Written with Go's escapes, the joiner
+// inside an emoji family went as "\u200d", which the server reads as "u200d":
+// the script could not be read by its name, and the page offered no editor.
+test("a script whose name holds a joined emoji is opened and edited in place", async ({ page }) => {
+  const marker = uniqueMarker();
+  const name = "Family \u{1F468}\u200D\u{1F469}\u200D\u{1F467}";
+  const written = [
+    'require ["fileinto"];',
+    `if address :is "from" "${marker}@remote.test" {`,
+    '\tfileinto "Junk";',
+    "}",
+    "",
+  ].join("\n");
+  await storeActiveScript(name, written);
+
+  await openFilters(page);
+  await expect(script(page)).toHaveValue(written);
+
+  const edited = written.replace('fileinto "Junk"', `fileinto "${FOLDER}"`);
+  await script(page).fill(edited);
+  const response = await clickAndAwaitSave(page, saveScriptBtn(page));
+  expect(response.status()).toBe(200);
+
+  expect(await storedScripts()).toEqual([{ name, active: true, content: edited }]);
+});
+
 // --- Words -----------------------------------------------------------------
 
 // Button labels are checked as ACCESSIBLE NAMES: the role locators resolve to
@@ -561,7 +517,7 @@ test("saving a script that does not compile is refused and leaves the stored one
 test("the filter controls are labelled in words, not i18n keys", async ({ page }) => {
   await openFilters(page);
 
-  await expect(page.locator("settings-page alps-category-item").filter({ hasText: /^\s*Filters\s*$/ })).toBeVisible();
+  await expect(page.locator("settings-window alps-category-item").filter({ hasText: /^\s*Filters\s*$/ })).toBeVisible();
   const group = settings(page).locator("alps-setting-group");
   await expect(group.locator(".setting-label")).toHaveText("Filters");
   await expect(group.locator(".setting-description")).toHaveText(

@@ -1,9 +1,10 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { consume } from '@lit/context';
+import { consume, provide } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
 import './alps-icon-btn';
+import { sidebarStripContext } from './alps-sidebar-strip';
 
 export const sidebarLayoutStyles = css`
   .app-container {
@@ -22,7 +23,7 @@ export const sidebarLayoutStyles = css`
     position: relative;
     z-index: 20;
   }
-  alps-sidebar.desktop-sidebar[collapsed]:hover {
+  alps-sidebar.desktop-sidebar[collapsed][peeking] {
     transition: width 0.2s, z-index 0s 0s;
   }
   .app-container.dragging alps-sidebar.desktop-sidebar {
@@ -36,7 +37,14 @@ export const sidebarLayoutStyles = css`
     overflow: hidden;
     background-color: transparent;
   }
-  .sidebar-wrapper.collapsed .sidebar-content {
+  /* The content follows the strip state alps-sidebar provides
+     (alps-sidebar-strip.ts): in the strip it stays exactly as it is, dimmed,
+     behind the main view and inert. */
+  alps-sidebar-content {
+    display: block;
+    transition: opacity 0.2s ease;
+  }
+  alps-sidebar-content[strip] {
     opacity: 0.5;
     overflow-y: hidden;
     pointer-events: none;
@@ -47,17 +55,60 @@ export const sidebarLayoutStyles = css`
     background-color: transparent;
     z-index: 10;
   }
-  .sidebar-wrapper.collapsed .sidebar-header,
-  :host([collapsed]) .sidebar-header {
+  .sidebar-wrapper.collapsed .sidebar-header {
     padding: 0 14px !important;
     justify-content: flex-start;
   }
+  /* The content keeps at least 215px of width, so a narrow sidebar clips it
+     rather than reflowing it. Collapsed into the strip, it also slides behind
+     the main view, and what the 64px strip should then show is each row's
+     ICON: every sidebar sets --strip-slide, how far its content moves to
+     bring its icons 8px inside the strip, the same place on every page. The
+     default suits rows padded 8px inside 16px of content padding (Calendar,
+     Tasks). Mail's rows lead with the expander column and slide 38px,
+     Contacts' 14px, Settings' 20px. One slide for all of them put mail's
+     icons half out of the strip and everyone else's under the main view.
+
+     The slide starts only below 120px of content, narrower than any docked
+     sidebar's (a drag below 120px snaps to the strip, and the narrowest
+     docked sidebar, 150px, keeps 133px inside its border and padding), so a
+     sidebar dragged narrow keeps every column in view, the expander carets
+     included. On the way into the strip the content moves with the edge
+     until it has slid --strip-slide. */
   .sidebar-scroll-content {
     width: calc(max(100%, 215px));
-    margin-left: calc(min(0px, (100% - 215px) * 50 / 167));
+    margin-left: max(0px - var(--strip-slide, 16px), min(0px, 100% - 120px));
   }
 `;
 
+/** How long the pointer rests on the collapsed strip before the overlay opens.
+ *  Passing along the window's left edge on the way elsewhere opens nothing. */
+export const PEEK_OPEN_DELAY_MS = 300;
+/** How long after the pointer leaves the overlay closes. Coming back within it
+ *  keeps the overlay open. */
+export const PEEK_CLOSE_DELAY_MS = 300;
+
+/** Shuts the sidebar's hover overlay from the page that renders it, after a
+ *  choice made in the overlay, so it does not stay open over what was chosen. */
+export function closeSidebarPeek(root: ParentNode | null | undefined): void {
+  root?.querySelector<AlpsSidebar>('alps-sidebar')?.closePeek();
+}
+
+/**
+ * The sidebar: a docked column, or, collapsed, a narrow strip that opens as an
+ * overlay ("peeks") while the pointer rests on it.
+ *
+ * The peek is decided here and nowhere else. Each page used to keep its own
+ * copy of the hover handling, and the copies had drifted: some opened the
+ * overlay the instant the pointer crossed the strip, some waited; some closed
+ * it after a choice, some never did. Clicking the footer's collapse button left
+ * the pointer inside a sidebar that the copies still counted as hovered, so it
+ * collapsed straight into its full-width overlay. Now only a fresh pointer
+ * entry, held for PEEK_OPEN_DELAY_MS, opens the overlay; collapsing never does.
+ * Pages pass `collapsed` in and call closePeek() when a choice made in the
+ * overlay should shut it. What the content needs to know about the strip it
+ * reads from `sidebarStripContext`, so no page tracks the peek.
+ */
 @customElement('alps-sidebar')
 export class AlpsSidebar extends LitElement {
   @consume({ context: i18nContext })
@@ -66,8 +117,16 @@ export class AlpsSidebar extends LitElement {
   @property({ type: Boolean }) isMobile = false;
   @property({ type: Boolean }) isOpen = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
-  @property({ type: Boolean, reflect: true }) suppressHover = false;
-  @property({ type: Boolean, reflect: true }) isHovered = false;
+  /** Whether the collapsed sidebar is open as its hover overlay. The sidebar
+   *  owns this: read it (or `strip`, which is what the contents read), but do
+   *  not set it. */
+  @property({ type: Boolean, reflect: true }) peeking = false;
+
+  /** Whether this is the collapsed strip right now, for everything beneath
+   *  it: collapsed, not peeking, not mobile. Worked out here and nowhere
+   *  else; see alps-sidebar-strip.ts for who reads it. */
+  @provide({ context: sidebarStripContext })
+  strip = false;
   @property({ type: Number }) width = 250;
   @property({ type: Boolean }) hideFooterDivider = false;
 
@@ -84,7 +143,7 @@ export class AlpsSidebar extends LitElement {
       transition: z-index 0s 0.2s;
     }
 
-    :host([collapsed][ishovered]:not([suppresshover])) {
+    :host([collapsed][peeking]) {
       z-index: 30 !important;
       transition: z-index 0s 0s;
     }
@@ -111,8 +170,7 @@ export class AlpsSidebar extends LitElement {
       width: var(--sidebar-width-expanded, 250px);
     }
 
-    :host([collapsed]:not([ishovered])) .sidebar,
-    :host([collapsed][suppresshover]) .sidebar {
+    :host([collapsed]:not([peeking])) .sidebar {
       border-right: none;
       width: 100%;
       position: absolute;
@@ -122,7 +180,7 @@ export class AlpsSidebar extends LitElement {
       box-shadow: rgba(95, 95, 95, 0) 4px 0 4px -2px;
     }
 
-    :host([collapsed][ishovered]:not([suppresshover])) .sidebar {
+    :host([collapsed][peeking]) .sidebar {
       width: var(--sidebar-width-expanded, 250px);
       box-shadow: rgba(95, 95, 95, 0.1) 4px 0 4px -2px;
       z-index: 30;
@@ -233,8 +291,8 @@ export class AlpsSidebar extends LitElement {
       flex-shrink: 0;
     }
 
-    :host([collapsed]:not([ishovered])) .footer-divider,
-    :host([collapsed]:not([ishovered])) ::slotted([slot="footer-actions"]) {
+    :host([collapsed]:not([peeking])) .footer-divider,
+    :host([collapsed]:not([peeking])) ::slotted([slot="footer-actions"]) {
       display: none;
     }
 
@@ -262,9 +320,78 @@ export class AlpsSidebar extends LitElement {
     }
   `;
 
+  private openTimer: ReturnType<typeof setTimeout> | null = null;
+  private closeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Ends the resize drag in progress, if any; null when there is none. */
+  private stopResize: (() => void) | null = null;
+
+  constructor() {
+    super();
+    this.addEventListener('mouseenter', this.onPointerEnter);
+    this.addEventListener('mouseleave', this.onPointerLeave);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.clearPeekTimers();
+    // A sidebar that leaves the page in the middle of a drag (a sign-out, a
+    // route change) would otherwise keep its window listeners, resizing a
+    // detached sidebar, until the next mouseup.
+    this.stopResize?.();
+  }
+
+  /** Shuts the overlay, because a choice was made in it, and keeps it shut
+   *  until the pointer leaves and enters again. */
+  closePeek() {
+    this.clearPeekTimers();
+    this.peeking = false;
+  }
+
+  protected willUpdate(changed: PropertyValues<this>) {
+    // Collapsing or expanding is never a peek, wherever the pointer is: the
+    // overlay takes a fresh entry.
+    if (changed.has('collapsed') || changed.has('isMobile')) {
+      this.clearPeekTimers();
+      this.peeking = false;
+    }
+    this.strip = this.collapsed && !this.peeking && !this.isMobile;
+  }
+
+  private onPointerEnter = () => {
+    if (this.closeTimer !== null) {
+      clearTimeout(this.closeTimer);
+      this.closeTimer = null;
+    }
+    if (this.peeking || !this.collapsed || this.isMobile || this.isDragging) return;
+    this.openTimer ??= setTimeout(() => {
+      this.openTimer = null;
+      this.peeking = true;
+    }, PEEK_OPEN_DELAY_MS);
+  };
+
+  private onPointerLeave = () => {
+    if (this.openTimer !== null) {
+      clearTimeout(this.openTimer);
+      this.openTimer = null;
+    }
+    if (!this.peeking) return;
+    this.closeTimer ??= setTimeout(() => {
+      this.closeTimer = null;
+      this.peeking = false;
+    }, PEEK_CLOSE_DELAY_MS);
+  };
+
+  private clearPeekTimers() {
+    if (this.openTimer !== null) clearTimeout(this.openTimer);
+    if (this.closeTimer !== null) clearTimeout(this.closeTimer);
+    this.openTimer = null;
+    this.closeTimer = null;
+  }
+
   private startResize(e: MouseEvent) {
     if (this.isMobile || this.collapsed) return;
     e.preventDefault();
+    this.stopResize?.();
     this.isDragging = true;
     this.dispatchEvent(new CustomEvent('drag-start'));
 
@@ -281,12 +408,16 @@ export class AlpsSidebar extends LitElement {
     };
 
     const onMouseUp = () => {
+      this.stopResize = null;
       this.isDragging = false;
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      // Sent when a disconnect ends the drag too: the page keeps its own
+      // dragging flag, and a cached page would come back with it still set.
       this.dispatchEvent(new CustomEvent('drag-end'));
     };
 
+    this.stopResize = onMouseUp;
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   }
@@ -309,7 +440,6 @@ export class AlpsSidebar extends LitElement {
               icon="sidebar"
               title=${this.collapsed ? this.i18nStore?.t('folderList.expandSidebar') : this.i18nStore?.t('folderList.collapseSidebar')}
               @click=${() => this.dispatchEvent(new CustomEvent('toggle-collapse'))}
-              style="--btn-padding: 8px; --icon-size: 20px;"
             ></alps-icon-btn>
           ` : '')}
           ${(!this.hideFooterDivider && (!this.isMobile || this.showMobileBack)) ? html`<div class="footer-divider"></div>` : ''}

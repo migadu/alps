@@ -22,6 +22,24 @@ func (err AuthError) Unwrap() error {
 	return err.Cause
 }
 
+// LimitError is a request the mail server refused for one of its limits:
+// RFC 5530's [LIMIT], with which Sora refuses a search once the account's
+// search budget is used up. It is neither the user's mistake nor a failure of
+// the server, and the same request may succeed later. RetryAfter is how long
+// the server said to wait, or 0 when it did not say.
+type LimitError struct {
+	RetryAfter time.Duration
+	Cause      error
+}
+
+func (err *LimitError) Error() string {
+	return fmt.Sprintf("refused for a server limit: %v", err.Cause)
+}
+
+func (err *LimitError) Unwrap() error {
+	return err.Cause
+}
+
 // AuthenticatedProviderFactory creates an authenticated provider instance
 type AuthenticatedProviderFactory func(username, password string) (MailProvider, error)
 
@@ -46,6 +64,8 @@ type MailProvider interface {
 	// Mailbox operations
 	ListMailboxes() ([]Mailbox, error)
 	GetMailboxStatus(name string) (*MailboxStatus, error)
+	// FindMailboxByType returns nil, nil when no mailbox has that type. An
+	// error means the lookup failed, so absence cannot be inferred from it.
 	FindMailboxByType(mboxType MailboxType) (*Mailbox, error)
 	CreateMailbox(name string) error
 	RenameMailbox(oldName, newName string) error
@@ -78,8 +98,61 @@ type MailProvider interface {
 	MarkAnswered(mailbox string, id MessageID) error
 	AppendMessage(mailbox string, msg OutgoingMessageWriter, mboxType MailboxType) (*Mailbox, MessageID, uint32, error)
 	DeleteMessages(mailbox string, ids []MessageID) error
+	// MoveMessages and CopyMessages answer the new ID of each message they
+	// moved or copied. A nil answer says nothing of which did, as from a mail
+	// server that does not name its copies; an empty one, that none did.
 	MoveMessages(sourceMailbox, destMailbox string, ids []MessageID) (map[MessageID]MessageID, error)
 	CopyMessages(sourceMailbox, destMailbox string, ids []MessageID) (map[MessageID]MessageID, error)
+}
+
+// ChangeTracker is a MailProvider whose mail server numbers the changes to a
+// mailbox's messages (IMAP CONDSTORE, RFC 7162), so that what changed since a
+// listing was read can be asked for rather than the listing read again.
+type ChangeTracker interface {
+	// TrackChanges has the mail server number the changes from now on, where
+	// it can, and reports whether it does. It is called once, before the
+	// connection is first used: IMAP takes ENABLE only before a mailbox is
+	// selected (RFC 5161). An error says that the connection failed.
+	TrackChanges() (bool, error)
+	// ChangedFlags answers the messages among ids whose flags changed after
+	// the change numbered since, each with its ID and its flags now. A
+	// message not answered has the flags it had then, or is gone.
+	ChangedFlags(mailbox string, ids []MessageID, since uint64) ([]Message, error)
+}
+
+// Idler is a MailProvider whose mail server can tell it, unasked, of changes
+// to a mailbox as they happen (IMAP IDLE, RFC 2177).
+type Idler interface {
+	// CanIdle reports whether the mail server can. An error says that it
+	// could not be asked, which is no answer either way.
+	CanIdle() (bool, error)
+	// OnMailboxNews has news called, with the mailbox's name, whenever the
+	// mail server says unasked that a message arrived in the mailbox
+	// selected on the connection, or went from it; nil stops the news. It is
+	// called from the connection's reader, and must neither block nor use
+	// the connection.
+	OnMailboxNews(news func(mailbox string))
+	// Idle selects mailbox and waits for the mail server's news of it until
+	// stop is closed or the connection fails. It then ends the wait, and
+	// returns once the server has answered, with the connection free for
+	// other commands; when the server does not answer in time, the
+	// connection is closed and the error is a network error. started is
+	// called once the server has begun to wait.
+	Idle(mailbox string, stop <-chan struct{}, started func()) error
+}
+
+// FolderWatcher is an Idler whose mail server can also tell it of the
+// mailboxes other than the one selected (IMAP NOTIFY, RFC 5465).
+type FolderWatcher interface {
+	// WatchFolders has the mail server tell, from now on, of the messages
+	// that arrive in the subscribed mailboxes or go from them, as of those of
+	// the mailbox selected, through OnMailboxNews; a flag changed is no news.
+	// It reports whether the server does: not when it cannot, or refused,
+	// which the error then says. begun says that it began to now: what
+	// changed before went unheard. The server may stop telling (Idle then
+	// returns), and the next call asks again. Any other error is the
+	// connection's, as Idle's.
+	WatchFolders() (watched, begun bool, err error)
 }
 
 // OutgoingMessageWriter is an interface for messages being sent
@@ -105,16 +178,31 @@ type Mailbox struct {
 	Attributes []string
 	Total      int
 	Unseen     int
-	Subscribed bool
+	// UIDValidity, UIDNext and HighestModSeq come with Total and Unseen where
+	// the listing carries each folder's status (see MailboxStatus), and are 0
+	// otherwise.
+	UIDValidity   uint32
+	UIDNext       uint32
+	HighestModSeq uint64
+	Subscribed    bool
 }
 
 // MailboxStatus contains mailbox metadata
 type MailboxStatus struct {
-	Name           string
-	NumMessages    uint32
-	NumUnseen      uint32
-	UIDValidity    uint32
+	Name        string
+	NumMessages uint32
+	NumUnseen   uint32
+	UIDValidity uint32
+	// UIDNext is the UID the next message stored in the mailbox will get, or
+	// 0 where the provider has no UIDs. A message that arrives moves it even
+	// when another goes at the same time and leaves both counts as they were.
+	UIDNext        uint32
 	PermanentFlags []Flag
+	// HighestModSeq numbers the latest change to the mailbox's messages: a
+	// flag set or cleared, a message stored or taken out (IMAP CONDSTORE,
+	// RFC 7162). It is 0 where the provider does not track changes (see
+	// ChangeTracker).
+	HighestModSeq uint64
 }
 
 // Message represents an email message
@@ -215,6 +303,11 @@ var ErrNoStoreEntry = fmt.Errorf("provider: no such entry in store")
 // never existed. It is not a failure of the backend.
 var ErrMessageNotFound = fmt.Errorf("provider: no such message")
 
+// ErrAppendNotStarted marks an AppendMessage failure known to have happened
+// before APPEND was issued. Only this outcome permits retrying an append;
+// an unmarked connection error may have lost the reply to a committed write.
+var ErrAppendNotStarted = fmt.Errorf("provider: APPEND was not started")
+
 // Store allows storing per-user persistent data.
 type Store interface {
 	Get(key string, out interface{}) error
@@ -271,6 +364,16 @@ type AuthVerdictProvider interface {
 	AuthVerdicts(mailbox string, ids []MessageID) (verdicts map[string]AuthVerdict, scope string, err error)
 }
 
+// MailboxStatusBatcher is implemented by a provider that can ask for several
+// mailboxes' status in one round trip. A provider without it is asked one
+// mailbox at a time.
+type MailboxStatusBatcher interface {
+	// GetMailboxStatuses returns the status of each of names, in the same
+	// order. Where errs holds an error, that mailbox's status could not be
+	// read and its entry in statuses is nil.
+	GetMailboxStatuses(names []string) (statuses []*MailboxStatus, errs []error)
+}
+
 // ServiceRouter is implemented by provider Options that resolve backends per
 // login. A provider that routes the mail store by domain can route everything
 // else the same way, so a user does not read from one host while sending,
@@ -289,6 +392,15 @@ type ServiceRouter interface {
 	// two backends mean two admin APIs with separate credentials. A nil map
 	// defers to the global configuration.
 	ServiceOptions(service, username string) map[string]interface{}
+}
+
+// AddressResolver is implemented by provider Options that know the email
+// address of a login that is not one. The multi provider takes a bare user
+// name under its default_domain, and the address is the two together.
+type AddressResolver interface {
+	// AddressOf returns the address of a login with no "@" in it, or "" when
+	// the provider cannot tell.
+	AddressOf(username string) string
 }
 
 // Service names understood by ServiceRouter.

@@ -8,6 +8,13 @@ export const FOLDER_JUNK = 'Junk';
 export const FOLDER_TRASH = 'Trash';
 
 /**
+ * What the view of a search across every folder is called where a folder's
+ * name would be, in the URL and in what the page hands its components. Not a
+ * folder: the server answers it with a search over all of them.
+ */
+export const ALL_MAILBOXES = '*';
+
+/**
  * Encodes a mailbox name for use as a single path segment in a backend URL
  * (e.g. `/mailboxes/${encodeMailboxPath(name)}/status`).
  *
@@ -35,8 +42,11 @@ export function encodeMailboxPath(name: string): string {
 export type MailboxRole = 'inbox' | 'drafts' | 'sent' | 'archive' | 'junk' | 'trash' | 'all';
 
 // IMAP special-use attribute -> role. Attribute values are matched
-// case-insensitively and tolerate both single- ("\Sent") and double-escaped
-// ("\\Sent") forms, since different layers of the stack escape them differently.
+// case-insensitively, in the one form they arrive in: one backslash and the
+// name, \Sent. The keys below spell that backslash '\\' as TypeScript escapes
+// it, and the folder list's JSON does the same ("\\Sent"); neither is a second
+// backslash. The server cannot send one: in IMAP an attribute is a backslash
+// followed by an atom, and an atom cannot hold a backslash (RFC 3501 §9).
 const ATTR_TO_ROLE: Record<string, MailboxRole> = {
   '\\inbox': 'inbox',
   '\\drafts': 'drafts',
@@ -64,6 +74,18 @@ const NAME_TO_ROLE: Record<string, MailboxRole> = {
 };
 
 /**
+ * A role from one of the tables above, or null.
+ *
+ * The tables are object literals, and a bare `table[key]` also finds what
+ * every object inherits: a folder called "constructor" or "toString" came back
+ * with Object's own function for a role, which no comparison matches and which
+ * reads as truthy wherever a role is tested for at all.
+ */
+function lookupRole(table: Record<string, MailboxRole>, key: string): MailboxRole | null {
+  return Object.hasOwn(table, key) ? table[key] : null;
+}
+
+/**
  * Determines the special-use role of a mailbox object (as sent by the backend,
  * carrying an `Attrs` string array and a `Name`/`Mailbox` field).
  *
@@ -79,7 +101,7 @@ export function mailboxRole(mb: any, advertised?: Set<MailboxRole>): MailboxRole
   const attrs: any[] = Array.isArray(mb.Attrs) ? mb.Attrs : [];
   const lowerAttrs = attrs.map(a => (typeof a === 'string' ? a.toLowerCase() : ''));
   for (const a of lowerAttrs) {
-    const role = ATTR_TO_ROLE[a];
+    const role = lookupRole(ATTR_TO_ROLE, a);
     if (role) return role;
   }
   // Do not let non-selectable placeholders masquerade as a special mailbox.
@@ -87,7 +109,7 @@ export function mailboxRole(mb: any, advertised?: Set<MailboxRole>): MailboxRole
     return null;
   }
   const name: string = mb.Name || mb.Mailbox || '';
-  const byName = NAME_TO_ROLE[name.toLowerCase()] ?? null;
+  const byName = lookupRole(NAME_TO_ROLE, name.toLowerCase());
   // A name is a guess, and only for a role the server has not assigned itself.
   // This used to answer by name for ANY mailbox lacking an attribute, even when
   // another mailbox carried that very attribute — so beside a \Trash called
@@ -106,7 +128,7 @@ export function mailboxRoleByName(name: string, mailboxes: any[] = []): MailboxR
   const advertised = advertisedRoles(mailboxes);
   const mb = (mailboxes || []).find(m => (m?.Name || m?.Mailbox) === name);
   if (mb) return mailboxRole(mb, advertised);
-  const byName = NAME_TO_ROLE[name.toLowerCase()] ?? null;
+  const byName = lookupRole(NAME_TO_ROLE, name.toLowerCase());
   return byName && advertised.has(byName) ? null : byName;
 }
 
@@ -123,6 +145,44 @@ export function findMailboxNameByRole(role: MailboxRole, mailboxes: any[], fallb
 }
 
 /**
+ * The folder that is shown as `role`'s special folder, or null when no folder
+ * has the role: the one the sidebar draws with the role's icon and caption,
+ * and the page names by its role.
+ *
+ * Two folders can have one role. Dovecot's stock configuration marks both
+ * INBOX.Sent and INBOX.Sent Messages \Sent, and on a server without special-use
+ * attributes "Deleted Items" and "Trash" are both Trash by name. Only one of
+ * them is shown as the special folder; drawn alike, the two could not be told
+ * apart. Every other folder of the role is an ordinary folder under its own
+ * name. That one is the first top-level folder of the role the server lists,
+ * which keeps the role's place at the top of the sidebar, or, without one, the
+ * first of the role anywhere: the folder the actions file into
+ * (findMailboxNameByRole).
+ */
+export function specialMailboxName(role: MailboxRole, mailboxes: any[] = []): string | null {
+  const advertised = advertisedRoles(mailboxes);
+  const nameOf = (mb: any): string => mb.Name || mb.Mailbox || '';
+  const holders = (mailboxes || []).filter(mb => mailboxRole(mb, advertised) === role);
+  // The sidebar splits a name without a delimiter at dots.
+  const topLevel = holders.find(mb => mailboxLevels(nameOf(mb), delimiterOf(mb, '.')).length === 1);
+  const special = topLevel ?? holders[0];
+  return special ? nameOf(special) : null;
+}
+
+/**
+ * The role of the folder called `name` when it is shown as that role's folder
+ * (specialMailboxName), and null for any other, a second folder of a role
+ * among them. Until the list has loaded, a well-known name stands for its
+ * role, as in mailboxRoleByName.
+ */
+export function specialMailboxRole(name: string, mailboxes: any[] = []): MailboxRole | null {
+  const role = mailboxRoleByName(name, mailboxes);
+  if (!role) return null;
+  const special = specialMailboxName(role, mailboxes);
+  return special === null || special === name ? role : null;
+}
+
+/**
  * The roles this server assigns itself, by special-use attribute (RFC 6154).
  *
  * Per ROLE, not per server: a server that advertises \Sent and \Trash but no
@@ -135,11 +195,54 @@ export function advertisedRoles(mailboxes: any[] = []): Set<MailboxRole> {
   for (const mb of mailboxes || []) {
     const attrs: any[] = Array.isArray(mb?.Attrs) ? mb.Attrs : [];
     for (const a of attrs) {
-      const role = typeof a === 'string' ? ATTR_TO_ROLE[a.toLowerCase()] : undefined;
+      const role = typeof a === 'string' ? lookupRole(ATTR_TO_ROLE, a.toLowerCase()) : null;
       if (role && role !== 'inbox') roles.add(role);
     }
   }
   return roles;
+}
+
+/**
+ * Whether the folder listing says which folders are subscribed.
+ *
+ * The server reports a subscription as the \Subscribed attribute on LIST,
+ * which alps asks for with RETURN (SUBSCRIBED), and the listing carries it on
+ * as `Subscribed`. A server that answers without it — one that ignores the
+ * option, or a store that keeps no subscriptions — leaves every folder false,
+ * which reads exactly like "subscribed to nothing". So a listing in which no
+ * folder at all is subscribed is taken to say nothing, and no folder is put
+ * away on its word. An account really subscribed to nothing is shown whole,
+ * which is the safe reading of that too.
+ */
+export function reportsSubscriptions(mailboxes: any[] = []): boolean {
+  return (mailboxes || []).some(mb => mb?.Subscribed === true);
+}
+
+/**
+ * Whether messages dragged onto this folder's row in the sidebar may be filed
+ * there. `mb` is the listed mailbox, or undefined for a path segment drawn only
+ * because a deeper folder is named through it.
+ *
+ * Not the folder on screen, which the Move to picker leaves out as well: a move
+ * into it changes nothing. Not a \Noselect or \NonExistent entry, nor a segment
+ * with no mailbox at all, since neither can hold a message and the server would
+ * refuse the MOVE after the rows had already left the list. And not Drafts or
+ * Sent, decided by ROLE: what they hold is alps's own filing of what the user
+ * wrote, a received message dropped among the drafts would be offered for
+ * editing, and both sit right under the Inbox, where a drag aimed at the Inbox
+ * ends up by a few pixels. A user's own folder that is merely called "Drafts",
+ * beside a server that marks another one \Drafts, takes mail like any other:
+ * mailboxRole guesses by name only for a role no folder carries.
+ */
+export function acceptsDroppedMessages(mb: any, mailboxes: any[], viewing: string): boolean {
+  if (!mb) return false;
+  const name: string = mb.Name || mb.Mailbox || '';
+  if (!name || name === viewing) return false;
+  const attrs: any[] = Array.isArray(mb.Attrs) ? mb.Attrs : [];
+  const lowerAttrs = attrs.map(a => (typeof a === 'string' ? a.toLowerCase() : ''));
+  if (lowerAttrs.includes('\\noselect') || lowerAttrs.includes('\\nonexistent')) return false;
+  const role = mailboxRole(mb, advertisedRoles(mailboxes));
+  return role !== 'drafts' && role !== 'sent';
 }
 
 /**

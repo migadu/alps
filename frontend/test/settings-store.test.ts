@@ -55,6 +55,10 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const [type, listener] of listeners.splice(0)) window.removeEventListener(type, listener);
+  // The stores of a test outlive it, listening on the window. Ending the
+  // session stops any retry one of them has waiting, which would otherwise
+  // land in a later test.
+  window.dispatchEvent(new CustomEvent('session-cleared'));
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   clearCookies();
@@ -76,6 +80,18 @@ describe('signing in', () => {
     expect(activeUsername()).toBe(USER);
     expect(JSON.parse(localStorage.getItem(`alps_settings_${USER}`)!).signature).toBe('Ada');
     expect(changed).toHaveLength(1);
+  });
+
+  it('takes push for off once the push service has found it so', async () => {
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { PushNewMail: true, Settings: { language: 'en' } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(store.getState().pushNewMail).toBe(true));
+    window.dispatchEvent(new CustomEvent('mail-push-off'));
+    expect(store.getState().pushNewMail).toBe(false);
   });
 
   it('turns threading off when the server cannot thread', async () => {
@@ -104,6 +120,37 @@ describe('signing in', () => {
     await store.updateSettings({ showSenderAvatars: true });
     const put = calls.find((c) => c.key === 'PUT /settings')!.body;
     expect(put).toEqual({ ui: { showSenderAvatars: true } });
+  });
+
+  it('applies the account\'s folders unsubscribed here, and saves a change to them', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', ui: { themeMode: 'auto', unsubscribedFolders: ['Old'] } } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    expect(store.getState().unsubscribedFolders).toEqual([]);
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    expect(store.getState().unsubscribedFolders).toEqual(['Old']);
+
+    await store.updateSettings({ unsubscribedFolders: ['Old', 'Work'] });
+    const put = calls.find((c) => c.key === 'PUT /settings')!.body;
+    expect(put).toEqual({ ui: { unsubscribedFolders: ['Old', 'Work'] } });
+  });
+
+  it('reads a record without folders unsubscribed here as having none', async () => {
+    // The server leaves an empty list out of the record, so its absence is the
+    // record's answer, and newer than this browser's copy.
+    localStorage.setItem(`alps_settings_${USER}`, JSON.stringify({ loginUsername: USER, unsubscribedFolders: ['Old'] }));
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', ui: { themeMode: 'auto' } } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    expect(store.getState().unsubscribedFolders).toEqual([]);
   });
 
   it('applies the account\'s choice about weekStart, and saves a change to it', async () => {
@@ -302,6 +349,144 @@ describe('signing in', () => {
   });
 });
 
+describe('a read that answers into the next session', () => {
+  /**
+   * Signing out and in again does not reload the page, so a read of the
+   * session or the record that is still out at that moment answers after it.
+   * Its answer is the previous account's.
+   */
+  const OTHER = 'grace@example.com';
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+
+  /**
+   * Holds the first read of `/settings`, which is the store's own at sign-in,
+   * until the test releases it, and answers the rest with `later`. The stores
+   * of earlier tests still listen on the window, so the later reads are not
+   * all this store's and are not counted.
+   */
+  function heldFirstRead(later: () => Response | Promise<Response>) {
+    let release!: (r: Response) => void;
+    let reads = 0;
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => (++reads === 1 ? new Promise<Response>((resolve) => { release = resolve; }) : later()),
+      'PUT /settings': () => json(200, {}),
+    });
+    return { calls, reads: () => reads, release: (r: Response) => release(r) };
+  }
+
+  const signOut = () => {
+    clearSessionSettings();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+  };
+
+  const adasRecord = () => json(200, { Settings: { from: 'Ada Lovelace', signature: 'Ada', reply_to: 'ada@example.org', language: 'en', ui: { themeMode: 'dark' } } });
+  const gracesRecord = () => json(200, { Settings: { from: 'Grace Hopper', signature: 'Grace', language: 'en' } });
+
+  it('does not bring the signed-out account\'s settings back', async () => {
+    signedIn();
+    const read = heldFirstRead(gracesRecord);
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(read.reads()).toBe(1));
+
+    signOut();
+    read.release(adasRecord());
+    await settle();
+
+    expect(store.getState()).toMatchObject({ name: '', signature: '', themeMode: 'auto' });
+    expect(store.getState().loginUsername).toBeUndefined();
+    // Not even the look of the page, which the sign-in page would have worn.
+    expect(JSON.parse(localStorage.getItem('alps_settings') ?? '{}').themeMode).not.toBe('dark');
+    expect(document.body.classList.contains('theme-dark')).toBe(false);
+  });
+
+  it('does not put the previous account\'s settings into the next account\'s', async () => {
+    signedIn();
+    const read = heldFirstRead(gracesRecord);
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(read.reads()).toBe(1));
+
+    signOut();
+    signedIn();
+    window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: OTHER } }));
+    await vi.waitFor(() => expect(store.getState().name).toBe('Grace Hopper'));
+
+    read.release(adasRecord());
+    await settle();
+
+    expect(store.getState()).toMatchObject({ loginUsername: OTHER, name: 'Grace Hopper', signature: 'Grace', replyTo: '', themeMode: 'auto' });
+    expect(JSON.parse(localStorage.getItem(`alps_settings_${OTHER}`)!)).toMatchObject({ name: 'Grace Hopper', signature: 'Grace', replyTo: '' });
+    // Nothing of it went to the server under the next account's name either.
+    expect(read.calls.filter((c) => c.key === 'PUT /settings')).toEqual([]);
+  });
+
+  it('does not let the previous session\'s read stand in for the next one\'s', async () => {
+    // The previous read lands while the next session's is still out: it must
+    // not mark the next account's record as read, which would let a change go
+    // out before that record is in.
+    signedIn();
+    const next: ((r: Response) => void)[] = [];
+    const read = heldFirstRead(() => new Promise<Response>((resolve) => { next.push(resolve); }));
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(read.reads()).toBe(1));
+
+    signOut();
+    signedIn();
+    window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: OTHER } }));
+    await vi.waitFor(() => expect(next.length).toBeGreaterThan(0));
+    read.release(adasRecord());
+    await settle();
+
+    expect((store as any).initialFetchCompleted).toBe(false);
+    for (const release of next) release(gracesRecord());
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    expect(store.getState().name).toBe('Grace Hopper');
+  });
+
+  it('does not put the previous username back after a sign-in with a second factor', async () => {
+    signedIn();
+    let releaseSession!: (r: Response) => void;
+    let sessionReads = 0;
+    serve({
+      'GET /session': () => (++sessionReads === 1 ? new Promise<Response>((resolve) => { releaseSession = resolve; }) : json(200, { Username: OTHER })),
+      'GET /settings': () => gracesRecord(),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(sessionReads).toBe(1));
+
+    // The second factor's page announces the account it signed in.
+    window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: OTHER } }));
+    await vi.waitFor(() => expect(store.getState().name).toBe('Grace Hopper'));
+
+    releaseSession(json(200, { Username: USER }));
+    await settle();
+
+    expect(store.getState().loginUsername).toBe(OTHER);
+    expect(activeUsername()).toBe(OTHER);
+    expect(localStorage.getItem(`alps_settings_${USER}`)).toBeNull();
+  });
+
+  it('does not send the next session to sign-in for the previous one\'s 401', async () => {
+    signedIn();
+    const authErrors = record('auth-error');
+    const read = heldFirstRead(gracesRecord);
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(read.reads()).toBe(1));
+
+    signOut();
+    signedIn();
+    window.dispatchEvent(new CustomEvent('user-logged-in'));
+    await vi.waitFor(() => expect(store.getState().name).toBe('Grace Hopper'));
+
+    read.release(json(401));
+    await settle();
+
+    expect(authErrors).toHaveLength(0);
+  });
+});
+
 describe('saving', () => {
   it('never replaces the server record after failing to read it', async () => {
     signedIn();
@@ -442,6 +627,259 @@ describe('saving', () => {
   });
 });
 
+/**
+ * What reads the record on the server rather than this store hears when the
+ * server has a change: the mail listing is threaded and paged by the record,
+ * so it is read again once a save has landed, and not on the change itself,
+ * whose listing would still come back as it was.
+ */
+describe('a save that has landed', () => {
+  it('is announced once the server has it, naming what it carried', async () => {
+    signedIn();
+    const releases: (() => void)[] = [];
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en' } }),
+      'PUT /settings': () => new Promise((resolve) => releases.push(() => resolve(json(200, {})))),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    const saved: CustomEvent[] = [];
+    store.addEventListener('saved', (e) => saved.push(e as CustomEvent));
+
+    const done = store.updateSettings({ enableThreading: false });
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    expect(saved).toHaveLength(0);
+
+    releases[0]();
+    await done;
+    expect(saved.map((e) => e.detail.keys)).toEqual([['enableThreading']]);
+  });
+
+  it('is not announced for a save that failed or was refused', async () => {
+    signedIn();
+    let status = 503;
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en' } }),
+      'PUT /settings': () => json(status),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    const saved: CustomEvent[] = [];
+    store.addEventListener('saved', (e) => saved.push(e as CustomEvent));
+
+    await store.updateSettings({ messagesPerPage: 25 });
+    status = 400;
+    await store.updateSettings({ messagesPerPage: 100 });
+    expect(saved).toHaveLength(0);
+  });
+});
+
+describe('a change the server has not taken', () => {
+  const UNSAVED = `alps_unsaved_settings_${USER}`;
+  const stored = () => JSON.parse(localStorage.getItem(UNSAVED) ?? 'null');
+
+  /** Signs in to a record holding `signature`, with saves answered by `put`. */
+  async function signIn(signature: string, put: () => Response | Promise<Response>) {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', signature } }),
+      'PUT /settings': put,
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    return { store, calls };
+  }
+
+  const puts = (calls: { key: string; body?: any }[]) => calls.filter((c) => c.key === 'PUT /settings').map((c) => c.body);
+
+  it('is still set after a reload, and is sent then', async () => {
+    const before = await signIn('server', () => json(503));
+    await before.store.updateSettings({ signature: 'typed here' });
+    expect(stored()).toEqual({ signature: { value: 'typed here', base: 'server' } });
+
+    // The reload: the record still holds what the change was made from.
+    const after = await signIn('server', () => json(200, {}));
+    await vi.waitFor(() => expect(puts(after.calls)).toEqual([{ signature: 'typed here' }]));
+    expect(after.store.getState().signature).toBe('typed here');
+    await vi.waitFor(() => expect(stored()).toBeNull());
+  });
+
+  it('gives way to a value another browser has saved for it since', async () => {
+    const before = await signIn('server', () => json(503));
+    await before.store.updateSettings({ signature: 'typed here' });
+
+    const after = await signIn('from the phone', () => json(200, {}));
+    await Promise.resolve();
+    expect(after.store.getState().signature).toBe('from the phone');
+    expect(puts(after.calls)).toEqual([]);
+    expect(stored()).toBeNull();
+  });
+
+  it('stands when it was made before the record could be read', async () => {
+    // Nothing is known of what it was changed from, so nothing can say it has
+    // been overtaken.
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(500),
+    });
+    const before = new SettingsStore();
+    await vi.waitFor(() => expect((before as any).settingsReadFailed).toBe(true));
+    await before.updateSettings({ signature: 'typed here' });
+    expect(stored()).toEqual({ signature: { value: 'typed here' } });
+
+    const after = await signIn('from the phone', () => json(200, {}));
+    await vi.waitFor(() => expect(puts(after.calls)).toEqual([{ signature: 'typed here' }]));
+    expect(after.store.getState().signature).toBe('typed here');
+  });
+
+  it('is forgotten once it is saved, so the next load takes the record as it is', async () => {
+    const before = await signIn('server', () => json(200, {}));
+    await before.store.updateSettings({ signature: 'typed here' });
+    expect(stored()).toBeNull();
+
+    const after = await signIn('from the phone', () => json(200, {}));
+    await Promise.resolve();
+    expect(after.store.getState().signature).toBe('from the phone');
+    expect(puts(after.calls)).toEqual([]);
+  });
+
+  it('stays unsaved while a save of an older value is answered', async () => {
+    const releases: ((r: Response) => void)[] = [];
+    const { store } = await signIn('server', () => new Promise<Response>((resolve) => releases.push(resolve)));
+
+    void store.updateSettings({ messagesPerPage: 10 });
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    void store.updateSettings({ messagesPerPage: 30 });
+    releases[0](json(200, {}));
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    // The save that landed carried 10, so 30 is still this browser's to send.
+    expect(stored()).toEqual({ messagesPerPage: { value: 30, base: 10 } });
+
+    releases[1](json(200, {}));
+    await vi.waitFor(() => expect(stored()).toBeNull());
+  });
+
+  it('is not carried into the next sign-in', async () => {
+    const before = await signIn('server', () => json(503));
+    await before.store.updateSettings({ signature: 'typed here' });
+
+    clearSessionSettings();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    expect(stored()).toBeNull();
+
+    const after = await signIn('server', () => json(200, {}));
+    await Promise.resolve();
+    expect(after.store.getState().signature).toBe('server');
+    expect(puts(after.calls)).toEqual([]);
+  });
+
+  it('is not one when the setting is set to the value it already has', async () => {
+    const { store, calls } = await signIn('server', () => json(503));
+    await store.updateSettings({ signature: 'server' });
+    expect(stored()).toBeNull();
+    expect(puts(calls)).toEqual([]);
+  });
+
+  describe('when its save fails', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** Answers saves in turn, the last answer repeating. */
+    const inTurn = (...answers: (() => Response)[]) => {
+      let next = 0;
+      return () => answers[Math.min(next++, answers.length - 1)]();
+    };
+
+    /** Signs in, then takes over the clock that retries are timed by. */
+    async function signInWithClock(put: () => Response) {
+      const signedIn = await signIn('server', put);
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      return signedIn;
+    }
+
+    it('is tried again by itself, backing off, and said once', async () => {
+      const toasts = record('show-toast');
+      const { store, calls } = await signInWithClock(inTurn(() => json(503), () => json(503), () => json(502), () => json(200, {})));
+      await store.updateSettings({ signature: 'typed here' });
+      expect(puts(calls)).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(puts(calls)).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(puts(calls)).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(puts(calls)).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(puts(calls)).toHaveLength(3);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(puts(calls)).toHaveLength(4);
+
+      expect(puts(calls).every((body) => body.signature === 'typed here')).toBe(true);
+      expect(stored()).toBeNull();
+      // One failure, as far as the user is concerned, not three.
+      expect(toasts).toHaveLength(1);
+      // Saved, so nothing more is tried.
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(puts(calls)).toHaveLength(4);
+    });
+
+    it('waits as long as the server asks, when it asks for longer', async () => {
+      const busy = () => new Response(null, { status: 429, headers: { 'Retry-After': '60' } });
+      const { store, calls } = await signInWithClock(inTurn(busy, () => json(200, {})));
+      await store.updateSettings({ signature: 'typed here' });
+
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(puts(calls)).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(puts(calls)).toHaveLength(2);
+    });
+
+    it('is tried at once when the browser is back online', async () => {
+      const { store, calls } = await signInWithClock(inTurn(() => json(503), () => json(200, {})));
+      await store.updateSettings({ signature: 'typed here' });
+
+      window.dispatchEvent(new Event('online'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(puts(calls)).toHaveLength(2);
+      expect(stored()).toBeNull();
+      // And the retry it was waiting for is not tried as well.
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(puts(calls)).toHaveLength(2);
+    });
+
+    it('is not tried again, nor kept, when the server refuses it outright', async () => {
+      // A refusal of the values themselves: the same request gets it again.
+      const toasts = record('show-toast');
+      const { store, calls } = await signInWithClock(inTurn(() => json(413), () => json(200, {})));
+      await store.updateSettings({ signature: 'x'.repeat(100) });
+      expect(toasts).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(puts(calls)).toHaveLength(1);
+      expect(stored()).toBeNull();
+
+      // Nor does it go with the next change, and have that refused too.
+      await store.updateSettings({ replyTo: 'ada@example.org' });
+      expect(puts(calls)[1]).toEqual({ reply_to: 'ada@example.org' });
+    });
+
+    it('stops being tried at sign-out', async () => {
+      const { store, calls } = await signInWithClock(() => json(503));
+      await store.updateSettings({ signature: 'typed here' });
+
+      clearSessionSettings();
+      window.dispatchEvent(new CustomEvent('session-cleared'));
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(puts(calls)).toHaveLength(1);
+    });
+  });
+});
+
 describe('local records', () => {
   it('starts from the browser-wide preferences before anyone signs in', () => {
     serve({});
@@ -480,5 +918,119 @@ describe('local records', () => {
     signedIn();
     clearSessionSettings(false);
     expect(document.cookie).toContain('alps_logged_in=1');
+  });
+});
+
+// In Auto the app follows the operating system between light and dark. The
+// store applied a switch of the system and told no one, so nothing painted
+// in the theme outside the app's own stylesheet followed: a message's frame,
+// themed for the app's dark colours, stayed as it was until reopened.
+describe('a switch of the system between light and dark', () => {
+  /** The system, light or dark as the test switches it, as the browser reports it. */
+  function system(dark: boolean) {
+    const watchers: (() => void)[] = [];
+    vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+      media: query,
+      get matches() { return dark && query === '(prefers-color-scheme: dark)'; },
+      onchange: null,
+      addEventListener: (_type: string, watcher: () => void) => { watchers.push(watcher); },
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }) as unknown as MediaQueryList);
+    return {
+      switchTo(next: 'light' | 'dark') {
+        dark = next === 'dark';
+        watchers.forEach((watcher) => watcher());
+      },
+    };
+  }
+
+  function changesOf(store: SettingsStore) {
+    const seen: Event[] = [];
+    store.addEventListener('change', (e) => seen.push(e));
+    return seen;
+  }
+
+  it('is applied and announced in Auto', () => {
+    const os = system(false);
+    localStorage.setItem('alps_settings', JSON.stringify({ themeMode: 'auto' }));
+    const store = new SettingsStore();
+    const changes = changesOf(store);
+
+    os.switchTo('dark');
+
+    expect(document.body.classList.contains('theme-dark')).toBe(true);
+    expect(changes).toHaveLength(1);
+  });
+
+  it('changes nothing, and announces nothing, under a theme of its own', () => {
+    const os = system(false);
+    localStorage.setItem('alps_settings', JSON.stringify({ themeMode: 'light' }));
+    const store = new SettingsStore();
+    const changes = changesOf(store);
+
+    os.switchTo('dark');
+
+    expect(document.body.classList.contains('theme-dark')).toBe(false);
+    expect(changes).toHaveLength(0);
+  });
+});
+
+describe('colour themes', () => {
+  afterEach(() => document.documentElement.removeAttribute('style'));
+
+  it('takes away what the last theme set beyond the colours', async () => {
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', ui: { themeMode: 'light' } } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    const root = document.documentElement.style;
+
+    await store.updateSettings({ colorFamily: 'migadu' });
+    expect(root.getPropertyValue('--bg-primary')).toBe('#f5f9ff');
+    expect(root.getPropertyValue('--font-heading')).toContain('Source Serif 4');
+
+    await store.updateSettings({ colorFamily: 'nord' });
+    expect(root.getPropertyValue('--bg-primary')).toBe('#eceff4');
+    expect(root.getPropertyValue('--font-heading')).toBe('');
+    expect(root.getPropertyValue('--accent-fill')).toBe('');
+  });
+
+  describe('with a default theme from the server', () => {
+    beforeEach(() => {
+      const meta = document.createElement('meta');
+      meta.name = 'alps-default-theme';
+      meta.content = 'migadu';
+      document.head.appendChild(meta);
+    });
+    afterEach(() => document.head.querySelector('meta[name="alps-default-theme"]')?.remove());
+
+    it('shows it before sign-in, to a browser that has never picked one', () => {
+      localStorage.setItem('alps_settings', JSON.stringify({ themeMode: 'light' }));
+      new SettingsStore();
+      expect(document.documentElement.style.getPropertyValue('--bg-primary')).toBe('#f5f9ff');
+    });
+
+    it('keeps Alps for someone who picked it', async () => {
+      signedIn();
+      const calls = serve({
+        'GET /session': () => json(200, { Username: USER }),
+        'GET /settings': () => json(200, { Settings: { language: 'en', ui: { themeMode: 'light' } } }),
+        'PUT /settings': () => json(200, {}),
+      });
+      const store = new SettingsStore();
+      await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+      expect(document.documentElement.style.getPropertyValue('--bg-primary')).toBe('#f5f9ff');
+
+      await store.updateSettings({ colorFamily: 'alps' });
+      expect(document.documentElement.style.getPropertyValue('--bg-primary')).toBe('#ffffff');
+      expect(calls.find((c) => c.key === 'PUT /settings')!.body).toEqual({ ui: { colorFamily: 'alps' } });
+    });
   });
 });

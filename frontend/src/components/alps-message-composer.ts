@@ -9,6 +9,7 @@ import type { JSONContent } from '@tiptap/core';
 import { DOMParser as SchemaParser, DOMSerializer } from '@tiptap/pm/model';
 import type { Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -26,9 +27,13 @@ import { readUserSettings, settingsContext } from '../store/settings-store';
 import type { SettingsStore } from '../store/settings-store';
 import type { QuoteSource } from '../store/compose-store';
 import { QUOTE_ATTRIBUTE } from '../utils/email-quote';
-import { sanitizeMessageHTML, sanitizeQuotedHTML } from '../utils/html-sanitizer';
+import { escapeHtml, sanitizeMessageHTML, sanitizeQuotedHTML, stripCssUrls, withoutCidReferences } from '../utils/html-sanitizer';
 import type { SanitizeOptions } from '../utils/html-sanitizer';
 import { applyThemeToIframe, htmlToPlainText, setupIframeSizing } from '../utils/reader-utils';
+import {
+  applyAutoDirections, AUTO_DIRECTION_ATTRIBUTE, createDirectionResolver, createDOMDirectionResolver,
+  getAuthoredDirection, getAuthoredStyle,
+} from '../utils/content-direction';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -219,10 +224,24 @@ const QuotedMessage = TiptapNode.create<QuotedMessageOptions>({
         }}
       ></iframe>`, dom);
 
-      return { dom, ignoreMutation: () => true };
+      return {
+        dom,
+        ignoreMutation: () => true,
+        // The frame's observers watch its document and this block, and
+        // nothing else lets go of them: a quote deleted, or a composer closed,
+        // kept both alive and measuring.
+        destroy: () => {
+          const frame = dom.querySelector('iframe') as ObservedFrame | null;
+          frame?._ro?.disconnect();
+          frame?._widthRo?.disconnect();
+        },
+      };
     };
   },
 });
+
+/** A quote's frame, with the observers that size it. */
+type ObservedFrame = HTMLIFrameElement & { _ro?: ResizeObserver; _widthRo?: ResizeObserver };
 
 /**
  * Lets a quote wider than the composer scroll sideways.
@@ -235,9 +254,12 @@ const QuotedMessage = TiptapNode.create<QuotedMessageOptions>({
  * is measured at the block's width each time, so content that fits the block
  * again once it grows is not held at an old width.
  */
-function fitQuoteWidth(frame: HTMLIFrameElement, block: HTMLElement): void {
+function fitQuoteWidth(frame: ObservedFrame, block: HTMLElement): void {
   const doc = frame.contentDocument;
   if (!doc?.body) return;
+  // Each load of the frame calls this again, as setupIframeSizing is called
+  // again, and the observer of the load before must not outlive it.
+  frame._widthRo?.disconnect();
   const fit = () => {
     frame.style.width = '100%';
     const width = Math.max(doc.documentElement?.scrollWidth || 0, doc.body?.scrollWidth || 0);
@@ -247,6 +269,7 @@ function fitQuoteWidth(frame: HTMLIFrameElement, block: HTMLElement): void {
   const observer = new ResizeObserver(fit);
   observer.observe(doc.body);
   observer.observe(block);
+  frame._widthRo = observer;
 }
 
 /** The markup as DOM nodes of a document with no browsing context, so an
@@ -277,9 +300,32 @@ function unmarkQuotes(markup: string): string {
  * off the document in order and spliced in as strings, so the editor never
  * serializes a quote's markup and nothing here parses it: an edit costs the
  * same whatever the size of the original.
+ *
+ * The directions the editor shows are written into the HTML first, for the
+ * recipient's client: see TextDirection and Indent.
  */
 function serializeEditorHtml(editor: Editor): string {
-  const html = editor.getHTML();
+  let html = editor.getHTML();
+  if (/<(?:blockquote|ul|ol)\b|margin-inline-start\s*:/.test(html)) {
+    const body = new DOMParser().parseFromString(html, 'text/html').body;
+    // The editor resolves an automatic quote or list with a decoration, which
+    // getHTML() leaves out. Written in here, the recipient sees what the user
+    // saw, and the marker lets a reopened draft stay automatic.
+    applyAutoDirections(body, true);
+    // An indent is a logical margin in the editor, so it follows a
+    // right-to-left paragraph to its right. Gmail, Outlook and Yahoo drop
+    // logical properties from mail they receive, so it goes out as a margin
+    // on the side the paragraph resolves to.
+    const resolve = createDOMDirectionResolver();
+    for (const block of body.querySelectorAll<HTMLElement>('[style]')) {
+      const indent = block.style.marginInlineStart;
+      if (!indent) continue;
+      const side = resolve(block) === 'rtl' ? 'margin-right' : 'margin-left';
+      block.style.removeProperty('margin-inline-start');
+      block.style.setProperty(side, indent);
+    }
+    html = body.innerHTML;
+  }
   if (!html.includes(QUOTE_SLOT)) return html;
   const quotes: string[] = [];
   editor.state.doc.descendants((node) => {
@@ -297,19 +343,71 @@ function serializeEditorHtml(editor: Editor): string {
  * newline, throughout the markup, and a quote is read off its element after
  * that: `<b>Total:</b>\n<span>$5</span>` went out as `Total:$5`. Parsed here,
  * in an inert document, the quote is read as it was written.
+ *
+ * Markup made from plain text by paragraphsOf keeps its spaces: the parser
+ * otherwise drops the space at the end of a paragraph and at the start of a
+ * line, and runs of spaces, and the text the editor gives back would not be
+ * the text it was given. HTML, a saved draft's included, is read as HTML, its
+ * spaces collapsed as a browser collapses them.
  */
-function contentFromHtml(schema: Schema, markup: string): JSONContent {
+function contentFromHtml(schema: Schema, markup: string, preserveWhitespace = false): JSONContent {
   const body = new DOMParser().parseFromString(markup, 'text/html').body;
-  return SchemaParser.fromSchema(schema).parse(body).toJSON();
+  const doc = SchemaParser.fromSchema(schema).parse(body, { preserveWhitespace }).toJSON();
+  // A block with no direction of its own inside one that has a fixed
+  // direction takes it, through every level, so that it is written out when
+  // the draft is saved: see TextDirection.
+  const inheritDir = (node: JSONContent, parentDir?: string | null) => {
+    const direction = node.attrs?.dir ?? parentDir;
+    if (node.attrs?.dir === null && (direction === 'ltr' || direction === 'rtl')) {
+      node.attrs.dir = direction;
+    }
+    node.content?.forEach((child) => inheritDir(child, direction));
+  };
+  inheritDir(doc);
+  return doc;
+}
+
+/**
+ * The indent a block was saved with. It went out as a margin on the side its
+ * direction starts from, and is read back from there; a zero edge of a
+ * `margin` shorthand must not hide the other.
+ */
+function readIndent(element: HTMLElement) {
+  const side = createDOMDirectionResolver()(element) === 'rtl' ? 'right' : 'left';
+  const properties = ['margin-inline-start', `margin-${side}`, `margin-${side === 'right' ? 'left' : 'right'}`];
+  for (const property of properties) {
+    const value = parseInt(element.style.getPropertyValue(property), 10) || 0;
+    if (value) return { property, value, side };
+  }
+  return { property: '', value: 0, side };
+}
+
+/**
+ * Plain text as the editor's paragraphs, escaped so that it reads as it was
+ * typed: a line with `<b>` or `a<b` in it is text, not markup.
+ *
+ * A blank line ends a paragraph and any other line break is a `<br>` within
+ * one, as in the signature an HTML message is given. The editor's text, which
+ * is the message's text/plain part, separates paragraphs with a blank line: a
+ * paragraph a line put a blank line between every two, and a separator `-- `
+ * alone in its paragraph lost its space.
+ */
+function paragraphsOf(text: string): string {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .split('\n\n')
+    .map(block => `<p>${block.split('\n').map(escapeHtml).join('<br>')}</p>`)
+    .join('');
 }
 
 /**
  * A text-only original is quoted as an editable blockquote, so it can be
  * trimmed, and the editor's blockquote kept none of what marks it as a quote
  * to the recipient's client: the `gmail_quote` class and the bar down its
- * left. Both are kept on the node and go out with it. A `url()` in the style
- * is dropped, as the quote sanitizer drops it: pasted markup comes this way
- * too, and a background is a fetch on the recipient's side.
+ * left. Both are kept on the node and go out with it. A declaration in the
+ * style that loads something, a `url()` however it is written, is dropped, as
+ * the quote sanitizer drops it: pasted markup comes this way too, and a
+ * background is a fetch on the recipient's side.
  */
 const QuoteBar = Extension.create({
   name: 'quoteBar',
@@ -325,7 +423,21 @@ const QuoteBar = Extension.create({
           },
           style: {
             default: null,
-            parseHTML: (element) => element.getAttribute('style')?.replace(/url\s*\([^)]*\)/gi, '') || null,
+            parseHTML: (element) => {
+              // Without a direction the editor itself wrote, so an automatic
+              // quote stays automatic once reopened.
+              const style = getAuthoredStyle(element);
+              if (!style) return null;
+              const indent = readIndent(element);
+              if (!indent.value) return stripCssUrls(style) || null;
+              // The indent attribute owns this offset. Kept in the quote's own
+              // style as well, Outdent would leave it behind.
+              const base = element.ownerDocument.createElement('div');
+              base.style.cssText = style;
+              const baseline = element.classList.contains('gmail_quote') ? '0.8ex' : '0px';
+              base.style.setProperty(indent.property, baseline);
+              return stripCssUrls(base.style.cssText) || null;
+            },
             renderHTML: (attributes) => (attributes.style ? { style: attributes.style } : {}),
           },
         },
@@ -368,6 +480,95 @@ const FontSize = Extension.create({
   },
 });
 
+/**
+ * Each block keeps the direction its author gave it, and one left automatic
+ * is laid out by its own first letter, whatever the interface's language.
+ *
+ * Every block is written with a `dir`: the one it was given, or `auto`. A
+ * block with none, pasted or typed into a quote whose direction is fixed,
+ * takes the quote's, so it goes out the way it was shown. A browser lays out
+ * an automatic quote or list by its first letter, but skips every paragraph
+ * inside it, since each carries a `dir`. The plugin below resolves such a
+ * quote or list, and the editor itself, from their content instead, and
+ * decorates them with the answer.
+ */
+const TextDirection = Extension.create({
+  name: 'messageTextDirection',
+  addGlobalAttributes() {
+    return [{
+      types: ['paragraph', 'heading', 'blockquote', 'listItem', 'bulletList', 'orderedList'],
+      attributes: {
+        dir: {
+          default: null,
+          parseHTML: (element) => {
+            for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+              // The nearest direction an author set wins over any farther up.
+              const direction = getAuthoredDirection(node);
+              if (direction) return direction;
+            }
+            // None: the block inherits from wherever it lands, which is not
+            // the same as an explicit auto. See appendTransaction below.
+            return null;
+          },
+          renderHTML: (attributes) => ({ dir: attributes.dir || 'auto' }),
+        },
+      },
+    }];
+  },
+  addProseMirrorPlugins() {
+    const key = new PluginKey<ReturnType<typeof directionsFor>>('messageDirection');
+    function directionsFor(doc: ProseMirrorNode) {
+      const resolve = createDirectionResolver<ProseMirrorNode>((node) => ({
+        text: node.isText ? node.text : undefined,
+        direction: node.attrs.dir,
+        children: node.content.content,
+      }));
+      const decorations: Decoration[] = [];
+      doc.descendants((node, position) => {
+        if (['blockquote', 'listItem', 'bulletList', 'orderedList'].includes(node.type.name)
+          && node.attrs.dir !== 'ltr' && node.attrs.dir !== 'rtl') {
+          const direction = resolve(node);
+          if (direction) {
+            decorations.push(Decoration.node(position, position + node.nodeSize, {
+              [AUTO_DIRECTION_ATTRIBUTE]: direction,
+              style: `direction: ${direction}`,
+            }));
+          }
+        }
+      });
+      return { decorations: DecorationSet.create(doc, decorations), direction: resolve(doc) ?? 'ltr' };
+    }
+    return [new Plugin({
+      key,
+      appendTransaction: (transactions, _oldState, newState) => {
+        if (!transactions.some((tr) => tr.docChanged)) return null;
+        let tr: typeof newState.tr | null = null;
+        const inheritDir = (node: ProseMirrorNode, position: number, parentDir?: string | null) => {
+          // A pasted container's own blocks still have no direction during
+          // this walk, so the inherited one is carried down to them. An
+          // explicit auto starts a subtree that follows its own content.
+          const direction = node.attrs.dir ?? parentDir;
+          if (node.attrs.dir === null && (direction === 'ltr' || direction === 'rtl')) {
+            tr ??= newState.tr;
+            tr.setNodeMarkup(position, undefined, { ...node.attrs, dir: direction });
+          }
+          node.forEach((child, offset) => inheritDir(child, position + 1 + offset, direction));
+        };
+        inheritDir(newState.doc, -1);
+        return tr;
+      },
+      state: {
+        init: (_config, state) => directionsFor(state.doc),
+        apply: (transaction, previous) => transaction.docChanged ? directionsFor(transaction.doc) : previous,
+      },
+      props: {
+        decorations: (state) => key.getState(state)?.decorations,
+        attributes: (state) => ({ style: `direction: ${key.getState(state)?.direction ?? 'ltr'}` }),
+      },
+    })];
+  },
+});
+
 const Indent = Extension.create({
   name: 'indent',
   addOptions() {
@@ -385,13 +586,12 @@ const Indent = Extension.create({
         attributes: {
           indent: {
             default: 0,
-            parseHTML: element => {
-              const marginLeft = parseInt(element.style.marginLeft, 10) || 0;
-              return marginLeft;
-            },
+            parseHTML: element => readIndent(element).value,
+            // Logical, so the indent follows a right-to-left block to its
+            // right. serializeEditorHtml writes it out as a physical margin.
             renderHTML: attributes => {
               if (!attributes.indent) return {};
-              return { style: `margin-left: ${attributes.indent}px` };
+              return { style: `margin-inline-start: ${attributes.indent}px` };
             },
           },
         },
@@ -445,6 +645,21 @@ export class AlpsMessageComposer extends LitElement {
   @property({ type: String }) text = '';
   @property({ type: String }) htmlText = '';
   @property({ type: String }) format: 'html' | 'text' = 'text';
+  /** The text the message opened with, as the compose window keeps it. */
+  @property({ attribute: false }) initialText = '';
+
+  /**
+   * The plain text the editor's content stands for, while the textarea holds
+   * the message: what it held when the textarea took over, and so what the
+   * switch back to HTML compares the textarea with. A reply's text and its
+   * editor never read alike, its quote `> ` lines in one and a block in the
+   * other, so the editor's own text could not tell whether anything had been
+   * typed. Null when that is not known.
+   */
+  private syncedText: string | null = null;
+
+  /** Sources omitted by a completed text save, also removed from the live quote. */
+  @property({ attribute: false }) discardedInlineIds: string[] = [];
 
   @state() private attachments: Attachment[] = [];
 
@@ -621,6 +836,21 @@ export class AlpsMessageComposer extends LitElement {
   };
 
   updated(changedProperties: PropertyValues) {
+    if (changedProperties.has('discardedInlineIds') && this.editor && this.discardedInlineIds.length) {
+      const lost = new Set(this.discardedInlineIds);
+      const transaction = this.editor.state.tr;
+      this.editor.state.doc.descendants((node, position) => {
+        if (node.type.name !== QuotedMessage.name) return;
+        const html = withoutCidReferences(node.attrs.html, lost);
+        if (html !== node.attrs.html) transaction.setNodeMarkup(position, undefined, { ...node.attrs, html });
+      });
+      if (transaction.docChanged) {
+        // Same-size atom nodes preserve the selection and authored content.
+        // The store already reconciled this HTML as part of the save result.
+        this.editor.view.dispatch(transaction.setMeta('preventUpdate', true).setMeta('addToHistory', false));
+        this.htmlText = serializeEditorHtml(this.editor);
+      }
+    }
     if (changedProperties.has('isSending') && this.editor) {
       // Pass emitUpdate=false: TipTap v3's setEditable emits an "update" event by
       // default, which fires onUpdate. In plaintext mode that would overwrite the
@@ -631,17 +861,76 @@ export class AlpsMessageComposer extends LitElement {
     if (changedProperties.has('format')) {
       const oldFormat = changedProperties.get('format');
       if (oldFormat === 'text' && this.format === 'html') {
-        if (this.editor && this.editor.getText() !== this.text) {
-          const contentStr = this.text.split('\n').map(line => `<p>${line}</p>`).join('');
-          this.editor.commands.setContent(contentFromHtml(this.editor.schema, contentStr));
+        const synced = this.syncedText;
+        this.syncedText = null;
+        const untouched = synced !== null && this.text === synced;
+        if (this.editor && !untouched && this._rewriteAboveQuote(synced)) {
+          // Rewritten above the quote, which stays one block: see _rewriteAboveQuote.
+        } else if (this.editor && !untouched && this.editor.getText() !== this.text) {
+          this.editor.commands.setContent(contentFromHtml(this.editor.schema, paragraphsOf(this.text), true));
           this.htmlText = serializeEditorHtml(this.editor);
+        } else if (this.editor && !this.htmlText) {
+          // A draft saved as plain text reopens with no HTML part, and the
+          // editor, which read its text when the composer opened, can already
+          // hold it, as it holds a single line. Its content does not change
+          // and it announces nothing, so the HTML part is made and announced
+          // here: the compose window saves and sends what it is told.
+          this.htmlText = serializeEditorHtml(this.editor);
+          this.dispatchEvent(new CustomEvent('text-changed', {
+            detail: { text: this.text, html: this.htmlText },
+            bubbles: true,
+            composed: true
+          }));
         }
       } else if (oldFormat === 'html' && this.format === 'text') {
         if (this.editor) {
           this.text = this.editor.getText();
+          this.syncedText = this.text;
+          // Announced, as the switch the other way is: the window saves and
+          // sends the text it last heard, which was the opening text of a
+          // reply, its quote in `> ` lines, until the user typed.
+          this.dispatchEvent(new CustomEvent('text-changed', {
+            detail: { text: this.text, html: this.htmlText },
+            bubbles: true,
+            composed: true
+          }));
         }
       }
     }
+  }
+
+  /**
+   * Makes HTML of the text above a quote the editor holds as one block, and
+   * keeps the block, when the text from the quote's first line on is still
+   * the text the editor stood for: what was typed in plain text, a reply
+   * written above its quote, goes in as the text has it, and the quote, with
+   * its tables, fonts and images, is not made into `> ` paragraphs. False,
+   * changing nothing, when the editor holds no such block or its text was
+   * changed.
+   */
+  private _rewriteAboveQuote(synced: string | null): boolean {
+    const editor = this.editor;
+    if (!editor || !synced) return false;
+    let at = -1;
+    let quote: ProseMirrorNode | null = null;
+    editor.state.doc.forEach((node, offset) => {
+      if (!quote && node.type.name === QuotedMessage.name) {
+        quote = node;
+        at = offset;
+      }
+    });
+    if (!quote) return false;
+    const header = htmlToPlainText((quote as ProseMirrorNode).attrs.html).split('\n').map(line => line.trim()).find(Boolean);
+    const from = header ? synced.indexOf(header) : -1;
+    if (from < 0) return false;
+    const quoted = synced.slice(from);
+    if (!this.text.endsWith(quoted)) return false;
+    const above = this.text.slice(0, this.text.length - quoted.length);
+    editor.chain()
+      .deleteRange({ from: 0, to: at })
+      .insertContentAt(0, contentFromHtml(editor.schema, paragraphsOf(above), true).content ?? [])
+      .run();
+    return true;
   }
 
   private initEditor() {
@@ -656,6 +945,7 @@ export class AlpsMessageComposer extends LitElement {
         TextStyle,
         Color,
         FontSize,
+        TextDirection,
         Indent,
         QuoteBar,
         QuotedMessage.configure({
@@ -677,17 +967,22 @@ export class AlpsMessageComposer extends LitElement {
           },
         }),
     ];
-    const initial = this.htmlText || (this.format === 'html' ? this.text.split('\n').map(line => `<p>${line}</p>`).join('') : this.text);
+    // With no HTML part the editor is made of the text, in either format. In
+    // plain text it was made of the text read as markup, and the switch to
+    // HTML showed that: `a<b` gone, `<b>` turned bold.
+    const fromText = !this.htmlText;
+    const initial = this.htmlText || paragraphsOf(this.text);
     this.editor = new Editor({
       element: this.editorContainerRef.value,
       extensions,
       // Parsed here rather than by the editor: see contentFromHtml. The schema
       // is the same one the editor builds from these extensions.
-      content: contentFromHtml(getSchema(extensions), initial),
+      content: contentFromHtml(getSchema(extensions), initial, fromText),
+      editorProps: { attributes: { dir: 'auto' } },
       // The editor's stylesheet goes into document.head, which this shadow root
       // never sees; the rules it needs are in this component's own CSS.
       injectCSS: false,
-      onUpdate: ({ editor }) => {
+      onUpdate: ({ editor, transaction }) => {
         // The TipTap editor is only the source of truth in HTML mode. In plaintext
         // mode the <textarea> owns the content, so ignore editor updates there;
         // otherwise a programmatic editor update (e.g. setEditable(false) on send)
@@ -697,7 +992,17 @@ export class AlpsMessageComposer extends LitElement {
         this.htmlText = serializeEditorHtml(editor);
         this.text = editor.getText();
         this.dispatchEvent(new CustomEvent('text-changed', {
-          detail: { text: this.text, html: this.htmlText },
+          detail: {
+            text: this.text,
+            html: this.htmlText,
+            // A change the transaction did not make itself is the editor's
+            // own, made by a plugin after it: the empty paragraph after a
+            // quote that ends the message, added on the first transaction,
+            // when the compose window gives the editor the keyboard. It is
+            // announced as `initial`, as no edit of the user's; counted as
+            // one, every reply and forward was saved as a draft as it opened.
+            ...(!transaction.docChanged && { initial: true }),
+          },
           bubbles: true,
           composed: true
         }));
@@ -712,6 +1017,27 @@ export class AlpsMessageComposer extends LitElement {
     // No update event: in plaintext mode one would overwrite the textarea's
     // text with the editor's, as `updated` says of the same call.
     this.editor.setEditable(!this.isSending, false);
+    // In plain text the textarea holds the message, and the editor stands for
+    // its opening text: the text as it opened, or the text the editor was
+    // made of. A message restored with text typed in an earlier session, its
+    // HTML older than that, is neither, and is not known.
+    if (this.format !== 'html' && (fromText || this.text === this.initialText)) this.syncedText = this.text;
+    if (fromText && this.format === 'html' && this.text.trim()) {
+      // A draft saved as plain text opens here with no HTML part, and the
+      // editor that read its text announces nothing until the first edit. So
+      // the HTML part is made and announced now, as `updated` does on the
+      // switch to HTML: the compose window saves and sends what it is told.
+      // Unlike the switch, it is no edit of the user's, and is announced as
+      // `initial` so the window does not count it as one: the draft has not
+      // changed, and saved again for being opened it was stored anew, under
+      // a new UID. A new message, with no text, has nothing to make one of.
+      this.htmlText = serializeEditorHtml(this.editor);
+      this.dispatchEvent(new CustomEvent('text-changed', {
+        detail: { text: this.text, html: this.htmlText, initial: true },
+        bubbles: true,
+        composed: true
+      }));
+    }
     this.requestUpdate();
   }
 
@@ -912,16 +1238,18 @@ export class AlpsMessageComposer extends LitElement {
       cursor: pointer;
     }
 
+    /* Logical sides, so a right-to-left list or quote has its markers and
+       its bar on the right. */
     .editor-container .ProseMirror ul,
     .editor-container .ProseMirror ol {
       margin: 0 0 1em 0;
-      padding-left: 1.5em;
+      padding-inline-start: 1.5em;
     }
 
     .editor-container .ProseMirror blockquote {
-      border-left: 3px solid var(--border-color, #e5e7eb);
+      border-inline-start: 3px solid var(--border-color, #e5e7eb);
       margin: 0 0 1em 0;
-      padding-left: 1em;
+      padding-inline-start: 1em;
       color: var(--text-muted, #6b7280);
     }
 
@@ -1226,12 +1554,12 @@ export class AlpsMessageComposer extends LitElement {
             ` : html`
               <div class="bubble-edit">
                 <div class="field-row">
-                  <label>${this.i18nStore?.t('messageComposer.text')}</label>
-                  <alps-input inputId="bubbleText" .value=${this.activeLinkText} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._applyBubbleLink(e); e.stopPropagation(); }}></alps-input>
+                  <label for="bubble-text">${this.i18nStore?.t('messageComposer.text')}</label>
+                  <alps-input id="bubble-text" inputId="bubbleText" label=${this.i18nStore?.t('messageComposer.text')} .value=${this.activeLinkText} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._applyBubbleLink(e); e.stopPropagation(); }}></alps-input>
                 </div>
                 <div class="field-row">
-                  <label>${this.i18nStore?.t('messageComposer.link')}</label>
-                  <alps-input type="url" inputId="bubbleUrl" .value=${this.activeLinkUrl} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._applyBubbleLink(e); e.stopPropagation(); }}></alps-input>
+                  <label for="bubble-link">${this.i18nStore?.t('messageComposer.link')}</label>
+                  <alps-input type="url" id="bubble-link" inputId="bubbleUrl" label=${this.i18nStore?.t('messageComposer.link')} .value=${this.activeLinkUrl} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._applyBubbleLink(e); e.stopPropagation(); }}></alps-input>
                 </div>
                 <div class="bubble-actions">
                   <alps-button variant="text" @click=${(e: Event) => { e.preventDefault(); this.bubbleMenuState = 'view'; }}>${this.i18nStore?.t('general.cancel')}</alps-button>
@@ -1242,6 +1570,7 @@ export class AlpsMessageComposer extends LitElement {
           </div>
         </div>
         <textarea
+          dir="auto"
           ${ref(this.replyInputRef)}
           class="reply-box ${this.format === 'html' ? 'hidden' : ''}"
           placeholder=${this.i18nStore?.t('messageComposer.writeMessage')}

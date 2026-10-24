@@ -209,6 +209,36 @@ test("a message with an attachment lists it and links at its MIME part", async (
   await expect(bodyText(page)).toContainText("The figures are attached.");
 });
 
+test("the attachment list totals its parts, in pills one line tall", async ({ page }) => {
+  const subject = `Attach total ${Date.now()}`;
+  const enclosure = (name: string, bytes: number) => [
+    `Content-Type: application/octet-stream; name="${name}"`,
+    `Content-Disposition: attachment; filename="${name}"`,
+    "Content-Transfer-Encoding: base64",
+    "",
+    ...Buffer.alloc(bytes, 7).toString("base64").match(/.{1,76}/g)!,
+  ];
+  await deliver({
+    subject,
+    raw: multipart(subject, [
+      ["Content-Type: text/plain; charset=utf-8", "", "Two enclosures."],
+      enclosure("first.bin", 10 * 1024),
+      enclosure("second.bin", 22 * 1024),
+    ]),
+  });
+
+  await login(page);
+  await openMessage(page, subject);
+
+  const attachments = attachmentList(page);
+  await expect(attachments.locator("alps-attachment-pill")).toHaveCount(2);
+  // Decoded sizes added up, beside download-all and the caret.
+  await expect(attachments.locator(".attachments-actions .attachments-size")).toHaveText("32 KB");
+  // 38px, with 6px above and below a 24px type square, read as a card per file.
+  const chip = attachments.locator("a.attachment-chip").first();
+  expect((await chip.boundingBox())!.height).toBeLessThanOrEqual(32);
+});
+
 // The row's paperclip and the reader's attachment list must agree — they read
 // the same fact by two routes: the listing's HasAttachments, and the open
 // message's Attachments. Both are the server's walk of the body structure, so

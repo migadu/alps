@@ -36,6 +36,10 @@ Controls the maximum concurrent sessions to prevent memory exhaustion and abuse.
 | :--- | :--- | :--- | :--- |
 | `max_sessions` | Integer | `10000` | Global max concurrent sessions across all users. `0` means unlimited. |
 | `max_sessions_per_user` | Integer | `10` | Max concurrent sessions allowed per user. `0` means unlimited. |
+| `background_connection` | Boolean | `true` | Each session opens a second mail connection, when first needed, for work the user is not waiting for (checks for new mail, sender verdicts, the search of Sent for a conversation's replies, draft saves, messages a conversation reads ahead), and closes it after a minute unused; the next such work opens it again and waits for its sign-in. A session opens no more than this one beside its own. A connection it gave up on mid-command (the browser went away) stays open until that command returns, as before; meanwhile the session opens no background connection, but its own work does not wait for a busy one and opens its own connection beside it. If the mail server refuses the second one, for instance at its per-user connection limit, the work runs on the session's own connection and the session goes on; with `push_new_mail` on, the second connection stays open while a mail page is, which costs more than speed (see [Pushing new mail](#14-pushing-new-mail)). A session whose own connection is refused at the limit carries on with its background connection when the server says why with `[LIMIT]` (RFC 5530), as Sora does; a server that refuses with a bare `NO` ends the session. `false` keeps one connection per session. |
+| `push_new_mail` | Boolean | `false` | While a mail page is open, its session waits on its background connection for the mail server's news of the Inbox (IMAP IDLE) and pushes it to the page over an event stream (`GET /events`, Server-Sent Events), which then checks at once rather than at its next check. Pushed are messages that arrive in the Inbox or leave it; flags, and the other folders, come with the checks at the user's interval, which go on as before. One tab of a browser holds the stream and tells the others. Needs `background_connection`, a mail server with IDLE, and a browser that offers `navigator.locks`, which browsers do only in a secure context: a deployment served over plain HTTP, other than on `localhost`, gets no push. See [Pushing new mail](#14-pushing-new-mail) for what it costs and what a reverse proxy must allow. |
+| `condstore` | Boolean | `false` | Each mail connection asks the server to number the changes to its messages (IMAP CONDSTORE, RFC 7162), and a page of a folder whose messages are all still there has only the flags that changed read again, so a star or a read in another client is listed at the next check. A server that does not list CONDSTORE is used as before. See [Numbered changes](#15-numbered-changes). |
+| `push_subscribed_folders` | Boolean | `false` | With `push_new_mail` on, the session also asks the mail server, on the same background connection, for the news of the subscribed folders (IMAP NOTIFY, RFC 5465), and pushes it as it pushes the Inbox's: a folder on screen is checked at once, and the sidebar's counts of the others follow. Pushed are messages that arrive in a folder or leave it, as for the Inbox; flags, the folders not subscribed and searches come with the checks, which run a third as often while the stream carries the folders' news (every 15 minutes at the default 5). Needs a mail server with NOTIFY: without it, or where it refuses, the Inbox alone is pushed. No connection is added; the cost is the mail server's (see [Pushing new mail](#14-pushing-new-mail)). |
 
 ### 1.3 Attachment Limits
 | Option | Type | Default | Description |
@@ -43,6 +47,31 @@ Controls the maximum concurrent sessions to prevent memory exhaustion and abuse.
 | `max_attachment_mib` | Integer | `32` | Max attachment size per composer instance. |
 | `max_session_attachment_mib` | Integer | `128` | Max total attachment size uploaded across all composers in a single session. |
 | `max_global_attachment_mib` | Integer | `1024` | Max total attachment size stored on the server across all users. |
+
+### 1.4 Pushing new mail
+`push_new_mail` is off by default, because of what it costs and what it asks of the network in front of ALPS:
+
+- **Two IMAP connections for every open mail page.** Without push, a session's background connection closes after a minute unused, so a session mostly holds one. With push, every session with a mail page open holds two for as long as the page is open: its own and the background one, in IDLE on the Inbox. Every session connects from ALPS's one address, and mail servers count connections per user and address: Sora's example configuration allows `max_connections_per_user_per_ip = 5` (8 through its proxy), and `max_connections_per_ip = 200`, which, all ALPS's sessions coming from one address, is about 100 open mail pages across all users. So with push and the per-user limit, a user with mail open in two browsers holds four connections; a third signs in on the fifth and gets no push, its second connection refused; and a sign-in from a fourth is refused for the limit. ALPS gives way within a session (a session refused a connection of its own at the limit takes over its background connection), not across the sessions of an account: raise the per-user limits for ALPS's address, or keep push off.
+- **The mail server works for every open page.** The server watches the Inbox for each connection in IDLE: Sora re-checks a mailbox in IDLE every 15 seconds (`idlePollInterval` in Sora's `server/imap/idle.go`), more work for each open session than the one status check every 5 minutes that a page makes by default. IDLE is begun again every 25 minutes: RFC 2177 asks clients to begin it again at least every 29, as a server may log off a client idle for 30 (RFC 3501 §5.4).
+- **With `push_subscribed_folders`, the mail server watches every subscribed folder of every open page.** Sora's NOTIFY watch reads, every 15 seconds for each connection, the account's folder list and the counts of each subscribed folder (`notifyPollInterval` in Sora's `server/imap/notify.go`), more than the IDLE's look at the Inbox. It answers the NOTIFY with the counts of each folder it watches, once for each background connection. It tells of a flag set or cleared in a folder too, with the folder's counts unchanged, which ALPS passes over. When more than 100 folders changed between two looks it stops telling (`NOTIFICATIONOVERFLOW`); ALPS asks again at once, and the pages check, as when the stream comes up. A folder's first STATUS after the connection leaves it is checked against its last trustworthy UIDNEXT. If selected changes made that value unknown, ALPS checks conservatively once more; this can repeat a refresh, but does not miss an arrival balanced by an expunge.
+- **The event stream is a long-lived HTTP request.** It stays open for as long as the page. A reverse proxy must not buffer it: ALPS answers with `Cache-Control: no-cache` and `X-Accel-Buffering: no`, which nginx honours; other proxies may need buffering turned off for `/events`. It must let the request stay open: ALPS writes a heartbeat (a comment line) every 20 seconds, which keeps it within the usual idle timeouts (nginx `proxy_read_timeout`, 60 s by default; HAProxy `timeout server`). ALPS's own `read_timeout_sec` and `write_timeout_sec` do not apply to it.
+- **In a cluster the stream must reach the node holding the session**, as every request of the session already must, since that node holds its IMAP connections.
+- **Only in a secure context.** One tab of a browser holds the stream, chosen with `navigator.locks`, which browsers offer only over HTTPS and on `localhost`: elsewhere no tab opens one, rather than every tab (browsers allow six HTTP/1.1 connections to a host, and a stream per tab would leave the tabs waiting for their own requests).
+
+A failed or refused IDLE never signs anyone out: the pages check at their interval until it is back. It is tried again after a minute, then twice as long after each failure in a row, up to about half an hour.
+
+### 1.5 Numbered changes
+A session keeps the pages of a folder it has listed while the folder's counts (messages, unread, UIDVALIDITY and UIDNEXT) stay as they were read. Without `condstore`, a flag changed in another client that leaves the unread count as it was, such as a star, is not listed until the page expires (`ttl_minutes`); one that moves it, such as a message read, has every page of the folder read again in full.
+
+With `condstore` on:
+
+- **Each connection asks for it once.** Straight after sign-in, where the server lists CONDSTORE, ALPS sends `ENABLE CONDSTORE` (or, on a server without ENABLE, lets the first `STATUS` asking for `HIGHESTMODSEQ` turn it on). The server's own capability list is read: `IMAP4rev2` alone is not taken for CONDSTORE, which RFC 9051 does not include. QRESYNC is not turned on, even where the server lists it: under it the server reports messages taken out of the selected folder with `VANISHED`, which the IMAP client ALPS uses does not count down its messages for.
+- **The counts carry the latest change.** The `STATUS` and `LIST-STATUS` ALPS sends ask for `HIGHESTMODSEQ` too, which costs no extra round trip, and `GET /mailboxes/{mbox}/status` answers it as `highestmodseq`. Change numbers are decimal strings in JSON, preserving the full 63-bit IMAP range through the browser; counts and UIDs remain numbers.
+- **Only the flags are read again.** When the folder holds the messages a page was read with (the same UIDVALIDITY, as many messages, the same UIDNEXT) and only the change number moved, the next listing of the page sends one `UID FETCH <the page's messages> (FLAGS) (CHANGEDSINCE <the page's number>)` and lays what it answers over the page, instead of reading the page again. A read or a mark as unread no longer drops the folder's pages or the folder list; the conversations held of the folder are dropped as before.
+- **The pages notice.** A page reads its listing again when the change number moved, as it does when a count moves.
+- **No STATUS for the selected folder while it is unchanged.** RFC 9051 asks a client not to send `STATUS` for the mailbox it has selected. A check of the folder selected on the connection it runs on, often the Inbox on the background connection, sends a `NOOP` and, in the same round trip, `UID FETCH 1:* (FLAGS) (CHANGEDSINCE <the number last read>)`. When the server tells of no message arriving or going and the `FETCH` answers none, the status read last stands; otherwise it is read with `STATUS`, as before, which costs a second round trip. A flag change the server tells of on the `NOOP` is not relied on alone: the IMAP client may hand it on only after the `NOOP` has been answered, so the `FETCH` is what says it. `GET /mailboxes/{mbox}/status` with `with=` asks for its folders together: the selected one among them is checked this way, and the others with `STATUS`, all sent before the first answer is awaited.
+
+What it costs: one round trip as each connection signs in, the session's own and its background one. A change made in ALPS moves the number too, so the check after it reads the page again, from the session and with that one `FETCH`.
 
 ---
 
@@ -68,6 +97,7 @@ Controls the application-level data cache.
 | :--- | :--- | :--- | :--- |
 | `enabled` | Boolean | `true` | Enables or disables caching. |
 | `ttl_minutes` | Integer | `10` | Time-to-live for cached items before they expire. |
+| `max_part_kib` | Integer | `1024` | The largest message part, in KiB, kept in the cache. A larger part (a large attachment, most often) is read from the mail server again each time it is asked for, rather than held in memory. The browser keeps its own copy, which it revalidates without the part being read again. |
 
 ---
 
@@ -79,6 +109,21 @@ Configures output destination, format, and verbosity.
 | `output` | String | `"stderr"` | Destination for log output (`"stdout"`, `"stderr"`, `"syslog"`, or a file path like `"/var/log/alps.log"`). With a file path, alps reopens the file on `SIGHUP`, so a rotation tool such as newsyslog or logrotate can signal it after moving the file aside. |
 | `format` | String | `"console"`| Log format: `"json"` (structured, for production) or `"console"` (human-readable). |
 | `level` | String | `"info"` | Minimum log severity: `"debug"`, `"info"`, `"warn"`, or `"error"`. |
+| `access` | Boolean | `true` | Logs one `request` line per HTTP request at `info`: method, path (without the query string), status, bytes, `duration_ms`, client `ip` and, once signed in, `user` and `session`. |
+
+What is logged about users, whatever `access` says:
+
+| Message | Level | Fields |
+| :--- | :--- | :--- |
+| `sign-in` | info | `user`, `ip`, `session`, `2fa`, `remember`, `restored`, `agent` |
+| `sign-in awaits second factor` | info | `user`, `ip`, `session` |
+| `sign-in failed` | warn | `user`, `ip`, `reason` (`bad credentials`, `rate limited`, `second factor refused`, `error`), plus `agent`, `detail`, `session` or `error` |
+| `session restored` | info | `user`, `ip`, `session` — a browser signed back in with its login token, e.g. after a restart |
+| `account switch` | info | `user`, `to`, `ip`, `session` (the new one), `2fa_trusted` |
+| `account switch awaits second factor` | info | `user`, `to`, `ip`, `session` (the new one) |
+| `session ended` | info | `user`, `session`, `duration`, `reason` (`sign-out`, `idle`, `max-age`, `switched`, `evicted`, `auth-error`, `mail-server-unavailable`) |
+
+`session` is a short hash of the session token, which ties a session's lines together; the token itself is never logged. `ip` is the peer's address, or the client address forwarded by a proxy listed in `trusted_proxies`.
 
 ---
 
@@ -175,7 +220,7 @@ Routes incoming user logins across multiple email backends. Domain resolution pr
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `default_domain` | String | None | Fallback domain assumed if a user logs in with a username lacking `@domain`. |
+| `default_domain` | String | None | Fallback domain assumed if a user logs in with a username lacking `@domain`. The user still signs in with the bare username, but `username@default_domain` is the user's address: messages are sent from it and meetings are organized from it. |
 | `template` | String | None | Server URL pattern containing `%d` (domain), `%u` (local part), or `%n` (full username). Both domain and local part are strictly validated to prevent injection and SSRF. |
 | `template_domains` | Array of Strings | `[]` | Domain allowlist for template routing. Required when `template` is set: the template builds a server address out of the login, so an unlisted domain never matches and routing falls through to the next rule. |
 | `autodiscover` | Boolean | `false` | Automatically look up RFC 6186 DNS SRV records for IMAP servers. |
@@ -185,6 +230,8 @@ Routes incoming user logins across multiple email backends. Domain resolution pr
 | `password` | Table | None | A sub-table of a backend (`[provider.multi.routes.password]`), replacing `[plugin.password.options]` for logins that land there. Replaced whole, not merged: separate backends mean separate admin APIs and credentials. |
 | `routes` | Array of Tables | None | Grouped routes specifying `domains` list and provider configuration. |
 | `default` | Table | None | Fallback provider configuration table when no domain match occurs. |
+
+A single IMAP server whose users sign in with bare usernames can be set up this way too, with only `default_domain` and a `[provider.multi.default]` naming the server, so that users send from an address rather than from their username. With the other providers a bare username stays the From address. The calendar then organizes from the first address the CalDAV server lists for the user (`calendar-user-address-set`), when it lists one.
 
 Every backend a login touches follows the domain that chose its mail store, so a user does not read from one host and then send, sync contacts or calendars, edit filters or change a password somewhere unrelated. A backend that names no endpoint for a service defers to that service's global setting rather than borrowing one from an unrelated backend; domains reached by `template` or `autodiscover` have no entry of their own and fall to `default`, then to the global setting. When per-domain endpoints are configured in `multi`, service plugins (`carddav`, `caldav`, `managesieve`) initialize automatically even if their global `server` option is omitted, with unrouted logins treating unnamed services as disabled.
 
@@ -215,7 +262,7 @@ Common properties:
 | `base` | Core email functionality. | `enabled=true` |
 | `caldav` | Calendar support. | `upstream`, `default_view` |
 | `carddav` | Contacts support. | `upstream`, `default_view` |
-| `managesieve` | Email filtering support. | `upstream` |
+| `managesieve` | Email filters and the auto-reply (Sieve `vacation`). | `upstream` |
 | `gpg` | End-to-End Encryption. | `enabled=true` |
 
 ### Password Plugin (`[plugin.password]`)
@@ -238,3 +285,15 @@ Enables external HTTP API calls for user password changes.
 
 #### `[plugin.password.options.payload_mapping]`
 Maps internal variables (`username`, `local`, `domain`, `old_password`, `new_password`) to the expected JSON or Form fields in the HTTP request payload.
+
+---
+
+## 10. Branding (`[branding]`)
+What a deployment changes about how ALPS looks. Without this section ALPS looks as it ships: the Alps theme and the edelweiss as its logo. These settings reach the browser inside the page itself, so the sign-in page is drawn branded from its first paint.
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `default_theme` | String | `"alps"` | Colour theme for anyone who has not picked one: `"alps"`, `"migadu"`, `"nord"` or `"ocean"`. A theme picked in Settings stays that user's. Light or dark still follows each user's Theme Mode. |
+| `logo` | String | The default theme's own logo, else the edelweiss | The logo in the edelweiss's place, on the sign-in page and in the header, and the icon of the browser tab and the home screen. A logo ALPS ships, by name: `"migadu"` (the Migadu mammoth, in the theme's colours), or `"alps"` for the edelweiss. Or a folder holding a favicon package: `favicon.svg`, `favicon-96x96.png`, `favicon.ico`, `apple-touch-icon.png`, `web-app-manifest-192x192.png` and `web-app-manifest-512x512.png`, the files RealFaviconGenerator writes, each at most 1 MiB. The page shows its `favicon.svg`. With `default_theme = "migadu"` the Migadu logo is shown unless this names another. |
+
+ALPS refuses to start with a theme or built-in logo it does not know, or a favicon package missing a file.

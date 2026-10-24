@@ -1,16 +1,17 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import { live } from 'lit/directives/live.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registerCredential } from '../utils/webauthn-utils';
 import { renderIcon } from '../utils/ui';
+import { fetchWithTimeout } from '../utils/fetch-utils';
 
 import './alps-setting-group';
 import './alps-icon-btn';
 import './alps-button';
 import './ui-prompt';
 import './ui-modal';
-import './ui-confirm';
 
 interface CredentialDisplay {
     ID: string;
@@ -37,6 +38,16 @@ export class AlpsWebauthnSettings extends LitElement {
     @state() private showNamePrompt = false;
     @state() private pendingCredential: any = null;
     @state() private pendingDeleteId: string | null = null;
+    @state() private showTrustPrompt = false;
+    @state() private trustBusy = false;
+    @state() private removeBusy = false;
+    /**
+     * The removal prompt's field errors. Assigned only when a refusal arrives,
+     * never rebuilt on render: ui-prompt takes its errors again whenever this
+     * object changes, and a fresh one would bring back an error the user had
+     * already typed past.
+     */
+    @state() private removeErrors: Record<string, string> = {};
 
     static styles = css`
         :host { display: block; }
@@ -81,7 +92,10 @@ export class AlpsWebauthnSettings extends LitElement {
             if (!res.ok) throw new Error('Failed to fetch settings');
             this.data = await res.json();
         } catch (e: any) {
-            this.error = e.message;
+            // Said in the user's language. The error's own words, the
+            // browser's or the line above's, are English, and for the console.
+            console.error('Failed to read the security key settings', e);
+            this.error = this.i18nStore?.t('webauthn.errors.load_failed') ?? 'webauthn.errors.load_failed';
         } finally {
             this.loading = false;
         }
@@ -89,14 +103,73 @@ export class AlpsWebauthnSettings extends LitElement {
 
 
 
+    /**
+     * The box shows what the server holds, never what was clicked: it is put
+     * back at once, and changes only once the server has agreed and the
+     * settings are read again. Turning trust on waives this account's second
+     * factor for its linked accounts, so it takes the password, asked for
+     * first; turning it off takes nothing.
+     */
     async handleTrustToggle(e: Event) {
         const target = e.target as HTMLInputElement;
-        await fetch('/settings/2fa/trust-linked-accounts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ trust: target.checked })
-        });
-        this.fetchData();
+        const wanted = target.checked;
+        target.checked = !!this.data?.trustLinkedAccounts;
+        if (this.trustBusy) return;
+        if (wanted) {
+            this.showTrustPrompt = true;
+            return;
+        }
+        await this.sendTrust({ trust: false });
+    }
+
+    private async _handleTrustPromptSubmit(e: CustomEvent) {
+        const password = typeof e.detail?.password === 'string' ? e.detail.password : '';
+        this.showTrustPrompt = false;
+        if (!password) {
+            this.showTrustError('webauthn.errors.password_required');
+            return;
+        }
+        await this.sendTrust({ trust: true, current_password: password });
+    }
+
+    private async sendTrust(body: { trust: boolean; current_password?: string }) {
+        this.trustBusy = true;
+        this.error = '';
+        try {
+            const res = await fetchWithTimeout('/settings/2fa/trust-linked-accounts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            // An ended session is handled by fetchWithTimeout, which sends the
+            // user to the login screen with a notice saying why.
+            if (res.status === 401) return;
+            if (!res.ok) {
+                const code = await res.json().then((b) => b?.error, () => undefined);
+                this.showTrustError(this.trustRefusal(res.status, code));
+            }
+        } catch {
+            this.showTrustError('webauthn.errors.trust_failed');
+        } finally {
+            this.trustBusy = false;
+        }
+        await this.fetchData();
+    }
+
+    /** The message for a refused change of trust, by the server's stable code. */
+    private trustRefusal(status: number, code: unknown): string {
+        switch (code) {
+            case 'wrong_password': return 'webauthn.errors.wrong_password';
+            case 'password_required': return 'webauthn.errors.password_required';
+            case 'two_factor_required': return 'webauthn.errors.two_factor_required';
+            case 'no_security_key': return 'webauthn.errors.no_security_key';
+        }
+        if (status === 429) return 'webauthn.errors.rate_limited';
+        return 'webauthn.errors.trust_failed';
+    }
+
+    private showTrustError(key: string) {
+        this.error = this.i18nStore?.t(key) ?? key;
     }
 
     async addCredential() {
@@ -159,21 +232,72 @@ export class AlpsWebauthnSettings extends LitElement {
     }
 
     removeCredential(id: string) {
+        this.error = '';
+        this.removeErrors = {};
         this.pendingDeleteId = id;
     }
 
-    async executeRemoveCredential() {
-        if (!this.pendingDeleteId) return;
+    private t(key: string): string {
+        return this.i18nStore?.t(key) ?? key;
+    }
+
+    /**
+     * Removing a key takes the account's password, which the server checks: a
+     * browser left signed in must not be enough to strip the second factor.
+     * A refusal stays in the prompt, under the field, so the password can be
+     * typed again; only success closes it.
+     */
+    async executeRemoveCredential(e: CustomEvent) {
         const id = this.pendingDeleteId;
-        this.pendingDeleteId = null;
-        try {
-            this.error = '';
-            const res = await fetch(`/settings/2fa/credential/${encodeURIComponent(id)}/delete`, { method: 'POST' });
-            if (!res.ok) throw new Error(await res.text());
-            this.fetchData();
-        } catch (err: any) {
-            this.error = err.message || this.i18nStore?.t('webauthn.errors.remove_failed');
+        if (!id || this.removeBusy) return;
+        const password = typeof e.detail?.password === 'string' ? e.detail.password : '';
+        // The prompt's own check catches this first. Kept so that an empty
+        // password is never sent, whatever route the submit took.
+        if (!password) {
+            this.removeErrors = { password: this.t('webauthn.errors.password_required') };
+            return;
         }
+        this.removeBusy = true;
+        try {
+            const res = await fetchWithTimeout(`/settings/2fa/credential/${encodeURIComponent(id)}/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ current_password: password }),
+            });
+            // A key already gone, removed from another tab, is what was asked.
+            if (res.ok || res.status === 404) {
+                this.pendingDeleteId = null;
+                this.fetchData();
+                return;
+            }
+            // An ended session is handled by fetchWithTimeout, which sends the
+            // user to the login screen with a notice saying why.
+            if (res.status === 401) {
+                this.pendingDeleteId = null;
+                return;
+            }
+            const code = await res.json().then((body) => body?.error, () => undefined);
+            this.removeErrors = { password: this.removeRefusal(res.status, code) };
+        } catch {
+            // The server was not reached, so nothing was decided.
+            this.removeErrors = { password: this.t('webauthn.errors.remove_unavailable') };
+        } finally {
+            this.removeBusy = false;
+        }
+    }
+
+    /** The words for a refused removal, by the server's stable code. */
+    private removeRefusal(status: number, code: unknown): string {
+        if (code === 'wrong_password') return this.t('webauthn.errors.wrong_password');
+        if (code === 'password_required') return this.t('webauthn.errors.password_required');
+        // A session that has not given the second factor: no password helps,
+        // so it is not told to type one again.
+        if (code === 'two_factor_required') return this.t('webauthn.errors.two_factor_required');
+        if (status === 429) return this.t('webauthn.errors.rate_limited');
+        // Not "wrong password": the password may well be right, and saying
+        // otherwise sends the user to retype one that works.
+        if (status >= 500) return this.t('webauthn.errors.remove_unavailable');
+        return this.t('webauthn.errors.remove_failed');
     }
 
     render() {
@@ -182,7 +306,7 @@ export class AlpsWebauthnSettings extends LitElement {
         return html`
             ${this.showNamePrompt ? html`
                 <ui-prompt 
-                    title=${this.i18nStore?.t('webauthn.name_key_title')}
+                    heading=${this.i18nStore?.t('webauthn.name_key_title')}
                     confirmText=${this.i18nStore?.t('general.save')}
                     cancelText=${this.i18nStore?.t('general.cancel')}
                     .fields=${[
@@ -198,31 +322,61 @@ export class AlpsWebauthnSettings extends LitElement {
                 ></ui-prompt>
             ` : ''}
 
+            ${this.showTrustPrompt ? html`
+                <ui-prompt
+                    heading=${this.i18nStore?.t('webauthn.trust_linked_checkbox')}
+                    confirmText=${this.i18nStore?.t('general.save')}
+                    cancelText=${this.i18nStore?.t('general.cancel')}
+                    .fields=${[
+                    {
+                        id: 'password',
+                        type: 'password',
+                        label: this.i18nStore?.t('webauthn.trust_password_label'),
+                        autofocus: true
+                    }
+                ]}
+                    @submit=${this._handleTrustPromptSubmit}
+                    @cancel=${() => this.showTrustPrompt = false}
+                ></ui-prompt>
+            ` : ''}
+
             ${this.error ? html`
                 <ui-modal 
-                    title="${this.i18nStore?.t('general.error') || 'Error'}" 
+                    heading="${this.i18nStore?.t('general.error') || 'Error'}" 
                     .isDanger=${true} 
                     .dismissible=${true}
                     @cancel=${() => this.error = ''}>
                     <div>${this.error}</div>
                     <div slot="actions">
+                        <!-- Close: an error has nothing to cancel. -->
                         <alps-button variant="normal" @click=${() => this.error = ''}>
-                            ${this.i18nStore?.t('general.cancel') || 'Close'}
+                            ${this.i18nStore?.t('attachment.close') || 'Close'}
                         </alps-button>
                     </div>
                 </ui-modal>
             ` : ''}
 
             ${this.pendingDeleteId ? html`
-                <ui-confirm
-                    title="${this.i18nStore?.t('webauthn.settings.remove_btn') || 'Remove Key'}"
-                    message="${this.i18nStore?.t('webauthn.confirm_remove')}"
-                    confirmText="${this.i18nStore?.t('general.delete') || 'Delete'}"
-                    cancelText="${this.i18nStore?.t('general.cancel')}"
-                    isDanger
-                    @confirm=${this.executeRemoveCredential}
-                    @cancel=${() => this.pendingDeleteId = null}
-                ></ui-confirm>
+                <ui-prompt
+                    heading="${this.t('webauthn.confirm_remove')}"
+                    confirmText="${this.t('webauthn.settings.remove_btn')}"
+                    cancelText="${this.t('general.cancel')}"
+                    .isDanger=${true}
+                    .busy=${this.removeBusy}
+                    .errors=${this.removeErrors}
+                    .fields=${[
+                    {
+                        id: 'password',
+                        type: 'password',
+                        label: this.t('webauthn.remove_password_label'),
+                        autocomplete: 'current-password',
+                        autofocus: true,
+                        validate: (value: string) => (value ? null : this.t('webauthn.errors.password_required')),
+                    }
+                ]}
+                    @submit=${this.executeRemoveCredential}
+                    @cancel=${() => { if (!this.removeBusy) this.pendingDeleteId = null; }}
+                ></ui-prompt>
             ` : ''}
 
             <alps-setting-group 
@@ -253,7 +407,7 @@ export class AlpsWebauthnSettings extends LitElement {
             ${(this.data?.credentialCount ?? 0) > 0 ? html`
                 <alps-setting-group label="${this.i18nStore?.t('webauthn.trust_linked')}" description="${this.i18nStore?.t('webauthn.trust_linked_desc')}">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
-                        <input type="checkbox" .checked=${this.data?.trustLinkedAccounts} @change=${this.handleTrustToggle}>
+                        <input type="checkbox" .checked=${live(!!this.data?.trustLinkedAccounts)} ?disabled=${this.trustBusy} @change=${this.handleTrustToggle}>
                         ${this.i18nStore?.t('webauthn.trust_linked_checkbox')}
                     </label>
                 </alps-setting-group>

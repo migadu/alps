@@ -3,8 +3,13 @@ package alpsbase
 import (
 	"errors"
 	"net/http"
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/emersion/go-message/mail"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
 )
@@ -144,6 +149,75 @@ func TestHTTP_SettingsThatDoNotDecodeAreRemoved(t *testing.T) {
 	}
 }
 
+// The display name is free text, and whatever it holds, a message sent or a
+// draft saved under it says From that name and the account's address. Pasted
+// in front of the address, a comma in it ("Doe, Jane") made From two
+// addresses, the first with none, and every send and every draft save failed.
+func TestHTTP_TheDisplayNameIsSentAsWritten(t *testing.T) {
+	smtpServer, rec := listenRecorder(t)
+	s := newTestServerWithSMTP(t, smtpServer)
+	s.login()
+
+	fromOf := func(raw string) (*mail.Address, error) {
+		r, err := mail.CreateReader(strings.NewReader(raw))
+		if err != nil {
+			return nil, err
+		}
+		list, err := r.Header.AddressList("From")
+		if err != nil || len(list) != 1 {
+			return nil, errors.New("From is " + r.Header.Get("From"))
+		}
+		return list[0], nil
+	}
+	for i, name := range []string{
+		"Doe, Jane",
+		`Jane "JJ" Doe`,
+		"Jane (work) Doe",
+		`Back\slash`,
+		"Ada <ada@elsewhere.test>",
+		"Jöhn Døe",
+		"Døe, Jöhn",
+	} {
+		s.expect(s.do("PUT", "/settings", map[string]any{"from": name}), http.StatusOK)
+		subject := "Notes " + strconv.Itoa(i)
+		form := url.Values{"to": {"charles@remote.test"}, "subject": {subject}, "text": {"See you."}}
+
+		s.expect(s.do("POST", "/messages", form), http.StatusOK)
+		rec.mu.Lock()
+		data, envelopeFrom := rec.data, rec.from
+		rec.mu.Unlock()
+		if addr, err := fromOf(data); err != nil || addr.Name != name || addr.Address != testUser {
+			t.Errorf("sent under %q: From %+v, %v", name, addr, err)
+		}
+		if envelopeFrom != testUser {
+			t.Errorf("sent under %q: MAIL FROM %q", name, envelopeFrom)
+		}
+
+		form.Set("save_as_draft", "1")
+		r := s.do("POST", "/messages", form)
+		s.expect(r, http.StatusOK)
+		var saved struct {
+			Mailbox string `json:"draft_mailbox"`
+		}
+		r.json(t, &saved)
+		uid := ""
+		for _, m := range s.mailbox(saved.Mailbox).Messages {
+			if m.Envelope.Subject == subject {
+				uid = m.UID
+			}
+		}
+		if uid == "" {
+			t.Errorf("the draft saved under %q is not in %s", name, saved.Mailbox)
+			continue
+		}
+		r = s.do("GET", "/mailboxes/"+url.PathEscape(url.PathEscape(saved.Mailbox))+"/messages/"+uid+"/raw", nil)
+		s.expect(r, http.StatusOK)
+		if addr, err := fromOf(string(r.body)); err != nil || addr.Name != name || addr.Address != testUser {
+			t.Errorf("draft saved under %q: From %+v, %v", name, addr, err)
+		}
+	}
+}
+
 func TestHTTP_SettingsWeekStart(t *testing.T) {
 	s := newTestServer(t)
 	s.login()
@@ -246,4 +320,57 @@ func TestSettingsCheckWeekStart(t *testing.T) {
 	}
 }
 
+// The folders unsubscribed here are kept with the account, a list over its
+// cap is refused without touching the one kept, and an empty list clears it.
+func TestHTTP_SettingsKeepTheFoldersUnsubscribedHere(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
 
+	saved := func() []string {
+		t.Helper()
+		var got struct {
+			Settings struct {
+				UI struct {
+					UnsubscribedFolders []string `json:"unsubscribedFolders"`
+				} `json:"ui"`
+			}
+		}
+		r := s.do("GET", "/settings", nil)
+		s.expect(r, http.StatusOK)
+		r.json(t, &got)
+		return got.Settings.UI.UnsubscribedFolders
+	}
+	save := func(names []string) response {
+		t.Helper()
+		return s.do("PUT", "/settings", map[string]any{"ui": map[string]any{"unsubscribedFolders": names}})
+	}
+
+	if got := saved(); len(got) != 0 {
+		t.Fatalf("a new account already has folders unsubscribed here: %v", got)
+	}
+	s.expect(save([]string{"Old", "Work/2019"}), http.StatusOK)
+	if got := saved(); !slices.Equal(got, []string{"Old", "Work/2019"}) {
+		t.Fatalf("kept %v", got)
+	}
+
+	// A save that does not name the list leaves it as it is.
+	s.expect(s.do("PUT", "/settings", map[string]any{"ui": map[string]any{"themeMode": "dark"}}), http.StatusOK)
+	if got := saved(); !slices.Equal(got, []string{"Old", "Work/2019"}) {
+		t.Fatalf("after another setting was saved: %v", got)
+	}
+
+	tooMany := make([]string, maxUnsubscribedFolders+1)
+	for i := range tooMany {
+		tooMany[i] = "Folder " + strconv.Itoa(i)
+	}
+	s.expect(save(tooMany), http.StatusBadRequest)
+	s.expect(save([]string{"Old", "Old"}), http.StatusBadRequest)
+	if got := saved(); !slices.Equal(got, []string{"Old", "Work/2019"}) {
+		t.Fatalf("after refused saves: %v", got)
+	}
+
+	s.expect(save([]string{}), http.StatusOK)
+	if got := saved(); len(got) != 0 {
+		t.Fatalf("an empty list kept %v", got)
+	}
+}

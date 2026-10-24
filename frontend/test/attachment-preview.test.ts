@@ -173,6 +173,20 @@ describe('alps-attachment-preview', () => {
     expect(text(el, '.file-title')).toBe('first.docx');
   });
 
+  it('opens as a modal dialog, named by the file', async () => {
+    // Modal, so the page behind it is inert and Tab cannot walk out of it.
+    const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal');
+    try {
+      const el = await preview({ attachments: [part({ Filename: 'document.pdf' })] });
+      const dialog = shadow<HTMLDialogElement>(el, 'dialog');
+      expect(showModal).toHaveBeenCalledTimes(1);
+      expect(dialog.open).toBe(true);
+      expect(el.shadowRoot!.getElementById(dialog.getAttribute('aria-labelledby') ?? '')?.textContent).toBe('document.pdf');
+    } finally {
+      showModal.mockRestore();
+    }
+  });
+
   it('closes from the close button, from Escape and from the backdrop', async () => {
     const el = await preview({ attachments: [part({ Filename: 'a.docx', MIMEType: '' })] });
     const closes = record<CustomEvent>(el, 'close');
@@ -192,6 +206,23 @@ describe('alps-attachment-preview', () => {
         document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
       }
       expect(reached).toEqual(['e']);
+    } finally {
+      document.removeEventListener('keydown', listener);
+      el.remove();
+    }
+  });
+
+  it('keeps ArrowUp and ArrowDown from the message list underneath, and lets them scroll', async () => {
+    const el = await preview({ attachments: [part({ Filename: 'notes.txt', MIMEType: 'text/plain' })] });
+    const reached: string[] = [];
+    const listener = (e: KeyboardEvent) => reached.push(e.key);
+    document.addEventListener('keydown', listener);
+    try {
+      const events = ['ArrowUp', 'ArrowDown'].map(key => new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      for (const event of events) document.body.dispatchEvent(event);
+      expect(reached).toEqual([]);
+      // Not cancelled: a long text attachment still scrolls with them.
+      expect(events.map(event => event.defaultPrevented)).toEqual([false, false]);
     } finally {
       document.removeEventListener('keydown', listener);
       el.remove();

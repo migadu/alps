@@ -191,5 +191,3 @@ func TestDeduplicationMatchesSecondaryEmail(t *testing.T) {
 		t.Fatalf("expected deduplication to match existing path %q, got %q", objectPath, result.Path)
 	}
 }
-
-

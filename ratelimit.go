@@ -340,8 +340,8 @@ func (rl *RateLimiter) RecordLoginAttempt(r *http.Request, username string, succ
 			Timestamp: now,
 		}
 		if data, err := json.Marshal(event); err == nil {
-			// We only want to broadcast prefix 0x01 to distinguish rate limit events if we had multiple types,
-			// but for now we just marshal JSON
+			// Sent as bare JSON, as it always has been; other kinds of
+			// message start with a tag byte: see cluster_messages.go.
 			rl.broadcaster.Broadcast(data)
 		} else {
 			rl.logger.Printf("Failed to marshal rate limit event for broadcast: %v", err)

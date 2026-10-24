@@ -16,9 +16,25 @@ export class LinkedAccountsStore extends EventTarget {
     private accounts: LinkedAccount[] = [];
     private loading = false;
     private initialized = false;
+    /**
+     * Moves when the session ends, so a read for the session that ended
+     * cannot land in the next one.
+     */
+    private epoch = 0;
 
     constructor() {
         super();
+        // The list is the signed-in account's, and signing out does not reload
+        // the page. It was kept, and marked read, so the next user to sign in
+        // on this tab had the menu and the settings page list the previous
+        // user's linked accounts: both fetch only when nothing has been read.
+        window.addEventListener('session-cleared', () => {
+            this.epoch++;
+            this.accounts = [];
+            this.initialized = false;
+            this.loading = false;
+            this.dispatchEvent(new Event('change'));
+        });
     }
 
     getAccounts() {
@@ -34,6 +50,7 @@ export class LinkedAccountsStore extends EventTarget {
     }
 
     async fetchAccounts() {
+        const epoch = this.epoch;
         this.loading = true;
         this.dispatchEvent(new Event('change'));
         
@@ -41,6 +58,7 @@ export class LinkedAccountsStore extends EventTarget {
             const response = await fetch('/accounts');
             if (response.ok) {
                 const data: LinkedAccountsData = await response.json();
+                if (epoch !== this.epoch) return;
                 this.accounts = data.accounts || [];
                 this.initialized = true;
             } else {
@@ -49,8 +67,10 @@ export class LinkedAccountsStore extends EventTarget {
         } catch (error) {
             Logger.error('Error fetching linked accounts:', error);
         } finally {
-            this.loading = false;
-            this.dispatchEvent(new Event('change'));
+            if (epoch === this.epoch) {
+                this.loading = false;
+                this.dispatchEvent(new Event('change'));
+            }
         }
     }
 

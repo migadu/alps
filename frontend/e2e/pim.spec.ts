@@ -13,6 +13,8 @@ import {
   deliver,
   expect,
   login,
+  readContact,
+  removeContact,
   resetDav,
   seedContact,
   seedEvent,
@@ -94,6 +96,110 @@ test("a seeded contact is listed", async ({ page }) => {
 
   await page.goto("/#/contacts");
   await expect(page.locator("alps-contacts-list .contact-item", { hasText: name })).toBeVisible({ timeout: 15_000 });
+});
+
+test("a card's categories and star show in the sidebar and the list", async ({ page }) => {
+  // The listing asked the CardDAV server for four properties only, and a
+  // server that answers with just those, as this one does, gave every card
+  // without its categories: the sidebar listed none, and Favorites counted 0.
+  const name = `Hopper E2E ${run}`;
+  const category = `Navy E2E ${run}`;
+  await seedContact({
+    uid: `e2e-hopper-${run}`,
+    name,
+    email: `hopper.${run}@example.test`,
+    lines: [`CATEGORIES:${category},Favorites`],
+  });
+  await login(page);
+  await page.goto("/#/contacts");
+
+  const sidebar = page.locator("alps-contacts-categories");
+  const navy = sidebar.locator(".category-item", { hasText: category });
+  await expect(navy).toBeVisible({ timeout: 15_000 });
+  await expect(navy.locator(".category-badge")).toHaveText("1");
+  await expect(sidebar.locator(".category-item", { hasText: "Favorites" }).locator(".category-badge")).toHaveText("1");
+
+  await navy.getByRole("button", { name: category, exact: true }).click();
+  const row = page.locator("alps-contacts-list .contact-item", { hasText: name });
+  await expect(row).toBeVisible();
+  await expect(row.locator(".star-btn")).toHaveClass(/\bstarred\b/);
+});
+
+test("deleting a contact already deleted elsewhere succeeds", async ({ page }) => {
+  // Deleted on another device, or in another tab, while this page still
+  // lists it. The CardDAV server answers 404, which alps passed on as 500:
+  // the page said "1 of 1 contact could not be deleted."
+  const name = `Babbage E2E ${run}`;
+  const uid = `e2e-babbage-${run}`;
+  await seedContact({ uid, name, email: `babbage.${run}@example.test` });
+  await login(page);
+  await page.goto("/#/contacts");
+  const row = page.locator("alps-contacts-list .contact-item", { hasText: name });
+  await row.click();
+  await expect(page.locator("alps-contact-view")).toContainText(name);
+
+  await removeContact(uid);
+  await page.locator('alps-contact-view alps-icon-btn[title="Delete"]').click();
+  const deleted = page.waitForResponse((r) => r.request().method() === "DELETE" && r.url().includes("/contacts/"));
+  await page.locator("contacts-page ui-confirm").getByRole("button", { name: "Delete", exact: true }).click();
+
+  expect((await deleted).status()).toBe(200);
+  await expect(row).toHaveCount(0, { timeout: 15_000 });
+});
+
+test("an Apple birthday without a year stays without one through an edit", async ({ page }) => {
+  // Apple's apps write a birthday entered without a year as one in 1604 and
+  // name that year in a parameter. The card showed the year 1604, the
+  // editor's date field was empty, and any save wrote the date back without
+  // the parameter, so Apple's apps showed 1604 too.
+  const name = `Lovelace E2E ${run}`;
+  const uid = `e2e-lovelace-${run}`;
+  await seedContact({ uid, name, email: `lovelace.${run}@example.test`, lines: ["BDAY;X-APPLE-OMIT-YEAR=1604:1604-12-10"] });
+  await login(page);
+  await page.goto("/#/contacts");
+  await page.locator("alps-contacts-list .contact-item", { hasText: name }).click();
+  const view = page.locator("alps-contact-view");
+  await expect(view).toContainText(/12-10|12\/10|10\.12\./);
+  await expect(view).not.toContainText("1604");
+
+  await view.locator('alps-icon-btn[title="Edit Contact"]').click();
+  const birthday = view.getByRole("group", { name: "Birthday" });
+  await expect(birthday.getByRole("combobox", { name: "Day" })).toHaveValue("10");
+  await expect(birthday.getByRole("combobox", { name: "Month" })).toHaveValue("12");
+  await expect(birthday.getByRole("textbox", { name: "Year" })).toHaveValue("");
+
+  // Another field's edit saves the card, birthday and all.
+  const saved = page.waitForResponse((r) => r.request().method() === "POST" && /\/contacts\/.+\/edit/.test(r.url()));
+  await view.getByPlaceholder("Notes").fill("Wrote the first program");
+  expect((await saved).status()).toBe(200);
+  const card = (await readContact(uid)) ?? "";
+  expect(card).toContain("Wrote the first program");
+  expect(card).toMatch(/^BDAY;X-APPLE-OMIT-YEAR=1604:1604-12-10\r?$/m);
+});
+
+test("a star given while editing a contact stays through the edit's next save", async ({ page }) => {
+  // The editor's form held the categories it was opened with and sent them
+  // back on every save, so the first keystroke after a star took it away.
+  const name = `Hopper Star E2E ${run}`;
+  const uid = `e2e-hopper-star-${run}`;
+  await seedContact({ uid, name, email: `hopper.star.${run}@example.test`, lines: ["CATEGORIES:Navy"] });
+  await login(page);
+  await page.goto("/#/contacts");
+  await page.locator("alps-contacts-list .contact-item", { hasText: name }).click();
+  const view = page.locator("alps-contact-view");
+  await expect(view).toContainText(name);
+  await view.locator('alps-icon-btn[title="Edit Contact"]').click();
+
+  const starred = page.waitForResponse((r) => r.request().method() === "POST" && /\/contacts\/.+\/categories/.test(r.url()));
+  await view.locator('alps-icon-btn[title="Toggle Star"]').click();
+  expect((await starred).status()).toBe(200);
+  const saved = page.waitForResponse((r) => r.request().method() === "POST" && /\/contacts\/.+\/edit/.test(r.url()));
+  await view.locator('input[placeholder="Nickname"]').fill("Amazing Grace");
+  expect((await saved).status()).toBe(200);
+
+  const card = (await readContact(uid)) ?? "";
+  expect(card).toContain("NICKNAME:Amazing Grace");
+  expect(card).toMatch(/^CATEGORIES:Navy\b.*\bFavorites\r?$/m);
 });
 
 test("contacts feed the composer's recipient autocomplete", async ({ page }) => {

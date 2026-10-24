@@ -1,19 +1,34 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { consume } from '@lit/context';
 import { renderIcon } from '../utils/ui';
+import { focusOnLabelClick } from '../utils/label-focus';
+import { addressText, addressWarning, displayAddress, mixedScriptStyles, parseWrittenAddress, writtenAddress } from '../utils/address-display';
+import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registry } from '../plugin-registry';
 import { popupStyles } from './alps-popup.js';
 
 @customElement('alps-address-input')
 export class AlpsAddressInput extends LitElement {
+  /** For the warning beside a lookalike address, the field's one string. */
+  @consume({ context: i18nContext })
+  i18nStore!: I18nStore;
+
   @property({ type: Array }) addresses: string[] = [];
   @property({ type: Boolean }) disabled = false;
+  /**
+   * The field's accessible name, given to its input as its aria-label: a
+   * caption beside this element cannot name the input in this shadow root.
+   */
+  @property({ type: String }) label = '';
   
   @state() private inputText = '';
   @state() private suggestions: { name: string, address: string }[] = [];
   @state() private focusedSuggestionIndex = -1;
   private _suggestionTimeout: number | null = null;
   private _suggestionSeq = 0;
+  /** The suggestions' hiding after a blur (see _handleBlur). */
+  private _hideTimeout: number | null = null;
 
   public focus() {
     const input = this.shadowRoot?.querySelector('input');
@@ -21,6 +36,50 @@ export class AlpsAddressInput extends LitElement {
       input.focus();
     }
   }
+
+  /** Stops the watch for a click on this field's label (see focusOnLabelClick). */
+  private stopLabelWatch: (() => void) | null = null;
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.i18nStore?.addEventListener('change', this._handleI18nChange);
+    this.stopLabelWatch = focusOnLabelClick(this);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.i18nStore?.removeEventListener('change', this._handleI18nChange);
+    this.stopLabelWatch?.();
+    this.stopLabelWatch = null;
+    // A field taken away, with the composer it was in, has nothing to
+    // suggest to: a lookup still waiting out its pause would ask the plugins
+    // all the same.
+    this._cancelSuggestions();
+    if (this._hideTimeout !== null) {
+      window.clearTimeout(this._hideTimeout);
+      this._hideTimeout = null;
+    }
+  }
+
+  /**
+   * Whether what is typed is an address, which leaving the field, or
+   * {@link commitPending}, makes a pill. Send can be pressed for it.
+   */
+  get hasPendingAddress(): boolean {
+    const inputVal = this.inputText.trim();
+    return !!inputVal && this._isValidEmail(inputVal);
+  }
+
+  /**
+   * Makes what is typed a pill now, when it is an address. Close and Send call
+   * it before they read the composer, so that an address typed and not yet a
+   * pill is saved and sent with the rest, whatever has the focus.
+   */
+  commitPending() {
+    if (this.hasPendingAddress) this._addAddress(this.inputText.trim(), false);
+  }
+
+  private _handleI18nChange = () => this.requestUpdate();
 
   updated(changedProperties: Map<string, any>) {
     super.updated(changedProperties);
@@ -55,18 +114,16 @@ export class AlpsAddressInput extends LitElement {
     return false;
   }
 
+  /**
+   * The pill's caption: the name, or the address when there is none. An
+   * address that may not be the one it looks like is shown beside the name
+   * all the same, with its warning, since the name alone would hide what the
+   * warning is about.
+   */
   private _displayAddr(addr: string) {
-    const trimmed = addr.trim();
-    if (trimmed.endsWith('>')) {
-      const startObj = trimmed.lastIndexOf('<');
-      if (startObj !== -1) {
-        const namePart = trimmed.substring(0, startObj).trim();
-        const emailPart = trimmed.substring(startObj + 1, trimmed.length - 1);
-        const name = namePart.replace(/^["']|["']$/g, '').trim();
-        return name || emailPart;
-      }
-    }
-    return addr;
+    const { name, email } = parseWrittenAddress(addr);
+    if (!displayAddress(email).warning) return name ? html`<bdi>${name}</bdi>` : addressText(email);
+    return html`${name ? html`<bdi>${name}</bdi> &lt;` : ''}${addressText(email)}${name ? '>' : ''}${addressWarning(email, this.i18nStore)}`;
   }
 
   /** Invalidates any lookup still debouncing or in flight, so it cannot land. */
@@ -132,7 +189,7 @@ export class AlpsAddressInput extends LitElement {
         e.preventDefault();
         this._cancelSuggestions();
         const s = this.suggestions[this.focusedSuggestionIndex];
-        const addr = s.name ? '"' + s.name + '" <' + s.address + '>' : s.address;
+        const addr = writtenAddress(s.name, s.address);
         this._addAddress(addr);
         return;
       } else if (e.key === 'Escape') {
@@ -194,12 +251,16 @@ export class AlpsAddressInput extends LitElement {
   }
 
   private _handleBlur() {
-    // Small timeout to allow mousedown to fire on suggestion buttons before we hide them by clearing inputText
-    setTimeout(() => {
-      const inputVal = this.inputText.trim();
-      if (inputVal && this._isValidEmail(inputVal)) {
-        this._addAddress(inputVal, false);
-      }
+    // Taken at once, before whatever took the focus acts on what is here. It
+    // was taken 150ms later, and raced the press that left the field: Close
+    // saved the draft without it, and Send was still disabled. A click on a
+    // suggestion leaves the focus where it is (see its mousedown).
+    this.commitPending();
+    // Only the suggestions wait, so that a click already on its way to one
+    // still lands.
+    if (this._hideTimeout !== null) window.clearTimeout(this._hideTimeout);
+    this._hideTimeout = window.setTimeout(() => {
+      this._hideTimeout = null;
       this.suggestions = [];
       this.focusedSuggestionIndex = -1;
     }, 150);
@@ -207,6 +268,7 @@ export class AlpsAddressInput extends LitElement {
 
   static styles = [
     popupStyles,
+    mixedScriptStyles,
     css`
     :host {
       display: block;
@@ -325,6 +387,7 @@ export class AlpsAddressInput extends LitElement {
           <div class="input-wrapper">
             <input
               type="text"
+              aria-label=${this.label || nothing}
               .value=${this.inputText}
               @input=${this._handleInput}
               @keydown=${this._handleKeyDown}
@@ -344,10 +407,10 @@ export class AlpsAddressInput extends LitElement {
                   @click=${(e: Event) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    const addr = s.name ? '"' + s.name + '" <' + s.address + '>' : s.address;
+                    const addr = writtenAddress(s.name, s.address);
                     this._addAddress(addr);
                   }}>
-                  <span class="item-text"><b>${s.name}</b> &lt;${s.address}&gt;</span>
+                  <span class="item-text"><b><bdi>${s.name}</bdi></b> &lt;${addressText(s.address)}&gt;${addressWarning(s.address, this.i18nStore)}</span>
                 </button>
               `)}
             </div>
