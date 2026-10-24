@@ -7,6 +7,7 @@ import (
 	"log/syslog"
 	"os"
 	"strings"
+	"sync"
 )
 
 // Logger is a simple logging interface.
@@ -24,6 +25,9 @@ type Logger interface {
 	Fatal(i ...interface{})
 	Fatalf(format string, args ...interface{})
 	SetLevel(level slog.Level)
+	// Reopen closes and reopens the log file after a rotation tool such as
+	// newsyslog has moved it aside. A no-op when the output is not a file.
+	Reopen() error
 	// Slog is the structured logger underneath, for lines whose parts are
 	// fields to search by (who signed in, from where) rather than a sentence.
 	Slog() *slog.Logger
@@ -33,6 +37,7 @@ type logger struct {
 	slog   *slog.Logger
 	level  *slog.LevelVar
 	closer io.Closer // for file handles
+	file   *logFile  // set when Output is a file path, for Reopen
 }
 
 // LoggerOptions configures logger creation.
@@ -67,6 +72,7 @@ func NewLoggerWithOptions(opts LoggerOptions) Logger {
 
 	var writer io.Writer
 	var closer io.Closer
+	var file *logFile
 
 	// Determine output destination
 	switch opts.Output {
@@ -87,13 +93,14 @@ func NewLoggerWithOptions(opts LoggerOptions) Logger {
 		}
 	default:
 		// Assume it's a file path
-		file, err := os.OpenFile(opts.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		lf, err := openLogFile(opts.Output)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to open log file %s: %v, falling back to stderr\n", opts.Output, err)
 			writer = os.Stderr
 		} else {
-			writer = file
-			closer = file
+			writer = lf
+			closer = lf
+			file = lf
 		}
 	}
 
@@ -113,7 +120,52 @@ func NewLoggerWithOptions(opts LoggerOptions) Logger {
 		slog:   slog.New(handler),
 		level:  level,
 		closer: closer,
+		file:   file,
 	}
+}
+
+// logFile is a log output that can be reopened under a running handler.
+// newsyslog renames the file and then signals the process; writing on
+// through the old descriptor would fill the rotated file, which is then
+// compressed and lost.
+type logFile struct {
+	mu   sync.Mutex
+	path string
+	f    *os.File
+}
+
+func openLogFile(path string) (*logFile, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, err
+	}
+	return &logFile{path: path, f: f}, nil
+}
+
+func (lf *logFile) Write(p []byte) (int, error) {
+	lf.mu.Lock()
+	defer lf.mu.Unlock()
+	return lf.f.Write(p)
+}
+
+func (lf *logFile) Close() error {
+	lf.mu.Lock()
+	defer lf.mu.Unlock()
+	return lf.f.Close()
+}
+
+// reopen swaps in a fresh descriptor for the path. On failure the old
+// descriptor stays, so logging never stops over a rotation gone wrong.
+func (lf *logFile) reopen() error {
+	f, err := os.OpenFile(lf.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("reopen log file %s: %w", lf.path, err)
+	}
+	lf.mu.Lock()
+	old := lf.f
+	lf.f = f
+	lf.mu.Unlock()
+	return old.Close()
 }
 
 // parseLevel converts string level to slog.Level
@@ -134,6 +186,13 @@ func parseLevel(level string) slog.Level {
 
 func (l *logger) SetLevel(level slog.Level) {
 	l.level.Set(level)
+}
+
+func (l *logger) Reopen() error {
+	if l.file == nil {
+		return nil
+	}
+	return l.file.reopen()
 }
 
 func (l *logger) Slog() *slog.Logger {
@@ -226,4 +285,5 @@ func (discardLogger) Errorf(format string, args ...interface{}) {}
 func (discardLogger) Fatal(i ...interface{})                    {}
 func (discardLogger) Fatalf(format string, args ...interface{}) {}
 func (discardLogger) SetLevel(level slog.Level)                 {}
+func (discardLogger) Reopen() error                             { return nil }
 func (discardLogger) Slog() *slog.Logger                        { return slog.New(slog.DiscardHandler) }

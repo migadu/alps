@@ -106,7 +106,7 @@ Configures output destination, format, and verbosity.
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `output` | String | `"stderr"` | Destination for log output (`"stdout"`, `"stderr"`, `"syslog"`, or a file path like `"/var/log/alps.log"`). |
+| `output` | String | `"stderr"` | Destination for log output (`"stdout"`, `"stderr"`, `"syslog"`, or a file path like `"/var/log/alps.log"`). With a file path, alps reopens the file on `SIGHUP`, so a rotation tool such as newsyslog or logrotate can signal it after moving the file aside. |
 | `format` | String | `"console"`| Log format: `"json"` (structured, for production) or `"console"` (human-readable). |
 | `level` | String | `"info"` | Minimum log severity: `"debug"`, `"info"`, `"warn"`, or `"error"`. |
 | `access` | Boolean | `true` | Logs one `request` line per HTTP request at `info`: method, path (without the query string), status, bytes, `duration_ms`, client `ip` and, once signed in, `user` and `session`. |
