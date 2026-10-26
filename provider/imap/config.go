@@ -1,6 +1,7 @@
 package imap
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
 )
 
@@ -148,7 +150,7 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 
 		if err := client.Login(username, password).Wait(); err != nil {
 			client.Logout()
-			return nil, provider.AuthError{Cause: err}
+			return nil, loginError(err)
 		}
 
 		p := NewIMAPProvider(client, debugMode).WithAuthservIDs(authservIDs)
@@ -165,6 +167,20 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		}
 		return p, nil
 	}
+}
+
+// loginError is the error a LOGIN that failed ends in. Only the server's answer
+// refuses the credentials, and not when it says it could not check them:
+// Dovecot answers NO [UNAVAILABLE] while its authentication backend is down.
+// A connection lost during the exchange is a failed connection like any
+// other. The login form counts an AuthError as a wrong password, against the
+// account and the address it came from.
+func loginError(err error) error {
+	var imapErr *imap.Error
+	if errors.As(err, &imapErr) && imapErr.Code != imap.ResponseCodeUnavailable {
+		return provider.AuthError{Cause: err}
+	}
+	return fmt.Errorf("failed to sign in to IMAP server: %w", err)
 }
 
 func configure(meta *toml.MetaData, raw *toml.Primitive) (provider.Config, error) {
