@@ -1318,6 +1318,10 @@ export class AlpsFloatingComposer extends LitElement {
     }
 
     .window-frame {
+      /* Everything in the window stands on the window's surface, not the
+         page's: the editor's toolbar, the overlays and the popups paint
+         --bg-primary, so the window redefines it rather than painting over. */
+      --bg-primary: var(--bg-raised);
       display: flex;
       flex-direction: column;
       width: 100%;

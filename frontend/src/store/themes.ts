@@ -228,6 +228,8 @@ export const THEME_BUNDLES: Record<string, ThemeBundle> = {
       ...MIGADU_TOKENS,
       'accent-fill': '#1d4ed8',
       'accent-fill-hover': '#1e40af',
+      // The composer is white, so it stands out from the pale-blue page.
+      'bg-raised': '#ffffff',
       'bg-unread': '#1d4ed80b',
       'bg-unread-hover': '#1d4ed814',
       'scrollbar-thumb': '#b9ceec',
@@ -271,6 +273,9 @@ export const THEME_BUNDLES: Record<string, ThemeBundle> = {
       'accent-fill': '#2563eb',
       // Darken on hover so the button's white text keeps 4.5:1 contrast.
       'accent-fill-hover': '#1d4ed8',
+      // A raised surface is lighter in the dark: the composer sits a step
+      // above the page, short of the tertiary navy of hovered controls.
+      'bg-raised': '#132756',
       'bg-unread': '#38bdf80d',
       'bg-unread-hover': '#38bdf817',
       'scrollbar-thumb': '#254380',

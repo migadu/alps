@@ -50,3 +50,22 @@ describe.each(['light', 'dark'])('Migadu %s buttons', (mode) => {
     });
   }
 });
+
+describe.each(['light', 'dark'])('the Migadu %s composer', (mode) => {
+  const theme = THEME_BUNDLES[`migadu-${mode}`]!;
+  const raised = theme.tokens?.['bg-raised'] ?? '';
+
+  // On the page's own colour the composer's body passed unseen.
+  it('stands apart from the page', () => {
+    expect(raised).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(raised.toLowerCase()).not.toBe(theme.colors['bg-primary'].toLowerCase());
+  });
+
+  it.each(['text-primary', 'text-secondary', 'text-muted', 'accent-color', 'error'] as const)(
+    '%s keeps 4.5:1 contrast on it',
+    (name) => {
+      const color = theme.colors[name];
+      expect(contrast(color, raised), `${color} on ${raised}`).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+});
