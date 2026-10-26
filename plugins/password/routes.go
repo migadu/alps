@@ -3,6 +3,7 @@ package password
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/migadu/alps/provider"
 	"io"
 	"net/http"
@@ -68,11 +69,28 @@ func handlePasswordChange(ctx *alps.Context) error {
 	// of the current one — the backend only enforces old_password if the
 	// deployment's payload_mapping happens to forward it. The check takes the
 	// same time whatever was typed; see CheckPassword.
-	if !ctx.Session.CheckPassword(req.OldPassword) {
+	//
+	// The check counts against the login limits for the account and the
+	// address it comes from, as the login form and the second factor's
+	// password confirmations do.
+	username := ctx.Session.Username()
+	if allowed, reason, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
+		ctx.Server.Logger().Printf("Password change: current password check rate limited for %s", username)
+		seconds := int(retryAfter.Seconds())
+		if seconds > 0 {
+			ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
+		}
+		return ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
+			"error":       reason,
+			"retry_after": seconds,
+		})
+	}
+	correct := ctx.Session.CheckPassword(req.OldPassword)
+	ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, correct)
+	if !correct {
 		return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Current password is incorrect"})
 	}
 
-	username := ctx.Session.Username()
 	parts := strings.SplitN(username, "@", 2)
 	local := username
 	domain := ""
