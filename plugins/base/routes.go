@@ -1888,22 +1888,43 @@ func handleLogin(ctx *alps.Context) error {
 	if username != "" && password != "" {
 		// Create session to validate credentials and check 2FA status
 		s, err := ctx.Server.Sessions.Put(username, password)
-		loginSuccess := err == nil
+		var authErr provider.AuthError
+		refused := errors.As(err, &authErr)
 
-		// Record login attempt for rate limiting (must happen regardless of success/failure)
+		// Record login attempt for rate limiting (must happen regardless of
+		// success/failure). Only a refusal of the credentials is a failed
+		// one: an error, such as a mail server that cannot be reached, is an
+		// attempt and no more (see RecordLoginError).
 		if ctx.Server.RateLimiter != nil {
-			ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, loginSuccess)
+			if err != nil && !refused {
+				ctx.Server.RateLimiter.RecordLoginError(ctx.Request)
+			} else {
+				ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, err == nil)
+			}
 		}
 
 		if err != nil {
-			var authErr provider.AuthError
-			if errors.As(err, &authErr) {
+			if refused {
 				ctx.Server.Logger().Slog().Warn("sign-in failed",
 					"user", username,
 					"ip", ctx.ClientIP(),
 					"reason", "bad credentials",
 					"agent", ctx.Request.UserAgent())
 				return ctx.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Failed to login"})
+			}
+			// The password checked out, but the account holds as many
+			// connections as the mail server allows: the user's other mail
+			// apps, and other alps sessions. Answered with a code of its own,
+			// so the page does not send the user to retype a password that
+			// is right.
+			var limited *provider.LimitError
+			if errors.As(err, &limited) {
+				ctx.Server.Logger().Slog().Warn("sign-in failed",
+					"user", username,
+					"ip", ctx.ClientIP(),
+					"reason", "connection limit",
+					"error", err.Error())
+				return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "connection_limit"})
 			}
 			ctx.Server.Logger().Slog().Warn("sign-in failed",
 				"user", username,

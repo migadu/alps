@@ -1,6 +1,7 @@
 package imap
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
 )
 
@@ -148,7 +150,7 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 
 		if err := client.Login(username, password).Wait(); err != nil {
 			client.Logout()
-			return nil, provider.AuthError{Cause: err}
+			return nil, loginError(err)
 		}
 
 		p := NewIMAPProvider(client, debugMode).WithAuthservIDs(authservIDs)
@@ -165,6 +167,28 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		}
 		return p, nil
 	}
+}
+
+// loginError is the error a LOGIN that failed ends in. Only a tagged NO
+// refuses the credentials. BAD is a protocol failure, and UNAVAILABLE or
+// SERVERBUG says the server could not check them. Dovecot answers
+// NO [UNAVAILABLE] while its authentication backend is down.
+// Sora checks the password and then answers NO [LIMIT] when the account holds
+// as many connections as it may; that remains a provider.LimitError.
+// A connection lost during the exchange is a failed connection like any other.
+func loginError(err error) error {
+	var imapErr *imap.Error
+	if errors.As(err, &imapErr) && imapErr.Type == imap.StatusResponseTypeNo {
+		code := imap.ResponseCode(strings.ToUpper(string(imapErr.Code)))
+		switch code {
+		case imap.ResponseCodeUnavailable, imap.ResponseCodeServerBug:
+		case imap.ResponseCodeLimit:
+			return &provider.LimitError{RetryAfter: waitNamedIn(imapErr.Text), Cause: fmt.Errorf("LOGIN refused: %w", err)}
+		default:
+			return provider.AuthError{Cause: err}
+		}
+	}
+	return fmt.Errorf("failed to sign in to IMAP server: %w", err)
 }
 
 func configure(meta *toml.MetaData, raw *toml.Primitive) (provider.Config, error) {

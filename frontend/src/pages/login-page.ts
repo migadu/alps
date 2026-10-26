@@ -330,6 +330,12 @@ export class LoginPage extends LitElement {
             || Number(response.headers.get('Retry-After'))
             || 60;
           this.startRetryCountdown(retryAfter);
+        } else if (data.error === 'connection_limit') {
+          // The password was right, but the account holds as many connections
+          // as the mail server allows. "Check your credentials" sent the user
+          // to retype one that works.
+          this.error = this.i18nStore?.t('login.tooManyConnections');
+          this.isRateLimited = false;
         } else {
           this.error = data.error || this.i18nStore?.t('login.loginFailed');
           this.isRateLimited = false;

@@ -139,6 +139,7 @@ export const fr = {
     signIn: 'Se connecter',
     tooManyAttempts: 'Trop de tentatives de connexion',
     loginFailed: 'Échec de la connexion. Veuillez vérifier vos identifiants.',
+    tooManyConnections: "Trop de connexions sont ouvertes sur ce compte. Fermez une autre application de messagerie ou déconnectez-vous dans un autre navigateur, puis réessayez.",
     networkError: "Une erreur de réseau s'est produite. Veuillez réessayer.",
     pleaseWait: 'Veuillez patienter',
     wait: 'Patienter',
