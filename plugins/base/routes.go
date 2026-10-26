@@ -4838,22 +4838,27 @@ func handleAddAccount(ctx *alps.Context) error {
 	}
 
 	err := ctx.Session.AddLinkedAccount(username, password, displayName)
-	// A link refused before the password was tried records nothing.
-	// Otherwise the attempt is recorded as the login form records one: it
-	// succeeded if the password signed in, which an account already linked
-	// shows as well, and failed on any other error.
+	// A link refused before the password was tried records nothing. Only a
+	// refusal while signing in to the target counts as a bad password. A
+	// backend or metadata error still consumes the IP attempt budget without
+	// changing the target account's failure history.
 	if !errors.Is(err, alps.ErrCannotLinkSelf) && !errors.Is(err, alps.ErrLoginKeyRequired) {
-		signedIn := err == nil || errors.Is(err, alps.ErrAccountAlreadyLinked)
-		ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, signedIn)
+		switch {
+		case err == nil || errors.Is(err, alps.ErrAccountAlreadyLinked):
+			ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, true)
+		case errors.Is(err, alps.ErrLinkedCredentialsRefused):
+			ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, false)
+		default:
+			ctx.Server.RateLimiter.RecordLoginError(ctx.Request)
+		}
 	}
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to add account: %v", err)
-		var authErr provider.AuthError
 		if errors.Is(err, alps.ErrAccountAlreadyLinked) {
 			errorMsg = "This account is already linked"
 		} else if errors.Is(err, alps.ErrCannotLinkSelf) {
 			errorMsg = "You cannot link your own account"
-		} else if errors.As(err, &authErr) {
+		} else if errors.Is(err, alps.ErrLinkedCredentialsRefused) {
 			errorMsg = "Authentication failed. Please check your credentials."
 		}
 
