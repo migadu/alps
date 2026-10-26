@@ -139,6 +139,7 @@ export const it = {
     signIn: 'Accedi',
     tooManyAttempts: 'Troppi tentativi di accesso',
     loginFailed: 'Accesso fallito. Controlla le tue credenziali.',
+    tooManyConnections: "Questo account ha troppe connessioni aperte. Chiudi un'altra app di posta o esci dall'account in un altro browser, poi riprova.",
     networkError: 'Si è verificato un errore di rete. Riprova.',
     pleaseWait: 'Attendere prego',
     wait: 'Attendi',

@@ -141,6 +141,7 @@ export const de: TranslationDictionary = {
     signIn: 'Anmelden',
     tooManyAttempts: 'Zu viele Anmeldeversuche',
     loginFailed: 'Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Anmeldedaten.',
+    tooManyConnections: 'Für dieses Konto sind zu viele Verbindungen geöffnet. Schließen Sie ein anderes E-Mail-Programm oder melden Sie sich in einem anderen Browser ab, und versuchen Sie es dann erneut.',
     networkError: 'Netzwerkfehler aufgetreten. Bitte versuchen Sie es erneut.',
     pleaseWait: 'Bitte warten',
     wait: 'Warten',
