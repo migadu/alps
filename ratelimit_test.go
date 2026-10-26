@@ -872,6 +872,132 @@ func TestRateLimiter_SeenEventIDsAgeOut(t *testing.T) {
 	}
 }
 
+// An attempt another node's mail server could not check counts towards the
+// address's burst window like any attempt, and towards no run of failures,
+// for the address or the account.
+func TestRateLimiter_ClusterLoginErrorsAreNotFailures(t *testing.T) {
+	config := RateLimitConfig{
+		IPRequestsPerMinute:     100,
+		IPRequestsPerHour:       100,
+		UsernameFailsPerQuarter: 100,
+		UsernameFailsPerHour:    100,
+		GlobalRequestsPerSecond: 1000,
+		LockoutDuration:         10 * time.Minute,
+	}
+	rl := NewRateLimiter(config, &mockLogger{}, nil)
+	defer rl.Close()
+
+	for _, event := range []map[string]any{
+		{"id": "failure", "ip": "10.0.0.70", "username": "outage@example.com", "success": false},
+		{"id": "error-named", "ip": "10.0.0.70", "username": "outage@example.com", "success": false, "errored": true},
+		{"id": "error", "ip": "10.0.0.70", "success": false, "errored": true},
+	} {
+		event["timestamp"] = time.Now()
+		data, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rl.HandleClusterMessage(data)
+	}
+
+	rl.mu.RLock()
+	defer rl.mu.RUnlock()
+	ipEntry, userEntry := rl.ipMap["10.0.0.70"], rl.userMap["outage@example.com"]
+	if ipEntry == nil || userEntry == nil {
+		t.Fatal("expected the cluster events to be recorded")
+	}
+	if len(ipEntry.timestamps) != 3 || len(ipEntry.failures) != 1 || len(userEntry.timestamps) != 1 {
+		t.Errorf("one failure and two errors counted as %d attempts, %d failures for the address and %d for the account; want 3, 1 and 1",
+			len(ipEntry.timestamps), len(ipEntry.failures), len(userEntry.timestamps))
+	}
+}
+
+// lockProbe is a broadcaster that notes whether the rate limiter's lock is
+// held while it is called.
+type lockProbe struct {
+	rl   *RateLimiter
+	held []bool
+}
+
+func (p *lockProbe) Broadcast(msg []byte) {
+	free := p.rl.mu.TryLock()
+	if free {
+		p.rl.mu.Unlock()
+	}
+	p.held = append(p.held, !free)
+}
+
+// The cluster sends a broadcast to every other node as it is made, a datagram
+// apiece, and every login check waits on the rate limiter's lock.
+func TestRateLimiter_BroadcastsOutsideTheLock(t *testing.T) {
+	probe := &lockProbe{}
+	rl := NewRateLimiter(DefaultRateLimitConfig(), &mockLogger{}, probe)
+	defer rl.Close()
+	probe.rl = rl
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.71:12345"
+	rl.RecordLoginAttempt(req, "probe@example.com", false)
+	rl.RecordLoginAttempt(req, "probe@example.com", true)
+
+	if len(probe.held) != 2 || probe.held[0] || probe.held[1] {
+		t.Errorf("lock held during each broadcast: %v, want [false false]", probe.held)
+	}
+}
+
+// An attempt that ended in an error is an attempt for the address's burst
+// window, and no failure: it neither adds to a run of them nor ends one. The
+// other nodes are told of it without the username.
+func TestRateLimiter_LoginErrorsAreAttemptsNotFailures(t *testing.T) {
+	broadcaster := &mockBroadcaster{}
+	rl := NewRateLimiter(DefaultRateLimitConfig(), &mockLogger{}, broadcaster)
+	defer rl.Close()
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.72:12345"
+	username := "errors@example.com"
+	rl.RecordLoginAttempt(req, username, false)
+	rl.RecordLoginError(req)
+	rl.RecordLoginError(req)
+
+	rl.mu.RLock()
+	ipEntry, userEntry := rl.ipMap["10.0.0.72"], rl.userMap[username]
+	global := len(rl.globalTS)
+	rl.mu.RUnlock()
+	if len(ipEntry.timestamps) != 3 || len(ipEntry.failures) != 1 || len(userEntry.timestamps) != 1 || global != 3 {
+		t.Errorf("a failure and two errors counted as %d attempts and %d failures for the address, %d failures for the account and %d attempts in all; want 3, 1, 1 and 3",
+			len(ipEntry.timestamps), len(ipEntry.failures), len(userEntry.timestamps), global)
+	}
+
+	if len(broadcaster.messages) != 3 {
+		t.Fatalf("%d attempts broadcast, want 3", len(broadcaster.messages))
+	}
+	for _, msg := range broadcaster.messages[1:] {
+		var event RateLimitEvent
+		if err := json.Unmarshal(msg, &event); err != nil {
+			t.Fatal(err)
+		}
+		if !event.Errored || event.Success || event.Username != "" || event.IP != "10.0.0.72" || event.ID == "" {
+			t.Errorf("an error was broadcast as %s", msg)
+		}
+	}
+}
+
+func TestRateLimiter_LoginErrorsBroadcastOutsideTheLock(t *testing.T) {
+	probe := &lockProbe{}
+	rl := NewRateLimiter(DefaultRateLimitConfig(), &mockLogger{}, probe)
+	defer rl.Close()
+	probe.rl = rl
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.73:12345"
+	rl.RecordLoginError(req)
+
+	if len(probe.held) != 1 || probe.held[0] {
+		t.Errorf("lock held during the broadcast: %v, want [false]", probe.held)
+	}
+}
+
 // Server.Close calls three teardowns and the other two are already guarded, so
 // this one has to tolerate a second call too.
 func TestRateLimiter_CloseIsIdempotent(t *testing.T) {

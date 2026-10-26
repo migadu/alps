@@ -345,8 +345,28 @@ func (c *Cluster) HealthStatus() map[string]interface{} {
 	}
 }
 
-// Broadcast queues a message to be broadcasted to the cluster via gossip protocol.
+// Broadcast sends a message to every other member of the cluster.
+//
+// One copy goes straight to each of them, and the message is queued for gossip
+// as well. Gossip alone sends a broadcast RetransmitMult*ceil(log10(N+1))
+// times, to peers picked at random, and a peer does not pass a user message
+// on: from five nodes up that is fewer sends than there are peers, so every
+// broadcast missed one. The gossiped copies stay, to make up for a datagram
+// that is lost. A member therefore receives a message more than once, and
+// must act on it once: a rate-limit event carries an ID for that, and a
+// second-factor hint only sets a flag.
 func (c *Cluster) Broadcast(msg []byte) {
+	if c.ml != nil {
+		local := c.ml.LocalNode().Name
+		for _, node := range c.ml.Members() {
+			if node.Name == local {
+				continue
+			}
+			if err := c.ml.SendBestEffort(node, msg); err != nil {
+				c.logger.Debug("cluster message not sent", "node", node.Name, "error", err)
+			}
+		}
+	}
 	if c.broadcasts != nil {
 		c.broadcasts.QueueBroadcast(&broadcastMsg{msg: msg})
 	}

@@ -1,8 +1,11 @@
 package cluster
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -248,5 +251,85 @@ func TestNotifyMsg_DoesNotBlockAndCopies(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("handler never ran")
+	}
+}
+
+// Every node counts every rate-limit event, so a node that never hears one
+// lets the guesses it stands for be made again through it. The gossip queue
+// sends a broadcast RetransmitMult*ceil(log10(N+1)) times, which from five
+// nodes up (3 sends for 5 to 9 nodes) is fewer than there are peers, and a
+// peer does not pass a user message on: every broadcast missed a peer.
+//
+// The sender's own handler must not see it either: the node has counted its
+// own attempt already, and would count it twice.
+func TestBroadcast_ReachesEveryOtherMember(t *testing.T) {
+	const n = 5
+	const port = 17980
+	var mu sync.Mutex
+	got := make([]map[string]int, n)
+	nodes := make([]*Cluster, n)
+	for i := range nodes {
+		var peers []string
+		if i > 0 {
+			peers = []string{fmt.Sprintf("127.0.0.1:%d", port)}
+		}
+		c, err := NewCluster(Config{
+			NodeName:      fmt.Sprintf("node%d", i),
+			BindAddr:      "127.0.0.1",
+			BindPort:      port + i,
+			Peers:         peers,
+			AllowInsecure: true,
+			Logger:        testLogger(),
+		})
+		if err != nil {
+			t.Fatalf("failed to create node%d: %v", i, err)
+		}
+		defer c.Shutdown()
+		got[i] = map[string]int{}
+		c.SetMessageHandler(func(msg []byte) {
+			mu.Lock()
+			got[i][string(msg)]++
+			mu.Unlock()
+		})
+		nodes[i] = c
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for _, c := range nodes {
+		for c.NumMembers() != n && time.Now().Before(deadline) {
+			time.Sleep(50 * time.Millisecond)
+		}
+		if c.NumMembers() != n {
+			t.Fatalf("%s sees %d members, want %d", c.LocalNodeName(), c.NumMembers(), n)
+		}
+	}
+
+	const events = 10
+	for k := 0; k < events; k++ {
+		nodes[0].Broadcast([]byte(fmt.Sprintf("event %d", k)))
+	}
+
+	missing := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		var out []string
+		for i := 1; i < n; i++ {
+			if len(got[i]) != events {
+				out = append(out, fmt.Sprintf("node%d heard %d of %d", i, len(got[i]), events))
+			}
+		}
+		return out
+	}
+	deadline = time.Now().Add(3 * time.Second)
+	for len(missing()) > 0 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if m := missing(); len(m) > 0 {
+		t.Errorf("broadcasts missed peers: %s", strings.Join(m, ", "))
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got[0]) != 0 {
+		t.Errorf("the sender heard its own broadcasts: %v", got[0])
 	}
 }
