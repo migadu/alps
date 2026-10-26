@@ -193,6 +193,7 @@ export const en = {
     signIn: 'Sign In',
     tooManyAttempts: 'Too many login attempts',
     loginFailed: 'Login failed. Please check your credentials.',
+    tooManyConnections: 'Too many connections are open to this account. Close another mail app, or sign out in another browser, and try again.',
     networkError: 'Network error occurred. Please try again.',
     pleaseWait: 'Please wait',
     wait: 'Wait',
