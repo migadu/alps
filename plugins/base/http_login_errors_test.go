@@ -123,3 +123,22 @@ func TestHTTP_MailServerOutageCountsTowardsTheBurstWindow(t *testing.T) {
 		t.Errorf("refused with %q, want the per-minute window's refusal", body.Error)
 	}
 }
+
+// A wrong password is still a failure, here and on the other nodes, and
+// enough of them hold back even the right one.
+func TestHTTP_WrongPasswordsStillLockTheAccount(t *testing.T) {
+	config := alps.DefaultRateLimitConfig()
+	config.IPRequestsPerMinute = 100
+	s, _, peer := newOutageServer(t, config)
+
+	for i := 0; i < config.UsernameFailsPerQuarter; i++ {
+		s.expect(s.do("POST", "/session", map[string]string{"username": testUser, "password": "wrong"}), http.StatusUnauthorized)
+	}
+	s.expect(s.do("POST", "/session", map[string]string{"username": testUser, "password": testPassword}), http.StatusTooManyRequests)
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "198.51.100.8:40000"
+	if allowed, _, _ := peer.limiter.CheckLoginAllowed(req, testUser); allowed {
+		t.Error("the other node still lets the account sign in")
+	}
+}

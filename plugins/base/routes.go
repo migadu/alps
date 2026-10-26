@@ -1888,16 +1888,23 @@ func handleLogin(ctx *alps.Context) error {
 	if username != "" && password != "" {
 		// Create session to validate credentials and check 2FA status
 		s, err := ctx.Server.Sessions.Put(username, password)
-		loginSuccess := err == nil
+		var authErr provider.AuthError
+		refused := errors.As(err, &authErr)
 
-		// Record login attempt for rate limiting (must happen regardless of success/failure)
+		// Record login attempt for rate limiting (must happen regardless of
+		// success/failure). Only a refusal of the credentials is a failed
+		// one: an error, such as a mail server that cannot be reached, is an
+		// attempt and no more (see RecordLoginError).
 		if ctx.Server.RateLimiter != nil {
-			ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, loginSuccess)
+			if err != nil && !refused {
+				ctx.Server.RateLimiter.RecordLoginError(ctx.Request)
+			} else {
+				ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, err == nil)
+			}
 		}
 
 		if err != nil {
-			var authErr provider.AuthError
-			if errors.As(err, &authErr) {
+			if refused {
 				ctx.Server.Logger().Slog().Warn("sign-in failed",
 					"user", username,
 					"ip", ctx.ClientIP(),

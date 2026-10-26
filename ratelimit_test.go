@@ -945,6 +945,59 @@ func TestRateLimiter_BroadcastsOutsideTheLock(t *testing.T) {
 	}
 }
 
+// An attempt that ended in an error is an attempt for the address's burst
+// window, and no failure: it neither adds to a run of them nor ends one. The
+// other nodes are told of it without the username.
+func TestRateLimiter_LoginErrorsAreAttemptsNotFailures(t *testing.T) {
+	broadcaster := &mockBroadcaster{}
+	rl := NewRateLimiter(DefaultRateLimitConfig(), &mockLogger{}, broadcaster)
+	defer rl.Close()
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.72:12345"
+	username := "errors@example.com"
+	rl.RecordLoginAttempt(req, username, false)
+	rl.RecordLoginError(req)
+	rl.RecordLoginError(req)
+
+	rl.mu.RLock()
+	ipEntry, userEntry := rl.ipMap["10.0.0.72"], rl.userMap[username]
+	global := len(rl.globalTS)
+	rl.mu.RUnlock()
+	if len(ipEntry.timestamps) != 3 || len(ipEntry.failures) != 1 || len(userEntry.timestamps) != 1 || global != 3 {
+		t.Errorf("a failure and two errors counted as %d attempts and %d failures for the address, %d failures for the account and %d attempts in all; want 3, 1, 1 and 3",
+			len(ipEntry.timestamps), len(ipEntry.failures), len(userEntry.timestamps), global)
+	}
+
+	if len(broadcaster.messages) != 3 {
+		t.Fatalf("%d attempts broadcast, want 3", len(broadcaster.messages))
+	}
+	for _, msg := range broadcaster.messages[1:] {
+		var event RateLimitEvent
+		if err := json.Unmarshal(msg, &event); err != nil {
+			t.Fatal(err)
+		}
+		if !event.Errored || event.Success || event.Username != "" || event.IP != "10.0.0.72" || event.ID == "" {
+			t.Errorf("an error was broadcast as %s", msg)
+		}
+	}
+}
+
+func TestRateLimiter_LoginErrorsBroadcastOutsideTheLock(t *testing.T) {
+	probe := &lockProbe{}
+	rl := NewRateLimiter(DefaultRateLimitConfig(), &mockLogger{}, probe)
+	defer rl.Close()
+	probe.rl = rl
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.73:12345"
+	rl.RecordLoginError(req)
+
+	if len(probe.held) != 1 || probe.held[0] {
+		t.Errorf("lock held during the broadcast: %v, want [false]", probe.held)
+	}
+}
+
 // Server.Close calls three teardowns and the other two are already guarded, so
 // this one has to tolerate a second call too.
 func TestRateLimiter_CloseIsIdempotent(t *testing.T) {

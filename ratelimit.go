@@ -67,14 +67,19 @@ type ClusterBroadcaster interface {
 
 // RateLimitEvent is the payload broadcasted over the gossip network
 type RateLimitEvent struct {
-	// ID names one attempt. memberlist delivers a broadcast up to
-	// RetransmitMult*ceil(log10(N+1)) times and NotifyMsg cannot tell the
-	// copies apart, so a receiver applies each ID once. Empty from older nodes.
+	// ID names one attempt. A node receives each broadcast more than once
+	// (see cluster.Cluster.Broadcast) and NotifyMsg cannot tell the copies
+	// apart, so a receiver applies each ID once. Empty from older nodes.
 	ID        string    `json:"id,omitempty"`
 	IP        string    `json:"ip,omitempty"`
 	Username  string    `json:"username,omitempty"`
 	Success   bool      `json:"success"`
 	Timestamp time.Time `json:"timestamp"`
+	// Errored marks an attempt that ended in an error, not in an answer to
+	// its credentials: see RecordLoginError. Sent with Success false and no
+	// Username, so a node from before it counts a failure for the address
+	// alone.
+	Errored bool `json:"errored,omitempty"`
 }
 
 // RateLimiter implements multi-tier rate limiting for login attempts
@@ -355,6 +360,36 @@ func (rl *RateLimiter) RecordLoginAttempt(r *http.Request, username string, succ
 	})
 }
 
+// RecordLoginError records a login attempt that ended in an error rather than
+// in an answer to its credentials: the mail server could not be reached, said
+// it could not check them, or failed once it had. It is no wrong password, so
+// it counts towards no run of failures, for the address or the account, and
+// ends none either. A user who signs in again through an outage of the mail
+// server no longer locks their own account.
+//
+// It is an attempt all the same, and counts towards the address's per-minute
+// window: an error a client can provoke is not a free try.
+func (rl *RateLimiter) RecordLoginError(r *http.Request) {
+	if rl == nil {
+		return
+	}
+
+	ip := getClientIP(r, rl.config.TrustedProxies)
+	now := time.Now()
+
+	rl.mu.Lock()
+	rl.globalTS = append(rl.globalTS, now)
+	ipEntry := rl.getOrCreateEntry(rl.ipMap, ip)
+	ipEntry.timestamps = append(ipEntry.timestamps, now)
+	rl.mu.Unlock()
+
+	rl.broadcast(RateLimitEvent{
+		IP:        ip,
+		Errored:   true,
+		Timestamp: now,
+	})
+}
+
 // broadcast sends an attempt to the other nodes of the cluster, under an ID
 // of its own. Called without rl.mu held: the cluster sends it to each other
 // node as a datagram, and every login check waits on that lock.
@@ -421,15 +456,17 @@ func (rl *RateLimiter) HandleClusterMessage(data []byte) {
 	if event.IP != "" {
 		ipEntry := rl.getOrCreateEntry(rl.ipMap, event.IP)
 		ipEntry.timestamps = append(ipEntry.timestamps, ts)
-		if event.Success {
+		switch {
+		case event.Errored:
+		case event.Success:
 			ipEntry.failures = nil
-		} else {
+		default:
 			ipEntry.failures = append(ipEntry.failures, ts)
 		}
 	}
 
 	// Record or clear username attempt
-	if event.Username != "" {
+	if event.Username != "" && !event.Errored {
 		userEntry := rl.getOrCreateEntry(rl.userMap, event.Username)
 		if event.Success {
 			// If login succeeded on another node, clear failures locally too
