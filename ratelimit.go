@@ -313,7 +313,6 @@ func (rl *RateLimiter) RecordLoginAttempt(r *http.Request, username string, succ
 	now := time.Now()
 
 	rl.mu.Lock()
-	defer rl.mu.Unlock()
 
 	// Always record global attempt
 	rl.globalTS = append(rl.globalTS, now)
@@ -346,23 +345,30 @@ func (rl *RateLimiter) RecordLoginAttempt(r *http.Request, username string, succ
 			userEntry.lockedUntil = time.Time{}
 		}
 	}
+	rl.mu.Unlock()
 
-	// Broadcast the event to the cluster
-	if rl.broadcaster != nil {
-		event := RateLimitEvent{
-			ID:        newEventID(),
-			IP:        ip,
-			Username:  username,
-			Success:   success,
-			Timestamp: now,
-		}
-		if data, err := json.Marshal(event); err == nil {
-			// Sent as bare JSON, as it always has been; other kinds of
-			// message start with a tag byte: see cluster_messages.go.
-			rl.broadcaster.Broadcast(data)
-		} else {
-			rl.logger.Printf("Failed to marshal rate limit event for broadcast: %v", err)
-		}
+	rl.broadcast(RateLimitEvent{
+		IP:        ip,
+		Username:  username,
+		Success:   success,
+		Timestamp: now,
+	})
+}
+
+// broadcast sends an attempt to the other nodes of the cluster, under an ID
+// of its own. Called without rl.mu held: the cluster sends it to each other
+// node as a datagram, and every login check waits on that lock.
+func (rl *RateLimiter) broadcast(event RateLimitEvent) {
+	if rl.broadcaster == nil {
+		return
+	}
+	event.ID = newEventID()
+	if data, err := json.Marshal(event); err == nil {
+		// Sent as bare JSON, as it always has been; other kinds of
+		// message start with a tag byte: see cluster_messages.go.
+		rl.broadcaster.Broadcast(data)
+	} else {
+		rl.logger.Printf("Failed to marshal rate limit event for broadcast: %v", err)
 	}
 }
 
