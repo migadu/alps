@@ -169,16 +169,20 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 	}
 }
 
-// loginError is the error a LOGIN that failed ends in. Only the server's answer
-// refuses the credentials, and not when it says it could not check them:
-// Dovecot answers NO [UNAVAILABLE] while its authentication backend is down.
+// loginError is the error a LOGIN that failed ends in. Only a tagged NO
+// refuses the credentials. BAD is a protocol failure, and UNAVAILABLE or
+// SERVERBUG says the server could not check them. Dovecot answers
+// NO [UNAVAILABLE] while its authentication backend is down.
 // A connection lost during the exchange is a failed connection like any
 // other. The login form counts an AuthError as a wrong password, against the
 // account and the address it came from.
 func loginError(err error) error {
 	var imapErr *imap.Error
-	if errors.As(err, &imapErr) && imapErr.Code != imap.ResponseCodeUnavailable {
-		return provider.AuthError{Cause: err}
+	if errors.As(err, &imapErr) && imapErr.Type == imap.StatusResponseTypeNo {
+		code := imap.ResponseCode(strings.ToUpper(string(imapErr.Code)))
+		if code != imap.ResponseCodeUnavailable && code != imap.ResponseCodeServerBug {
+			return provider.AuthError{Cause: err}
+		}
 	}
 	return fmt.Errorf("failed to sign in to IMAP server: %w", err)
 }
