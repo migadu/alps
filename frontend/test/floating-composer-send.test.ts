@@ -194,6 +194,25 @@ describe('the undo window of a send', () => {
   });
 });
 
+describe('a maximized window that is sending', () => {
+  // Sending minimizes the window and leaves `expanded` set, so that Undo gives
+  // the window back maximized. Laid out as maximized, it stayed centred over
+  // the page, empty but for its spinner, with a backdrop that took every click.
+  it('lies minimized at the foot of the screen, with no backdrop', async () => {
+    const instance: ComposerInstance = {
+      id: 'c1', to: ['ada@example.com'], subject: 'Hi', text: 'Hello', format: 'text',
+      expanded: true, minimized: true, isSending: true,
+    };
+    const el = await mount('alps-floating-composer', { instance, composeStore: storeFor(instance), i18nStore });
+
+    expect(el.hasAttribute('minimized')).toBe(true);
+    expect(el.hasAttribute('expanded')).toBe(false);
+    expect(el.shadowRoot!.querySelector('.backdrop')).toBeNull();
+    expect(el.style.height).toBe('40px');
+    expect(el.style.zIndex).not.toBe('30000');
+  });
+});
+
 describe('a send pressed during an autosave', () => {
   it('waits for the save, and sends over the draft that save stored', async () => {
     // The save stores draft 8 and deletes 7. Sent before it landed, the
