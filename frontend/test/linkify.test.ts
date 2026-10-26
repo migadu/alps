@@ -219,3 +219,10 @@ describe("renderLinkedText", () => {
     expect(host.querySelector("a")!.getAttribute("href")).toBe("https://example.com/");
   });
 });
+
+it('keeps supplementary Unicode letters in the whole address instead of linking a different recipient', () => {
+  const local = '𐐀ada@example.com';
+  const domain = 'ada@example.com𐐀';
+  expect(links(local)).toEqual([[local, `mailto:${encodeURIComponent('𐐀ada')}@example.com`]]);
+  expect(links(domain)).toEqual([[domain, `mailto:${domain}`]]);
+});

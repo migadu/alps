@@ -86,7 +86,18 @@ function trimUrlEnd(text: string, start: number, end: number): number {
 /** The address around the `@` at `at`, or null when there is none. */
 function scanEmail(text: string, at: number, floor: number): { start: number; end: number } | null {
   let start = at;
-  while (start > floor && at - start <= MAX_LOCAL && LOCAL_CHAR.test(text[start - 1])) start--;
+  while (start > floor && at - start <= MAX_LOCAL) {
+    let previous = start - 1;
+    const unit = text.charCodeAt(previous);
+    // Read a Unicode character, rather than splitting a supplementary letter
+    // and linking only the address suffix after its surrogate pair.
+    if (unit >= 0xdc00 && unit <= 0xdfff && previous > floor) {
+      const high = text.charCodeAt(previous - 1);
+      if (high >= 0xd800 && high <= 0xdbff) previous--;
+    }
+    if (!LOCAL_CHAR.test(text.slice(previous, start))) break;
+    start = previous;
+  }
   if (at - start > MAX_LOCAL) return null;
   // Quotes, emphasis and full stops at the front of the run are the
   // sentence's, not the address's: `'ada@example.com'`, `*ada@example.com*`,
@@ -96,7 +107,11 @@ function scanEmail(text: string, at: number, floor: number): { start: number; en
   if (local === '' || local.endsWith('.') || LOCAL_UNUSUAL.test(local)) return null;
 
   let end = at + 1;
-  while (end < text.length && end - at - 1 <= MAX_DOMAIN && DOMAIN_CHAR.test(text[end])) end++;
+  while (end < text.length && end - at - 1 <= MAX_DOMAIN) {
+    const ch = String.fromCodePoint(text.codePointAt(end)!);
+    if (!DOMAIN_CHAR.test(ch)) break;
+    end += ch.length;
+  }
   if (end - at - 1 > MAX_DOMAIN) return null;
   while (end > at + 1 && (text[end - 1] === '.' || text[end - 1] === '-')) end--;
   if (!isDomain(text.slice(at + 1, end))) return null;
