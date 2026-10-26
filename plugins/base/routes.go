@@ -2007,8 +2007,10 @@ func handleLogin(ctx *alps.Context) error {
 func handleLogout(ctx *alps.Context) error {
 	if ctx.Session != nil {
 		ctx.Session.CloseWithReason("sign-out")
-		ctx.SetSession(nil)
 	}
+	// Explicit sign-out clears browser state even if no live session could
+	// be recovered, for example while the mail server is unavailable.
+	ctx.SetSession(nil)
 	ctx.SetLoginToken("", "", false, false)
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
 }
