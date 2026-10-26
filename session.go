@@ -77,7 +77,8 @@ var (
 	ErrAttachmentCacheSize = errors.New("Attachments on session exceed maximum file size")
 	// ErrMailProviderUnavailable marks errors where the session's mail provider
 	// connection could not be (re-)established. handleError treats it as a signal
-	// to log the user out rather than looping on 500s.
+	// to report a temporary outage while keeping the sign-in, unless the cause
+	// is an AuthError that refuses the stored credentials.
 	ErrMailProviderUnavailable = errors.New("mail provider unavailable")
 )
 
@@ -119,6 +120,7 @@ type Session struct {
 
 	providerLocker sync.Mutex
 	provider       provider.MailProvider // protected by locker, can be nil
+	providerEnded  bool                  // teardown has run; protected by providerLocker
 
 	// The session's second connection, for mail work the user is not waiting
 	// for: see DoBackgroundMail.
@@ -458,7 +460,7 @@ func (s *Session) FinishMail(ctx context.Context, f func(provider.MailProvider) 
 // FinishMail when mayGiveUp is false. mayRetry permits replay after a network error.
 func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) error, mayGiveUp, mayRetry bool) error {
 	s.providerLocker.Lock()
-	defer s.providerLocker.Unlock()
+	defer s.doneWithProvider()
 
 	if err := ctx.Err(); err != nil && mayGiveUp {
 		return fmt.Errorf("context cancelled: %w", err)
@@ -542,6 +544,24 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 	}
 
 	return err
+}
+
+// doneWithProvider releases the connection lock after an operation. A request
+// may already hold this session when it ends, and use it after teardown. Its
+// work, including FinishMail for mail already sent or an accepted password
+// change, still finishes, but teardownOnce will not close a new connection.
+func (s *Session) doneWithProvider() {
+	defer s.providerLocker.Unlock()
+	ended := s.providerEnded
+	select {
+	case <-s.closed:
+		ended = true
+	default:
+	}
+	if ended && s.provider != nil {
+		s.provider.Close()
+		s.provider = nil
+	}
 }
 
 // noteThreadCapability records whether p's server can thread. Without a saved
@@ -724,6 +744,7 @@ func (s *Session) teardown() {
 		s.attachmentsLocker.Unlock()
 
 		s.providerLocker.Lock()
+		s.providerEnded = true
 		if s.provider != nil {
 			s.provider.Close()
 			s.provider = nil
@@ -1801,7 +1822,7 @@ func (sm *SessionManager) UpdatePasswordContext(ctx context.Context, s *Session,
 	s.letGoOfBackground(false)
 
 	s.providerLocker.Lock()
-	defer s.providerLocker.Unlock()
+	defer s.doneWithProvider()
 
 	// Try to connect with new password to verify it works
 	provider, err := sm.connectProvider(s.username, newPassword)
