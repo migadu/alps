@@ -461,7 +461,6 @@ func (s *Server) setupMiddleware(router *Router) {
 			}
 			if errors.Is(err, ErrSessionExpired) {
 				s.logger.Debugf("Auth middleware: session expired for %s", ctx.Request.URL.Path)
-				ctx.SetSession(nil)
 
 				// Attempt to restore session from encrypted login token
 				username, password, verified2FA, persistent := ctx.GetLoginToken()
@@ -470,7 +469,25 @@ func (s *Server) setupMiddleware(router *Router) {
 					session, err := ctx.Server.Sessions.Put(username, password)
 					if err != nil {
 						s.logger.Debugf("Auth middleware: session restoration failed for %s: %v", ctx.Request.URL.Path, err)
-						// Clear invalid login token
+						// Only a refusal of the password makes the token no
+						// good. A mail server that is down, or that will not
+						// open a session for now, leaves it as good as it
+						// was: the browser keeps it, and the session cookie
+						// that has the next request try again. Both were
+						// cleared, and a user who came back once the server
+						// was up again had to sign in.
+						var authErr provider.AuthError
+						if !errors.As(err, &authErr) {
+							s.logger.Slog().Warn("session not restored",
+								"user", username,
+								"ip", ctx.ClientIP(),
+								"error", err.Error())
+							if isPublic(ctx.Request.Method, ctx.Request.URL.Path) {
+								return next(ctx)
+							}
+							return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "mail_server_unavailable"})
+						}
+						ctx.SetSession(nil)
 						ctx.SetLoginToken("", "", false, false)
 						return handleUnauthenticated(next, ctx)
 					}
@@ -517,6 +534,7 @@ func (s *Server) setupMiddleware(router *Router) {
 					return err
 				}
 
+				ctx.SetSession(nil)
 				return handleUnauthenticated(next, ctx)
 			} else if err != nil {
 				s.logger.Debugf("Auth middleware: error getting session for %s: %v", ctx.Request.URL.Path, err)
