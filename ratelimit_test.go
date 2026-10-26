@@ -743,6 +743,135 @@ func TestRateLimiter_ClusterEventTimestampsAreClamped(t *testing.T) {
 	}
 }
 
+// memberlist sends each broadcast RetransmitMult*ceil(log10(N+1)) times and
+// does not deduplicate user messages, so on a two-node cluster every event
+// reaches the peer three times. A peer that counted each copy refused a user
+// after two typos, before it looked at the password.
+func TestRateLimiter_ClusterEventCopiesCountOnce(t *testing.T) {
+	logger := &mockLogger{}
+	config := RateLimitConfig{
+		IPRequestsPerMinute:     5,
+		IPRequestsPerHour:       20,
+		UsernameFailsPerQuarter: 5,
+		UsernameFailsPerHour:    10,
+		GlobalRequestsPerSecond: 100,
+		LockoutDuration:         15 * time.Minute,
+	}
+	broadcaster := &mockBroadcaster{}
+	rlA := NewRateLimiter(config, logger, broadcaster)
+	defer rlA.Close()
+	rlB := NewRateLimiter(config, logger, nil)
+	defer rlB.Close()
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.60:12345"
+	username := "typo@example.com"
+	rlA.RecordLoginAttempt(req, username, false)
+	rlA.RecordLoginAttempt(req, username, false)
+
+	for _, msg := range broadcaster.messages {
+		for i := 0; i < 3; i++ {
+			rlB.HandleClusterMessage(msg)
+		}
+	}
+
+	rlB.mu.RLock()
+	ipEntry, userEntry := rlB.ipMap["10.0.0.60"], rlB.userMap[username]
+	rlB.mu.RUnlock()
+	if ipEntry == nil || userEntry == nil {
+		t.Fatal("expected the cluster events to be recorded")
+	}
+	if len(ipEntry.timestamps) != 2 || len(userEntry.timestamps) != 2 {
+		t.Fatalf("two attempts delivered three times each counted as %d IP attempts and %d username failures, want 2 and 2",
+			len(ipEntry.timestamps), len(userEntry.timestamps))
+	}
+
+	reqB := httptest.NewRequest("POST", "/session", nil)
+	reqB.RemoteAddr = "10.0.0.61:54321"
+	if allowed, reason, _ := rlB.CheckLoginAllowed(reqB, username); !allowed {
+		t.Fatalf("two typos on another node locked the account: %s", reason)
+	}
+}
+
+// What a receiver deduplicates on: every broadcast attempt names itself.
+func TestRateLimiter_BroadcastAttemptsCarryDistinctIDs(t *testing.T) {
+	broadcaster := &mockBroadcaster{}
+	rl := NewRateLimiter(RateLimitConfig{}, &mockLogger{}, broadcaster)
+	defer rl.Close()
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.63:12345"
+	for i := 0; i < 3; i++ {
+		rl.RecordLoginAttempt(req, "ids@example.com", i == 2)
+	}
+
+	seen := map[string]bool{}
+	for _, msg := range broadcaster.messages {
+		var fields map[string]interface{}
+		if err := json.Unmarshal(msg, &fields); err != nil {
+			t.Fatal(err)
+		}
+		id, _ := fields["id"].(string)
+		if id == "" || seen[id] {
+			t.Fatalf("each broadcast attempt needs its own id, got %q in %s", id, msg)
+		}
+		seen[id] = true
+	}
+}
+
+// A node from before event IDs sends none, and its events are still applied
+// one each during a rolling upgrade: an empty ID names no event, so two of
+// them are not one event seen twice.
+func TestRateLimiter_ClusterEventsWithoutIDStillCount(t *testing.T) {
+	config := RateLimitConfig{
+		IPRequestsPerMinute:     100,
+		IPRequestsPerHour:       100,
+		UsernameFailsPerQuarter: 100,
+		UsernameFailsPerHour:    100,
+		GlobalRequestsPerSecond: 1000,
+		LockoutDuration:         10 * time.Minute,
+	}
+	rl := NewRateLimiter(config, &mockLogger{}, nil)
+	defer rl.Close()
+
+	for i := 0; i < 2; i++ {
+		data, err := json.Marshal(RateLimitEvent{IP: "10.0.0.62", Username: "old@example.com", Timestamp: time.Now()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rl.HandleClusterMessage(data)
+	}
+
+	rl.mu.RLock()
+	entry := rl.ipMap["10.0.0.62"]
+	rl.mu.RUnlock()
+	if entry == nil || len(entry.timestamps) != 2 {
+		t.Fatalf("two events without an ID should count twice, got %v", entry)
+	}
+}
+
+// The IDs a node remembers are pruned with the rest of its state: one past
+// HandleClusterMessage's stale cutoff can never be applied again.
+func TestRateLimiter_SeenEventIDsAgeOut(t *testing.T) {
+	rl := NewRateLimiter(RateLimitConfig{}, &mockLogger{}, nil)
+	defer rl.Close()
+
+	rl.mu.Lock()
+	rl.seen["old"] = time.Now().Add(-3 * time.Hour)
+	rl.seen["recent"] = time.Now()
+	rl.mu.Unlock()
+
+	rl.cleanup()
+
+	rl.mu.RLock()
+	_, old := rl.seen["old"]
+	_, recent := rl.seen["recent"]
+	rl.mu.RUnlock()
+	if old || !recent {
+		t.Fatalf("after cleanup: old kept=%v, recent kept=%v; want false, true", old, recent)
+	}
+}
+
 // Server.Close calls three teardowns and the other two are already guarded, so
 // this one has to tolerate a second call too.
 func TestRateLimiter_CloseIsIdempotent(t *testing.T) {
