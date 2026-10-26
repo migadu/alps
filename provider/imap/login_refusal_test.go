@@ -29,6 +29,20 @@ func (unavailableLogin) Login(ctx context.Context, username, password string) er
 	}
 }
 
+// limitedLogin answers LOGIN as Sora does once the account holds as many
+// connections as it may: after the password checked out.
+type limitedLogin struct {
+	imapserver.Session
+}
+
+func (limitedLogin) Login(ctx context.Context, username, password string) error {
+	return &imap.Error{
+		Type: imap.StatusResponseTypeNo,
+		Code: imap.ResponseCodeLimit,
+		Text: "Maximum connections reached",
+	}
+}
+
 func serveLogin(t *testing.T, wrap func(imapserver.Session) imapserver.Session) string {
 	t.Helper()
 	user := imapmemserver.NewUser("ada", "pass")
@@ -83,7 +97,8 @@ func dropAtLogin(t *testing.T) string {
 }
 
 // Only the server's answer to LOGIN refuses the credentials, and not when it
-// says the server could not check them. The login form counts an AuthError
+// says the server could not check them, or that the account holds as many
+// connections as it may. The login form counts an AuthError
 // against the account and the address it came from, and enough of them lock
 // the account: a user who signed in again through an outage of the mail
 // server's authentication backend locked themselves out.
@@ -94,12 +109,16 @@ func TestLoginOnlyRefusedCredentialsAreAuthErrors(t *testing.T) {
 		addr     func(t *testing.T) string
 		password string
 		refused  bool
+		limited  bool
 	}{
-		{"wrong password", func(t *testing.T) string { return serveLogin(t, keep) }, "wrong", true},
+		{"wrong password", func(t *testing.T) string { return serveLogin(t, keep) }, "wrong", true, false},
 		{"NO [UNAVAILABLE]", func(t *testing.T) string {
 			return serveLogin(t, func(s imapserver.Session) imapserver.Session { return unavailableLogin{s} })
-		}, "pass", false},
-		{"connection lost during LOGIN", dropAtLogin, "pass", false},
+		}, "pass", false, false},
+		{"NO [LIMIT]", func(t *testing.T) string {
+			return serveLogin(t, func(s imapserver.Session) imapserver.Session { return limitedLogin{s} })
+		}, "pass", false, true},
+		{"connection lost during LOGIN", dropAtLogin, "pass", false, false},
 		{"nothing listening", func(t *testing.T) string {
 			ln, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil {
@@ -108,7 +127,7 @@ func TestLoginOnlyRefusedCredentialsAreAuthErrors(t *testing.T) {
 			addr := ln.Addr().String()
 			ln.Close()
 			return addr
-		}, "pass", false},
+		}, "pass", false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			opts, err := (&Config{Server: "imap+insecure://" + tc.addr(t)}).ToOptions()
@@ -123,6 +142,10 @@ func TestLoginOnlyRefusedCredentialsAreAuthErrors(t *testing.T) {
 			var authErr provider.AuthError
 			if refused := errors.As(err, &authErr); refused != tc.refused {
 				t.Errorf("AuthError = %v, want %v: %v", refused, tc.refused, err)
+			}
+			var limitErr *provider.LimitError
+			if limited := errors.As(err, &limitErr); limited != tc.limited {
+				t.Errorf("LimitError = %v, want %v: %v", limited, tc.limited, err)
 			}
 		})
 	}

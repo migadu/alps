@@ -230,6 +230,15 @@ export interface ComposeState {
   activeComposers: ComposerInstance[];
 }
 
+export interface OpenComposerOptions {
+  /**
+   * Where the signature goes relative to the opening text. `above` (the
+   * default) suits a reply or forward, whose opening text is the quote. `below`
+   * suits text the user is meant to send as written, such as a `mailto:` body.
+   */
+  signature?: 'above' | 'below';
+}
+
 export class ComposeStore extends EventTarget {
   private state: ComposeState = {
     activeComposers: []
@@ -456,7 +465,7 @@ export class ComposeStore extends EventTarget {
     return this.state;
   }
 
-  openComposer(initialData?: Partial<ComposerInstance>) {
+  openComposer(initialData?: Partial<ComposerInstance>, options: OpenComposerOptions = {}) {
     if (initialData?.draftUid) {
       const existing = this.state.activeComposers.find(c => c.draftUid === initialData.draftUid);
       if (existing) {
@@ -506,11 +515,16 @@ export class ComposeStore extends EventTarget {
       // as markup, with its line breaks kept.
       const sigHtml = `<div class="alps-signature">-- <br>${escapeHtml(signature).replace(/\r?\n/g, '<br>')}</div>`;
       
-      initialText = `\n\n${sigText}\n${initialText}`;
-      if (initialHtml || initialData?.text) {
-        initialHtml = `<br><br>${sigHtml}${initialHtml}`;
+      if (options.signature === 'below') {
+        initialText = `${initialText}\n\n${sigText}`;
+        initialHtml = `${initialHtml}<br><br>${sigHtml}`;
       } else {
-        initialHtml = `<br><br>${sigHtml}`;
+        initialText = `\n\n${sigText}\n${initialText}`;
+        if (initialHtml || initialData?.text) {
+          initialHtml = `<br><br>${sigHtml}${initialHtml}`;
+        } else {
+          initialHtml = `<br><br>${sigHtml}`;
+        }
       }
     }
 

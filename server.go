@@ -461,7 +461,6 @@ func (s *Server) setupMiddleware(router *Router) {
 			}
 			if errors.Is(err, ErrSessionExpired) {
 				s.logger.Debugf("Auth middleware: session expired for %s", ctx.Request.URL.Path)
-				ctx.SetSession(nil)
 
 				// Attempt to restore session from encrypted login token
 				username, password, verified2FA, persistent := ctx.GetLoginToken()
@@ -470,7 +469,25 @@ func (s *Server) setupMiddleware(router *Router) {
 					session, err := ctx.Server.Sessions.Put(username, password)
 					if err != nil {
 						s.logger.Debugf("Auth middleware: session restoration failed for %s: %v", ctx.Request.URL.Path, err)
-						// Clear invalid login token
+						// Only a refusal of the password makes the token no
+						// good. A mail server that is down, or that will not
+						// open a session for now, leaves it as good as it
+						// was: the browser keeps it, and the session cookie
+						// that has the next request try again. Both were
+						// cleared, and a user who came back once the server
+						// was up again had to sign in.
+						var authErr provider.AuthError
+						if !errors.As(err, &authErr) {
+							s.logger.Slog().Warn("session not restored",
+								"user", username,
+								"ip", ctx.ClientIP(),
+								"error", err.Error())
+							if isPublic(ctx.Request.Method, ctx.Request.URL.Path) {
+								return next(ctx)
+							}
+							return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "mail_server_unavailable"})
+						}
+						ctx.SetSession(nil)
 						ctx.SetLoginToken("", "", false, false)
 						return handleUnauthenticated(next, ctx)
 					}
@@ -517,6 +534,7 @@ func (s *Server) setupMiddleware(router *Router) {
 					return err
 				}
 
+				ctx.SetSession(nil)
 				return handleUnauthenticated(next, ctx)
 			} else if err != nil {
 				s.logger.Debugf("Auth middleware: error getting session for %s: %v", ctx.Request.URL.Path, err)
@@ -609,30 +627,36 @@ func (s *Server) handleError(err error, ctx *Context) {
 	// Log the full error server-side for debugging
 	ctx.Logger().Errorf("Request error: %v", err)
 
-	// Check if this is an authentication or connection error - if so, log out the user
-	// to prevent endless loops
+	// A password the mail server refuses logs the user out, login token and
+	// all, rather than failing every request after.
 	var authErr provider.AuthError
-	logoutReason := ""
-
 	if errors.As(err, &authErr) {
 		s.logger.Debugf("Authentication error detected, logging out user")
-		logoutReason = "auth-error"
-	} else if errors.Is(err, ErrMailProviderUnavailable) {
-		s.logger.Debugf("Mail provider connection lost, logging out user")
-		logoutReason = "mail-server-unavailable"
-	}
-
-	if logoutReason != "" {
 		if ctx.Session != nil {
-			ctx.Session.CloseWithReason(logoutReason)
+			ctx.Session.CloseWithReason("auth-error")
 			ctx.SetSession(nil)
 		}
 		ctx.SetLoginToken("", "", false, false)
-		// Return 401 JSON response
 		ctx.JSON(http.StatusUnauthorized, map[string]string{
 			"error": "Authentication required",
 			"code":  "401",
 		})
+		return
+	}
+
+	// A connection that could not be opened again ends the session (see
+	// doMail), but not the sign-in: the password was never in question. The
+	// browser keeps the session cookie and the login token, so its next
+	// request finds the session gone and restores it from the token once the
+	// mail server is back, and is told so until then (see setupMiddleware).
+	// Both were cleared, and a user who came back after the outage had to
+	// sign in.
+	if errors.Is(err, ErrMailProviderUnavailable) {
+		s.logger.Debugf("Mail provider connection lost, ending the session")
+		if ctx.Session != nil {
+			ctx.Session.CloseWithReason("mail-server-unavailable")
+		}
+		ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "mail_server_unavailable"})
 		return
 	}
 

@@ -1912,6 +1912,20 @@ func handleLogin(ctx *alps.Context) error {
 					"agent", ctx.Request.UserAgent())
 				return ctx.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Failed to login"})
 			}
+			// The password checked out, but the account holds as many
+			// connections as the mail server allows: the user's other mail
+			// apps, and other alps sessions. Answered with a code of its own,
+			// so the page does not send the user to retype a password that
+			// is right.
+			var limited *provider.LimitError
+			if errors.As(err, &limited) {
+				ctx.Server.Logger().Slog().Warn("sign-in failed",
+					"user", username,
+					"ip", ctx.ClientIP(),
+					"reason", "connection limit",
+					"error", err.Error())
+				return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "connection_limit"})
+			}
 			ctx.Server.Logger().Slog().Warn("sign-in failed",
 				"user", username,
 				"ip", ctx.ClientIP(),
@@ -1993,8 +2007,10 @@ func handleLogin(ctx *alps.Context) error {
 func handleLogout(ctx *alps.Context) error {
 	if ctx.Session != nil {
 		ctx.Session.CloseWithReason("sign-out")
-		ctx.SetSession(nil)
 	}
+	// Explicit sign-out clears browser state even if no live session could
+	// be recovered, for example while the mail server is unavailable.
+	ctx.SetSession(nil)
 	ctx.SetLoginToken("", "", false, false)
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
 }
@@ -4807,15 +4823,44 @@ func handleAddAccount(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Account linking requires login key to be configured"})
 	}
 
+	// Linking signs in to the other account with the password given: a
+	// sign-in like one at the login form, which counts against the login
+	// limits for that account and the address it comes from, and gets no
+	// budget of its own.
+	if allowed, reason, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
+		ctx.Server.Logger().Printf("Linked accounts: linking %s rate limited", username)
+		seconds := int(retryAfter.Seconds())
+		if seconds > 0 {
+			ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
+		}
+		return ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
+			"error":       reason,
+			"retry_after": seconds,
+		})
+	}
+
 	err := ctx.Session.AddLinkedAccount(username, password, displayName)
+	// A link refused before the password was tried records nothing. Only a
+	// refusal while signing in to the target counts as a bad password. A
+	// backend or metadata error still consumes the IP attempt budget without
+	// changing the target account's failure history.
+	if !errors.Is(err, alps.ErrCannotLinkSelf) && !errors.Is(err, alps.ErrLoginKeyRequired) {
+		switch {
+		case err == nil || errors.Is(err, alps.ErrAccountAlreadyLinked):
+			ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, true)
+		case errors.Is(err, alps.ErrLinkedCredentialsRefused):
+			ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, false)
+		default:
+			ctx.Server.RateLimiter.RecordLoginError(ctx.Request)
+		}
+	}
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to add account: %v", err)
-		var authErr provider.AuthError
 		if errors.Is(err, alps.ErrAccountAlreadyLinked) {
 			errorMsg = "This account is already linked"
 		} else if errors.Is(err, alps.ErrCannotLinkSelf) {
 			errorMsg = "You cannot link your own account"
-		} else if errors.As(err, &authErr) {
+		} else if errors.Is(err, alps.ErrLinkedCredentialsRefused) {
 			errorMsg = "Authentication failed. Please check your credentials."
 		}
 

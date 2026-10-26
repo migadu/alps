@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emersion/go-imap/v2"
+
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
 )
@@ -141,4 +143,59 @@ func TestHTTP_WrongPasswordsStillLockTheAccount(t *testing.T) {
 	if allowed, _, _ := peer.limiter.CheckLoginAllowed(req, testUser); allowed {
 		t.Error("the other node still lets the account sign in")
 	}
+}
+
+// fullOptions is a provider whose account can be at its connection limit.
+// While it is, the mail server checks the password and then refuses the
+// session, as Sora does: NO [LIMIT] "Maximum connections reached".
+type fullOptions struct {
+	provider.Options
+	full *atomic.Bool
+}
+
+func (o fullOptions) CreateFactory(timeout time.Duration, debug bool) provider.AuthenticatedProviderFactory {
+	connect := o.Options.CreateFactory(timeout, debug)
+	return func(username, password string) (provider.MailProvider, error) {
+		p, err := connect(username, password)
+		if err != nil || !o.full.Load() {
+			return p, err
+		}
+		p.Close()
+		return nil, &provider.LimitError{Cause: &imap.Error{
+			Type: imap.StatusResponseTypeNo,
+			Code: imap.ResponseCodeLimit,
+			Text: "Maximum connections reached",
+		}}
+	}
+}
+
+// The right password at the account's connection limit is no wrong one. It
+// was answered as one and counted as one, so a user who tried again while
+// their other mail apps held every connection locked their own account.
+func TestHTTP_ConnectionLimitIsNoWrongPassword(t *testing.T) {
+	config := alps.DefaultRateLimitConfig()
+	config.IPRequestsPerMinute = 100 // the burst window is not what this is about
+	full := &atomic.Bool{}
+	s := newTestServerWithOptions(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(o *alps.Options) {
+		o.Provider = fullOptions{o.Provider, full}
+		o.RateLimitEnabled = true
+		o.RateLimitConfig = &config
+	})
+	creds := map[string]string{"username": testUser, "password": testPassword}
+
+	full.Store(true)
+	for i := 0; i < config.UsernameFailsPerQuarter; i++ {
+		r := s.do("POST", "/session", creds)
+		s.expect(r, http.StatusServiceUnavailable)
+		var body struct{ Error string }
+		r.json(t, &body)
+		if body.Error != "connection_limit" {
+			t.Fatalf("sign-in %d at the limit refused with %q, want connection_limit", i+1, body.Error)
+		}
+	}
+	// The password is checked first, and a wrong one is still refused as one.
+	s.expect(s.do("POST", "/session", map[string]string{"username": testUser, "password": "wrong"}), http.StatusUnauthorized)
+	full.Store(false)
+
+	s.expect(s.do("POST", "/session", creds), http.StatusOK)
 }

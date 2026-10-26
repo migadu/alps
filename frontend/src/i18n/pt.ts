@@ -186,6 +186,7 @@ export const pt = {
     signIn: 'Entrar',
     tooManyAttempts: 'Muitas tentativas de login',
     loginFailed: 'Falha no login. Verifique suas credenciais.',
+    tooManyConnections: 'Muitas conexões abertas nesta conta. Feche outro aplicativo de e-mail ou saia da conta em outro navegador e tente novamente.',
     networkError: 'Ocorreu um erro de rede. Tente novamente.',
     pleaseWait: 'Por favor, aguarde',
     wait: 'Aguarde',

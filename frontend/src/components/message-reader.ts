@@ -33,6 +33,8 @@ import { mailboxOf, messageKey } from '../utils/message-key';
 import { registry } from '../plugin-registry';
 import { messageOperations, type FlagResult } from '../services/message-operations';
 import { applyThemeToIframe as sharedApplyTheme, setupIframeSizing as sharedSetupSizing, htmlToPlainText } from '../utils/reader-utils';
+import { renderLinkedText } from '../utils/linkify';
+import { interceptMailtoClicks, openMailtoFromClick } from '../utils/mailto';
 import './alps-thread-card';
 
 
@@ -975,6 +977,13 @@ export class MessageReader extends LitElement {
       font-family: inherit;
       margin: 0;
       color: inherit;
+    }
+
+    /* Links found in a plain-text body (utils/linkify.ts). A URL has no spaces
+       to wrap at, so it may break anywhere rather than widen the pane. */
+    .reader-preformatted a {
+      color: var(--accent-color);
+      overflow-wrap: anywhere;
     }
 
     @media (max-width: 768px) {
@@ -2456,6 +2465,11 @@ export class MessageReader extends LitElement {
     const iframe = e.target as HTMLIFrameElement;
     const themeIframeContent = this.settingsStore?.getState()?.themeIframeContent ?? false;
     sharedSetupSizing(iframe, themeIframeContent);
+    interceptMailtoClicks(iframe, () => this.composeStore);
+  }
+
+  private onTextBodyClick(e: MouseEvent) {
+    openMailtoFromClick(e, this.composeStore);
   }
 
   /**
@@ -3101,7 +3115,7 @@ export class MessageReader extends LitElement {
               </div>
             ` : html`
               <div class="reader-text-wrapper">
-                <pre dir="auto" class="reader-preformatted">${this.content}</pre>
+                <pre dir="auto" class="reader-preformatted" @click=${this.onTextBodyClick}>${renderLinkedText(this.content)}</pre>
               </div>
             `}
           </div>

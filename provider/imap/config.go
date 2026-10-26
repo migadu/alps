@@ -173,14 +173,18 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 // refuses the credentials. BAD is a protocol failure, and UNAVAILABLE or
 // SERVERBUG says the server could not check them. Dovecot answers
 // NO [UNAVAILABLE] while its authentication backend is down.
-// A connection lost during the exchange is a failed connection like any
-// other. The login form counts an AuthError as a wrong password, against the
-// account and the address it came from.
+// Sora checks the password and then answers NO [LIMIT] when the account holds
+// as many connections as it may; that remains a provider.LimitError.
+// A connection lost during the exchange is a failed connection like any other.
 func loginError(err error) error {
 	var imapErr *imap.Error
 	if errors.As(err, &imapErr) && imapErr.Type == imap.StatusResponseTypeNo {
 		code := imap.ResponseCode(strings.ToUpper(string(imapErr.Code)))
-		if code != imap.ResponseCodeUnavailable && code != imap.ResponseCodeServerBug {
+		switch code {
+		case imap.ResponseCodeUnavailable, imap.ResponseCodeServerBug:
+		case imap.ResponseCodeLimit:
+			return &provider.LimitError{RetryAfter: waitNamedIn(imapErr.Text), Cause: fmt.Errorf("LOGIN refused: %w", err)}
+		default:
 			return provider.AuthError{Cause: err}
 		}
 	}
