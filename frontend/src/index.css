@@ -16,6 +16,10 @@
   --bg-tertiary: #f3f4f6;
   --bg-selected: #eff6ff;
   --hover-color: #f3f4f6;
+  /* The surface of a window that floats over the page, the composer. It is
+     the page's own unless a theme sets it apart, as Migadu does: there the
+     composer's body was the page's pale blue and the window passed unseen. */
+  --bg-raised: var(--bg-primary);
 
   --text-primary: #111827;
   --text-secondary: #4b5563;

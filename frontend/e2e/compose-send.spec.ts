@@ -335,6 +335,34 @@ test("Undo cancels the send and gives the composer back intact", async ({ page }
   await discardDraft(composer);
 });
 
+test("a maximized window minimizes while it sends, and Undo gives it back maximized", async ({ page }) => {
+  const subject = `Compose maximized ${Date.now()}`;
+  await login(page);
+  const composer = await openComposer(page);
+  await composer.locator(".expand-btn").click();
+  await expect(composer).toHaveAttribute("expanded", "");
+  await addRecipient(composer, USER.address);
+  await fillMessage(composer, subject, "Sent from a maximized window.");
+
+  await sendButton(composer).click();
+  await expect(sendingToast(page)).toBeVisible();
+
+  // It stayed centred and modal over the page instead, empty but for its
+  // spinner, and its backdrop took every click for as long as the send took.
+  await expect(composer).toHaveAttribute("minimized", "");
+  await expect(composer).not.toHaveAttribute("expanded", "");
+  // A trial click runs every check a real one does, without moving the list
+  // away from the inbox. One is that nothing covers the target, and the
+  // backdrop did.
+  await page.locator('alps-folder-list .folder-item[title="Drafts"]').click({ trial: true, timeout: 2_000 });
+
+  await sendingToast(page).getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(composer).toHaveAttribute("expanded", "");
+  await expect(composer.getByPlaceholder("Subject")).toHaveValue(subject);
+
+  await discardDraft(composer);
+});
+
 test("sending without a subject is not silently swallowed", async ({ page }) => {
   // A message without a subject is legal mail. Whatever the composer does
   // with one, it must be visible: an enabled Send whose click does nothing

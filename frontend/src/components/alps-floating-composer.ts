@@ -517,9 +517,20 @@ export class AlpsFloatingComposer extends LitElement {
     }
   }
 
+  /**
+   * Whether the window shows maximized. Minimized wins: sending minimizes the
+   * window and leaves `expanded` as it was, so that Undo gives the window back
+   * at the size it had. Read the other way round, a maximized window stayed
+   * centred and modal over the page, its backdrop blocking every click, for as
+   * long as the send took.
+   */
+  private get _isExpanded(): boolean {
+    return !!this.instance.expanded && !this.instance.minimized;
+  }
+
   private _toggleExpand() {
     this.composeStore.updateComposer(this.instance.id, {
-      expanded: !this.instance.expanded,
+      expanded: !this._isExpanded,
       minimized: false
     });
   }
@@ -1307,6 +1318,10 @@ export class AlpsFloatingComposer extends LitElement {
     }
 
     .window-frame {
+      /* Everything in the window stands on the window's surface, not the
+         page's: the editor's toolbar, the overlays and the popups paint
+         --bg-primary, so the window redefines it rather than painting over. */
+      --bg-primary: var(--bg-raised);
       display: flex;
       flex-direction: column;
       width: 100%;
@@ -1597,6 +1612,7 @@ export class AlpsFloatingComposer extends LitElement {
 
     let topPx, leftPx, widthPx, heightPx;
     const isMobile = this.windowWidth <= 768;
+    const expanded = this._isExpanded;
 
     if (this.showDiscardConfirm) {
       // Temporarily boost z-index so the modal overlay covers the app header (z-index: 20000)
@@ -1607,7 +1623,7 @@ export class AlpsFloatingComposer extends LitElement {
         leftPx = 0;
         topPx = 0;
         this.removeAttribute('expanded');
-      } else if (this.instance.expanded) {
+      } else if (expanded) {
         widthPx = Math.min(this.windowWidth * 0.85, 800);
         heightPx = expandedHeight;
         leftPx = (this.windowWidth - widthPx) / 2;
@@ -1627,7 +1643,7 @@ export class AlpsFloatingComposer extends LitElement {
       topPx = 0;
       this.style.zIndex = '30000';
       this.removeAttribute('expanded');
-    } else if (this.instance.expanded) {
+    } else if (expanded) {
       widthPx = Math.min(this.windowWidth * 0.85, 800);
       heightPx = expandedHeight;
       leftPx = (this.windowWidth - widthPx) / 2;
@@ -1664,7 +1680,7 @@ export class AlpsFloatingComposer extends LitElement {
     }
 
     return html`
-      ${this.instance.expanded ? html`<div class="backdrop"></div>` : ''}
+      ${expanded ? html`<div class="backdrop"></div>` : ''}
       
       ${this.showDiscardConfirm ? html`
         <ui-confirm
@@ -1712,8 +1728,8 @@ export class AlpsFloatingComposer extends LitElement {
             </alps-icon-btn>
             <alps-icon-btn 
               class="expand-btn"
-              title="${this.instance.expanded ? this.i18nStore?.t('floatingComposer.restore') : this.i18nStore?.t('floatingComposer.expand')}" 
-              icon="${this.instance.expanded ? 'arrowsInSimple' : 'arrowsOutSimple'}"
+              title="${expanded ? this.i18nStore?.t('floatingComposer.restore') : this.i18nStore?.t('floatingComposer.expand')}" 
+              icon="${expanded ? 'arrowsInSimple' : 'arrowsOutSimple'}"
               @click=${(e: Event) => { e.stopPropagation(); this._toggleExpand(); }}>
             </alps-icon-btn>
             <alps-icon-btn 
