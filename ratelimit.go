@@ -1,6 +1,8 @@
 package alps
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -65,6 +67,10 @@ type ClusterBroadcaster interface {
 
 // RateLimitEvent is the payload broadcasted over the gossip network
 type RateLimitEvent struct {
+	// ID names one attempt. memberlist delivers a broadcast up to
+	// RetransmitMult*ceil(log10(N+1)) times and NotifyMsg cannot tell the
+	// copies apart, so a receiver applies each ID once. Empty from older nodes.
+	ID        string    `json:"id,omitempty"`
 	IP        string    `json:"ip,omitempty"`
 	Username  string    `json:"username,omitempty"`
 	Success   bool      `json:"success"`
@@ -81,6 +87,7 @@ type RateLimiter struct {
 	ipMap    map[string]*rateLimitEntry // IP address -> attempts
 	userMap  map[string]*rateLimitEntry // username -> failed attempts
 	globalTS []time.Time                // Global request timestamps
+	seen     map[string]time.Time       // cluster event ID -> when first applied
 
 	// Cleanup ticker
 	cleanupTicker *time.Ticker
@@ -97,6 +104,7 @@ func NewRateLimiter(config RateLimitConfig, logger Logger, broadcaster ClusterBr
 		ipMap:         make(map[string]*rateLimitEntry),
 		userMap:       make(map[string]*rateLimitEntry),
 		globalTS:      make([]time.Time, 0),
+		seen:          make(map[string]time.Time),
 		cleanupTicker: time.NewTicker(5 * time.Minute),
 		cleanupDone:   make(chan struct{}),
 	}
@@ -193,6 +201,14 @@ func (rl *RateLimiter) cleanup() {
 		}
 	}
 	rl.globalTS = filtered
+
+	// An ID older than the stale cutoff in HandleClusterMessage cannot be
+	// applied again anyway, so it need not be remembered past it.
+	for id, at := range rl.seen {
+		if at.Before(cutoff) {
+			delete(rl.seen, id)
+		}
+	}
 }
 
 // CheckLoginAllowed checks if a login attempt is allowed based on all rate limits
@@ -334,6 +350,7 @@ func (rl *RateLimiter) RecordLoginAttempt(r *http.Request, username string, succ
 	// Broadcast the event to the cluster
 	if rl.broadcaster != nil {
 		event := RateLimitEvent{
+			ID:        newEventID(),
 			IP:        ip,
 			Username:  username,
 			Success:   success,
@@ -382,6 +399,13 @@ func (rl *RateLimiter) HandleClusterMessage(data []byte) {
 	}
 	if ts.Before(now.Add(-2 * time.Hour)) {
 		return
+	}
+
+	if event.ID != "" {
+		if _, dup := rl.seen[event.ID]; dup {
+			return
+		}
+		rl.seen[event.ID] = now
 	}
 
 	// Record global attempt
@@ -503,4 +527,11 @@ func getClientIP(r *http.Request, trustedProxies []*net.IPNet) string {
 	}
 
 	return remoteIPStr
+}
+
+// newEventID returns a random ID for one cluster rate-limit event.
+func newEventID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }
