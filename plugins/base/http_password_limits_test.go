@@ -99,6 +99,18 @@ func TestHTTP_LinkingStillWorksUnderTheLimits(t *testing.T) {
 	}
 }
 
+// Linking your own account is refused before any password is tried, and
+// counts against nothing.
+func TestHTTP_LinkingYourOwnAccountCountsAgainstNothing(t *testing.T) {
+	s, config := newLimitedServer(t, nil)
+	s.expect(s.do("POST", "/session", map[string]string{"username": testUser, "password": testPassword}), http.StatusOK)
+
+	for i := 0; i < config.UsernameFailsPerQuarter; i++ {
+		s.expect(s.do("POST", "/accounts", url.Values{"username": {testUser}, "password": {"wrong"}}), http.StatusBadRequest)
+	}
+	s.expect(s.do("POST", "/session", map[string]string{"username": testUser, "password": testPassword}), http.StatusOK)
+}
+
 // The password page checks the current password before it changes it, and
 // the check counts against the login limits for the account and the address
 // it comes from, as the login form and the second factor's password

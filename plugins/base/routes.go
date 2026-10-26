@@ -4800,7 +4800,31 @@ func handleAddAccount(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Account linking requires login key to be configured"})
 	}
 
+	// Linking signs in to the other account with the password given: a
+	// sign-in like one at the login form, which counts against the login
+	// limits for that account and the address it comes from, and gets no
+	// budget of its own.
+	if allowed, reason, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
+		ctx.Server.Logger().Printf("Linked accounts: linking %s rate limited", username)
+		seconds := int(retryAfter.Seconds())
+		if seconds > 0 {
+			ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
+		}
+		return ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
+			"error":       reason,
+			"retry_after": seconds,
+		})
+	}
+
 	err := ctx.Session.AddLinkedAccount(username, password, displayName)
+	// A link refused before the password was tried records nothing.
+	// Otherwise the attempt is recorded as the login form records one: it
+	// succeeded if the password signed in, which an account already linked
+	// shows as well, and failed on any other error.
+	if !errors.Is(err, alps.ErrCannotLinkSelf) && !errors.Is(err, alps.ErrLoginKeyRequired) {
+		signedIn := err == nil || errors.Is(err, alps.ErrAccountAlreadyLinked)
+		ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, signedIn)
+	}
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to add account: %v", err)
 		var authErr provider.AuthError
