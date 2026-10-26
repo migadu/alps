@@ -2,6 +2,7 @@ package alpsbase
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -89,6 +90,71 @@ func TestHTTP_ARefusedTokenIsCleared(t *testing.T) {
 
 	s.expect(s.do("GET", "/mailboxes/INBOX", nil), http.StatusUnauthorized)
 	for _, name := range []string{"alps_login_token", "alps_has_login_token"} {
+		if contains(s.cookieNames(), name) {
+			t.Errorf("the browser still holds %s", name)
+		}
+	}
+}
+
+// lostWhile is a connection that is lost while lost is set, as a session's
+// connection is when its mail server goes down.
+type lostWhile struct {
+	provider.MailProvider
+	lost *atomic.Bool
+}
+
+func (p lostWhile) ListMailboxes() ([]provider.Mailbox, error) {
+	if p.lost.Load() {
+		return nil, io.EOF
+	}
+	return p.MailProvider.ListMailboxes()
+}
+
+// A session whose connection is lost, and cannot be opened again because the
+// mail server is down, ends. The sign-in does not: the password was never in
+// question. The login token was thrown away with the session, and a user who
+// came back once the server was up again had to sign in.
+func TestHTTP_AnOutageKeepsTheSignIn(t *testing.T) {
+	down := &atomic.Bool{}
+	s := newTestServerWithOptionsWrapping(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(o *alps.Options) {
+		o.Provider = downOptions{o.Provider, down}
+	}, func(p provider.MailProvider) provider.MailProvider { return lostWhile{p, down} })
+	s.login()
+
+	down.Store(true)
+	r := s.do("GET", "/mailboxes", nil)
+	s.expect(r, http.StatusServiceUnavailable)
+	var body struct{ Error string }
+	r.json(t, &body)
+	if body.Error != "mail_server_unavailable" {
+		t.Errorf("refused with %q, want mail_server_unavailable", body.Error)
+	}
+	for _, name := range []string{"alps_session", "alps_login_token", "alps_logged_in", "alps_has_login_token"} {
+		if !contains(s.cookieNames(), name) {
+			t.Errorf("the browser no longer holds %s", name)
+		}
+	}
+
+	down.Store(false)
+	s.expect(s.do("GET", "/mailboxes", nil), http.StatusOK)
+}
+
+// A connection opened again with a password the mail server now refuses still
+// signs the user out, token and all.
+func TestHTTP_APasswordChangedElsewhereStillSignsOut(t *testing.T) {
+	lost := &atomic.Bool{}
+	s := newTestServerWrapping(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(p provider.MailProvider) provider.MailProvider {
+		return lostWhile{p, lost}
+	})
+	s.login()
+	passwd := filepath.Join(filepath.Dir(s.dir), "passwd")
+	if err := os.WriteFile(passwd, []byte(testUser+":{PLAIN}changed elsewhere\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	lost.Store(true)
+	s.expect(s.do("GET", "/mailboxes", nil), http.StatusUnauthorized)
+	for _, name := range []string{"alps_session", "alps_login_token", "alps_has_login_token"} {
 		if contains(s.cookieNames(), name) {
 			t.Errorf("the browser still holds %s", name)
 		}

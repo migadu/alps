@@ -627,30 +627,36 @@ func (s *Server) handleError(err error, ctx *Context) {
 	// Log the full error server-side for debugging
 	ctx.Logger().Errorf("Request error: %v", err)
 
-	// Check if this is an authentication or connection error - if so, log out the user
-	// to prevent endless loops
+	// A password the mail server refuses logs the user out, login token and
+	// all, rather than failing every request after.
 	var authErr provider.AuthError
-	logoutReason := ""
-
 	if errors.As(err, &authErr) {
 		s.logger.Debugf("Authentication error detected, logging out user")
-		logoutReason = "auth-error"
-	} else if errors.Is(err, ErrMailProviderUnavailable) {
-		s.logger.Debugf("Mail provider connection lost, logging out user")
-		logoutReason = "mail-server-unavailable"
-	}
-
-	if logoutReason != "" {
 		if ctx.Session != nil {
-			ctx.Session.CloseWithReason(logoutReason)
+			ctx.Session.CloseWithReason("auth-error")
 			ctx.SetSession(nil)
 		}
 		ctx.SetLoginToken("", "", false, false)
-		// Return 401 JSON response
 		ctx.JSON(http.StatusUnauthorized, map[string]string{
 			"error": "Authentication required",
 			"code":  "401",
 		})
+		return
+	}
+
+	// A connection that could not be opened again ends the session (see
+	// doMail), but not the sign-in: the password was never in question. The
+	// browser keeps the session cookie and the login token, so its next
+	// request finds the session gone and restores it from the token once the
+	// mail server is back, and is told so until then (see setupMiddleware).
+	// Both were cleared, and a user who came back after the outage had to
+	// sign in.
+	if errors.Is(err, ErrMailProviderUnavailable) {
+		s.logger.Debugf("Mail provider connection lost, ending the session")
+		if ctx.Session != nil {
+			ctx.Session.CloseWithReason("mail-server-unavailable")
+		}
+		ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "mail_server_unavailable"})
 		return
 	}
 
