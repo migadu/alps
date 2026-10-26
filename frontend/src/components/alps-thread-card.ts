@@ -8,6 +8,8 @@ import { composeContext, ComposeStore } from '../store/compose-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
 import { renderIcon, formatFullDate, bimiAvatarUrlFor } from '../utils/ui';
 import { applyThemeToIframe, extractSnippet, setupIframeSizing } from '../utils/reader-utils';
+import { renderLinkedText } from '../utils/linkify';
+import { interceptMailtoClicks, openMailtoFromClick } from '../utils/mailto';
 import { addressText, addressWarning, mixedScriptStyles } from '../utils/address-display';
 
 import './alps-recipient-pill';
@@ -306,6 +308,13 @@ export class AlpsThreadCard extends LitElement {
       color: var(--text-primary);
     }
 
+    /* Links found in a plain-text body (utils/linkify.ts). A URL has no spaces
+       to wrap at, so it may break anywhere rather than widen the pane. */
+    .reader-preformatted a {
+      color: var(--accent-color);
+      overflow-wrap: anywhere;
+    }
+
     .dropdown-item {
       display: flex;
       align-items: center;
@@ -370,6 +379,11 @@ export class AlpsThreadCard extends LitElement {
     const iframe = e.target as HTMLIFrameElement;
     const themeIframeContent = this.settingsStore?.getState()?.themeIframeContent ?? false;
     setupIframeSizing(iframe, themeIframeContent);
+    interceptMailtoClicks(iframe, () => this.composeStore);
+  }
+
+  private onTextBodyClick(e: MouseEvent) {
+    openMailtoFromClick(e, this.composeStore);
   }
 
   /**
@@ -549,7 +563,7 @@ export class AlpsThreadCard extends LitElement {
             </div>
           ` : html`
             <div class="reader-text-wrapper">
-              <pre dir="auto" class="reader-preformatted">${this.item.content}</pre>
+              <pre dir="auto" class="reader-preformatted" @click=${this.onTextBodyClick}>${renderLinkedText(this.item.content)}</pre>
             </div>
           `}
         </div>

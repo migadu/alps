@@ -638,3 +638,23 @@ describe('bareAddress', () => {
     expect(bareAddress('Charles <charles@example.com> ')).toBe('charles@example.com');
   });
 });
+
+describe('where the signature goes', () => {
+  it('goes above the opening text by default, as a reply has its quote below it', () => {
+    signIn('ada', { signature: 'Ada' });
+    const store = makeStore();
+    store.openComposer({ text: '> quoted', html: '<blockquote>quoted</blockquote>' });
+    const [c] = composers(store);
+    expect(c.text).toBe('\n\n-- \nAda\n> quoted');
+    expect(c.html).toBe('<br><br><div class="alps-signature">-- <br>Ada</div><blockquote>quoted</blockquote>');
+  });
+
+  it('goes below text the user is to send as it was written, as a mailto: body', () => {
+    signIn('ada', { signature: 'Ada' });
+    const store = makeStore();
+    store.openComposer({ text: 'hello', html: '<p>hello</p>' }, { signature: 'below' });
+    const [c] = composers(store);
+    expect(c.text).toBe('hello\n\n-- \nAda');
+    expect(c.html).toBe('<p>hello</p><br><br><div class="alps-signature">-- <br>Ada</div>');
+  });
+});
