@@ -172,15 +172,22 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 // loginError is the error a LOGIN that failed ends in. Only the server's answer
 // refuses the credentials, and not when it says it could not check them:
 // Dovecot answers NO [UNAVAILABLE] while its authentication backend is down.
-// A connection lost during the exchange is a failed connection like any
-// other. The login form counts an AuthError as a wrong password, against the
-// account and the address it came from.
+// Nor when it says the account holds as many connections as it may: Sora
+// checks the password and then answers NO [LIMIT] "Maximum connections
+// reached", which is a provider.LimitError. A connection lost during the
+// exchange is a failed connection like any other. The login form counts an
+// AuthError as a wrong password, against the account and the address it came
+// from.
 func loginError(err error) error {
 	var imapErr *imap.Error
-	if errors.As(err, &imapErr) && imapErr.Code != imap.ResponseCodeUnavailable {
+	switch {
+	case !errors.As(err, &imapErr), imapErr.Code == imap.ResponseCodeUnavailable:
+		return fmt.Errorf("failed to sign in to IMAP server: %w", err)
+	case imapErr.Code == imap.ResponseCodeLimit:
+		return &provider.LimitError{RetryAfter: waitNamedIn(imapErr.Text), Cause: fmt.Errorf("LOGIN refused: %w", err)}
+	default:
 		return provider.AuthError{Cause: err}
 	}
-	return fmt.Errorf("failed to sign in to IMAP server: %w", err)
 }
 
 func configure(meta *toml.MetaData, raw *toml.Primitive) (provider.Config, error) {
