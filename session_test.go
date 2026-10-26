@@ -17,8 +17,8 @@ import (
 // TestDoMailWithContext_ConnectFailureIsIdentifiable verifies that a failed
 // (re)connect surfaces an error that handleError can act on: errors.As must
 // still recover the underlying AuthError (so %w wrapping did not hide it), and
-// errors.Is must match ErrMailProviderUnavailable so the user is logged out
-// instead of looping on 500s.
+// errors.Is must match ErrMailProviderUnavailable so that any other cause is
+// answered as the mail server being unavailable, not as a 500.
 func TestDoMailWithContext_ConnectFailureIsIdentifiable(t *testing.T) {
 	authCause := errors.New("invalid credentials")
 	connectProvider := func(username, password string) (provider.MailProvider, error) {
@@ -35,7 +35,7 @@ func TestDoMailWithContext_ConnectFailureIsIdentifiable(t *testing.T) {
 
 	var authErr provider.AuthError
 	assert.True(t, errors.As(err, &authErr), "AuthError must survive %%w wrapping so errors.As matches")
-	assert.True(t, errors.Is(err, ErrMailProviderUnavailable), "sentinel must be joined so handleError logs out")
+	assert.True(t, errors.Is(err, ErrMailProviderUnavailable), "sentinel must be joined so handleError can tell an outage")
 }
 
 // TestSession_CloseIsIdempotent verifies that Close can be called repeatedly and

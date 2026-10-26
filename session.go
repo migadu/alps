@@ -488,8 +488,8 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 		if err != nil {
 			s.CloseWithReason("mail-server-unavailable")
 			// Wrap with %w so errors.As can still recover an AuthError (bad
-			// credentials), and join the sentinel so handleError logs the user
-			// out on a dead connection instead of looping on 500s.
+			// credentials), and join the sentinel so handleError tells the
+			// page the mail server is unavailable rather than answering 500.
 			return fmt.Errorf("failed to connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, err))
 		}
 		s.noteThreadCapability(s.provider)
