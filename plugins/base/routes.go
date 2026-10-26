@@ -1912,6 +1912,20 @@ func handleLogin(ctx *alps.Context) error {
 					"agent", ctx.Request.UserAgent())
 				return ctx.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Failed to login"})
 			}
+			// The password checked out, but the account holds as many
+			// connections as the mail server allows: the user's other mail
+			// apps, and other alps sessions. Answered with a code of its own,
+			// so the page does not send the user to retype a password that
+			// is right.
+			var limited *provider.LimitError
+			if errors.As(err, &limited) {
+				ctx.Server.Logger().Slog().Warn("sign-in failed",
+					"user", username,
+					"ip", ctx.ClientIP(),
+					"reason", "connection limit",
+					"error", err.Error())
+				return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "connection_limit"})
+			}
 			ctx.Server.Logger().Slog().Warn("sign-in failed",
 				"user", username,
 				"ip", ctx.ClientIP(),
