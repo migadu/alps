@@ -18,6 +18,9 @@ var (
 	ErrAccountNotFound      = errors.New("linked account not found")
 	ErrLoginKeyRequired     = errors.New("login key required for account encryption")
 	ErrCannotLinkSelf       = errors.New("cannot link your own account")
+	// ErrLinkedCredentialsRefused identifies a refusal while signing in to the
+	// account being added, rather than an error in either account's metadata.
+	ErrLinkedCredentialsRefused = errors.New("linked account credentials refused")
 )
 
 // LinkedAccount represents an additional account linked to the primary account.
@@ -108,6 +111,10 @@ func (s *Session) AddLinkedAccount(username, password, displayName string) error
 	// Validate credentials by creating a temporary session
 	targetSession, err := s.manager.Put(username, password)
 	if err != nil {
+		var authErr provider.AuthError
+		if errors.As(err, &authErr) {
+			err = errors.Join(ErrLinkedCredentialsRefused, err)
+		}
 		return fmt.Errorf("failed to validate account credentials: %w", err)
 	}
 	defer targetSession.Close()

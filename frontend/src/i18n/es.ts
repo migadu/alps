@@ -139,6 +139,7 @@ export const es = {
     signIn: 'Iniciar sesión',
     tooManyAttempts: 'Demasiados intentos de inicio de sesión',
     loginFailed: 'Error de inicio de sesión. Por favor, verifica tus credenciales.',
+    tooManyConnections: 'Hay demasiadas conexiones abiertas en esta cuenta. Cierra otra aplicación de correo o cierra sesión en otro navegador y vuelve a intentarlo.',
     networkError: 'Ocurrió un error de red. Por favor, inténtalo de nuevo.',
     pleaseWait: 'Por favor espera',
     wait: 'Esperar',

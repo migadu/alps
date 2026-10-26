@@ -24,7 +24,8 @@ func (err AuthError) Unwrap() error {
 
 // LimitError is a request the mail server refused for one of its limits:
 // RFC 5530's [LIMIT], with which Sora refuses a search once the account's
-// search budget is used up. It is neither the user's mistake nor a failure of
+// search budget is used up, and a sign-in once the account holds as many
+// connections as it may. It is neither the user's mistake nor a failure of
 // the server, and the same request may succeed later. RetryAfter is how long
 // the server said to wait, or 0 when it did not say.
 type LimitError struct {

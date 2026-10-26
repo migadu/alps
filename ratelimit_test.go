@@ -743,6 +743,261 @@ func TestRateLimiter_ClusterEventTimestampsAreClamped(t *testing.T) {
 	}
 }
 
+// memberlist sends each broadcast RetransmitMult*ceil(log10(N+1)) times and
+// does not deduplicate user messages, so on a two-node cluster every event
+// reaches the peer three times. A peer that counted each copy refused a user
+// after two typos, before it looked at the password.
+func TestRateLimiter_ClusterEventCopiesCountOnce(t *testing.T) {
+	logger := &mockLogger{}
+	config := RateLimitConfig{
+		IPRequestsPerMinute:     5,
+		IPRequestsPerHour:       20,
+		UsernameFailsPerQuarter: 5,
+		UsernameFailsPerHour:    10,
+		GlobalRequestsPerSecond: 100,
+		LockoutDuration:         15 * time.Minute,
+	}
+	broadcaster := &mockBroadcaster{}
+	rlA := NewRateLimiter(config, logger, broadcaster)
+	defer rlA.Close()
+	rlB := NewRateLimiter(config, logger, nil)
+	defer rlB.Close()
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.60:12345"
+	username := "typo@example.com"
+	rlA.RecordLoginAttempt(req, username, false)
+	rlA.RecordLoginAttempt(req, username, false)
+
+	for _, msg := range broadcaster.messages {
+		for i := 0; i < 3; i++ {
+			rlB.HandleClusterMessage(msg)
+		}
+	}
+
+	rlB.mu.RLock()
+	ipEntry, userEntry := rlB.ipMap["10.0.0.60"], rlB.userMap[username]
+	rlB.mu.RUnlock()
+	if ipEntry == nil || userEntry == nil {
+		t.Fatal("expected the cluster events to be recorded")
+	}
+	if len(ipEntry.timestamps) != 2 || len(userEntry.timestamps) != 2 {
+		t.Fatalf("two attempts delivered three times each counted as %d IP attempts and %d username failures, want 2 and 2",
+			len(ipEntry.timestamps), len(userEntry.timestamps))
+	}
+
+	reqB := httptest.NewRequest("POST", "/session", nil)
+	reqB.RemoteAddr = "10.0.0.61:54321"
+	if allowed, reason, _ := rlB.CheckLoginAllowed(reqB, username); !allowed {
+		t.Fatalf("two typos on another node locked the account: %s", reason)
+	}
+}
+
+// What a receiver deduplicates on: every broadcast attempt names itself.
+func TestRateLimiter_BroadcastAttemptsCarryDistinctIDs(t *testing.T) {
+	broadcaster := &mockBroadcaster{}
+	rl := NewRateLimiter(RateLimitConfig{}, &mockLogger{}, broadcaster)
+	defer rl.Close()
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.63:12345"
+	for i := 0; i < 3; i++ {
+		rl.RecordLoginAttempt(req, "ids@example.com", i == 2)
+	}
+
+	seen := map[string]bool{}
+	for _, msg := range broadcaster.messages {
+		var fields map[string]interface{}
+		if err := json.Unmarshal(msg, &fields); err != nil {
+			t.Fatal(err)
+		}
+		id, _ := fields["id"].(string)
+		if id == "" || seen[id] {
+			t.Fatalf("each broadcast attempt needs its own id, got %q in %s", id, msg)
+		}
+		seen[id] = true
+	}
+}
+
+// A node from before event IDs sends none, and its events are still applied
+// one each during a rolling upgrade: an empty ID names no event, so two of
+// them are not one event seen twice.
+func TestRateLimiter_ClusterEventsWithoutIDStillCount(t *testing.T) {
+	config := RateLimitConfig{
+		IPRequestsPerMinute:     100,
+		IPRequestsPerHour:       100,
+		UsernameFailsPerQuarter: 100,
+		UsernameFailsPerHour:    100,
+		GlobalRequestsPerSecond: 1000,
+		LockoutDuration:         10 * time.Minute,
+	}
+	rl := NewRateLimiter(config, &mockLogger{}, nil)
+	defer rl.Close()
+
+	for i := 0; i < 2; i++ {
+		data, err := json.Marshal(RateLimitEvent{IP: "10.0.0.62", Username: "old@example.com", Timestamp: time.Now()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rl.HandleClusterMessage(data)
+	}
+
+	rl.mu.RLock()
+	entry := rl.ipMap["10.0.0.62"]
+	rl.mu.RUnlock()
+	if entry == nil || len(entry.timestamps) != 2 {
+		t.Fatalf("two events without an ID should count twice, got %v", entry)
+	}
+}
+
+// The IDs a node remembers are pruned with the rest of its state: one past
+// HandleClusterMessage's stale cutoff can never be applied again.
+func TestRateLimiter_SeenEventIDsAgeOut(t *testing.T) {
+	rl := NewRateLimiter(RateLimitConfig{}, &mockLogger{}, nil)
+	defer rl.Close()
+
+	rl.mu.Lock()
+	rl.seen["old"] = time.Now().Add(-3 * time.Hour)
+	rl.seen["recent"] = time.Now()
+	rl.mu.Unlock()
+
+	rl.cleanup()
+
+	rl.mu.RLock()
+	_, old := rl.seen["old"]
+	_, recent := rl.seen["recent"]
+	rl.mu.RUnlock()
+	if old || !recent {
+		t.Fatalf("after cleanup: old kept=%v, recent kept=%v; want false, true", old, recent)
+	}
+}
+
+// An attempt another node's mail server could not check counts towards the
+// address's burst window like any attempt, and towards no run of failures,
+// for the address or the account.
+func TestRateLimiter_ClusterLoginErrorsAreNotFailures(t *testing.T) {
+	config := RateLimitConfig{
+		IPRequestsPerMinute:     100,
+		IPRequestsPerHour:       100,
+		UsernameFailsPerQuarter: 100,
+		UsernameFailsPerHour:    100,
+		GlobalRequestsPerSecond: 1000,
+		LockoutDuration:         10 * time.Minute,
+	}
+	rl := NewRateLimiter(config, &mockLogger{}, nil)
+	defer rl.Close()
+
+	for _, event := range []map[string]any{
+		{"id": "failure", "ip": "10.0.0.70", "username": "outage@example.com", "success": false},
+		{"id": "error-named", "ip": "10.0.0.70", "username": "outage@example.com", "success": false, "errored": true},
+		{"id": "error", "ip": "10.0.0.70", "success": false, "errored": true},
+	} {
+		event["timestamp"] = time.Now()
+		data, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rl.HandleClusterMessage(data)
+	}
+
+	rl.mu.RLock()
+	defer rl.mu.RUnlock()
+	ipEntry, userEntry := rl.ipMap["10.0.0.70"], rl.userMap["outage@example.com"]
+	if ipEntry == nil || userEntry == nil {
+		t.Fatal("expected the cluster events to be recorded")
+	}
+	if len(ipEntry.timestamps) != 3 || len(ipEntry.failures) != 1 || len(userEntry.timestamps) != 1 {
+		t.Errorf("one failure and two errors counted as %d attempts, %d failures for the address and %d for the account; want 3, 1 and 1",
+			len(ipEntry.timestamps), len(ipEntry.failures), len(userEntry.timestamps))
+	}
+}
+
+// lockProbe is a broadcaster that notes whether the rate limiter's lock is
+// held while it is called.
+type lockProbe struct {
+	rl   *RateLimiter
+	held []bool
+}
+
+func (p *lockProbe) Broadcast(msg []byte) {
+	free := p.rl.mu.TryLock()
+	if free {
+		p.rl.mu.Unlock()
+	}
+	p.held = append(p.held, !free)
+}
+
+// The cluster sends a broadcast to every other node as it is made, a datagram
+// apiece, and every login check waits on the rate limiter's lock.
+func TestRateLimiter_BroadcastsOutsideTheLock(t *testing.T) {
+	probe := &lockProbe{}
+	rl := NewRateLimiter(DefaultRateLimitConfig(), &mockLogger{}, probe)
+	defer rl.Close()
+	probe.rl = rl
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.71:12345"
+	rl.RecordLoginAttempt(req, "probe@example.com", false)
+	rl.RecordLoginAttempt(req, "probe@example.com", true)
+
+	if len(probe.held) != 2 || probe.held[0] || probe.held[1] {
+		t.Errorf("lock held during each broadcast: %v, want [false false]", probe.held)
+	}
+}
+
+// An attempt that ended in an error is an attempt for the address's burst
+// window, and no failure: it neither adds to a run of them nor ends one. The
+// other nodes are told of it without the username.
+func TestRateLimiter_LoginErrorsAreAttemptsNotFailures(t *testing.T) {
+	broadcaster := &mockBroadcaster{}
+	rl := NewRateLimiter(DefaultRateLimitConfig(), &mockLogger{}, broadcaster)
+	defer rl.Close()
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.72:12345"
+	username := "errors@example.com"
+	rl.RecordLoginAttempt(req, username, false)
+	rl.RecordLoginError(req)
+	rl.RecordLoginError(req)
+
+	rl.mu.RLock()
+	ipEntry, userEntry := rl.ipMap["10.0.0.72"], rl.userMap[username]
+	global := len(rl.globalTS)
+	rl.mu.RUnlock()
+	if len(ipEntry.timestamps) != 3 || len(ipEntry.failures) != 1 || len(userEntry.timestamps) != 1 || global != 3 {
+		t.Errorf("a failure and two errors counted as %d attempts and %d failures for the address, %d failures for the account and %d attempts in all; want 3, 1, 1 and 3",
+			len(ipEntry.timestamps), len(ipEntry.failures), len(userEntry.timestamps), global)
+	}
+
+	if len(broadcaster.messages) != 3 {
+		t.Fatalf("%d attempts broadcast, want 3", len(broadcaster.messages))
+	}
+	for _, msg := range broadcaster.messages[1:] {
+		var event RateLimitEvent
+		if err := json.Unmarshal(msg, &event); err != nil {
+			t.Fatal(err)
+		}
+		if !event.Errored || event.Success || event.Username != "" || event.IP != "10.0.0.72" || event.ID == "" {
+			t.Errorf("an error was broadcast as %s", msg)
+		}
+	}
+}
+
+func TestRateLimiter_LoginErrorsBroadcastOutsideTheLock(t *testing.T) {
+	probe := &lockProbe{}
+	rl := NewRateLimiter(DefaultRateLimitConfig(), &mockLogger{}, probe)
+	defer rl.Close()
+	probe.rl = rl
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.73:12345"
+	rl.RecordLoginError(req)
+
+	if len(probe.held) != 1 || probe.held[0] {
+		t.Errorf("lock held during the broadcast: %v, want [false]", probe.held)
+	}
+}
+
 // Server.Close calls three teardowns and the other two are already guarded, so
 // this one has to tolerate a second call too.
 func TestRateLimiter_CloseIsIdempotent(t *testing.T) {
