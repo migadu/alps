@@ -86,16 +86,6 @@ type IMAPProvider struct {
 	// selectedStatus).
 	condstore bool
 	kept      *keptStatus
-
-	// lsub signs in again to read the subscriptions a plain LIST does not
-	// say (see markSubscriptions); nil for a provider made without the
-	// session's credentials. subscribed is what it read, nil when unknown,
-	// as at subscribedAt; both are guarded by cacheLock. lsubLock makes one
-	// read at a time.
-	lsub         *lsubLogin
-	lsubLock     sync.Mutex
-	subscribed   map[string]bool
-	subscribedAt time.Time
 }
 
 func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
@@ -203,10 +193,16 @@ func (p *IMAPProvider) noteListReturnRefused() {
 
 // listMailboxes lists every folder with one LIST "" "*", sending the given
 // RETURN options or, when they are nil, a plain LIST, whose subscriptions are
-// then read with LSUB (see markSubscriptions).
+// read with an LSUB sent behind it (see markSubscriptions).
 func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mailbox, error) {
 	var mailboxes []provider.Mailbox
 	list := p.client.List("", "*", options)
+	var lsub *imapclient.ListCommand
+	if options == nil {
+		// Sent before the LIST is answered, so that its answer costs no wait
+		// of its own.
+		lsub = p.client.Lsub("", "*")
+	}
 	for {
 		data := list.Next()
 		if data == nil {
@@ -244,10 +240,13 @@ func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mail
 		mailboxes = append(mailboxes, mbox)
 	}
 	if err := list.Close(); err != nil {
+		if lsub != nil {
+			lsub.Close()
+		}
 		return nil, err
 	}
-	if options == nil {
-		p.markSubscriptions(mailboxes)
+	if lsub != nil {
+		p.markSubscriptions(mailboxes, lsub)
 	}
 
 	sort.Slice(mailboxes, func(i, j int) bool {
@@ -470,8 +469,6 @@ func (p *IMAPProvider) CreateMailbox(name string) error {
 	}
 	if err := p.client.Subscribe(name).Wait(); err != nil {
 		log.Printf("alps/provider: created %q, but the server refused to subscribe to it: %v", name, err)
-	} else {
-		p.noteSubscribed(name, true)
 	}
 	return nil
 }
@@ -533,20 +530,12 @@ func (p *IMAPProvider) RenameMailbox(oldName, newName string) error {
 
 // SubscribeMailbox subscribes to a mailbox
 func (p *IMAPProvider) SubscribeMailbox(name string) error {
-	if err := p.client.Subscribe(name).Wait(); err != nil {
-		return err
-	}
-	p.noteSubscribed(name, true)
-	return nil
+	return p.client.Subscribe(name).Wait()
 }
 
 // UnsubscribeMailbox unsubscribes from a mailbox
 func (p *IMAPProvider) UnsubscribeMailbox(name string) error {
-	if err := p.client.Unsubscribe(name).Wait(); err != nil {
-		return err
-	}
-	p.noteSubscribed(name, false)
-	return nil
+	return p.client.Unsubscribe(name).Wait()
 }
 
 // ensureMailboxSelected ensures the mailbox is selected. It selects it unless
