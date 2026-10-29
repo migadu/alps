@@ -83,9 +83,8 @@ func (n *mailboxNews) tell() {
 	}
 }
 
-// tellOf passes on news of mailbox, for a caller other than the connection's
-// reader: the client's record of the mailbox selected may lag behind a
-// SELECT just answered there, or name none (see selectMailbox).
+// tellOf passes on news of mailbox, which the caller names: a folder the
+// server told of with STATUS, or the one an IDLE selected.
 func (n *mailboxNews) tellOf(mailbox string) {
 	if news := n.news.Load(); news != nil {
 		(*news)(mailbox)

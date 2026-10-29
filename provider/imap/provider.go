@@ -43,13 +43,13 @@ type IMAPProvider struct {
 	// type on this connection.
 	specialMailboxes map[provider.MailboxType]provider.Mailbox
 
-	// selected is the mailbox selected, as the SELECT that selected it
-	// answered, or nil when none is: see selectMailbox and selectedMailbox.
+	// selected names the mailbox the last SELECT selected, or is empty when
+	// none did or the server refused it: see selectMailbox.
 	// selectedUIDValidity is the UIDVALIDITY it was selected with;
 	// selectMailbox is the only place that selects. selectedUIDNext is its
 	// UIDNEXT then, or 0 when the server did not say (see
 	// arrivedSinceSelect).
-	selected            *imapclient.SelectedMailbox
+	selected            string
 	selectedUIDValidity uint32
 	selectedUIDNext     imap.UID
 	verdicts            *provider.VerdictCache // the session's, once it is shared: see ShareVerdicts
@@ -549,32 +549,20 @@ func (p *IMAPProvider) UnsubscribeMailbox(name string) error {
 	return nil
 }
 
-// ensureMailboxSelected ensures the mailbox is selected. It selects it unless
-// both the record of the last SELECT (see selectMailbox) and the client say
-// it is: the client's may lag behind a SELECT just answered, which then costs
-// one SELECT more, never one fewer.
+// ensureMailboxSelected ensures the mailbox is selected.
 func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
-	if p.selected != nil && p.selected.Name == mboxName {
-		if mbox := p.client.Mailbox(); mbox == nil || mbox.Name == mboxName {
-			return nil
-		}
+	if p.isSelected(mboxName) {
+		return nil
 	}
 	_, err := p.selectMailbox(mboxName)
 	return err
 }
 
-// selectMailbox selects mailbox, and records it as selected from the
-// SELECT's own answer.
-//
-// Not from the client's record of it: the go-imap client releases a SELECT's
-// waiter before it records the mailbox as selected, so straight after the
-// SELECT it can still show the mailbox selected before, or none at all when
-// the server answered the switch with [CLOSED]. Taken for the one selected,
-// it had the next SELECT, of that earlier mailbox, skipped, and the commands
-// after it ran in the wrong mailbox; counted, it gave the earlier mailbox's
-// count. Nor does the client record that
-// a SELECT the server refused leaves no mailbox selected (RFC 3501 §6.3.1):
-// it goes on showing the one before.
+// selectMailbox selects mailbox, and records its name as the one the last
+// SELECT selected. The client records the SELECT before its Wait returns, but
+// not that a SELECT the server refused leaves no mailbox selected (RFC 3501
+// §6.3.1): it goes on showing the one before. That record tells the two apart
+// (see selectedMailbox).
 func (p *IMAPProvider) selectMailbox(mailbox string) (*imap.SelectData, error) {
 	if was := p.selectedMailbox(); was != nil && was.Name != mailbox && p.news != nil {
 		uidNext := p.selectedUIDNext
@@ -590,50 +578,31 @@ func (p *IMAPProvider) selectMailbox(mailbox string) (*imap.SelectData, error) {
 	}
 	data, err := p.client.Select(mailbox, nil).Wait()
 	if err != nil {
-		p.selected = nil
+		p.selected = ""
 		return nil, fmt.Errorf("failed to select mailbox: %v", err)
 	}
-	p.selected = &imapclient.SelectedMailbox{
-		Name:           mailbox,
-		NumMessages:    data.NumMessages,
-		Flags:          data.Flags,
-		PermanentFlags: data.PermanentFlags,
-	}
+	p.selected = mailbox
 	p.selectedUIDValidity = data.UIDValidity
 	p.selectedUIDNext = data.UIDNext
 	p.selects++
-	// A reselect of the same name can leave an older count in the client
-	// until its reader finishes publishing this SELECT. Names alone cannot
-	// distinguish those snapshots. A following command's answer is a
-	// barrier; only this ambiguous disagreement needs the extra round trip.
-	if current := p.client.Mailbox(); current != nil && current.Name == mailbox && current.NumMessages != data.NumMessages {
-		if err := p.answeredWithin("mailbox state after SELECT", func() error { return p.client.Noop().Wait() }); err != nil {
-			p.selected = nil
-			return nil, err
-		}
-	}
 	return data, nil
 }
 
-// selectedMailbox is the mailbox selected and what it holds, or nil when
-// none is. It is the client's record of it, which follows the messages that
-// arrive and go, once the client has recorded the SELECT; until then, the
-// SELECT's own answer (see selectMailbox). The client records it as it reads
-// the answer, so it has by the time the next command is answered.
+// selectedMailbox is the mailbox selected and what it holds, as the client
+// records it, following the messages that arrive and go, or nil when none is.
+// A mailbox the client shows that the last SELECT did not select is none: a
+// refused SELECT left it showing (see selectMailbox).
 func (p *IMAPProvider) selectedMailbox() *imapclient.SelectedMailbox {
-	if p.selected == nil {
-		return nil
-	}
-	if mbox := p.client.Mailbox(); mbox != nil && mbox.Name == p.selected.Name {
+	if mbox := p.client.Mailbox(); mbox != nil && mbox.Name == p.selected {
 		return mbox
 	}
-	return p.selected
+	return nil
 }
 
 // SelectedUIDValidity is the UIDVALIDITY under which the last part was read.
 // Another selected mailbox, or an unknown UIDVALIDITY, is reported as zero.
 func (p *IMAPProvider) SelectedUIDValidity(mailbox string) uint32 {
-	if p.selected == nil || p.selected.Name != mailbox {
+	if p.selected != mailbox {
 		return 0
 	}
 	return p.selectedUIDValidity
@@ -2558,7 +2527,7 @@ func (p *IMAPProvider) rememberVerdict(mailbox string, uid imap.UID, v provider.
 	if uid == 0 || p.client == nil {
 		return
 	}
-	if p.selected == nil || p.selected.Name != mailbox {
+	if p.selected != mailbox {
 		return
 	}
 	p.verdicts.Put(mailbox, strconv.FormatUint(uint64(p.selectedUIDValidity), 10), IMAPUID(uid).String(), v)
