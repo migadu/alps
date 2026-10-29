@@ -11,33 +11,23 @@ import (
 // TrackChanges: see provider.ChangeTracker. It turns on CONDSTORE (RFC 7162)
 // where the server lists it, with ENABLE (RFC 5161) where the server takes
 // it. Without ENABLE, the first STATUS asking for HIGHESTMODSEQ turns it on
-// (RFC 7162 §3.1).
+// (RFC 7162 §3.1). A server that lists QRESYNC has CONDSTORE (RFC 7162
+// §3.2), and one that lists IMAP4rev2 has ENABLE; CapSet.Has says both.
 //
-// The server's own list is read, not CapSet.Has: the go-imap client takes
-// IMAP4rev2 to imply CONDSTORE and QRESYNC, and RFC 9051 includes neither.
-//
-// QRESYNC is not enabled, even where the server lists it. Under it the
-// server tells of messages taken out of the selected mailbox with VANISHED
-// instead of EXPUNGE (RFC 7162 §3.2.10), and the go-imap client keeps the
-// selected mailbox's message count from EXPUNGE alone: the count would stay
-// as it was, and what reads it by number (the last message's UID that keys
-// the conversations, a listing by number) would read past the end. What
-// QRESYNC adds beside that, a SELECT that brings a mailbox up to date, is not
-// something alps asks.
+// QRESYNC is not enabled, even where the server lists it. What it adds, a
+// SELECT that brings a mailbox up to date, is not something alps asks, and
+// under it the server tells of messages taken out of the selected mailbox
+// with VANISHED instead of EXPUNGE (RFC 7162 §3.2.10), which the news
+// handler does not hear (see mailboxNews).
 func (p *IMAPProvider) TrackChanges() (bool, error) {
 	caps := p.client.Caps()
 	if caps == nil {
 		return false, p.lostIf(errors.New("imap: the server's capabilities could not be read"))
 	}
-	listed := func(c imap.Cap) bool {
-		_, ok := caps[c]
-		return ok
-	}
-	// A server with QRESYNC has CONDSTORE (RFC 7162 §3.2), listed or not.
-	if !listed(imap.CapCondStore) && !listed(imap.CapQResync) {
+	if !caps.Has(imap.CapCondStore) {
 		return false, nil
 	}
-	if listed(imap.CapEnable) || listed(imap.CapIMAP4rev2) {
+	if caps.Has(imap.CapEnable) {
 		var enabled imap.CapSet
 		err := p.answeredWithin("ENABLE", func() error {
 			data, err := p.client.Enable(imap.CapCondStore).Wait()
