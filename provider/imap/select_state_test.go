@@ -176,7 +176,7 @@ func TestEnsureMailboxSelected_TheClientShowsWhatWasJustSelected(t *testing.T) {
 					t.Fatalf("switch %d: asked for %s, the server has %q selected", i, name, got)
 				}
 				want := selectingMailboxes[name]
-				if mbox := p.selectedMailbox(); mbox == nil || mbox.Name != name || strconv.Itoa(int(mbox.NumMessages)) != want.count {
+				if mbox := p.client.Mailbox(); mbox == nil || mbox.Name != name || strconv.Itoa(int(mbox.NumMessages)) != want.count {
 					t.Fatalf("switch %d: %s just selected, the client shows %+v", i, name, mbox)
 				}
 				if got := strconv.Itoa(int(p.SelectedUIDValidity(name))); got != want.validity {
@@ -188,7 +188,9 @@ func TestEnsureMailboxSelected_TheClientShowsWhatWasJustSelected(t *testing.T) {
 }
 
 // A SELECT the server refuses leaves no mailbox selected (RFC 3501 §6.3.1),
-// and the next request for the mailbox selected before selects it again.
+// and the next request for the mailbox selected before selects it again. The
+// server here sends no [CLOSED]: a go-imap client before ee66cc1
+// (migadu/go-imap#98) went on showing the mailbox selected before.
 func TestEnsureMailboxSelected_ARefusedSelectLeavesNoneSelected(t *testing.T) {
 	srv := newSelectingServer(t)
 	p := srv.dial(t)
@@ -224,7 +226,7 @@ func TestSelectedMailbox_AReselectUsesItsOwnFreshCount(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		selected := p.selectedMailbox()
+		selected := p.client.Mailbox()
 		if selected == nil || selected.NumMessages != data.NumMessages {
 			t.Fatalf("reselect %d: fresh count %d, selected snapshot %+v", i, data.NumMessages, selected)
 		}

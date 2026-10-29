@@ -43,13 +43,10 @@ type IMAPProvider struct {
 	// type on this connection.
 	specialMailboxes map[provider.MailboxType]provider.Mailbox
 
-	// selected names the mailbox the last SELECT selected, or is empty when
-	// none did or the server refused it: see selectMailbox.
-	// selectedUIDValidity is the UIDVALIDITY it was selected with;
-	// selectMailbox is the only place that selects. selectedUIDNext is its
-	// UIDNEXT then, or 0 when the server did not say (see
-	// arrivedSinceSelect).
-	selected            string
+	// selectedUIDValidity is the UIDVALIDITY the selected mailbox was
+	// selected with; selectMailbox is the only place that selects.
+	// selectedUIDNext is its UIDNEXT then, or 0 when the server did not say
+	// (see arrivedSinceSelect).
 	selectedUIDValidity uint32
 	selectedUIDNext     imap.UID
 	verdicts            *provider.VerdictCache // the session's, once it is shared: see ShareVerdicts
@@ -558,13 +555,12 @@ func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
 	return err
 }
 
-// selectMailbox selects mailbox, and records its name as the one the last
-// SELECT selected. The client records the SELECT before its Wait returns, but
-// not that a SELECT the server refused leaves no mailbox selected (RFC 3501
-// §6.3.1): it goes on showing the one before. That record tells the two apart
-// (see selectedMailbox).
+// selectMailbox selects mailbox. The client records the mailbox selected, or
+// none after a SELECT the server refused (RFC 3501 §6.3.1), before its Wait
+// returns, and follows the messages that arrive and go: Mailbox() is the
+// record to go by.
 func (p *IMAPProvider) selectMailbox(mailbox string) (*imap.SelectData, error) {
-	if was := p.selectedMailbox(); was != nil && was.Name != mailbox && p.news != nil {
+	if was := p.client.Mailbox(); was != nil && was.Name != mailbox && p.news != nil {
 		uidNext := p.selectedUIDNext
 		if snapshot := p.idled; snapshot.known && snapshot.mailbox == was.Name && snapshot.selects == p.selects {
 			uidNext = snapshot.uidNext
@@ -578,31 +574,18 @@ func (p *IMAPProvider) selectMailbox(mailbox string) (*imap.SelectData, error) {
 	}
 	data, err := p.client.Select(mailbox, nil).Wait()
 	if err != nil {
-		p.selected = ""
 		return nil, fmt.Errorf("failed to select mailbox: %v", err)
 	}
-	p.selected = mailbox
 	p.selectedUIDValidity = data.UIDValidity
 	p.selectedUIDNext = data.UIDNext
 	p.selects++
 	return data, nil
 }
 
-// selectedMailbox is the mailbox selected and what it holds, as the client
-// records it, following the messages that arrive and go, or nil when none is.
-// A mailbox the client shows that the last SELECT did not select is none: a
-// refused SELECT left it showing (see selectMailbox).
-func (p *IMAPProvider) selectedMailbox() *imapclient.SelectedMailbox {
-	if mbox := p.client.Mailbox(); mbox != nil && mbox.Name == p.selected {
-		return mbox
-	}
-	return nil
-}
-
 // SelectedUIDValidity is the UIDVALIDITY under which the last part was read.
 // Another selected mailbox, or an unknown UIDVALIDITY, is reported as zero.
 func (p *IMAPProvider) SelectedUIDValidity(mailbox string) uint32 {
-	if p.selected != mailbox {
+	if !p.isSelected(mailbox) {
 		return 0
 	}
 	return p.selectedUIDValidity
@@ -919,7 +902,7 @@ func (p *IMAPProvider) currentShape(fresh bool) (mailboxShape, error) {
 			return mailboxShape{}, err
 		}
 	}
-	mbox := p.selectedMailbox()
+	mbox := p.client.Mailbox()
 	if mbox == nil {
 		return mailboxShape{}, errors.New("no mailbox selected")
 	}
@@ -1328,7 +1311,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 		}
 	}
 
-	mbox := p.selectedMailbox()
+	mbox := p.client.Mailbox()
 	if isMailboxMassive(mbox) {
 		enableThreading = false
 	}
@@ -1352,7 +1335,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 // for nothing, so a server that refuses searches still answers it. Each row is
 // a thread of its own, so the reader opened from it does not thread either.
 func (p *IMAPProvider) listByNumber(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
-	mbox := p.selectedMailbox()
+	mbox := p.client.Mailbox()
 	if mbox == nil {
 		return nil, provider.PageInfo{}, errors.New("no mailbox selected")
 	}
@@ -1467,7 +1450,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		return nil, provider.PageInfo{}, err
 	}
 
-	mbox := p.selectedMailbox()
+	mbox := p.client.Mailbox()
 	if isMailboxMassive(mbox) && query == "" {
 		// Fast path for massive mailboxes without a search query.
 		// Avoid the massive IMAP SORT response by falling back to sequential listing.
@@ -1488,7 +1471,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		}
 	}
 
-	mbox = p.selectedMailbox()
+	mbox = p.client.Mailbox()
 	if isMailboxMassive(mbox) {
 		enableThreading = false
 	}
@@ -2527,7 +2510,7 @@ func (p *IMAPProvider) rememberVerdict(mailbox string, uid imap.UID, v provider.
 	if uid == 0 || p.client == nil {
 		return
 	}
-	if p.selected != mailbox {
+	if !p.isSelected(mailbox) {
 		return
 	}
 	p.verdicts.Put(mailbox, strconv.FormatUint(uint64(p.selectedUIDValidity), 10), IMAPUID(uid).String(), v)
@@ -2774,7 +2757,7 @@ func (p *IMAPProvider) GetMessageThread(mailbox string, targetUID provider.Messa
 	}
 
 	// ListMessages does not thread a mailbox this big, and neither does this.
-	threading := p.HasThreadCapability() && !isMailboxMassive(p.selectedMailbox())
+	threading := p.HasThreadCapability() && !isMailboxMassive(p.client.Mailbox())
 
 	if threading {
 		// The conversations a listing threaded, while the mailbox still holds
