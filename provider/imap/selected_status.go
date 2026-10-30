@@ -62,7 +62,7 @@ func (p *IMAPProvider) waitStatus(sent *sentStatus) (*provider.MailboxStatus, er
 
 // isSelected reports whether mailbox is the one selected on the connection.
 func (p *IMAPProvider) isSelected(mailbox string) bool {
-	mbox := p.selectedMailbox()
+	mbox := p.client.Mailbox()
 	return mbox != nil && mbox.Name == mailbox
 }
 
@@ -145,7 +145,7 @@ func (p *IMAPProvider) waitSelectedCheck(check *selectedCheck) (*provider.Mailbo
 	if noopErr != nil || delta.err != nil || delta.changed {
 		return nil, false
 	}
-	if mbox := p.selectedMailbox(); mbox == nil || mbox.Name != kept.mailbox || mbox.NumMessages != kept.status.NumMessages ||
+	if mbox := p.client.Mailbox(); mbox == nil || mbox.Name != kept.mailbox || mbox.NumMessages != kept.status.NumMessages ||
 		p.news.told.Load() != kept.told || p.selects != kept.selects {
 		return nil, false
 	}
