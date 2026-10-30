@@ -82,19 +82,25 @@ export class LoginPage extends LitElement {
       margin-bottom: 20px;
     }
 
+    /* The label wraps on a phone in most languages ("Stay signed in after
+       closing the browser"), so the box sits on the FIRST line rather than
+       centred on the block, and never shrinks to make room for the text. */
     .checkbox-group label {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       cursor: pointer;
       font-size: 14px;
+      line-height: 20px;
       color: var(--text-secondary, #4b5563);
       user-select: none;
     }
 
     .checkbox-group input[type="checkbox"] {
+      flex-shrink: 0;
       width: 16px;
       height: 16px;
       margin: 0;
+      margin-top: 2px;
       margin-right: 8px;
       cursor: pointer;
       accent-color: var(--accent-color, #2563eb);
@@ -187,6 +193,15 @@ export class LoginPage extends LitElement {
   @state() private notice: LoginNotice | null = null;
   @state() private username = '';
   @state() private password = '';
+  /**
+   * "Stay signed in after closing the browser". Ticked, the session's cookies
+   * carry an expiry; unticked, the browser drops them when it closes. Off
+   * unless the user ticks it.
+   *
+   * The label names the browser because the bare "Keep me signed in" read as
+   * a promise against Settings' auto-logout, which still signs out an idle
+   * tab whatever this box says.
+   */
   @state() private rememberMe = false;
   @state() private error = '';
   @state() private isSubmitting = false;
