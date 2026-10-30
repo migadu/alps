@@ -44,7 +44,7 @@ func TestChangesAreTrackedWhereTheServerListsCondStore(t *testing.T) {
 
 // Only CONDSTORE is turned on where the server lists QRESYNC too: under
 // QRESYNC the server tells of expunged messages with VANISHED, which the
-// client does not count down the selected mailbox's messages for.
+// news handler does not hear.
 func TestQResyncIsNotEnabled(t *testing.T) {
 	s := &memServer{caps: condStoreCaps(imap.CapQResync)}
 	p := memIMAP(t, s)
@@ -77,10 +77,9 @@ func TestChangesAreNotTrackedWhereTheServerDoesNotListCondStore(t *testing.T) {
 	}
 }
 
-// The server's own list is read. The go-imap client takes IMAP4rev2 to imply
-// CONDSTORE, and RFC 9051 does not include it: a server that lists IMAP4rev2
-// and not CONDSTORE is not sent ENABLE CONDSTORE. (The in-memory server
-// lists CONDSTORE wherever it is configured with IMAP4rev2.)
+// RFC 9051 does not include CONDSTORE in IMAP4rev2 (Appendix F): a server
+// that lists IMAP4rev2 and not CONDSTORE is not sent ENABLE CONDSTORE. A
+// go-imap client before 08be6bf took IMAP4rev2 to imply it.
 func TestIMAP4rev2AloneIsNotTakenForCondStore(t *testing.T) {
 	srv := &scriptedIMAP{caps: "IMAP4rev2 ENABLE IDLE"}
 	p := scriptedProvider(t, srv)
@@ -89,6 +88,19 @@ func TestIMAP4rev2AloneIsNotTakenForCondStore(t *testing.T) {
 	}
 	if srv.received("ENABLE") {
 		t.Error("a server listing IMAP4rev2 and not CONDSTORE was sent ENABLE")
+	}
+}
+
+// A server that lists QRESYNC has CONDSTORE (RFC 7162 §3.2), listed or not,
+// and is sent ENABLE CONDSTORE.
+func TestQResyncAloneIsTakenForCondStore(t *testing.T) {
+	s := &memServer{caps: imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapEnable: {}, imap.CapQResync: {}}}
+	p := memIMAP(t, s)
+	if tracked, err := p.TrackChanges(); err != nil || !tracked {
+		t.Fatalf("TrackChanges: %v, %v; want true", tracked, err)
+	}
+	if got := enablesSent.FindAllString(s.traffic.String(), -1); len(got) != 1 || !strings.HasSuffix(got[0], " ENABLE CONDSTORE") {
+		t.Errorf("sent %q, want one ENABLE CONDSTORE", got)
 	}
 }
 
