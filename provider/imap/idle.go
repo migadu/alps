@@ -83,9 +83,8 @@ func (n *mailboxNews) tell() {
 	}
 }
 
-// tellOf passes on news of mailbox, for a caller other than the connection's
-// reader: the client's record of the mailbox selected may lag behind a
-// SELECT just answered there, or name none (see selectMailbox).
+// tellOf passes on news of mailbox, which the caller names: a folder the
+// server told of with STATUS, or the one an IDLE selected.
 func (n *mailboxNews) tellOf(mailbox string) {
 	if news := n.news.Load(); news != nil {
 		(*news)(mailbox)
@@ -210,7 +209,7 @@ func (p *IMAPProvider) Idle(mailbox string, stop <-chan struct{}, started func()
 // rememberIdled records what the selected mailbox is as an IDLE on it ends
 // (see Idle). With ask, the server may be asked for its UIDNEXT.
 func (p *IMAPProvider) rememberIdled(ask bool) error {
-	mbox := p.selectedMailbox()
+	mbox := p.client.Mailbox()
 	if mbox == nil {
 		return nil
 	}
@@ -243,7 +242,7 @@ func (p *IMAPProvider) rememberIdled(ask bool) error {
 	// STATUS can receive another EXISTS or EXPUNGE before its answer. The
 	// handler already told of it; record that newer count with the UIDNEXT
 	// learnt above rather than announcing the same change after a reselect.
-	mbox = p.selectedMailbox()
+	mbox = p.client.Mailbox()
 	if mbox == nil {
 		return nil
 	}
@@ -304,7 +303,7 @@ func (p *IMAPProvider) lostIf(err error) error {
 // between what it holds now, as selected, and what it was as the last IDLE
 // on it ended. See Idle.
 func (p *IMAPProvider) tellWhatChangedMeanwhile(mailbox string) {
-	was, now := p.idled, p.selectedMailbox()
+	was, now := p.idled, p.client.Mailbox()
 	if p.news == nil || now == nil || !was.known || was.mailbox != mailbox || was.selects == p.selects {
 		return
 	}
