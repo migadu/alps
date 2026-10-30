@@ -194,11 +194,11 @@ func (p *IMAPProvider) noteListReturnRefused() {
 func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mailbox, error) {
 	var mailboxes []provider.Mailbox
 	list := p.client.List("", "*", options)
-	var lsub *imapclient.ListCommand
+	var subscribed <-chan map[string]bool
 	if options == nil {
 		// Sent before the LIST is answered, so that its answer costs no wait
 		// of its own.
-		lsub = p.client.Lsub("", "*")
+		subscribed = p.readSubscriptions(p.client.Lsub("", "*"))
 	}
 	for {
 		data := list.Next()
@@ -237,13 +237,13 @@ func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mail
 		mailboxes = append(mailboxes, mbox)
 	}
 	if err := list.Close(); err != nil {
-		if lsub != nil {
-			lsub.Close()
+		if subscribed != nil {
+			<-subscribed
 		}
 		return nil, err
 	}
-	if lsub != nil {
-		p.markSubscriptions(mailboxes, lsub)
+	if subscribed != nil {
+		p.markSubscriptions(mailboxes, <-subscribed)
 	}
 
 	sort.Slice(mailboxes, func(i, j int) bool {

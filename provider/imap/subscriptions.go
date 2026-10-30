@@ -7,30 +7,36 @@ import (
 	"github.com/migadu/alps/provider"
 )
 
-// markSubscriptions marks the folders of a plain LIST from the answer to
-// lsub, an LSUB "" "*" (RFC 3501 §6.3.9) sent with it: the folders LSUB lists
-// are subscribed, and the others are not. A plain LIST says nothing about
-// subscriptions, and every folder counted as subscribed, so on a server
-// without LIST-EXTENDED a folder unsubscribed here or in another client was
-// listed as subscribed again.
-//
-// When LSUB fails, every folder stays subscribed, as before. Counting none
-// would hide no more in the sidebar, which ignores a listing with nothing
-// subscribed, but it would cost the sidebar every folder's unread count, read
-// only for subscribed folders, and a rename would no longer carry a folder's
-// subscription over to its new name.
-func (p *IMAPProvider) markSubscriptions(mailboxes []provider.Mailbox, lsub *imapclient.ListCommand) {
-	listed, err := lsub.Collect()
-	if err != nil {
-		// Not the user's to see, and not a reason to fail the listing.
-		if p.debug {
-			log.Printf("alps/provider: LSUB failed, counting every folder subscribed: %v", err)
+// readSubscriptions drains LSUB as soon as it is sent. Its replies may arrive
+// before LIST completes; leaving them queued would block the shared decoder
+// before it can read LIST's answer. A nil result leaves every folder subscribed.
+func (p *IMAPProvider) readSubscriptions(lsub *imapclient.ListCommand) <-chan map[string]bool {
+	result := make(chan map[string]bool, 1)
+	go func() {
+		defer close(result)
+		listed, err := lsub.Collect()
+		if err != nil {
+			if p.debug {
+				log.Printf("alps/provider: LSUB failed, counting every folder subscribed: %v", err)
+			}
+			return
 		}
+		subscribed := make(map[string]bool, len(listed))
+		for _, data := range listed {
+			subscribed[data.Mailbox] = true
+		}
+		result <- subscribed
+	}()
+	return result
+}
+
+// markSubscriptions marks the folders of a plain LIST from the LSUB sent
+// with it: the folders LSUB lists are subscribed, and the others are not.
+// A refused LSUB leaves every folder subscribed so the sidebar keeps their
+// unread counts and a rename can carry the subscription to the new name.
+func (p *IMAPProvider) markSubscriptions(mailboxes []provider.Mailbox, subscribed map[string]bool) {
+	if subscribed == nil {
 		return
-	}
-	subscribed := make(map[string]bool, len(listed))
-	for _, data := range listed {
-		subscribed[data.Mailbox] = true
 	}
 	for i := range mailboxes {
 		mailboxes[i].Subscribed = subscribed[mailboxes[i].Name]
