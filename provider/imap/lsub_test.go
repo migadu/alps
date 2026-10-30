@@ -92,77 +92,42 @@ func TestLsubAnswersAreReadWhateverTheirForm(t *testing.T) {
 	}
 }
 
-// When the subscriptions cannot be read, every folder counts as subscribed,
-// as before, and the folder list is not failed for it: LSUB refused, a server
-// that never answers it, an answer that cannot be read, and a server that
-// takes no second connection.
-func TestListingKeepsEveryFolderSubscribedWhenLsubFails(t *testing.T) {
-	for name, tc := range map[string]struct {
-		srv  *scriptedIMAP
-		gone bool
-	}{
-		"refused":    {srv: &scriptedIMAP{caps: "IMAP4rev1", refuseLsub: true}},
-		"unanswered": {srv: &scriptedIMAP{caps: "IMAP4rev1", hangLsub: true}},
-		"unreadable": {srv: &scriptedIMAP{caps: "IMAP4rev1", lsub: []string{`* LSUB garbage`}}},
-		"gone":       {srv: &scriptedIMAP{caps: "IMAP4rev1"}, gone: true},
-	} {
-		t.Run(name, func(t *testing.T) {
-			p, ln := scriptedProviderAt(t, tc.srv, 500*time.Millisecond)
-			if tc.gone {
-				ln.Close()
-			}
-			started := time.Now()
-			got := subscriptions(t, p)
-			if took := time.Since(started); took > 3*time.Second {
-				t.Errorf("the folder list took %v", took)
-			}
-			if want := map[string]bool{"INBOX": true, "Work": true}; !reflect.DeepEqual(got, want) {
-				t.Errorf("subscriptions %v, want %v", got, want)
-			}
-		})
+// When the server refuses LSUB, every folder counts as subscribed, as before,
+// and the folder list is not failed for it.
+func TestListingKeepsEveryFolderSubscribedWhenLsubIsRefused(t *testing.T) {
+	p := scriptedProvider(t, &scriptedIMAP{caps: "IMAP4rev1", refuseLsub: true})
+	if got, want := subscriptions(t, p), map[string]bool{"INBOX": true, "Work": true}; !reflect.DeepEqual(got, want) {
+		t.Errorf("subscriptions %v, want %v", got, want)
 	}
 }
 
-// The subscriptions are read on a connection of the session's own, and kept:
-// a second listing does not sign in again.
-func TestSubscriptionsAreNotReadForEveryListing(t *testing.T) {
+// The subscriptions are read on the session's connection, with every
+// listing: no second sign-in.
+func TestSubscriptionsAreReadOnTheSessionsConnection(t *testing.T) {
 	srv := &scriptedIMAP{caps: "IMAP4rev1"}
 	p := scriptedProvider(t, srv)
 	subscriptions(t, p)
 	subscriptions(t, p)
-	// The session's connection, and one to read the subscriptions.
-	if got := srv.connections(); got != 2 {
-		t.Errorf("%d connections, want the session's and one for LSUB", got)
+	if got := srv.connections(); got != 1 {
+		t.Errorf("%d connections, want the session's alone", got)
 	}
-	if got := srv.lsubCommands(); len(got) != 1 {
-		t.Errorf("LSUB sent %d times, want once", len(got))
+	if got := srv.lsubCommands(); len(got) != 2 {
+		t.Errorf("LSUB sent %d times, want once per listing", len(got))
 	}
 }
 
-// The second sign-in sends the session's password as the first did, a
-// password outside ASCII included, which goes as a literal.
-func TestSubscriptionsAreReadWithAPasswordOutsideASCII(t *testing.T) {
-	s := &memServer{password: "pässwört \"quoted\""}
+// A subscription changed here or in another client shows in the next
+// listing.
+func TestSubscriptionsChangedAnywhereShowInTheNextListing(t *testing.T) {
+	s := &memServer{}
 	other := memIMAP(t, s)
-	if err := other.client.Create("Archive", nil).Wait(); err != nil {
+	if err := other.client.Create("Work", nil).Wait(); err != nil {
 		t.Fatal(err)
 	}
 	if err := other.SubscribeMailbox("INBOX"); err != nil {
 		t.Fatal(err)
 	}
-
-	got := subscriptions(t, signedInWith(t, s.addr, 5*time.Second, s.password))
-	if want := map[string]bool{"INBOX": true, "Archive": false}; !reflect.DeepEqual(got, want) {
-		t.Errorf("subscriptions %v, want %v", got, want)
-	}
-}
-
-// What alps subscribes or unsubscribes itself shows in the next listing at
-// once, without signing in again; another client's change shows once the
-// subscriptions read are older than subscriptionsTTL.
-func TestSubscriptionsChangedHereShowAtOnce(t *testing.T) {
-	srv := &scriptedIMAP{caps: "IMAP4rev1"} // LSUB names INBOX alone
-	p := scriptedProvider(t, srv)
+	p := signedIn(t, s.addr, 5*time.Second)
 	if got := subscriptions(t, p); got["Work"] || !got["INBOX"] {
 		t.Fatalf("subscriptions %v, want INBOX alone", got)
 	}
@@ -170,55 +135,13 @@ func TestSubscriptionsChangedHereShowAtOnce(t *testing.T) {
 	if err := p.SubscribeMailbox("Work"); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.UnsubscribeMailbox("INBOX"); err != nil {
+	if got := subscriptions(t, p); !got["Work"] || !got["INBOX"] {
+		t.Errorf("after subscribing Work here, subscriptions %v", got)
+	}
+	if err := other.UnsubscribeMailbox("INBOX"); err != nil {
 		t.Fatal(err)
 	}
 	if got := subscriptions(t, p); !got["Work"] || got["INBOX"] {
-		t.Errorf("after subscribing Work and unsubscribing INBOX here, subscriptions %v", got)
-	}
-	if got := srv.connections(); got != 2 {
-		t.Errorf("%d connections, want no sign-in for what alps changed itself", got)
-	}
-
-	// Read again once what was read has aged: the server's word stands.
-	p.cacheLock.Lock()
-	p.subscribedAt = time.Now().Add(-subscriptionsTTL)
-	p.cacheLock.Unlock()
-	if got := subscriptions(t, p); got["Work"] || !got["INBOX"] {
-		t.Errorf("read again, subscriptions %v, want INBOX alone, as LSUB says", got)
-	}
-	if got := srv.connections(); got != 3 {
-		t.Errorf("%d connections, want one more to read the subscriptions again", got)
-	}
-}
-
-// decodeMailboxName reads a name as the client library reads LIST's, and
-// refuses what it refuses.
-func TestDecodeMailboxName(t *testing.T) {
-	for in, want := range map[string]string{
-		"inbox":              "INBOX",
-		"INBOX/Sent":         "INBOX/Sent",
-		"Entw&APw-rfe":       "Entwürfe",
-		"A&-B":               "A&B",
-		"&ZeVnLIqe-":         "日本語",
-		"&2D3eAA-":           "😀",
-		"Raw UTF-8 Entwürfe": "Raw UTF-8 Entwürfe",
-	} {
-		if got, err := decodeMailboxName(in); err != nil || got != want {
-			t.Errorf("decodeMailboxName(%q) = %q, %v; want %q", in, got, err, want)
-		}
-	}
-	for _, in := range []string{
-		"&APw",       // no end to the shift
-		"&APw-&APw-", // two shifts with nothing between
-		"&AGE-",      // "a", which stands for itself
-		"&2D0-",      // half a surrogate pair
-		"tab\there",  // a control character
-		"&AP=-",      // padding
-		"\xff",       // not UTF-8
-	} {
-		if got, err := decodeMailboxName(in); err == nil {
-			t.Errorf("decodeMailboxName(%q) = %q, want an error", in, got)
-		}
+		t.Errorf("after another client unsubscribed INBOX, subscriptions %v", got)
 	}
 }

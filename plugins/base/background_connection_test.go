@@ -400,11 +400,10 @@ func TestHTTP_ARefusedBackgroundConnectionKeepsTheSession(t *testing.T) {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	// Twice, and neither asked again: the first background work asked for its
-	// connection, and the first folder list for one to read the subscriptions
-	// with LSUB, which a server without LIST-EXTENDED does not say in LIST.
-	if m.refused != 2 {
-		t.Errorf("the server refused %d sign-ins for its limit, want 2", m.refused)
+	// Once: the first background work asked for its connection, and the work
+	// after it did not ask again.
+	if m.refused != 1 {
+		t.Errorf("the server refused %d sign-ins for its limit, want 1", m.refused)
 	}
 }
 

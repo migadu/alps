@@ -31,9 +31,7 @@ type memServer struct {
 	// refuseSubscribe makes SUBSCRIBE answer NO, as a server that keeps no
 	// subscriptions of its own may.
 	refuseSubscribe bool
-	// password is ada's; "pass" when empty.
-	password string
-	traffic  lockedBuffer
+	traffic         lockedBuffer
 	// addr is where the account is served, for a test that logs in to it a
 	// second time, as another mail program would.
 	addr string
@@ -125,11 +123,7 @@ func (s *threadedSession) Move(ctx context.Context, w *imapserver.MoveWriter, nu
 // logged in to it.
 func memIMAP(t *testing.T, s *memServer, messages ...string) *IMAPProvider {
 	t.Helper()
-	password := s.password
-	if password == "" {
-		password = "pass"
-	}
-	user := imapmemserver.NewUser("ada", password)
+	user := imapmemserver.NewUser("ada", "pass")
 	if err := user.Create(context.Background(), "INBOX", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +154,7 @@ func memIMAP(t *testing.T, s *memServer, messages ...string) *IMAPProvider {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { client.Close() })
-	if err := client.Login("ada", password).Wait(); err != nil {
+	if err := client.Login("ada", "pass").Wait(); err != nil {
 		t.Fatal(err)
 	}
 	for _, m := range messages {

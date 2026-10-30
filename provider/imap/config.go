@@ -156,15 +156,6 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		p := NewIMAPProvider(client, debugMode).WithAuthservIDs(authservIDs)
 		p.news = news
 		p.responseTimeout = timeout
-		p.lsub = &lsubLogin{
-			address:  address,
-			tls:      tls,
-			insecure: insecure,
-			timeout:  timeout,
-			guard:    guard,
-			username: username,
-			password: password,
-		}
 		return p, nil
 	}
 }
