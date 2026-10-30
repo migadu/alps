@@ -191,7 +191,7 @@ export const da: TranslationDictionary = {
     subtitle: 'Log ind på din webmail.',
     emailPlaceholder: 'E-mailadresse',
     passwordPlaceholder: 'Adgangskode',
-    keepMeSignedIn: 'Hold mig logget ind',
+    keepMeSignedIn: 'Hold mig logget ind, også når browseren lukkes',
     signIn: 'Log ind',
     tooManyAttempts: 'For mange loginforsøg',
     loginFailed: 'Login mislykkedes. Kontrollér dine loginoplysninger.',

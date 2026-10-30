@@ -40,6 +40,11 @@ When a user makes a request to ALPS:
 > [!WARNING]
 > If you rotate or change the `login_key` in your configuration, all previously issued `alps_login_token` cookies will become invalid, forcing all users to log in manually again.
 
+### "Keep me signed in"
+The box on the sign-in page decides whether the cookies that hold a session outlive the browser. Ticked, `alps_session`, `alps_login_token` and the two cookies the page reads beside them (`alps_logged_in`, `alps_has_login_token`) carry a 30-day expiry. Unticked, they are session cookies, and the browser drops them when it closes. The box is off unless the user ticks it.
+
+The choice is kept in the login token, and every answer that issues these cookies again issues them the same way: a session restored from the token, and a switch to a linked account. A sign-in or a switch that waits for a security key carries the choice with its pending session, so the session issued once the key is given follows the box of that sign-in and no other.
+
 ---
 
 ## Account Switching
@@ -51,7 +56,7 @@ ALPS allows users to link multiple accounts and switch between them seamlessly. 
 3. The server validates 2FA requirements (checking the `trust_linked_accounts` setting to see if it can safely bypass the WebAuthn prompt).
 4. If successful, the server **closes** the current in-memory Session and disconnects from the IMAP server.
 5. It opens a **new** Session for the target account, connecting to the new IMAP mailbox.
-6. The server overwrites the `alps_session` and `alps_login_token` cookies in the user's browser with the new account's tokens.
+6. The server overwrites the `alps_session` and `alps_login_token` cookies in the user's browser with the new account's tokens, kept or not as the "Keep me signed in" box was at sign-in.
 
 This design ensures that ALPS only maintains active IMAP connections for the account the user is *currently* viewing, minimizing upstream server load.
 

@@ -135,7 +135,7 @@ export const rs = {
     subtitle: 'Пријавите се на свој вебмејл.',
     emailPlaceholder: 'Адреса е-поште',
     passwordPlaceholder: 'Лозинка',
-    keepMeSignedIn: 'Останите пријављени',
+    keepMeSignedIn: 'Останите пријављени и после затварања прегледача',
     signIn: 'Пријави се',
     tooManyAttempts: 'Превише покушаја пријављивања',
     loginFailed: 'Пријављивање није успело. Проверите своје податке.',

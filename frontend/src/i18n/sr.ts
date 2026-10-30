@@ -135,7 +135,7 @@ export const sr = {
     subtitle: 'Prijavite se na svoj vebmejl.',
     emailPlaceholder: 'Adresa e-pošte',
     passwordPlaceholder: 'Lozinka',
-    keepMeSignedIn: 'Ostanite prijavljeni',
+    keepMeSignedIn: 'Ostanite prijavljeni i posle zatvaranja pregledača',
     signIn: 'Prijavi se',
     tooManyAttempts: 'Previše pokušaja prijavljivanja',
     loginFailed: 'Prijavljivanje nije uspelo. Proverite svoje podatke.',

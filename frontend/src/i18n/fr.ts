@@ -135,7 +135,7 @@ export const fr = {
     subtitle: 'Connectez-vous à votre webmail.',
     emailPlaceholder: 'Adresse e-mail',
     passwordPlaceholder: 'Mot de passe',
-    keepMeSignedIn: 'Rester connecté',
+    keepMeSignedIn: 'Rester connecté après la fermeture du navigateur',
     signIn: 'Se connecter',
     tooManyAttempts: 'Trop de tentatives de connexion',
     loginFailed: 'Échec de la connexion. Veuillez vérifier vos identifiants.',
