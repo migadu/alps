@@ -32,10 +32,8 @@ type scriptedIMAP struct {
 	// nil. lsub is its answer to LSUB; INBOX alone when nil. A line may carry
 	// a literal: "{4}\r\nWork".
 	list, lsub []string
-	// refuseLsub answers LSUB with NO, and hangLsub never answers it.
-	refuseLsub, hangLsub bool
-	// Status response text may itself end in a literal-looking "{number}".
-	greetingText, loginText, lsubText string
+	// refuseLsub answers LSUB with NO.
+	refuseLsub bool
 
 	mu       sync.Mutex
 	lists    []string // the arguments of each LIST, in the order received
@@ -77,11 +75,7 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 			conn.Write([]byte(l + "\r\n"))
 		}
 	}
-	greetingText := s.greetingText
-	if greetingText == "" {
-		greetingText = "scripted server ready"
-	}
-	reply("* OK [CAPABILITY " + s.caps + "] " + greetingText)
+	reply("* OK [CAPABILITY " + s.caps + "] scripted server ready")
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
@@ -96,11 +90,7 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 		case "CAPABILITY":
 			reply("* CAPABILITY "+s.caps, tag+" OK CAPABILITY completed")
 		case "LOGIN":
-			text := s.loginText
-			if text == "" {
-				text = "LOGIN completed"
-			}
-			reply(tag + " OK [CAPABILITY " + s.caps + "] " + text)
+			reply(tag + " OK [CAPABILITY " + s.caps + "] LOGIN completed")
 		case "LIST":
 			s.mu.Lock()
 			s.lists = append(s.lists, args)
@@ -130,12 +120,7 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 			s.mu.Lock()
 			s.lsubs = append(s.lsubs, args)
 			s.mu.Unlock()
-			switch {
-			case s.hangLsub:
-				// Says nothing until the client gives up and hangs up.
-				r.ReadString('\n')
-				return
-			case s.refuseLsub:
+			if s.refuseLsub {
 				reply(tag + " NO LSUB is not offered here")
 				continue
 			}
@@ -144,11 +129,7 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 				// RFC 3501 §6.3.9: the subscribed folders, INBOX alone.
 				lines = []string{`* LSUB () "/" INBOX`}
 			}
-			text := s.lsubText
-			if text == "" {
-				text = "LSUB completed"
-			}
-			reply(append(lines, tag+" OK "+text)...)
+			reply(append(lines, tag+" OK LSUB completed")...)
 		case "SUBSCRIBE", "UNSUBSCRIBE":
 			reply(tag + " OK " + name + " completed")
 		case "LOGOUT":
@@ -236,16 +217,11 @@ func scriptedProviderAt(t *testing.T, srv *scriptedIMAP, timeout time.Duration) 
 // the way a session's is.
 func signedIn(t *testing.T, addr string, timeout time.Duration) *IMAPProvider {
 	t.Helper()
-	return signedInWith(t, addr, timeout, "pass")
-}
-
-func signedInWith(t *testing.T, addr string, timeout time.Duration, password string) *IMAPProvider {
-	t.Helper()
 	opts, err := (&Config{Server: "imap+insecure://" + addr}).ToOptions()
 	if err != nil {
 		t.Fatal(err)
 	}
-	mp, err := opts.CreateFactory(timeout, false)("ada", password)
+	mp, err := opts.CreateFactory(timeout, false)("ada", "pass")
 	if err != nil {
 		t.Fatal(err)
 	}
