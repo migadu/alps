@@ -502,18 +502,9 @@ func (s *Server) setupMiddleware(router *Router) {
 					// Restore session with original persistence setting
 					ctx.Session = session
 					ctx.SetSessionWithExpiry(session, persistent)
-					// Clear 2FA cookies
+					// Clear the pending 2FA cookie
 					ctx.SetCookie(&http.Cookie{
 						Name:     "alps_2fa_pending",
-						Value:    "",
-						Path:     "/",
-						HttpOnly: true,
-						SameSite: http.SameSiteStrictMode,
-						Secure:   ctx.IsEffectiveHTTPS(),
-						MaxAge:   -1,
-					})
-					ctx.SetCookie(&http.Cookie{
-						Name:     "alps_2fa_remember",
 						Value:    "",
 						Path:     "/",
 						HttpOnly: true,

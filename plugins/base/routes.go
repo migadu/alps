@@ -1855,12 +1855,22 @@ func handleLogin(ctx *alps.Context) error {
 		remember = ctx.FormValue("remember-me")
 	}
 
+	// "Keep me signed in": whether the session's cookies outlive the
+	// browser. Only "on" ticks it.
+	kept := remember == "on"
+
 	// Check if we're restoring from a login token (session restoration)
 	restoredFromToken := false
 	tokenVerified2FA := false
 	if username == "" && password == "" {
-		username, password, tokenVerified2FA, _ = ctx.GetLoginToken()
+		var tokenKept bool
+		username, password, tokenVerified2FA, tokenKept = ctx.GetLoginToken()
 		restoredFromToken = username != "" && password != ""
+		// A sign-in from the token has no box of its own: the token keeps
+		// the one ticked or not at the password.
+		if restoredFromToken {
+			kept = tokenKept
+		}
 	}
 
 	// Check rate limiting before attempting login
@@ -1952,18 +1962,10 @@ func handleLogin(ctx *alps.Context) error {
 				MaxAge:   300, // 5 minutes
 			})
 
-			// Store remember preference for after verification
-			if remember == "on" {
-				ctx.SetCookie(&http.Cookie{
-					Name:     "alps_2fa_remember",
-					Value:    "true",
-					Path:     "/",
-					HttpOnly: true,
-					SameSite: http.SameSiteStrictMode,
-					Secure:   ctx.IsEffectiveHTTPS(),
-					MaxAge:   300, // 5 minutes
-				})
-			}
+			// The box crosses the key with the pending session itself, so
+			// the session issued once the key is given follows this
+			// sign-in's box and no other.
+			s.SetData(keptSignedInData, kept)
 
 			// Store credentials temporarily in session memory for login token creation after 2FA verification
 			// This enables session restoration after server restart for 2FA users
@@ -1984,18 +1986,17 @@ func handleLogin(ctx *alps.Context) error {
 		// Always create encrypted login token to enable session restoration after server restart
 		// The token says whether 2FA was done. It used to say yes here, and
 		// restored a session past a second factor turned on later.
-		persistent := remember == "on"
-		ctx.SetLoginToken(username, password, s.IsAuthenticated2FA(), persistent)
+		ctx.SetLoginToken(username, password, s.IsAuthenticated2FA(), kept)
 
 		// Set session cookie: persistent if "remember me" checked, browser session otherwise
-		ctx.SetSessionWithExpiry(s, persistent)
+		ctx.SetSessionWithExpiry(s, kept)
 
 		ctx.Server.Logger().Slog().Info("sign-in",
 			"user", username,
 			"ip", ctx.ClientIP(),
 			"session", s.ID(),
 			"2fa", s.IsAuthenticated2FA(),
-			"remember", persistent,
+			"remember", kept,
 			"restored", restoredFromToken,
 			"agent", ctx.Request.UserAgent())
 		return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
@@ -4910,6 +4911,11 @@ func handleSwitchAccount(ctx *alps.Context) error {
 		return fmt.Errorf("failed to get credentials: %v", err)
 	}
 
+	// Whether the session outlives the browser, as the box said at sign-in.
+	// The login token holds it, and the new account's session and token are
+	// issued the same way.
+	origUsername, _, _, kept := ctx.GetLoginToken()
+
 	// Switch to the linked account (creates new session)
 	newSession, err := ctx.Server.Sessions.SwitchAccount(ctx.Session, targetUsername)
 	if err != nil {
@@ -4954,6 +4960,7 @@ func handleSwitchAccount(ctx *alps.Context) error {
 			"username": targetUsername,
 			"password": password,
 		})
+		newSession.SetData(keptSignedInData, kept)
 
 		ctx.Server.Logger().Slog().Info("account switch awaits second factor",
 			"user", ctx.Session.Username(),
@@ -4988,14 +4995,11 @@ func handleSwitchAccount(ctx *alps.Context) error {
 	}
 
 	// Set new session cookie
-	ctx.SetSession(newSession)
-
-	// Preserve persistence state from original login token
-	origUsername, _, _, wasPersistent := ctx.GetLoginToken()
+	ctx.SetSessionWithExpiry(newSession, kept)
 
 	// Update login token for new account, preserving persistence choice
 	if origUsername != "" {
-		ctx.SetLoginToken(targetUsername, password, newSession.IsAuthenticated2FA(), wasPersistent)
+		ctx.SetLoginToken(targetUsername, password, newSession.IsAuthenticated2FA(), kept)
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})

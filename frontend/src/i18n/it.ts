@@ -135,7 +135,7 @@ export const it = {
     subtitle: 'Accedi alla tua webmail.',
     emailPlaceholder: 'Indirizzo email',
     passwordPlaceholder: 'Password',
-    keepMeSignedIn: 'Resta collegato',
+    keepMeSignedIn: 'Resta collegato anche dopo la chiusura del browser',
     signIn: 'Accedi',
     tooManyAttempts: 'Troppi tentativi di accesso',
     loginFailed: 'Accesso fallito. Controlla le tue credenziali.',

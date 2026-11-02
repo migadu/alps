@@ -182,7 +182,7 @@ export const pt = {
     subtitle: 'Faça login no seu webmail.',
     emailPlaceholder: 'Endereço de e-mail',
     passwordPlaceholder: 'Senha',
-    keepMeSignedIn: 'Mantenha-me conectado',
+    keepMeSignedIn: 'Mantenha-me conectado após fechar o navegador',
     signIn: 'Entrar',
     tooManyAttempts: 'Muitas tentativas de login',
     loginFailed: 'Falha no login. Verifique suas credenciais.',

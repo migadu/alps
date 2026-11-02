@@ -137,7 +137,7 @@ export const de: TranslationDictionary = {
     subtitle: 'Melden Sie sich bei Ihrem Webmail an.',
     emailPlaceholder: 'E-Mail Adresse',
     passwordPlaceholder: 'Passwort',
-    keepMeSignedIn: 'Angemeldet bleiben',
+    keepMeSignedIn: 'Nach dem Schließen des Browsers angemeldet bleiben',
     signIn: 'Anmelden',
     tooManyAttempts: 'Zu viele Anmeldeversuche',
     loginFailed: 'Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Anmeldedaten.',

@@ -135,7 +135,7 @@ export const es = {
     subtitle: 'Inicia sesión en tu webmail.',
     emailPlaceholder: 'Dirección de correo electrónico',
     passwordPlaceholder: 'Contraseña',
-    keepMeSignedIn: 'Mantener sesión iniciada',
+    keepMeSignedIn: 'Mantener la sesión iniciada al cerrar el navegador',
     signIn: 'Iniciar sesión',
     tooManyAttempts: 'Demasiados intentos de inicio de sesión',
     loginFailed: 'Error de inicio de sesión. Por favor, verifica tus credenciales.',

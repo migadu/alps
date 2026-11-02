@@ -195,8 +195,15 @@ func (s *testServer) signInWithKey(k *softKey, counter uint32) (*testServer, res
 	if signedIn["requires_2fa"] != true {
 		s.t.Fatalf("signing in answered %v, want requires_2fa", signedIn)
 	}
-	r = b.do("POST", "/webauthn/verify/begin", nil)
-	b.expect(r, http.StatusOK)
+	return b, b.giveKey(k, counter)
+}
+
+// giveKey answers the second factor this browser's sign-in waits for with k,
+// as a key that has signed counter times would.
+func (s *testServer) giveKey(k *softKey, counter uint32) response {
+	s.t.Helper()
+	r := s.do("POST", "/webauthn/verify/begin", nil)
+	s.expect(r, http.StatusOK)
 	var options struct {
 		PublicKey struct {
 			Challenge string `json:"challenge"`
@@ -219,7 +226,7 @@ func (s *testServer) signInWithKey(k *softKey, counter uint32) (*testServer, res
 		s.t.Fatal(err)
 	}
 	b64 := base64.RawURLEncoding.EncodeToString
-	return b, b.do("POST", "/webauthn/verify/finish", map[string]any{
+	return s.do("POST", "/webauthn/verify/finish", map[string]any{
 		"id":    b64(k.id),
 		"rawId": b64(k.id),
 		"type":  "public-key",

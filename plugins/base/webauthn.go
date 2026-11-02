@@ -441,6 +441,14 @@ func handleVerifyBegin(ctx *alps.Context) error {
 	return json.NewEncoder(ctx.Response).Encode(options)
 }
 
+// keptSignedInData is the session data that holds, while a sign-in or an
+// account switch waits for the key, whether the session it opens outlives the
+// browser: the "Keep me signed in" box, or the login token's copy of it on a
+// switch. It is kept with the pending session, which only the browser holding
+// the pending cookie reaches, so the session issued once the key is given
+// follows the box of the sign-in that asked for the key, and no other.
+const keptSignedInData = "2fa_kept_signed_in"
+
 // handleVerifyFinish completes WebAuthn authentication during login
 func handleVerifyFinish(ctx *alps.Context) error {
 	// Get pending 2FA session cookie
@@ -514,22 +522,11 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		MaxAge:   -1,
 	})
 
-	// Check if "remember me" was selected
-	rememberCookie, _ := ctx.Cookie("alps_2fa_remember")
-	persistent := rememberCookie != nil && rememberCookie.Value == "true"
-
-	// Clear remember cookie
-	if rememberCookie != nil {
-		ctx.SetCookie(&http.Cookie{
-			Name:     "alps_2fa_remember",
-			Value:    "",
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
-			Secure:   ctx.IsEffectiveHTTPS(),
-			MaxAge:   -1,
-		})
-	}
+	// "Keep me signed in", as the sign-in or switch that is waiting for the
+	// key left it (see keptSignedInData). Without it, the session is not kept.
+	kept, _ := session.GetData(keptSignedInData)
+	persistent, _ := kept.(bool)
+	session.ClearData(keptSignedInData)
 
 	// Update session cookie to reflect the 2FA authenticated state
 	// This is necessary to ensure the session persists correctly

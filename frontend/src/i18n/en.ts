@@ -189,7 +189,7 @@ export const en = {
     subtitle: 'Sign in to your webmail.',
     emailPlaceholder: 'Email Address',
     passwordPlaceholder: 'Password',
-    keepMeSignedIn: 'Keep me signed in',
+    keepMeSignedIn: 'Stay signed in after closing the browser',
     signIn: 'Sign In',
     tooManyAttempts: 'Too many login attempts',
     loginFailed: 'Login failed. Please check your credentials.',

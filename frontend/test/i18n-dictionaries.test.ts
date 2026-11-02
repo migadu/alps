@@ -567,7 +567,7 @@ const SERBIAN_NOT_FAMILIAR = [
 const SERBIAN_FORMAL_PINS: [key: string, latin: string, cyrillic: string][] = [
   ['settings.placeholderName', 'Vaše ime', 'Ваше име'],
   // A checkbox, but "Ostani prijavljen" told the user to stay, in the masculine.
-  ['login.keepMeSignedIn', 'Ostanite prijavljeni', 'Останите пријављени'],
+  ['login.keepMeSignedIn', 'Ostanite prijavljeni i posle zatvaranja pregledača', 'Останите пријављени и после затварања прегледача'],
   // The sign-in button's text while sign-in is rate limited, telling the user to wait.
   ['login.wait', 'Sačekajte', 'Сачекајте'],
   // The app retrying on its own. "Pokušaj ponovo za {seconds} sekundi" read as
