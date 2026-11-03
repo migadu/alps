@@ -11,6 +11,12 @@ export default {
       newPassword: 'Yeni parola',
       confirmPassword: 'Yeni Parolayı Onayla',
       updatePassword: 'Parolayı Güncelle',
+      changed: "Parolanız değiştirildi.",
+      changedSignInAgain: "Parolanız değiştirildi. Lütfen yeniden oturum açın.",
+      changedLinkedWarning: "Parolanız değiştirildi. Bağlı hesaplardan bazıları güncellenemedi.",
+      changeFailed: "Parolanız değiştirilemedi. Lütfen yeniden deneyin.",
+      serviceUnavailable: "Parola değiştirme şu anda kullanılamıyor. Lütfen daha sonra yeniden deneyin.",
+      tooManyAttempts: "Çok fazla deneme yapıldı. Lütfen daha sonra yeniden deneyin.",
       fillAllFields: 'Lütfen tüm alanları doldurun.',
       passwordMismatch: 'Yeni parolalar eşleşmiyor.'
     }

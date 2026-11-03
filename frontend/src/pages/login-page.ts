@@ -294,11 +294,10 @@ export class LoginPage extends LitElement {
   }
 
   private formatRetryTime(seconds: number): string {
-    if (seconds < 60) {
-      return `${seconds} second${seconds !== 1 ? 's' : ''}`;
-    }
-    const minutes = Math.ceil(seconds / 60);
-    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    const minutes = seconds >= 60;
+    return new Intl.NumberFormat(this.i18nStore?.getIntlLanguage?.(), {
+      style: 'unit', unit: minutes ? 'minute' : 'second', unitDisplay: 'long',
+    }).format(minutes ? Math.ceil(seconds / 60) : seconds);
   }
 
   private async handleSubmit(e: Event) {

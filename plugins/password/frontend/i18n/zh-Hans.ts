@@ -11,6 +11,12 @@ export default {
             newPassword: '新密码',
             confirmPassword: '确认新密码',
             updatePassword: '更新密码',
+            changed: "您的密码已更改。",
+            changedSignInAgain: "您的密码已更改。请重新登录。",
+            changedLinkedWarning: "您的密码已更改。部分关联账户无法更新。",
+            changeFailed: "无法更改您的密码。请重试。",
+            serviceUnavailable: "暂时无法更改密码。请稍后重试。",
+            tooManyAttempts: "尝试次数过多。请稍后重试。",
             fillAllFields: '请填写所有字段。',
             passwordMismatch: '两次输入的新密码不一致。'
         }

@@ -11,6 +11,12 @@ export default {
       newPassword: 'Новый пароль',
       confirmPassword: 'Подтвердите новый пароль',
       updatePassword: 'Обновить пароль',
+      changed: "Пароль изменён.",
+      changedSignInAgain: "Пароль изменён. Войдите снова.",
+      changedLinkedWarning: "Пароль изменён. Не удалось обновить некоторые связанные аккаунты.",
+      changeFailed: "Не удалось изменить пароль. Повторите попытку.",
+      serviceUnavailable: "Изменение пароля временно недоступно. Повторите попытку позже.",
+      tooManyAttempts: "Слишком много попыток. Повторите попытку позже.",
       fillAllFields: 'Заполните все поля.',
       passwordMismatch: 'Новые пароли не совпадают.'
     }

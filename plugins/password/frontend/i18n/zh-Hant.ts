@@ -11,6 +11,12 @@ export default {
       newPassword: '新密碼',
       confirmPassword: '確認新密碼',
       updatePassword: '更新密碼',
+      changed: "您的密碼已變更。",
+      changedSignInAgain: "您的密碼已變更。請重新登入。",
+      changedLinkedWarning: "您的密碼已變更。部分連結帳號無法更新。",
+      changeFailed: "無法變更您的密碼。請重試。",
+      serviceUnavailable: "暫時無法變更密碼。請稍後重試。",
+      tooManyAttempts: "嘗試次數過多。請稍後重試。",
       fillAllFields: '請填寫所有欄位。',
       passwordMismatch: '新密碼不相符。'
     }
