@@ -20,16 +20,35 @@ export class AlpsToast extends LitElement {
   // of waiting out the remaining timeout.
   @property({ type: Object }) onDismiss?: () => void;
   @property({ type: Number }) timeout = 0;
+  /**
+   * When the toast goes, as a time (`Date.now()`), if it was given one. The
+   * shell's toasts move into the attachment preview while it is open, and out
+   * again when it closes, each time as a new element: with `timeout` alone,
+   * every move started the full wait again.
+   */
+  @property({ type: Number }) expiresAt?: number;
 
   private _timer: ReturnType<typeof setTimeout> | null = null;
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    // A toast taken out of the document is drawn by the element that replaces
+    // it, if any. Left running, this timer would dismiss it a second time,
+    // and run its onDismiss again.
+    if (this._timer) {
+      clearTimeout(this._timer);
+      this._timer = null;
+    }
+  }
 
   updated(changedProperties: Map<string, any>) {
     if (changedProperties.has('show')) {
       if (this.show && this.timeout > 0) {
         if (this._timer) clearTimeout(this._timer);
+        const wait = this.expiresAt === undefined ? this.timeout : Math.max(0, this.expiresAt - Date.now());
         this._timer = setTimeout(() => {
           this.dismiss();
-        }, this.timeout);
+        }, wait);
       } else if (!this.show && this._timer) {
         clearTimeout(this._timer);
         this._timer = null;

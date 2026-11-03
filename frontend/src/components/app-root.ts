@@ -66,6 +66,9 @@ interface ToastItem {
   actionFn?: () => void;
   dismissFn?: () => void;
   timeout: number;
+  /** When it goes, for a toast that goes by itself: the same deadline
+   * wherever it is drawn (see `renderToasts`). */
+  expiresAt?: number;
   show: boolean;
 }
 
@@ -419,6 +422,7 @@ export class AppRoot extends LitElement {
       timeout: e.detail.duration ?? DEFAULT_TOAST_TIMEOUT_MS,
       show: false,
     };
+    if (newToast.timeout > 0) newToast.expiresAt = Date.now() + newToast.timeout;
     
     this.toasts = [...this.toasts, newToast];
 
@@ -838,6 +842,33 @@ export class AppRoot extends LitElement {
     `;
   }
 
+  /**
+   * The toasts, in the shell, or inside the attachment preview while it is
+   * open (`slot`): the preview is a modal dialog, drawn above everything else
+   * in the page, with the rest inert. Left in the shell, a toast raised over
+   * it, the undo of a send among them, was hidden behind it and its button
+   * could not be pressed. A move makes new elements, which keep each toast's
+   * deadline (`expiresAt`) rather than starting its wait again.
+   */
+  private renderToasts(slot?: string) {
+    return html`
+      <div class="toast-stack" slot=${slot ?? nothing}>
+        ${this.toasts.map(toast => html`
+          <alps-toast
+            .show=${toast.show}
+            .message=${toast.message}
+            .actionLabel=${toast.actionLabel}
+            .onAction=${toast.actionFn}
+            .onDismiss=${toast.dismissFn}
+            .timeout=${toast.timeout}
+            .expiresAt=${toast.expiresAt}
+            @dismiss=${() => this._handleDismissToast(toast.id)}
+          ></alps-toast>
+        `)}
+      </div>
+    `;
+  }
+
   render() {
     const totalOpen = this.activeComposers.filter(c => !c.minimized).length;
     const totalMinimized = this.activeComposers.filter(c => c.minimized).length;
@@ -876,19 +907,7 @@ export class AppRoot extends LitElement {
         `;
       })}
       
-      <div class="toast-stack">
-        ${this.toasts.map(toast => html`
-          <alps-toast
-            .show=${toast.show}
-            .message=${toast.message}
-            .actionLabel=${toast.actionLabel}
-            .onAction=${toast.actionFn}
-            .onDismiss=${toast.dismissFn}
-            .timeout=${toast.timeout}
-            @dismiss=${() => this._handleDismissToast(toast.id)}
-          ></alps-toast>
-        `)}
-      </div>
+      ${this.attachmentPreview ? '' : this.renderToasts()}
 
       ${this.attachmentPreview ? html`
         <alps-attachment-preview
@@ -897,7 +916,7 @@ export class AppRoot extends LitElement {
           .messageUid=${this.attachmentPreview.messageUid}
           .activeIndex=${this.attachmentPreview.index}
           @close=${() => { this.attachmentPreview = null; }}
-        ></alps-attachment-preview>
+        >${this.renderToasts('notifications')}</alps-attachment-preview>
       ` : ''}
 
       ${this.isOffline ? html`

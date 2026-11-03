@@ -566,6 +566,11 @@ export class AttachmentPreview extends LitElement {
           ` : ''}
           ${this.renderContent(info, url, name, size)}
         </div>
+        <!-- The shell's toasts, while this is open. A modal dialog is drawn
+             above everything else in the page and makes the rest inert, so a
+             toast left in the shell was hidden behind it and its Undo could
+             not be pressed. -->
+        <slot name="notifications"></slot>
       </dialog>
     `;
   }
