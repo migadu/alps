@@ -6,6 +6,7 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps"
+	"github.com/migadu/alps/provider"
 )
 
 // mailboxErrorStatus turns an IMAP failure into the HTTP status and stable slug
@@ -54,6 +55,13 @@ func mailboxErrorStatus(err error) (int, string) {
 // respondMailboxError writes the mapped status and slug, and logs what actually
 // happened so the detail is not lost by being kept out of the response.
 func respondMailboxError(ctx *alps.Context, op string, err error) error {
+	var authErr provider.AuthError
+	var imapErr *imap.Error
+	// Session failures need the shared handler's sign-out and recovery
+	// behavior, even when an authentication error wraps an IMAP refusal.
+	if errors.As(err, &authErr) || errors.Is(err, alps.ErrMailProviderUnavailable) || !errors.As(err, &imapErr) {
+		return err
+	}
 	status, slug := mailboxErrorStatus(err)
 	ctx.Server.Logger().Printf("%s failed: %v", op, err)
 	return ctx.JSON(status, map[string]string{"error": slug})

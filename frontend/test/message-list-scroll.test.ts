@@ -60,9 +60,31 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   cleanup();
+  vi.useRealTimers();
 });
 
 describe('scrolling to the open message', () => {
+  it('cancels a pending scroll when the list leaves the document', async () => {
+    vi.useFakeTimers();
+    const messages = rows(9, 8, 7);
+    const el = await mount(TAG, { messages, currentMailbox: 'INBOX' });
+    await update(el, { selectedMessage: messages[1] });
+    el.remove();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(scrolledTo).toEqual([]);
+  });
+
+  it('scrolls only once to the latest message when selection changes quickly', async () => {
+    vi.useFakeTimers();
+    const messages = rows(9, 8, 7);
+    const el = await mount(TAG, { messages, currentMailbox: 'INBOX' });
+    await update(el, { selectedMessage: messages[1] });
+    await vi.advanceTimersByTimeAsync(20);
+    await update(el, { selectedMessage: messages[2] });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(scrolledTo).toEqual([shadow(el, '.message-item.active')]);
+  });
+
   it('scrolls to a message when it is opened', async () => {
     const messages = rows(9, 8, 7, 6, 5);
     const el = await mount(TAG, { messages, currentMailbox: 'INBOX' });

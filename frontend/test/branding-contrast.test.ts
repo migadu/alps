@@ -31,6 +31,12 @@ const buttons = [
   { name: 'sign-in', css: cssText(LoginPage.styles), selector: '.submit-btn' },
 ];
 
+describe.each(Object.values(THEME_BUNDLES))('$id warning colour', theme => {
+  it.each(['bg-primary', 'bg-secondary', 'bg-tertiary'] as const)('keeps text and graphics readable on %s', surface => {
+    expect(contrast(theme.colors.warning, theme.colors[surface])).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
 describe.each(['light', 'dark'])('Migadu %s buttons', (mode) => {
   for (const { name, css, selector } of buttons) {
     it.each([false, true])(`${name} text keeps 4.5:1 contrast (hover: %s)`, (hover) => {
