@@ -30,11 +30,18 @@ describe('document language', () => {
 
   it('follows a change, using the script-qualified tag for Serbian', async () => {
     const store = new I18nStore();
-    for (const [lang, tag] of [['de', 'de'], ['rs', 'sr-Cyrl'], ['sr', 'sr-Latn'], ['pt', 'pt']]) {
+    for (const [lang, tag] of [['de', 'de'], ['rs', 'sr-Cyrl'], ['sr', 'sr-Latn'], ['pt', 'pt-PT']]) {
       await store.setLanguage(lang);
       expect(document.documentElement.lang, lang).toBe(tag);
       expect(store.getIntlLanguage(), lang).toBe(tag);
     }
+  });
+
+  it('writes none in the plural in pt, as European Portuguese does', async () => {
+    // Intl reads a bare "pt" as Brazilian, which writes 0 in the singular.
+    const pt = await withLanguage('pt');
+    expect(pt.t('messageReader.messagesSelected', { count: 0 })).toBe('0 mensagens selecionadas');
+    expect(pt.t('messageReader.messagesSelected', { count: 1 })).toBe('1 mensagem selecionada');
   });
 
   it('still moves when the dictionary cannot be loaded, and the text falls back to English', async () => {

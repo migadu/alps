@@ -47,10 +47,15 @@ export const en = combinedEn as TranslationDictionary;
  * Mapped the other way, `sr-Latn` would be stamped on the Cyrillic dictionary
  * and `sr-Cyrl` on the Latin one, telling a screen reader to read Cyrillic
  * text with Latin rules.
+ *
+ * `pt` is European Portuguese, beside `pt-BR`. `Intl` reads a bare `pt` as
+ * Brazilian: a count of 0 took the singular form, which European Portuguese
+ * writes in the plural, and dates came out in Brazil's forms.
  */
 export function intlTag(code: string): string {
   if (code === 'rs') return 'sr-Cyrl';
   if (code === 'sr') return 'sr-Latn';
+  if (code === 'pt') return 'pt-PT';
   return code;
 }
 
@@ -101,7 +106,7 @@ function dictionaryFor(tag: string, supported: readonly string[]): string | null
     const traditional = script ? script === 'Hant' : TRADITIONAL_CHINESE_REGIONS.includes(region ?? '');
     return has(traditional ? 'zh-Hant' : 'zh-Hans');
   }
-  if (language === 'pt' && region === 'BR') return has('pt-BR') ?? has('pt');
+  if (language === 'pt') return region === 'BR' ? has('pt-BR') ?? has('pt') : has('pt') ?? has('pt-BR');
   // By the tag, so that alps's own Serbian codes, which are no language's
   // tags, are only ever reached above.
   return supported.find((code) => intlTag(code) === language) ?? null;

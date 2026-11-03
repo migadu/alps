@@ -89,7 +89,7 @@ describe('detectBrowserLanguage', () => {
     ['zh-TW', 'zh-Hant'], ['zh-HK', 'zh-Hant'], ['zh-MO', 'zh-Hant'],
     ['zh-Hant', 'zh-Hant'], ['zh-Hant-CN', 'zh-Hant'], ['ZH-hANT-hK', 'zh-Hant'],
     ['pt-BR', 'pt-BR'], ['PT-br', 'pt-BR'], ['pt-Latn-BR', 'pt-BR'], ['pt-BR-u-nu-latn', 'pt-BR'],
-    ['pt', 'pt'], ['pt-AO', 'pt'],
+    ['pt', 'pt'], ['pt-PT', 'pt'], ['pt-AO', 'pt'],
     ['ja-JP', 'ja'], ['ko-KR', 'ko'], ['ru-RU', 'ru'], ['hi-IN', 'hi'], ['id-ID', 'id'], ['tr-TR', 'tr'],
   ])('reads %s in %s', (tag, code) => {
     withLanguages([tag]);

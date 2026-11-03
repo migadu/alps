@@ -30,7 +30,7 @@ import { zhHant } from '../src/i18n/zh-Hant';
 type Dict = Record<string, unknown>;
 
 const CORE: [string, Dict][] = [['ar', ar], ['da', da], ['de', de], ['es', es], ['fr', fr], ['it', itLocale], ['pt', pt], ['rs', rs], ['sr', sr], ['pt-BR', ptBR], ['ru', ru], ['tr', tr], ['id', idLocale], ['hi', hi], ['ja', ja], ['ko', ko], ['zh-Hant', zhHant]] as [string, Dict][];
-const intlTag = (code: string) => (code === 'rs' ? 'sr-Cyrl' : code === 'sr' ? 'sr-Latn' : code);
+const intlTag = (code: string) => (code === 'rs' ? 'sr-Cyrl' : code === 'sr' ? 'sr-Latn' : code === 'pt' ? 'pt-PT' : code);
 
 const PLUGIN_LOCALES = import.meta.glob('../../plugins/*/frontend/i18n/*.ts', { eager: true }) as Record<string, Dict>;
 const dictOf = (module: Dict) => (module.default ?? Object.values(module)[0] ?? {}) as Dict;
