@@ -1,3 +1,4 @@
+import { modalOpened, modalClosed } from '../utils/modal-layers';
 import { LitElement, html, css, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
@@ -60,12 +61,13 @@ export class AttachmentPreview extends LitElement {
 
   firstUpdated(): void {
     const dialog = this.shadowRoot?.querySelector<HTMLDialogElement>('dialog.backdrop');
-    if (dialog && !dialog.open) dialog.showModal();
+    if (dialog && !dialog.open) { dialog.showModal(); modalOpened(dialog); }
     this.shadowRoot?.querySelector<HTMLButtonElement>('.close-btn')?.focus();
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    modalClosed(this.shadowRoot?.querySelector('dialog'));
     window.removeEventListener('keydown', this.handleKeyDown, true);
     this.replacePdfUrl(null);
     const target = this.previouslyFocused as HTMLElement | null;
@@ -188,6 +190,7 @@ export class AttachmentPreview extends LitElement {
   };
 
   private close() {
+    modalClosed(this.shadowRoot?.querySelector('dialog'));
     this.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }));
   }
 
@@ -571,7 +574,7 @@ export class AttachmentPreview extends LitElement {
              above everything else in the page and makes the rest inert, so a
              toast left in the shell was hidden behind it and its Undo could
              not be pressed. -->
-        <slot name="notifications"></slot>
+
       </dialog>
     `;
   }

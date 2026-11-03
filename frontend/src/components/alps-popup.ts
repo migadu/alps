@@ -1,3 +1,4 @@
+import { modalOpened, modalClosed } from '../utils/modal-layers';
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { consumesSpaceAsText, isMultilineTextEntry } from '../utils/active-element';
@@ -273,6 +274,7 @@ export class AlpsPopup extends LitElement {
   };
 
   private _handleDialogClose = () => {
+    modalClosed(this.shadowRoot?.querySelector('dialog'));
     if (this.openState) {
       this.close();
     }
@@ -353,12 +355,14 @@ export class AlpsPopup extends LitElement {
             dialog.show();
           } else {
             dialog.showModal();
+            modalOpened(dialog);
           }
         }
         this._updatePosition();
       } else {
         if (dialog && dialog.open) {
           dialog.close();
+          modalClosed(dialog);
           // Native focus restoration preserves the keyboard user's place.
           // Only release pointer focus, so hover-only row actions can disappear.
           const slot = this.shadowRoot?.querySelector<HTMLSlotElement>('slot[name="trigger"]');
@@ -553,6 +557,7 @@ export class AlpsPopup extends LitElement {
     // calls show()/showModal() again — a menu that cannot be opened. Closing
     // here makes teardown and state agree however it is reached.
     const dialog = this.shadowRoot?.querySelector('.popup-dialog') as HTMLDialogElement | null;
+    modalClosed(dialog);
     if (dialog?.open) dialog.close();
     this.openState = false;
   }
