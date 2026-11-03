@@ -39,7 +39,8 @@ test('entering the task list shows its first keyboard row immediately', async ({
   await expect(row).toContainText('Visible keyboard task', { timeout: 2000 });
   expect(await outline(row)).toMatchObject({ style: 'solid', width: 2 });
   await scroll.press('Enter');
-  await expect(page.locator('task-modal')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Edit Task', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Visible keyboard task');
 });
 
 test('today stays marked in all calendar grids under forced colors', async ({ page }) => {
