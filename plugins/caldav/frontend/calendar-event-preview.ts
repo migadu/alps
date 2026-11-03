@@ -1,3 +1,4 @@
+import { TimeFormatController } from '../../../frontend/src/utils/time-format-controller';
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { EventData } from './calendar-service';
@@ -12,6 +13,8 @@ import { isolatedCaption } from '../../../frontend/src/utils/bidi';
 
 @customElement('calendar-event-preview')
 export class CalendarEventPreview extends LitElement {
+    private clock = new TimeFormatController(this);
+
     @consume({ context: i18nContext })
     i18nStore!: I18nStore;
     @property({ type: Object }) event!: EventData;
@@ -183,7 +186,7 @@ export class CalendarEventPreview extends LitElement {
         const isAllDay = isAllDayEvent(event);
         if (isAllDay) return this.i18nStore?.t('calendar.allDay');
         
-        const timeOptions: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+        const timeOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: this.clock.hour12 };
         if (s.toDateString() === e.toDateString()) {
             return `${s.toLocaleTimeString(undefined, timeOptions)} - ${e.toLocaleTimeString(undefined, timeOptions)}`;
         }
@@ -317,7 +320,7 @@ export class CalendarEventPreview extends LitElement {
             <div class="card">
                 <div class="card-label">${this.i18nStore?.t('tasks.due')}</div>
                 <div class="date-primary">${this.formatEventDate(e)}</div>
-                ${due && !task.allDay ? html`<div class="date-secondary">${due.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>` : ''}
+                ${due && !task.allDay ? html`<div class="date-secondary">${due.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: this.clock.hour12 })}</div>` : ''}
             </div>
 
             ${task.description ? html`

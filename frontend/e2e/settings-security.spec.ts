@@ -162,7 +162,7 @@ test("changing the password refuses a wrong one, then rotates without ending the
   const refused = page.waitForResponse((r) => new URL(r.url()).pathname === "/password/change");
   await commit.click();
   expect((await refused).status()).toBe(403);
-  await expect(toast(page, "Current password is incorrect")).toBeVisible();
+  await expect(toast(page, "That password is not right.")).toBeVisible();
   // The refusal keeps what was typed, for the retry.
   await expect(next).toHaveValue(rotated);
   // And nothing changed: the password the user asked for does not open the
@@ -173,7 +173,7 @@ test("changing the password refuses a wrong one, then rotates without ending the
   const accepted = page.waitForResponse((r) => new URL(r.url()).pathname === "/password/change");
   await commit.click();
   expect((await accepted).status()).toBe(200);
-  await expect(toast(page, "Password successfully changed")).toBeVisible();
+  await expect(toast(page, "Your password has been changed.")).toBeVisible();
   // The form empties, so nothing of either password is left on screen.
   await expect(current).toHaveValue("");
   await expect(next).toHaveValue("");

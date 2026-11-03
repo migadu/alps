@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,s,v as c}from"./lit-CXIqsLEv.js";import{At as l,St as u,_t as d,a as f,et as p,g as m,gt as h,h as g,ht as _,kt as v,m as y,o as b,s as x}from"./index-DotZWll3.js";import{S,_ as C,b as w,c as T,d as E,f as D,g as O,h as k,n as A,p as j,r as M,v as N,x as P,y as F}from"./task-modal-BedIwZrw.js";var I={overdue:`tasks.groups.overdue`,today:`tasks.groups.today`,week:`tasks.groups.week`,undated:`tasks.groups.undated`,later:`tasks.groups.later`,completed:`tasks.groups.completed`},L={high:`tasks.priorities.high`,medium:`tasks.priorities.medium`,low:`tasks.priorities.low`},R={high:`!!!`,medium:`!!`,low:`!`},z=class extends i{constructor(...e){super(...e),this.tasks=[],this.pendingPaths=new Set,this.settling=new Set,this.searching=!1,this.loading=!1,this.focusedIndex=-1}static{this.styles=e`
+import{_ as e,d as t,f as n,g as r,l as i,s as a,u as o,x as s,y as c}from"./lit-CBBf5Ahu.js";import{Et as l,Mt as u,St as d,a as f,ct as p,g as m,gt as h,h as g,lt as _,m as v,o as y,pt as b,s as x,vt as S}from"./index-CFBSHg5E.js";import{S as C,_ as w,b as T,c as E,d as D,f as O,g as k,h as A,n as j,p as M,r as N,v as P,x as F,y as I}from"./task-modal-D7w9AJl6.js";var L={overdue:`tasks.groups.overdue`,today:`tasks.groups.today`,week:`tasks.groups.week`,undated:`tasks.groups.undated`,later:`tasks.groups.later`,completed:`tasks.groups.completed`},R={high:`tasks.priorities.high`,medium:`tasks.priorities.medium`,low:`tasks.priorities.low`},z={high:`!!!`,medium:`!!`,low:`!`},B=class extends r{constructor(...e){super(...e),this.clock=new S(this),this.tasks=[],this.pendingPaths=new Set,this.settling=new Set,this.searching=!1,this.loading=!1,this.focusedIndex=-1}static{this.styles=s`
         :host {
             display: flex;
             flex-direction: column;
@@ -146,7 +146,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,s,v as c}from"./lit-CXIq
                 padding: 4px 12px 16px;
             }
         }
-    `}groups(){let e=this.now??new Date,t=new Map;for(let n of this.tasks){let r=this.settling.has(n.path)?O({...n,status:`needs-action`},e):O(n,e),i=t.get(r);i?i.push(n):t.set(r,[n])}for(let[e,n]of t)n.sort(e===`completed`?D:j);return E.filter(e=>t.has(e)).map(e=>[e,t.get(e)])}toggle(e){this.pendingPaths.has(e.path)||this.dispatchEvent(new CustomEvent(`toggle-complete`,{detail:{task:e,done:e.status!==`completed`}}))}open(e){this.dispatchEvent(new CustomEvent(`open-task`,{detail:{task:e}}))}handleFocus(){let e=this.groups().reduce((e,[,t])=>e+t.length,0);e&&(this.focusedIndex=Math.min(Math.max(this.focusedIndex,0),e-1))}handleKeyDown(e){if(e.target!==e.currentTarget)return;let t=this.groups().flatMap(([,e])=>e);if(t.length===0)return;let n=Math.min(this.focusedIndex,t.length-1);switch(e.key){case`ArrowDown`:this.focusedIndex=Math.min(t.length-1,n+1);break;case`ArrowUp`:this.focusedIndex=Math.max(0,n-1);break;case`Home`:this.focusedIndex=0;break;case`End`:this.focusedIndex=t.length-1;break;case`Enter`:if(n<0)return;e.preventDefault(),this.open(t[n]);return;case` `:if(n<0)return;e.preventDefault(),this.toggle(t[n]);return;default:return}e.preventDefault(),this.updateComplete.then(()=>{this.renderRoot.querySelector(`.row.focused`)?.scrollIntoView?.({block:`nearest`})})}renderRow(e,t,n){let r=e=>this.i18nStore?.t(e)??e,i=e.status===`completed`,a=e.status===`cancelled`,o=w(e.priority),s=this.now??new Date;return c`
+    `}groups(){let e=this.now??new Date,t=new Map;for(let n of this.tasks){let r=this.settling.has(n.path)?k({...n,status:`needs-action`},e):k(n,e),i=t.get(r);i?i.push(n):t.set(r,[n])}for(let[e,n]of t)n.sort(e===`completed`?O:M);return D.filter(e=>t.has(e)).map(e=>[e,t.get(e)])}toggle(e){this.pendingPaths.has(e.path)||this.dispatchEvent(new CustomEvent(`toggle-complete`,{detail:{task:e,done:e.status!==`completed`}}))}open(e){this.dispatchEvent(new CustomEvent(`open-task`,{detail:{task:e}}))}handleFocus(){let e=this.groups().reduce((e,[,t])=>e+t.length,0);e&&(this.focusedIndex=Math.min(Math.max(this.focusedIndex,0),e-1))}handleKeyDown(e){if(e.target!==e.currentTarget)return;let t=this.groups().flatMap(([,e])=>e);if(t.length===0)return;let n=Math.min(this.focusedIndex,t.length-1);switch(e.key){case`ArrowDown`:this.focusedIndex=Math.min(t.length-1,n+1);break;case`ArrowUp`:this.focusedIndex=Math.max(0,n-1);break;case`Home`:this.focusedIndex=0;break;case`End`:this.focusedIndex=t.length-1;break;case`Enter`:if(n<0)return;e.preventDefault(),this.open(t[n]);return;case` `:if(n<0)return;e.preventDefault(),this.toggle(t[n]);return;default:return}e.preventDefault(),this.updateComplete.then(()=>{this.renderRoot.querySelector(`.row.focused`)?.scrollIntoView?.({block:`nearest`})})}renderRow(e,t,n){let r=e=>this.i18nStore?.t(e)??e,i=e.status===`completed`,a=e.status===`cancelled`,o=T(e.priority),s=this.now??new Date;return c`
             <div
                 class="row ${i?`done`:``} ${a?`cancelled`:``} ${this.focusedIndex===t?`focused`:``}"
                 @click=${()=>{this.focusedIndex=t,this.open(e)}}
@@ -159,28 +159,28 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,s,v as c}from"./lit-CXIq
                     ?disabled=${this.pendingPaths.has(e.path)}
                     @click=${t=>{t.stopPropagation(),this.toggle(e)}}
                 >
-                    ${i?v(`check`):``}
+                    ${i?u(`check`):``}
                 </button>
                 <div class="body">
                     <div class="title"><bdi>${e.title||r(`tasks.untitled`)}</bdi></div>
                     <div class="meta">
                         ${e.color?c`<span class="dot" style="background: ${e.color}"></span>`:``}
                         ${a?c`<span class="chip">${r(`tasks.statuses.cancelled`)}</span>`:``}
-                        ${e.due?c`<span class="due ${n===`overdue`?`overdue`:``}">${k(e,s,r(`tasks.today`),N(this.i18nStore?.getLanguage?.()))}</span>`:``}
-                        ${e.rrule?c`<span class="repeats" role="img" aria-label=${r(`tasks.repeats`)} title=${r(`tasks.repeats`)}>${v(`arrowsClockwise`)}</span>`:``}
-                        ${e.role===`attendee`&&e.organizer?c`<span class="assigned">${r(`tasks.assignedBy`)} ${d(e.organizer.name,e.organizer.email)}</span>`:e.role===`organizer`&&e.attendees?.length?c`<span class="assigned">${r(`tasks.assignedTo`)} ${e.attendees.map((e,t)=>c`${t?`, `:``}${d(e.name,e.email)}`)}</span>`:``}
-                        ${o?c`<span class="priority ${o}" role="img" aria-label=${r(L[o])} title=${r(L[o])}>${R[o]}</span>`:``}
+                        ${e.due?c`<span class="due ${n===`overdue`?`overdue`:``}">${A(e,s,r(`tasks.today`),P(this.i18nStore?.getLanguage?.()),this.clock.hour12?`12`:`24`)}</span>`:``}
+                        ${e.rrule?c`<span class="repeats" role="img" aria-label=${r(`tasks.repeats`)} title=${r(`tasks.repeats`)}>${u(`arrowsClockwise`)}</span>`:``}
+                        ${e.role===`attendee`&&e.organizer?c`<span class="assigned">${r(`tasks.assignedBy`)} ${l(e.organizer.name,e.organizer.email)}</span>`:e.role===`organizer`&&e.attendees?.length?c`<span class="assigned">${r(`tasks.assignedTo`)} ${e.attendees.map((e,t)=>c`${t?`, `:``}${l(e.name,e.email)}`)}</span>`:``}
+                        ${o?c`<span class="priority ${o}" role="img" aria-label=${r(R[o])} title=${r(R[o])}>${z[o]}</span>`:``}
                     </div>
                 </div>
             </div>
         `}render(){if(this.loading&&this.tasks.length===0)return c`<div class="empty"><alps-loader></alps-loader></div>`;let e=this.groups();if(e.length===0)return c`<div class="empty">${this.i18nStore?.t(this.searching?`tasks.noResults`:`tasks.noTasks`)}</div>`;let t=-1;return c`
             <div class="scroll" tabindex="0" @focus=${this.handleFocus} @keydown=${this.handleKeyDown}>
                 ${e.map(([e,n])=>c`
-                        <div class="group ${e}">${this.i18nStore?.t(I[e])}</div>
-                        ${s(n,e=>e.path,n=>this.renderRow(n,++t,e))}
+                        <div class="group ${e}">${this.i18nStore?.t(L[e])}</div>
+                        ${a(n,e=>e.path,n=>this.renderRow(n,++t,e))}
                     `)}
             </div>
-        `}};_([t({context:l})],z.prototype,`i18nStore`,void 0),_([o({type:Array})],z.prototype,`tasks`,void 0),_([o({attribute:!1})],z.prototype,`pendingPaths`,void 0),_([o({attribute:!1})],z.prototype,`settling`,void 0),_([o({type:Boolean})],z.prototype,`searching`,void 0),_([o({type:Boolean})],z.prototype,`loading`,void 0),_([o({attribute:!1})],z.prototype,`now`,void 0),_([n()],z.prototype,`focusedIndex`,void 0),z=_([a(`tasks-list`)],z);var B=250,V=500,H=120,U=[{id:`all`,icon:`listBullets`,label:`tasks.allTasks`},{id:`today`,icon:`calendarBlank`,label:`tasks.today`},{id:`upcoming`,icon:`calendar`,label:`tasks.upcoming`},{id:`undated`,icon:`tray`,label:`tasks.undated`},{id:`completed`,icon:`checkCircle`,label:`tasks.completed`}],W=class extends i{constructor(...e){super(...e),this.tasks=[],this.lists=[],this.selectedList=`all`,this.selectedCalendar=``,this.searchQuery=``,this.loading=!0,this.loadedScope=``,this.pendingPaths=new Set,this.settling=new Set,this.modalOpen=!1,this.taskToDelete=null,this.scheduling=`email`,this.isSpinning=!1,this.listPromptOpen=!1,this.sidebarWidth=B,this.sidebarCollapsed=!1,this.isSidebarDragging=!1,this.isMobile=window.innerWidth<=768,this.mobileSidebarOpen=!1,this.syncTimer=null,this.readEpoch=0,this.mutationEpoch=0,this.handleSettingsChange=()=>{if(!this.settingsStore)return;let e=this.settingsStore.getState();this.sidebarCollapsed=e.sidebarCollapsed,this.syncTimer&&=(clearInterval(this.syncTimer),null),e.checkMailInterval&&e.checkMailInterval>0&&(this.syncTimer=setInterval(()=>void this.fetchTasks(),e.checkMailInterval*60*1e3))},this.handleResize=()=>{this.isMobile=window.innerWidth<=768},this.handleHashChange=()=>{this.parseHash()&&this.fetchTasks()}}static{this.styles=[h,m,y,e`
+        `}};p([n({context:h})],B.prototype,`i18nStore`,void 0),p([o({type:Array})],B.prototype,`tasks`,void 0),p([o({attribute:!1})],B.prototype,`pendingPaths`,void 0),p([o({attribute:!1})],B.prototype,`settling`,void 0),p([o({type:Boolean})],B.prototype,`searching`,void 0),p([o({type:Boolean})],B.prototype,`loading`,void 0),p([o({attribute:!1})],B.prototype,`now`,void 0),p([i()],B.prototype,`focusedIndex`,void 0),B=p([t(`tasks-list`)],B);var V=250,H=500,U=120,W=[{id:`all`,icon:`listBullets`,label:`tasks.allTasks`},{id:`today`,icon:`calendarBlank`,label:`tasks.today`},{id:`upcoming`,icon:`calendar`,label:`tasks.upcoming`},{id:`undated`,icon:`tray`,label:`tasks.undated`},{id:`completed`,icon:`checkCircle`,label:`tasks.completed`}],G=class extends r{constructor(...e){super(...e),this.tasks=[],this.lists=[],this.selectedList=`all`,this.selectedCalendar=``,this.searchQuery=``,this.loading=!0,this.loadedScope=``,this.pendingPaths=new Set,this.settling=new Set,this.modalOpen=!1,this.taskToDelete=null,this.scheduling=`email`,this.isSpinning=!1,this.listPromptOpen=!1,this.sidebarWidth=V,this.sidebarCollapsed=!1,this.isSidebarDragging=!1,this.isMobile=window.innerWidth<=768,this.mobileSidebarOpen=!1,this.syncTimer=null,this.readEpoch=0,this.mutationEpoch=0,this.handleSettingsChange=()=>{if(!this.settingsStore)return;let e=this.settingsStore.getState();this.sidebarCollapsed=e.sidebarCollapsed,this.syncTimer&&=(clearInterval(this.syncTimer),null),e.checkMailInterval&&e.checkMailInterval>0&&(this.syncTimer=setInterval(()=>void this.fetchTasks(),e.checkMailInterval*60*1e3))},this.handleResize=()=>{this.isMobile=window.innerWidth<=768},this.handleHashChange=()=>{this.parseHash()&&this.fetchTasks()}}static{this.styles=[_,m,v,s`
             :host {
                 display: flex;
                 flex-direction: column;
@@ -307,7 +307,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,s,v as c}from"./lit-CXIq
                     font-size: 18px;
                 }
             }
-        `]}connectedCallback(){super.connectedCallback(),window.addEventListener(`resize`,this.handleResize),window.addEventListener(`hashchange`,this.handleHashChange),this.settingsStore&&(this.settingsStore.addEventListener(`change`,this.handleSettingsChange),this.handleSettingsChange()),this.parseHash(f()??``),this.fetchTasks()}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(`resize`,this.handleResize),window.removeEventListener(`hashchange`,this.handleHashChange),this.settingsStore?.removeEventListener(`change`,this.handleSettingsChange),this.syncTimer&&=(clearInterval(this.syncTimer),null)}get wantedScope(){return this.searchQuery?`all`:P(this.selectedList)}parseHash(e=window.location.hash){if(!e.startsWith(`#/tasks`))return!1;let[t,n=``]=e.slice(1).split(`?`),r=t.split(`/`)[2]??``,i=new URLSearchParams(n),a=i.get(`list`)??``,o=i.get(`q`)??``,s=r;return U.some(e=>e.id===r)||(s=`all`,x(window.location.hash)||history.replaceState(history.state,``,this.hashFor(s,a,o))),(s!==this.selectedList||a!==this.selectedCalendar||o!==this.searchQuery)&&(this.settling=new Set),this.selectedList=s,this.selectedCalendar=a,this.searchQuery=o,this.wantedScope!==this.loadedScope}hashFor(e,t,n){let r=new URLSearchParams;t&&r.set(`list`,t),n&&r.set(`q`,n);let i=r.toString();return`#/tasks/${e}${i?`?${i}`:``}`}navigate(e,t=this.selectedCalendar,n=this.searchQuery){let r=this.hashFor(e,t,n);if(b(r)){this.parseHash(r)&&this.fetchTasks();return}window.location.hash!==r&&(window.location.hash=r)}async fetchTasks(){let e=++this.readEpoch,t=this.mutationEpoch,n=this.wantedScope;this.loading=!0,this.isSpinning=!0;try{let r=await S.fetchTasks(n===`all`?void 0:n);if(e!==this.readEpoch)return;if(t!==this.mutationEpoch){this.fetchTasks();return}this.lists=r.calendars.map(e=>({...e,color:M(e.path)})),this.tasks=r.tasks.map(e=>({...e,color:M(e.calendarPath)})),this.loadedScope=n,this.scheduling=r.scheduling===`server`?`server`:`email`,this.settling=new Set,r.failedCalendars>0&&this.toast(`tasks.someListsFailed`,void 0,`error`)}catch(t){if(e!==this.readEpoch)return;console.error(`Failed to load tasks`,t),this.failed(`tasks.loadFailed`,t)}finally{e===this.readEpoch&&(this.loading=!1)}}shows(e,t=new Date){if(this.selectedCalendar&&e.calendarPath!==this.selectedCalendar)return!1;let n=this.searchQuery.trim().toLowerCase();return n?e.title.toLowerCase().includes(n)||(e.description??``).toLowerCase().includes(n):C(e,this.selectedList,t)}get visibleTasks(){let e=new Date;return this.tasks.filter(t=>this.shows(t,e)||this.settling.has(t.path))}countFor(e){if(this.loadedScope!==`all`&&this.loadedScope!==P(e))return null;let t=new Date;return this.tasks.filter(n=>(!this.selectedCalendar||n.calendarPath===this.selectedCalendar)&&C(n,e,t)).length}replaceTask(e,t){this.mutationEpoch++;let n={...t,color:M(t.calendarPath)};this.tasks=this.tasks.map(t=>t.path===e?n:t)}async handleToggleComplete(e,t){if(!this.pendingPaths.has(e.path)){this.pendingPaths=new Set(this.pendingPaths).add(e.path),this.settling=new Set(this.settling).add(e.path),this.replaceTask(e.path,{...e,status:t?`completed`:`needs-action`});try{let n=await S.completeTask(e.path,t,this.i18nStore?.getLanguage?.());this.replaceTask(e.path,n),n.sendFailed&&this.toast(`invitations.notTold`,void 0,`error`),t&&!F(n)&&this.toast(`tasks.movedToNext`,{date:this.formatDue(n)})}catch(t){console.error(`Failed to update task`,t),this.replaceTask(e.path,e),this.failed(`tasks.completeFailed`,t)}finally{let t=new Set(this.pendingPaths);t.delete(e.path),this.pendingPaths=t}}}handleSaved(e){let{task:t,created:n}=e.detail;this.closeModal(),this.mutationEpoch++;let r={...t,color:M(t.calendarPath)};if(this.tasks=n?[r,...this.tasks]:this.tasks.map(e=>e.path===r.path?r:e),!this.shows(r))if(n){let e=this.selectedCalendar===r.calendarPath?this.selectedCalendar:``;this.navigate(F(r)?`completed`:`all`,e,``)}else this.settling=new Set(this.settling).add(r.path)}async confirmDelete(e=!0){let t=this.taskToDelete;if(t){this.taskToDelete=null;try{(await S.deleteTask(t.path,{notify:e,lang:this.i18nStore?.getLanguage?.()}))?.sendFailed&&this.toast(`invitations.notTold`,void 0,`error`),this.mutationEpoch++,this.tasks=this.tasks.filter(e=>e.path!==t.path)}catch(e){console.error(`Failed to delete task`,e),this.failed(`tasks.deleteFailed`,e)}}}async handleListPromptSubmit(e){this.listPromptOpen=!1;let t=String(e.detail?.name??``).trim();if(t)try{await A.createCalendar(t,[`VTODO`]),await this.fetchTasks()}catch(e){console.error(`Failed to create list`,e),this.failed(`tasks.createListFailed`,e)}}openCreate(){this.editingTask=void 0,this.modalOpen=!0,this.mobileSidebarOpen=!1}openEdit(e){this.editingTask=e,this.modalOpen=!0}closeModal(){this.modalOpen=!1,this.editingTask=void 0}selectList(e){this.mobileSidebarOpen=!1,g(this.renderRoot),this.navigate(e,this.selectedCalendar,``)}selectCalendar(e){this.mobileSidebarOpen=!1,g(this.renderRoot),this.navigate(this.selectedList,this.selectedCalendar===e?``:e,this.searchQuery)}formatDue(e){return k(e,new Date,this.i18nStore?.t(`tasks.today`)??`Today`,N(this.i18nStore?.getLanguage?.()))}failed(e,t){u(t)||this.toast(e,void 0,`error`)}toast(e,t,n){window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(e,t),type:n,duration:5e3}}))}handleSidebarResize(e){let t=e.detail.newWidth,n=t<H;n!==this.sidebarCollapsed&&(this.sidebarCollapsed=n,this.settingsStore?.updateSettings({sidebarCollapsed:n})),this.sidebarWidth=n?B:Math.min(Math.max(t,180),V)}get username(){return this.settingsStore?.getState().loginUsername||``}render(){let e=e=>this.i18nStore?.t(e)??e,t=U.find(e=>e.id===this.selectedList)??U[0],n=this.lists.find(e=>e.path===this.selectedCalendar)?.name??``,i=this.selectedCalendar||this.lists[0]?.path||``;return c`
+        `]}connectedCallback(){super.connectedCallback(),window.addEventListener(`resize`,this.handleResize),window.addEventListener(`hashchange`,this.handleHashChange),this.settingsStore&&(this.settingsStore.addEventListener(`change`,this.handleSettingsChange),this.handleSettingsChange()),this.parseHash(f()??``),this.fetchTasks()}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(`resize`,this.handleResize),window.removeEventListener(`hashchange`,this.handleHashChange),this.settingsStore?.removeEventListener(`change`,this.handleSettingsChange),this.syncTimer&&=(clearInterval(this.syncTimer),null)}get wantedScope(){return this.searchQuery?`all`:F(this.selectedList)}parseHash(e=window.location.hash){if(!e.startsWith(`#/tasks`))return!1;let[t,n=``]=e.slice(1).split(`?`),r=t.split(`/`)[2]??``,i=new URLSearchParams(n),a=i.get(`list`)??``,o=i.get(`q`)??``,s=r;return W.some(e=>e.id===r)||(s=`all`,x(window.location.hash)||history.replaceState(history.state,``,this.hashFor(s,a,o))),(s!==this.selectedList||a!==this.selectedCalendar||o!==this.searchQuery)&&(this.settling=new Set),this.selectedList=s,this.selectedCalendar=a,this.searchQuery=o,this.wantedScope!==this.loadedScope}hashFor(e,t,n){let r=new URLSearchParams;t&&r.set(`list`,t),n&&r.set(`q`,n);let i=r.toString();return`#/tasks/${e}${i?`?${i}`:``}`}navigate(e,t=this.selectedCalendar,n=this.searchQuery){let r=this.hashFor(e,t,n);if(y(r)){this.parseHash(r)&&this.fetchTasks();return}window.location.hash!==r&&(window.location.hash=r)}async fetchTasks(){let e=++this.readEpoch,t=this.mutationEpoch,n=this.wantedScope;this.loading=!0,this.isSpinning=!0;try{let r=await C.fetchTasks(n===`all`?void 0:n);if(e!==this.readEpoch)return;if(t!==this.mutationEpoch){this.fetchTasks();return}this.lists=r.calendars.map(e=>({...e,color:N(e.path)})),this.tasks=r.tasks.map(e=>({...e,color:N(e.calendarPath)})),this.loadedScope=n,this.scheduling=r.scheduling===`server`?`server`:`email`,this.settling=new Set,r.failedCalendars>0&&this.toast(`tasks.someListsFailed`,void 0,`error`)}catch(t){if(e!==this.readEpoch)return;console.error(`Failed to load tasks`,t),this.failed(`tasks.loadFailed`,t)}finally{e===this.readEpoch&&(this.loading=!1)}}shows(e,t=new Date){if(this.selectedCalendar&&e.calendarPath!==this.selectedCalendar)return!1;let n=this.searchQuery.trim().toLowerCase();return n?e.title.toLowerCase().includes(n)||(e.description??``).toLowerCase().includes(n):w(e,this.selectedList,t)}get visibleTasks(){let e=new Date;return this.tasks.filter(t=>this.shows(t,e)||this.settling.has(t.path))}countFor(e){if(this.loadedScope!==`all`&&this.loadedScope!==F(e))return null;let t=new Date;return this.tasks.filter(n=>(!this.selectedCalendar||n.calendarPath===this.selectedCalendar)&&w(n,e,t)).length}replaceTask(e,t){this.mutationEpoch++;let n={...t,color:N(t.calendarPath)};this.tasks=this.tasks.map(t=>t.path===e?n:t)}async handleToggleComplete(e,t){if(!this.pendingPaths.has(e.path)){this.pendingPaths=new Set(this.pendingPaths).add(e.path),this.settling=new Set(this.settling).add(e.path),this.replaceTask(e.path,{...e,status:t?`completed`:`needs-action`});try{let n=await C.completeTask(e.path,t,this.i18nStore?.getLanguage?.());this.replaceTask(e.path,n),n.sendFailed&&this.toast(`invitations.notTold`,void 0,`error`),t&&!I(n)&&this.toast(`tasks.movedToNext`,{date:this.formatDue(n)})}catch(t){console.error(`Failed to update task`,t),this.replaceTask(e.path,e),this.failed(`tasks.completeFailed`,t)}finally{let t=new Set(this.pendingPaths);t.delete(e.path),this.pendingPaths=t}}}handleSaved(e){let{task:t,created:n}=e.detail;this.closeModal(),this.mutationEpoch++;let r={...t,color:N(t.calendarPath)};if(this.tasks=n?[r,...this.tasks]:this.tasks.map(e=>e.path===r.path?r:e),!this.shows(r))if(n){let e=this.selectedCalendar===r.calendarPath?this.selectedCalendar:``;this.navigate(I(r)?`completed`:`all`,e,``)}else this.settling=new Set(this.settling).add(r.path)}async confirmDelete(e=!0){let t=this.taskToDelete;if(t){this.taskToDelete=null;try{(await C.deleteTask(t.path,{notify:e,lang:this.i18nStore?.getLanguage?.()}))?.sendFailed&&this.toast(`invitations.notTold`,void 0,`error`),this.mutationEpoch++,this.tasks=this.tasks.filter(e=>e.path!==t.path)}catch(e){console.error(`Failed to delete task`,e),this.failed(`tasks.deleteFailed`,e)}}}async handleListPromptSubmit(e){this.listPromptOpen=!1;let t=String(e.detail?.name??``).trim();if(t)try{await j.createCalendar(t,[`VTODO`]),await this.fetchTasks()}catch(e){console.error(`Failed to create list`,e),this.failed(`tasks.createListFailed`,e)}}openCreate(){this.editingTask=void 0,this.modalOpen=!0,this.mobileSidebarOpen=!1}openEdit(e){this.editingTask=e,this.modalOpen=!0}closeModal(){this.modalOpen=!1,this.editingTask=void 0}selectList(e){this.mobileSidebarOpen=!1,g(this.renderRoot),this.navigate(e,this.selectedCalendar,``)}selectCalendar(e){this.mobileSidebarOpen=!1,g(this.renderRoot),this.navigate(this.selectedList,this.selectedCalendar===e?``:e,this.searchQuery)}formatDue(e){return A(e,new Date,this.i18nStore?.t(`tasks.today`)??`Today`,P(this.i18nStore?.getLanguage?.()),this.settingsStore?.getState().hourFormat)}failed(e,t){b(t)||this.toast(e,void 0,`error`)}toast(e,t,n){window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(e,t),type:n,duration:5e3}}))}handleSidebarResize(e){let t=e.detail.newWidth,n=t<U;n!==this.sidebarCollapsed&&(this.sidebarCollapsed=n,this.settingsStore?.updateSettings({sidebarCollapsed:n})),this.sidebarWidth=n?V:Math.min(Math.max(t,180),H)}get username(){return this.settingsStore?.getState().loginUsername||``}render(){let t=e=>this.i18nStore?.t(e)??e,n=W.find(e=>e.id===this.selectedList)??W[0],r=this.lists.find(e=>e.path===this.selectedCalendar)?.name??``,i=this.selectedCalendar||this.lists[0]?.path||``;return c`
             <app-header
                 currentTab="tasks"
                 .username=${this.username}
@@ -343,41 +343,41 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,s,v as c}from"./lit-CXIq
                                     icon="plusBold"
                                     ?disabled=${this.lists.length===0}
                                     @click=${()=>this.openCreate()}
-                                >${e(`tasks.addTask`)}</alps-create-button>
+                                >${t(`tasks.addTask`)}</alps-create-button>
                             </alps-toolbar>
                             <!-- A navigation landmark named for the tab. The
                                  smart lists inside are a plain group: an
                                  unnamed navigation of their own, nested in it,
                                  left the task lists outside. -->
-                            <alps-sidebar-content class="sidebar-content" role="navigation" aria-label=${e(`navigation.tasks`)}>
+                            <alps-sidebar-content class="sidebar-content" role="navigation" aria-label=${t(`navigation.tasks`)}>
                                 <div class="sidebar-scroll-content">
                                     <div class="smart-lists">
-                                        ${U.map(t=>{let n=this.countFor(t.id),i=t.id===this.selectedList&&!this.searchQuery;return c`
+                                        ${W.map(n=>{let r=this.countFor(n.id),i=n.id===this.selectedList&&!this.searchQuery;return c`
                                                 <button
                                                     class="nav-item smart-list ${i?`active`:``}"
-                                                    data-list=${t.id}
-                                                    aria-current=${i?`page`:r}
-                                                    title=${e(t.label)}
-                                                    @click=${()=>this.selectList(t.id)}
+                                                    data-list=${n.id}
+                                                    aria-current=${i?`page`:e}
+                                                    title=${t(n.label)}
+                                                    @click=${()=>this.selectList(n.id)}
                                                 >
-                                                    ${v(t.icon)}
-                                                    <span class="label">${e(t.label)}</span>
-                                                    ${n?c`<span class="count">${n}</span>`:``}
+                                                    ${u(n.icon)}
+                                                    <span class="label">${t(n.label)}</span>
+                                                    ${r?c`<span class="count">${r}</span>`:``}
                                                 </button>
                                             `})}
                                     </div>
                                     ${this.lists.length>0?c`
                                         <div class="calendar-lists">
-                                            <alps-sidebar-heading heading=${e(`tasks.lists`)}></alps-sidebar-heading>
-                                            ${this.lists.map(e=>c`
+                                            <alps-sidebar-heading heading=${t(`tasks.lists`)}></alps-sidebar-heading>
+                                            ${this.lists.map(t=>c`
                                                 <button
-                                                    class="nav-item task-list ${e.path===this.selectedCalendar?`active`:``}"
-                                                    data-path=${e.path}
-                                                    aria-current=${e.path===this.selectedCalendar?`true`:r}
-                                                    @click=${()=>this.selectCalendar(e.path)}
+                                                    class="nav-item task-list ${t.path===this.selectedCalendar?`active`:``}"
+                                                    data-path=${t.path}
+                                                    aria-current=${t.path===this.selectedCalendar?`true`:e}
+                                                    @click=${()=>this.selectCalendar(t.path)}
                                                 >
-                                                    <span class="list-dot" style="background: ${e.color}"></span>
-                                                    <span class="label"><bdi>${e.name}</bdi></span>
+                                                    <span class="list-dot" style="background: ${t.color}"></span>
+                                                    <span class="label"><bdi>${t.name}</bdi></span>
                                                 </button>
                                             `)}
                                         </div>
@@ -388,7 +388,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,s,v as c}from"./lit-CXIq
                         <alps-icon-btn
                             slot="footer-actions"
                             icon="folderPlus"
-                            title=${e(`tasks.newList`)}
+                            title=${t(`tasks.newList`)}
                             @click=${()=>{this.listPromptOpen=!0}}
                         ></alps-icon-btn>
                     </alps-sidebar>
@@ -396,12 +396,12 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,s,v as c}from"./lit-CXIq
                     <div class="main-content">
                         <div class="toolbar">
                             <h2>
-                                ${this.searchQuery?e(`tasks.searchResults`):e(t.label)}
-                                ${n?c`<span class="sub-title"><bdi>${n}</bdi></span>`:``}
+                                ${this.searchQuery?t(`tasks.searchResults`):t(n.label)}
+                                ${r?c`<span class="sub-title"><bdi>${r}</bdi></span>`:``}
                             </h2>
                             <alps-icon-btn
                                 icon="arrowsClockwise"
-                                title=${e(`mailboxPage.refresh`)}
+                                title=${t(`mailboxPage.refresh`)}
                                 ?spinning=${this.isSpinning}
                                 @animationiteration=${()=>{this.loading||(this.isSpinning=!1)}}
                                 @click=${()=>void this.fetchTasks()}
@@ -434,20 +434,20 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,s,v as c}from"./lit-CXIq
 
             ${this.listPromptOpen?c`
                 <ui-prompt
-                    heading=${e(`tasks.newList`)}
-                    .fields=${[{id:`name`,label:e(`tasks.listName`),autofocus:!0}]}
+                    heading=${t(`tasks.newList`)}
+                    .fields=${[{id:`name`,label:t(`tasks.listName`),autofocus:!0}]}
                     @submit=${this.handleListPromptSubmit}
                     @cancel=${()=>{this.listPromptOpen=!1}}
                 ></ui-prompt>
             `:``}
 
-            ${this.taskToDelete&&T(this.taskToDelete,this.scheduling)?c`
+            ${this.taskToDelete&&E(this.taskToDelete,this.scheduling)?c`
                 <ui-confirm
                     class="delete-assigned"
-                    heading=${e(`tasks.deleteTask`)}
-                    message=${e(this.taskToDelete.role===`organizer`?`tasks.deleteTellAssignees`:`tasks.deleteTellAssigner`)}
-                    confirmText=${e(`invitations.deleteAndTell`)}
-                    secondaryText=${e(`invitations.deleteOnly`)}
+                    heading=${t(`tasks.deleteTask`)}
+                    message=${t(this.taskToDelete.role===`organizer`?`tasks.deleteTellAssignees`:`tasks.deleteTellAssigner`)}
+                    confirmText=${t(`invitations.deleteAndTell`)}
+                    secondaryText=${t(`invitations.deleteOnly`)}
                     isDanger
                     @confirm=${()=>void this.confirmDelete(!0)}
                     @secondary=${()=>void this.confirmDelete(!1)}
@@ -455,12 +455,12 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,s,v as c}from"./lit-CXIq
                 ></ui-confirm>
             `:this.taskToDelete?c`
                 <ui-confirm
-                    heading=${e(`tasks.deleteTask`)}
-                    message=${e(`tasks.deleteTaskConfirm`)}
-                    confirmText=${e(`tasks.delete`)}
+                    heading=${t(`tasks.deleteTask`)}
+                    message=${t(`tasks.deleteTaskConfirm`)}
+                    confirmText=${t(`tasks.delete`)}
                     isDanger
                     @confirm=${()=>void this.confirmDelete()}
                     @cancel=${()=>{this.taskToDelete=null}}
                 ></ui-confirm>
             `:``}
-        `}};_([t({context:l})],W.prototype,`i18nStore`,void 0),_([t({context:p})],W.prototype,`settingsStore`,void 0),_([n()],W.prototype,`tasks`,void 0),_([n()],W.prototype,`lists`,void 0),_([n()],W.prototype,`selectedList`,void 0),_([n()],W.prototype,`selectedCalendar`,void 0),_([n()],W.prototype,`searchQuery`,void 0),_([n()],W.prototype,`loading`,void 0),_([n()],W.prototype,`loadedScope`,void 0),_([n()],W.prototype,`pendingPaths`,void 0),_([n()],W.prototype,`settling`,void 0),_([n()],W.prototype,`modalOpen`,void 0),_([n()],W.prototype,`editingTask`,void 0),_([n()],W.prototype,`taskToDelete`,void 0),_([n()],W.prototype,`scheduling`,void 0),_([n()],W.prototype,`isSpinning`,void 0),_([n()],W.prototype,`listPromptOpen`,void 0),_([n()],W.prototype,`sidebarWidth`,void 0),_([n()],W.prototype,`sidebarCollapsed`,void 0),_([n()],W.prototype,`isSidebarDragging`,void 0),_([n()],W.prototype,`isMobile`,void 0),_([n()],W.prototype,`mobileSidebarOpen`,void 0),W=_([a(`tasks-page`)],W);export{W as TasksPage};
+        `}};p([n({context:h})],G.prototype,`i18nStore`,void 0),p([n({context:d})],G.prototype,`settingsStore`,void 0),p([i()],G.prototype,`tasks`,void 0),p([i()],G.prototype,`lists`,void 0),p([i()],G.prototype,`selectedList`,void 0),p([i()],G.prototype,`selectedCalendar`,void 0),p([i()],G.prototype,`searchQuery`,void 0),p([i()],G.prototype,`loading`,void 0),p([i()],G.prototype,`loadedScope`,void 0),p([i()],G.prototype,`pendingPaths`,void 0),p([i()],G.prototype,`settling`,void 0),p([i()],G.prototype,`modalOpen`,void 0),p([i()],G.prototype,`editingTask`,void 0),p([i()],G.prototype,`taskToDelete`,void 0),p([i()],G.prototype,`scheduling`,void 0),p([i()],G.prototype,`isSpinning`,void 0),p([i()],G.prototype,`listPromptOpen`,void 0),p([i()],G.prototype,`sidebarWidth`,void 0),p([i()],G.prototype,`sidebarCollapsed`,void 0),p([i()],G.prototype,`isSidebarDragging`,void 0),p([i()],G.prototype,`isMobile`,void 0),p([i()],G.prototype,`mobileSidebarOpen`,void 0),G=p([t(`tasks-page`)],G);export{G as TasksPage};

@@ -1,3 +1,4 @@
+import { TimeFormatController } from '../../../frontend/src/utils/time-format-controller';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -13,6 +14,8 @@ import { motionStyles } from '../../../frontend/src/utils/motion';
 
 @customElement('calendar-time-grid')
 export class CalendarTimeGrid extends LitElement {
+    private clock = new TimeFormatController(this);
+
     @consume({ context: i18nContext })
     i18nStore!: I18nStore;
     @property({ type: Array }) days: Date[] = [];
@@ -420,7 +423,7 @@ export class CalendarTimeGrid extends LitElement {
                     <div class="time-grid-body">
                         <div class="time-axis">
                             ${hours.map(h => html`
-                                <div class="time-label" style="top: ${h * 48}px">${h.toString().padStart(2, '0')}:00</div>
+                                <div class="time-label" style="top: ${h * 48}px">${new Date(2000, 0, 1, h).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: this.clock.hour12 })}</div>
                             `)}
                         </div>
                         <div class="time-grid-columns">

@@ -1,3 +1,4 @@
+import { TimeFormatController } from '../../../frontend/src/utils/time-format-controller';
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
@@ -9,6 +10,8 @@ import { motionStyles } from '../../../frontend/src/utils/motion';
 
 @customElement('calendar-list-view')
 export class CalendarListView extends LitElement {
+    private clock = new TimeFormatController(this);
+
     @consume({ context: i18nContext })
     i18nStore!: I18nStore;
     @property({ type: Array }) events: EventData[] = [];
@@ -156,7 +159,7 @@ export class CalendarListView extends LitElement {
                                     <span class="date-day">${startDate.getDate()}</span>
                                     <span class="date-month">${this.i18nStore?.t(`calendar.monthsShort.${startDate.getMonth()}`)} ${startDate.getFullYear()}</span>
                                     <span class="date-time">
-                                        ${isAllDay ? (this.i18nStore?.t('calendar.allDay')) : startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        ${isAllDay ? (this.i18nStore?.t('calendar.allDay')) : startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: this.clock.hour12 })}
                                     </span>
                                 </div>
                                 <div class="event-details">
