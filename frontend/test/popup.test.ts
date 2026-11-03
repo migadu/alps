@@ -89,6 +89,25 @@ describe('opening and closing', () => {
     expect(closes).toHaveLength(1);
   });
 
+  it('keeps restored keyboard focus, and releases a pointer-focused trigger', async () => {
+    const el = await popup();
+    const trigger = byId('trigger');
+    const close = dialogOf(el).close.bind(dialogOf(el));
+    vi.spyOn(dialogOf(el), 'close').mockImplementation(() => { close(); trigger.focus(); });
+    let keyboard = true;
+    const matches = trigger.matches.bind(trigger);
+    vi.spyOn(trigger, 'matches').mockImplementation(selector => selector === ':focus-visible' ? keyboard : matches(selector));
+    await clickTrigger(el);
+    el.close();
+    await el.updateComplete;
+    expect(document.activeElement).toBe(trigger);
+    keyboard = false;
+    await clickTrigger(el);
+    el.close();
+    await el.updateComplete;
+    expect(document.activeElement).not.toBe(trigger);
+  });
+
   it('can be opened again after being removed while open', async () => {
     // Teardown is not a change of openState, so an instance that came back
     // still believed it was open and could never show its dialog again.

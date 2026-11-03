@@ -359,15 +359,12 @@ export class AlpsPopup extends LitElement {
       } else {
         if (dialog && dialog.open) {
           dialog.close();
-          // Dialog natively restores focus to the trigger element on close.
-          // We blur it immediately so parent containers don't get stuck with :focus-within.
-          const triggerSlot = this.shadowRoot?.querySelector('slot[name="trigger"]') as HTMLSlotElement | null;
-          if (triggerSlot) {
-            const elements = triggerSlot.assignedElements({ flatten: true });
-            elements.forEach(el => {
-              if (el instanceof HTMLElement) el.blur();
-            });
-          }
+          // Native focus restoration preserves the keyboard user's place.
+          // Only release pointer focus, so hover-only row actions can disappear.
+          const slot = this.shadowRoot?.querySelector<HTMLSlotElement>('slot[name="trigger"]');
+          const active = this._getActiveElement() as HTMLElement | null;
+          const onTrigger = slot?.assignedElements({ flatten: true }).some(el => el === active || el.matches(':focus-within'));
+          if (onTrigger && active && !active.matches(':focus-visible')) active.blur();
         }
       }
     }
