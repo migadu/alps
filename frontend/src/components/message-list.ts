@@ -22,6 +22,7 @@ import './alps-banner';
 import './ui-confirm';
 import './alps-loader';
 import { repeat } from 'lit/directives/repeat.js';
+import { motionStyles, scrollOptions } from '../utils/motion';
 
 /** The filter bar's own toggles, which narrow a FOLDER rather than search it. */
 const FILTER_TOGGLES = new Set(['is:starred', 'is:unread']);
@@ -177,7 +178,7 @@ export class MessageList extends LitElement {
   // The row of the first message that check found, to be scrolled to once drawn.
   private _arrivedIndex = -1;
 
-  static styles = [mixedScriptStyles, css`
+  static styles = [motionStyles, mixedScriptStyles, css`
     :host {
       display: flex;
       flex-direction: column;
@@ -1263,7 +1264,7 @@ export class MessageList extends LitElement {
         const listContent = this.renderRoot.querySelector('.list-content');
         const activeItem = listContent?.querySelector('.message-item.active');
         if (activeItem) {
-          activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          activeItem.scrollIntoView(scrollOptions({ behavior: 'smooth', block: 'center' }));
         }
       }, 50);
     }

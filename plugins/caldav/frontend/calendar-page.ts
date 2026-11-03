@@ -35,6 +35,7 @@ import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 type ViewMode = 'day' | 'week' | 'month' | 'year';
 
@@ -117,6 +118,7 @@ export class CalendarPage extends LitElement {
     @state() private isSidebarDragging = false;
 
     static styles = [
+        motionStyles,
         sidebarLayoutStyles,
         sectionHeadingStyles,
         popupStyles,

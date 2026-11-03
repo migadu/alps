@@ -21,6 +21,7 @@ import { formatDue, inSmartList, intlLocale, isClosed, scopeOf, tasksService } f
 import type { SmartList, TaskData, TaskList, TaskScope } from './tasks-service';
 import './tasks-list';
 import './task-modal';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 const SIDEBAR_WIDTH_DEFAULT = 250;
 const SIDEBAR_WIDTH_MIN = 150;
@@ -82,6 +83,7 @@ export class TasksPage extends LitElement {
     private mutationEpoch = 0;
 
     static styles = [
+        motionStyles,
         sidebarLayoutStyles,
         sectionHeadingStyles,
         css`

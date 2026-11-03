@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-icon-btn')
 export class AlpsIconBtn extends LitElement {
@@ -10,7 +11,7 @@ export class AlpsIconBtn extends LitElement {
   @property({ type: Boolean, reflect: true }) active = false;
   @property({ type: Boolean }) spinning = false;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: inline-flex;
       line-height: 0;
@@ -70,7 +71,7 @@ export class AlpsIconBtn extends LitElement {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
-  `;
+  `];
 
   private _handleAnimationIteration() {
     // Forward the animationiteration event since it doesn't cross the Shadow DOM boundary by default.

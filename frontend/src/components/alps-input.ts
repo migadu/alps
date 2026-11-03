@@ -4,6 +4,7 @@ import { consume } from '@lit/context';
 import { customElement, property, state } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
 import { focusOnLabelClick } from '../utils/label-focus';
+import { motionStyles } from '../utils/motion';
 
 /** Values written left to right whatever the interface language: addresses,
  * passwords, numbers, dates. */
@@ -45,7 +46,7 @@ export class AlpsInput extends LitElement {
 
   @state() private showPassword = false;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: block;
       width: 100%;
@@ -159,7 +160,7 @@ export class AlpsInput extends LitElement {
       height: 16px;
       fill: currentColor;
     }
-  `;
+  `];
 
   private handleInput(e: Event) {
     const target = e.target as HTMLInputElement;

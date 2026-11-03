@@ -11,13 +11,14 @@ import '../components/alps-input';
 import '../components/alps-button';
 import '../components/alps-loader';
 import '../components/alps-icon-btn';
+import { motionStyles } from '../utils/motion';
 
 @customElement('login-page')
 export class LoginPage extends LitElement {
   @consume({ context: i18nContext })
   i18nStore!: I18nStore;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     .form-group {
       margin-bottom: 16px;
       position: relative;
@@ -209,7 +210,7 @@ export class LoginPage extends LitElement {
       height: 100%;
       fill: currentColor;
     }
-  `;
+  `];
 
   @state() private notice: LoginNotice | null = null;
   @state() private username = '';

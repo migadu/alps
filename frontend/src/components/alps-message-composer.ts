@@ -34,6 +34,7 @@ import {
   applyAutoDirections, AUTO_DIRECTION_ATTRIBUTE, createDirectionResolver, createDOMDirectionResolver,
   getAuthoredDirection, getAuthoredStyle,
 } from '../utils/content-direction';
+import { motionStyles } from '../utils/motion';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -1191,6 +1192,7 @@ export class AlpsMessageComposer extends LitElement {
   }
 
   static styles = [
+    motionStyles,
     popupStyles,
     css`
     :host {

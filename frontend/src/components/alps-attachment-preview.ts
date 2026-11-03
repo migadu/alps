@@ -7,6 +7,7 @@ import { fetchWithTimeout } from '../utils/fetch-utils';
 import { attachmentPartUrl } from '../utils/attachment-url';
 import { getAttachmentTypeInfo, type AttachmentTypeInfo } from '../utils/attachment-type';
 import { deepActiveElement } from '../utils/active-element';
+import { motionStyles } from '../utils/motion';
 
 /** Text past this size is offered as a download instead of being fetched whole
  * and drawn line by line. */
@@ -244,7 +245,7 @@ export class AttachmentPreview extends LitElement {
     if (this.pdfUrl) window.open(this.pdfUrl, '_blank', 'noopener,noreferrer');
   }
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: block;
       position: fixed;
@@ -505,7 +506,7 @@ export class AttachmentPreview extends LitElement {
     .error-state {
       color: var(--error);
     }
-  `;
+  `];
 
   render() {
     const att = this.current;

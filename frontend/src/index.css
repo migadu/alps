@@ -169,3 +169,27 @@ h6 {
   --toast-bg: var(--bg-tertiary, #374151);
   --toast-border: var(--border-color, #4b5563);
 }
+/* Motion the user asked not to see, for the document and what is drawn in it
+   outside a component (the account-switch overlay). A selector here does not
+   reach into a shadow root: components compose motionStyles (utils/motion.ts)
+   instead, which says why a spinner keeps turning. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .spinner,
+  .spinning,
+  [data-motion='essential'],
+  .spinner *,
+  .spinning *,
+  [data-motion='essential'] * {
+    animation-duration: 3s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

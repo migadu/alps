@@ -11,6 +11,7 @@ import '../../../frontend/src/components/alps-toolbar';
 import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/alps-banner';
 import '../../../frontend/src/components/alps-button';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 @customElement('alps-contacts-list')
 export class AlpsContactsList extends LitElement {
@@ -97,6 +98,7 @@ export class AlpsContactsList extends LitElement {
   }
 
   static styles = [
+    motionStyles,
     MessageList.styles,
     css`
     :host {

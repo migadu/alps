@@ -11,6 +11,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import '../components/alps-button';
 import '../components/alps-banner';
 import { Logger } from '../utils/logger';
+import { motionStyles } from '../utils/motion';
 
 @customElement('original-message-page')
 export class OriginalMessagePage extends LitElement {
@@ -32,7 +33,7 @@ export class OriginalMessagePage extends LitElement {
   // Maximum size to display (64KB)
   private readonly MAX_DISPLAY_SIZE = 65536;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: block;
       height: 100vh;
@@ -135,7 +136,7 @@ export class OriginalMessagePage extends LitElement {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
-  `;
+  `];
 
   connectedCallback() {
     super.connectedCallback();

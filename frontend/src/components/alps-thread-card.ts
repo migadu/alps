@@ -21,6 +21,7 @@ import './alps-sender-auth-badge';
 import './alps-popup';
 import './alps-banner';
 import './alps-loader';
+import { motionStyles } from '../utils/motion';
 
 interface ThreadMessageItem {
   message: any;
@@ -62,7 +63,7 @@ export class AlpsThreadCard extends LitElement {
    */
   @property({ type: Boolean }) canToggleRead = false;
 
-  static styles = [mixedScriptStyles, css`
+  static styles = [motionStyles, mixedScriptStyles, css`
     :host {
       display: block;
       scroll-margin-top: 32px;

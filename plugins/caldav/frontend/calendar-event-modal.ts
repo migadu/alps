@@ -14,6 +14,7 @@ import type { AlpsAddressInput } from '../../../frontend/src/components/alps-add
 import '../../../frontend/src/components/ui-confirm';
 import { modalButtonStyles } from '../../../frontend/src/components/ui-modal';
 import { isolatedCaption, isolatedSentence } from '../../../frontend/src/utils/bidi';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 @customElement('calendar-event-modal')
 export class CalendarEventModal extends LitElement {
@@ -48,6 +49,7 @@ export class CalendarEventModal extends LitElement {
     @state() askNotify = false;
 
     static styles = [
+        motionStyles,
         modalButtonStyles,
         css`
             .form-group {

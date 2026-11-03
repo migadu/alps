@@ -36,6 +36,7 @@ import { applyThemeToIframe as sharedApplyTheme, setupIframeSizing as sharedSetu
 import { renderLinkedText } from '../utils/linkify';
 import { interceptMailtoClicks, openMailtoFromClick } from '../utils/mailto';
 import './alps-thread-card';
+import { motionStyles, scrollOptions } from '../utils/motion';
 
 
 interface ThreadMessageItem {
@@ -671,6 +672,7 @@ export class MessageReader extends LitElement {
   };
 
   static styles = [
+    motionStyles,
     popupStyles,
     css`
     :host {
@@ -1105,7 +1107,7 @@ export class MessageReader extends LitElement {
       const item = this.threadItems.find(entry => this.itemKey(entry) === key);
       const el = item ? this.shadowRoot?.getElementById(this.cardId(item)) : null;
       if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        el.scrollIntoView(scrollOptions({ behavior: 'smooth', block: 'start' }));
       }
     }, 50);
   }

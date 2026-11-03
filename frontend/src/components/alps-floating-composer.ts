@@ -27,6 +27,7 @@ import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
 import { registry } from '../plugin-registry';
 import { MessageCache } from '../utils/message-cache';
+import { motionStyles } from '../utils/motion';
 const UNDO_TOAST_TIMEOUT_MS = 5000;
 
 /** A draft on the server: its mailbox, and its UID there. */
@@ -1313,7 +1314,7 @@ export class AlpsFloatingComposer extends LitElement {
     }
   };
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: flex;
       flex-direction: column;
@@ -1613,7 +1614,7 @@ export class AlpsFloatingComposer extends LitElement {
         display: none;
       }
     }
-  `;
+  `];
 
   render() {
     if (this.instance.closing) {

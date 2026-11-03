@@ -28,6 +28,7 @@ import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/
 import { canonicalRecipient, parseWrittenAddress } from '../utils/address-display';
 import { isSettingsHash } from '../utils/routes';
 import { pageHash, updateSettingsBackground } from '../utils/settings-history';
+import { motionStyles } from '../utils/motion';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -157,7 +158,7 @@ export class MailboxPage extends LitElement {
     document.removeEventListener('keydown', this.unlockAudio);
   };
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: flex;
       flex-direction: column;
@@ -320,7 +321,7 @@ export class MailboxPage extends LitElement {
 
 
 
-    `;
+    `];
 
   @state() private mailboxes: any[] = [];
   @state() private messages: any[] = [];

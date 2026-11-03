@@ -22,6 +22,7 @@ import { sidebarLayoutStyles } from './alps-sidebar';
 import { sidebarStripContext } from './alps-sidebar-strip';
 import { sectionHeadingStyles } from './alps-sidebar-heading';
 import './alps-popup';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-folder-list')
 export class FolderList extends LitElement {
@@ -186,6 +187,7 @@ export class FolderList extends LitElement {
   };
 
   static styles = [
+    motionStyles,
     popupStyles,
     sidebarLayoutStyles,
     sectionHeadingStyles,

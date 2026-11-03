@@ -17,6 +17,7 @@ import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { isolatedCaption } from '../../../frontend/src/utils/bidi';
 import { writtenAddress } from '../../../frontend/src/utils/address-display';
 import { ADDRESS_PARTS, type AddressParts } from './contacts-service';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 /** The label of each part of a postal address. */
 const ADDRESS_PART_LABELS: Record<keyof AddressParts, string> = {
@@ -136,6 +137,7 @@ export class AlpsContactView extends LitElement {
   }
 
   static styles = [
+    motionStyles,
     popupStyles,
     css`
     :host {

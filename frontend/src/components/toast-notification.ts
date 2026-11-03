@@ -4,6 +4,7 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import './alps-icon-btn';
 import './alps-button';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-toast')
 export class AlpsToast extends LitElement {
@@ -80,7 +81,7 @@ export class AlpsToast extends LitElement {
     this.close();
   }
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: block;
       max-width: calc(100vw - 48px);
@@ -128,7 +129,7 @@ export class AlpsToast extends LitElement {
     }
 
     /* Action button is now an alps-button and styled via custom properties inline */
-  `;
+  `];
 
   render() {
     return html`

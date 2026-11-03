@@ -3,6 +3,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { consume } from '@lit/context';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-nav-buttons')
 export class AlpsNavButtons extends LitElement {
@@ -15,7 +16,7 @@ export class AlpsNavButtons extends LitElement {
 
     @property({ type: String }) label = 'Today';
 
-    static styles = css`
+    static styles = [motionStyles, css`
         :host {
             display: inline-flex;
         }
@@ -71,7 +72,7 @@ export class AlpsNavButtons extends LitElement {
                 background-color: var(--bg-secondary, #f3f4f6);
             }
         }
-    `;
+    `];
 
     private handlePrevious() {
         this.dispatchEvent(new CustomEvent('previous', { bubbles: true, composed: true }));

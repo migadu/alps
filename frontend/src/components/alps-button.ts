@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { motionStyles } from '../utils/motion';
 
 export type ButtonVariant = 'primary' | 'normal' | 'danger' | 'text';
 export type ButtonType = 'button' | 'submit' | 'reset';
@@ -47,7 +48,7 @@ export class AlpsButton extends LitElement {
     }
   };
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: inline-flex;
     }
@@ -185,7 +186,7 @@ export class AlpsButton extends LitElement {
       justify-content: center;
       white-space: nowrap;
     }
-  `;
+  `];
 
   render() {
     return html`

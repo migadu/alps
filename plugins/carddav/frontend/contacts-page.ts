@@ -25,6 +25,7 @@ import { contactsService, sameAddressParts } from './contacts-service';
 import { isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 /** Where the categories this user created, with no one filed into them yet, are kept. */
 const categoriesKeyFor = (username: string) => `alps_contacts_categories_${username}`;
@@ -102,6 +103,7 @@ export class ContactsPage extends LitElement {
   private mergedBook: { contacts: any[]; wholeBook: any[]; open: any; merged: any[] } | null = null;
 
   static styles = [
+    motionStyles,
     MailboxPage.styles,
     MessageList.styles,
     popupStyles,

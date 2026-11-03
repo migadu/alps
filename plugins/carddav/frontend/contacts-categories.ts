@@ -7,6 +7,7 @@ import { renderIcon } from '../../../frontend/src/utils/ui';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar-strip';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 @customElement('alps-contacts-categories')
 export class AlpsContactsCategories extends LitElement {
@@ -22,6 +23,7 @@ export class AlpsContactsCategories extends LitElement {
   @state() private sidebarScrolled = false;
 
   static styles = [
+    motionStyles,
     popupStyles,
     sidebarLayoutStyles,
     css`

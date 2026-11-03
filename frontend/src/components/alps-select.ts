@@ -2,6 +2,7 @@ import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
 import { focusOnLabelClick } from '../utils/label-focus';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-select')
 export class AlpsSelect extends LitElement {
@@ -23,7 +24,7 @@ export class AlpsSelect extends LitElement {
 	 */
 	@property({ type: Boolean }) disabled = false;
 
-	static styles = css`
+	static styles = [motionStyles, css`
 		:host {
 			display: block;
 			position: relative;
@@ -86,7 +87,7 @@ export class AlpsSelect extends LitElement {
 			width: 100%;
 			height: 100%;
 		}
-	`;
+	`];
 
 	public focus() {
 		this.shadowRoot?.querySelector('select')?.focus();

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { CSSResult } from 'lit';
 import { AlpsButton } from '../src/components/alps-button';
 import { LoginPage } from '../src/pages/login-page';
 import { THEME_BUNDLES } from '../src/store/themes';
@@ -21,9 +22,13 @@ function contrast(a: string, b: string): number {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
+/** A component's stylesheets as one text; they are a list, shared sheets first. */
+const cssText = (styles: unknown): string =>
+  [styles].flat(Infinity).map((sheet) => (sheet as CSSResult).cssText).join('\n');
+
 const buttons = [
-  { name: 'primary', css: AlpsButton.styles.cssText, selector: ':host([variant="primary"]) button' },
-  { name: 'sign-in', css: LoginPage.styles.cssText, selector: '.submit-btn' },
+  { name: 'primary', css: cssText(AlpsButton.styles), selector: ':host([variant="primary"]) button' },
+  { name: 'sign-in', css: cssText(LoginPage.styles), selector: '.submit-btn' },
 ];
 
 describe.each(['light', 'dark'])('Migadu %s buttons', (mode) => {

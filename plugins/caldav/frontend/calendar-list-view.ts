@@ -5,6 +5,7 @@ import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import type { EventData } from './calendar-service';
 import { isAllDayEvent } from './calendar-service';
 import './calendar-event-preview';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 @customElement('calendar-list-view')
 export class CalendarListView extends LitElement {
@@ -12,7 +13,7 @@ export class CalendarListView extends LitElement {
     i18nStore!: I18nStore;
     @property({ type: Array }) events: EventData[] = [];
 
-    static styles = css`
+    static styles = [motionStyles, css`
         :host {
             display: flex;
             flex-direction: column;
@@ -117,7 +118,7 @@ export class CalendarListView extends LitElement {
             overflow: hidden;
             text-overflow: ellipsis;
         }
-    `;
+    `];
 
 
 

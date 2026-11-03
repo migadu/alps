@@ -5,6 +5,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
 import './alps-icon-btn';
 import { sidebarStripContext } from './alps-sidebar-strip';
+import { motionStyles } from '../utils/motion';
 
 export const sidebarLayoutStyles = css`
   .app-container {
@@ -134,7 +135,7 @@ export class AlpsSidebar extends LitElement {
 
   @state() private isDragging = false;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: block;
       position: relative;
@@ -331,7 +332,7 @@ export class AlpsSidebar extends LitElement {
       height: 18px;
       fill: currentColor;
     }
-  `;
+  `];
 
   private openTimer: ReturnType<typeof setTimeout> | null = null;
   private closeTimer: ReturnType<typeof setTimeout> | null = null;

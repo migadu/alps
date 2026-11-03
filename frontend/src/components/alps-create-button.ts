@@ -3,6 +3,7 @@ import { customElement, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { sidebarStripContext } from './alps-sidebar-strip';
 import './alps-button';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-create-button')
 export class AlpsCreateButton extends LitElement {
@@ -16,7 +17,7 @@ export class AlpsCreateButton extends LitElement {
   @property({ type: Boolean }) disabled = false;
   @property({ type: String }) title = '';
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: block;
       width: 100%;
@@ -57,7 +58,7 @@ export class AlpsCreateButton extends LitElement {
       opacity: 0;
       margin-inline-start: 0;
     }
-  `;
+  `];
 
   render() {
     return html`

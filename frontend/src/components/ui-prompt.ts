@@ -6,6 +6,7 @@ import { modalButtonStyles } from './ui-modal';
 import './alps-button';
 import './alps-input';
 import type { AlpsInput } from './alps-input';
+import { motionStyles } from '../utils/motion';
 
 export interface PromptField {
   id: string;
@@ -61,6 +62,7 @@ export class UIPrompt extends LitElement {
   @state() private fieldErrors: Record<string, string> = {};
 
   static styles = [
+    motionStyles,
     modalButtonStyles,
     css`
       .field-group {

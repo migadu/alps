@@ -7,6 +7,7 @@
  * checked here too, against every theme's palette.
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import type { CSSResult } from 'lit';
 import { cleanup, mount, shadow, shadowAll, text, update } from './helpers/dom';
 import { AttachmentPill } from '../src/components/alps-attachment-pill';
 import { THEME_BUNDLES } from '../src/store/themes';
@@ -79,8 +80,9 @@ describe('alps-attachment-pill upload progress', () => {
 
   /** The fill's rule, as the component's stylesheet declares it. */
   const fillRule = (): string => {
-    const css = AttachmentPill.styles as unknown as { cssText: string };
-    const rule = css.cssText.match(/\.progress-bar\s*\{([^}]*)\}/);
+    // A list of sheets, the shared ones first.
+    const css = [AttachmentPill.styles].flat(Infinity).map((sheet) => (sheet as CSSResult).cssText).join('\n');
+    const rule = css.match(/\.progress-bar\s*\{([^}]*)\}/);
     if (!rule) throw new Error('no .progress-bar rule');
     return rule[1];
   };

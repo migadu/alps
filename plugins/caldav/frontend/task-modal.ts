@@ -16,6 +16,7 @@ import { addressOfPerson, personFromAddress, taskTellsSomeone } from './calendar
 import { statusKey } from './calendar-invitation-banner';
 import { isolatedCaption, isolatedSentence } from '../../../frontend/src/utils/bidi';
 import type { TaskData, TaskInput, TaskList, TaskStatus } from './tasks-service';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 const PRESETS = ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as const;
 
@@ -71,6 +72,7 @@ export class TaskModal extends LitElement {
     private openedDue = { date: '', time: '', allDay: true };
 
     static styles = [
+        motionStyles,
         modalButtonStyles,
         css`
             .form-group {

@@ -12,6 +12,7 @@ import { renderIcon } from '../utils/ui';
 import { MessageCache } from '../utils/message-cache';
 import { registry } from '../plugin-registry';
 import { matchesTabRoute } from '../utils/routes';
+import { motionStyles } from '../utils/motion';
 
 @customElement('user-profile-menu')
 export class UserProfileMenu extends LitElement {
@@ -20,6 +21,7 @@ export class UserProfileMenu extends LitElement {
   @property({ type: String }) currentTab = 'messages';
 
   static styles = [
+    motionStyles,
     popupStyles,
     css`
     :host {
@@ -175,7 +177,7 @@ export class UserProfileMenu extends LitElement {
         .switch-overlay svg { width: 100%; height: 100%; fill: currentColor; }
       </style>
       <div id="switch-account-overlay" class="switch-overlay" style="position: fixed; inset: 0; background-color: var(--bg-primary, #ffffff); z-index: 999999; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s ease-in;">
-        <div style="display: inline-flex; width: 32px; height: 32px; animation: global-spin 1s linear infinite; color: var(--accent-color, #2563eb);">
+        <div class="spinner" style="display: inline-flex; width: 32px; height: 32px; animation: global-spin 1s linear infinite; color: var(--accent-color, #2563eb);">
           ${renderIcon('edelweiss')}
         </div>
       </div>
