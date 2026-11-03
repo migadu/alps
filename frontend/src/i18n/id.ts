@@ -141,6 +141,7 @@ export const id = {
       indonesian: 'Bahasa Indonesia',
       japanese: '日本語',
       korean: '한국어',
+      chineseSimplified: '简体中文',
       chineseTraditional: '繁體中文'
     }
   },
@@ -235,7 +236,7 @@ export const id = {
     sent: 'Terkirim',
     archive: 'Arsip',
     spam: 'Spam',
-    junk: 'Spam',
+    junk: 'Tidak diinginkan',
     trash: 'Sampah',
     allFolders: 'Semua Folder',
     title: 'Folder',

@@ -142,6 +142,7 @@ export const ptBR = {
       indonesian: 'Bahasa Indonesia',
       japanese: '日本語',
       korean: '한국어',
+      chineseSimplified: '简体中文',
       chineseTraditional: '繁體中文'
     }
   },
@@ -236,7 +237,7 @@ export const ptBR = {
     sent: 'Enviados',
     archive: 'Arquivo',
     spam: 'Spam',
-    junk: 'Spam',
+    junk: 'Lixo eletrônico',
     trash: 'Lixeira',
     allFolders: 'Todas as pastas',
     title: 'Pastas',

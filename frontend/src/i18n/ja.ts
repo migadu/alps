@@ -141,6 +141,7 @@ export const ja = {
       indonesian: 'Bahasa Indonesia',
       japanese: '日本語',
       korean: '한국어',
+      chineseSimplified: '简体中文',
       chineseTraditional: '繁體中文'
     }
   },
@@ -234,7 +235,7 @@ export const ja = {
     drafts: '下書き',
     sent: '送信済み',
     archive: 'アーカイブ',
-    spam: '迷惑メール',
+    spam: 'スパム',
     junk: '迷惑メール',
     trash: 'ゴミ箱',
     allFolders: 'すべてのフォルダー',

@@ -141,6 +141,7 @@ export const zhHant = {
       indonesian: 'Bahasa Indonesia',
       japanese: '日本語',
       korean: '한국어',
+      chineseSimplified: '简体中文',
       chineseTraditional: '繁體中文'
     }
   },
@@ -234,7 +235,7 @@ export const zhHant = {
     drafts: '草稿',
     sent: '已傳送',
     archive: '封存',
-    spam: '垃圾郵件',
+    spam: '濫發郵件',
     junk: '垃圾郵件',
     trash: '垃圾桶',
     allFolders: '所有資料夾',

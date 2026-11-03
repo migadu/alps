@@ -572,7 +572,7 @@ describe('a toast for cards whose answer never came', () => {
   it('fills every placeholder in every language', async () => {
     vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 5, done: 1, failed: 4, uncertain: 3 });
     vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 1, failed: 4, uncertain: 3 });
-    const languages = ['ar', 'da', 'de', 'en', 'es', 'fr', 'hi', 'id', 'it', 'ja', 'ko', 'pt', 'pt-BR', 'rs', 'ru', 'sr', 'tr', 'zh-Hant'];
+    const languages = ['ar', 'da', 'de', 'en', 'es', 'fr', 'hi', 'id', 'it', 'ja', 'ko', 'pt', 'pt-BR', 'rs', 'ru', 'sr', 'tr', 'zh-Hans', 'zh-Hant'];
     for (const language of languages) {
       for (const act of [remove, star]) {
         const [text] = (await toastFrom(language, act)).shown;

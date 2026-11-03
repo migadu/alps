@@ -144,6 +144,16 @@ var mailDictionaries = map[string]mailWords{
 		hasAccepted: "%s님이 수락했습니다.", mayAttend: "%s님이 참석할 수도 있습니다.", hasDeclined: "%s님이 거절했습니다.", hasCompleted: "%s님이 작업을 완료했습니다.",
 		isCancelled: "취소되었습니다.",
 	},
+	// The frontend's "zh-Hans", lowercased as wordsFor looks it up. Each
+	// Chinese is kept under its full code, never under a bare "zh" that the
+	// other script would fall back to.
+	"zh-hans": {
+		invitation: "邀请", updated: "已更新的邀请", cancelled: "已取消", task: "任务",
+		accepted: "已接受", tentative: "暂定", declined: "已拒绝", completed: "已完成",
+		when: "时间", where: "地点", organizer: "组织者",
+		hasAccepted: "%s 已接受。", mayAttend: "%s 可能参加。", hasDeclined: "%s 已拒绝。", hasCompleted: "%s 已完成该任务。",
+		isCancelled: "此项已取消。",
+	},
 	// The frontend's "zh-Hant", lowercased as wordsFor looks it up.
 	"zh-hant": {
 		invitation: "邀請", updated: "已更新的邀請", cancelled: "已取消", task: "工作",
