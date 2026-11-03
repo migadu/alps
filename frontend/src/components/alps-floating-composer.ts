@@ -399,7 +399,7 @@ export class AlpsFloatingComposer extends LitElement {
           // had it back, and the next save and the send carried it again.
           updates.attachments = reconcileSavedAttachments(latest.attachments || [], currentInstance.attachments || [], result.attachments);
         }
-        // Nor the quote's images a plain-text save left out: see keptAfterSave.
+        // Nor the quote's images the save left out: see keptAfterSave.
         const listed = updates.attachments ?? latest.attachments;
         const kept = listed && keptAfterSave(listed, currentInstance);
         if (kept !== listed) updates.attachments = kept;

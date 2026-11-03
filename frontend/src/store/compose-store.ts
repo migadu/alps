@@ -92,9 +92,30 @@ export const reconcileSavedAttachments = (latest: any[], sent: any[], stored: an
  * which the recipients got and the user never saw, and which a saved draft
  * held as attachments. The composer keeps them for a switch back to HTML,
  * until a save without them has landed (see keptAfterSave).
+ *
+ * In HTML not the ones the HTML no longer shows by Content-ID either, as once
+ * the user deletes the quote: they went out all the same, images nobody saw,
+ * which most mail shows the recipients as attachments. Only those the message
+ * showed as it opened, though. A part filed inline that it never showed is
+ * carried as the body's all the same (see inlinePartsOf), and goes as before.
  */
-export const postedAttachments = (c: ComposerInstance): any[] =>
-  (c.attachments || []).filter(a => !a.inline || c.format === 'html');
+export const postedAttachments = (c: ComposerInstance): any[] => {
+  const attachments = c.attachments || [];
+  if (c.format !== 'html') return attachments.filter(a => !a.inline);
+  const idOf = (a: any) => String(a.contentId).replace(/^<|>$/g, '');
+  const named = attachments.filter(a => a.inline && a.contentId);
+  if (!named.length) return attachments;
+  const shown = cidReferencesOf(c.html || '');
+  if (named.every(a => shown.has(idOf(a)))) return attachments;
+  const shownAtOpening = cidReferencesOf(c.initialHtml || '');
+  return attachments.filter(a => !named.includes(a) || shown.has(idOf(a)) || !shownAtOpening.has(idOf(a)));
+};
+
+/** The attachments a save of `saved` left out: see postedAttachments. */
+const leftOutBy = (saved: ComposerInstance): any[] => {
+  const posted = postedAttachments(saved);
+  return (saved.attachments || []).filter(a => !posted.includes(a));
+};
 
 /**
  * The attachments left in a composer once a save of `saved` has landed:
@@ -104,21 +125,22 @@ export const postedAttachments = (c: ComposerInstance): any[] =>
  * later save in HTML, each named a part the draft does not have, or another.
  */
 export const keptAfterSave = (attachments: any[], saved: ComposerInstance): any[] => {
-  const posted = postedAttachments(saved);
-  const leftOut = (saved.attachments || []).filter(a => !posted.includes(a));
+  const leftOut = leftOutBy(saved);
   return leftOut.length ? attachments.filter(a => !leftOut.includes(a)) : attachments;
 };
 
 /**
- * A successful text save discarded its inline parts. The retained rich quote
- * must stop naming them too, including while the user has switched back and
- * typed in HTML during the save. Keep those edits and every other resource.
+ * A successful save discarded inline parts: a text save all of them, an HTML
+ * save those its HTML no longer showed. The retained rich quote must stop
+ * naming them too, including while the user has switched back, or brought
+ * the quote back, and typed in HTML during the save. Keep those edits and
+ * every other resource.
  */
 export const discardedInlineAfterSave = (
   latest: ComposerInstance, saved: ComposerInstance, stored: { structure?: unknown } = {},
 ): Partial<ComposerInstance> => {
-  if (saved.format !== 'text') return {};
-  const omitted = (saved.attachments || []).filter(a => a.inline);
+  // Only inline parts are ever left out, and in HTML only by their Content-ID.
+  const omitted = leftOutBy(saved);
   if (!omitted.length) return {};
   const lost = new Set<string>(omitted.map(a => a.contentId).filter(Boolean));
   if (omitted.some(a => !a.contentId)) {
@@ -738,7 +760,7 @@ export class ComposeStore extends EventTarget {
             let attachments = saved.attachments
               ? reconcileSavedAttachments(current.attachments || [], composer.attachments || [], saved.attachments)
               : current.attachments;
-            // Nor the quote's images a plain-text save left out: see keptAfterSave.
+            // Nor the quote's images the save left out: see keptAfterSave.
             if (attachments) attachments = keptAfterSave(attachments, composer);
             const quoteSource = quoteSourceAfterSave(composer, saved);
             this.updateComposer(id, {

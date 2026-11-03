@@ -57,6 +57,8 @@ interface QuotedMessageOptions {
   themed: () => boolean;
   /** What the quote frame resolves the quote's `cid:` images against. */
   inlineImages: () => Pick<SanitizeOptions, 'mailbox' | 'messageUid' | 'messageStructure'>;
+  /** The Content-IDs of the parts a save let go: see discardedInlineIds. */
+  discarded: () => readonly string[];
 }
 
 /**
@@ -65,6 +67,13 @@ interface QuotedMessageOptions {
  * the same object as before, so the original is converted once.
  */
 const plainTextOf = new WeakMap<ProseMirrorNode, string>();
+
+/**
+ * The list of discarded parts each quote was last found clear of. A node an
+ * edit did not touch is the same object as before, so a quote is read again
+ * only once it is new to the document or the list has changed.
+ */
+const clearedOf = new WeakMap<ProseMirrorNode, readonly string[]>();
 
 /**
  * The original message in a reply or forward, held as one block the editor
@@ -97,6 +106,7 @@ const QuotedMessage = TiptapNode.create<QuotedMessageOptions>({
     return {
       themed: () => true,
       inlineImages: () => ({ mailbox: '', messageUid: '' }),
+      discarded: () => [],
     };
   },
 
@@ -195,6 +205,24 @@ const QuotedMessage = TiptapNode.create<QuotedMessageOptions>({
           // this editor is stripped too, so a cut quote pastes back as text the
           // schema keeps; a quote is moved whole by dragging it.
           transformPastedHTML: unmarkQuotes,
+        },
+        // A quote that comes back once a save has let its images go, as by
+        // Undo after the quote was deleted, comes back without them: the
+        // composer no longer holds those parts, and a reference to one would
+        // go out as a broken image. Not an edit of its own to undo, as when
+        // the store applies the same list (see `updated`).
+        appendTransaction: (transactions, _before, state) => {
+          const discarded = this.options.discarded();
+          if (!discarded.length || !transactions.some((tr) => tr.docChanged)) return null;
+          const lost = new Set(discarded);
+          const tr = state.tr;
+          state.doc.descendants((node, position) => {
+            if (node.type !== this.type || clearedOf.get(node) === discarded) return;
+            const html = withoutCidReferences(node.attrs.html, lost);
+            if (html !== node.attrs.html) tr.setNodeMarkup(position, undefined, { ...node.attrs, html });
+            else clearedOf.set(node, discarded);
+          });
+          return tr.docChanged ? tr.setMeta('addToHistory', false) : null;
         },
       }),
     ];
@@ -658,7 +686,7 @@ export class AlpsMessageComposer extends LitElement {
    */
   private syncedText: string | null = null;
 
-  /** Sources omitted by a completed text save, also removed from the live quote. */
+  /** Sources omitted by a completed save, also removed from the live quote. */
   @property({ attribute: false }) discardedInlineIds: string[] = [];
 
   @state() private attachments: Attachment[] = [];
@@ -955,6 +983,7 @@ export class AlpsMessageComposer extends LitElement {
             messageUid: this.quoteSource?.uid ?? '',
             messageStructure: this.quoteSource?.structure,
           }),
+          discarded: () => this.discardedInlineIds,
         }),
         BubbleMenu.configure({
           element: this.bubbleMenuRef.value,
