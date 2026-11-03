@@ -199,7 +199,14 @@ export class AlpsContactsCategories extends LitElement {
           >${this.i18nStore?.t('contacts.addContact')}</alps-create-button>
         </alps-toolbar>
         
-        <alps-sidebar-content class="sidebar-content" @scroll=${this.handleSidebarScroll}>
+        <!-- A navigation landmark named for the tab, so a screen reader's
+             landmark list says what the list is and can jump to it. -->
+        <alps-sidebar-content
+          class="sidebar-content"
+          role="navigation"
+          aria-label=${this.i18nStore?.t('navigation.contacts') ?? 'Contacts'}
+          @scroll=${this.handleSidebarScroll}
+        >
           <div class="sidebar-scroll-content">
             ${[CATEGORY_ALL_CONTACTS, CATEGORY_FAVORITES, ...this.uniqueCategories.filter(c => c !== CATEGORY_FAVORITES)].map((cat, index) => {
       const count = cat === CATEGORY_ALL_CONTACTS

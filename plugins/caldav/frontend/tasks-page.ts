@@ -554,9 +554,13 @@ export class TasksPage extends LitElement {
                                     @click=${() => this.openCreate()}
                                 >${t('tasks.addTask')}</alps-create-button>
                             </alps-toolbar>
-                            <alps-sidebar-content class="sidebar-content">
+                            <!-- A navigation landmark named for the tab. The
+                                 smart lists inside are a plain group: an
+                                 unnamed navigation of their own, nested in it,
+                                 left the task lists outside. -->
+                            <alps-sidebar-content class="sidebar-content" role="navigation" aria-label=${t('navigation.tasks')}>
                                 <div class="sidebar-scroll-content">
-                                    <nav class="smart-lists">
+                                    <div class="smart-lists">
                                         ${SMART_LISTS.map(list => {
                                             const count = this.countFor(list.id);
                                             // Two rows are current at once: the view open
@@ -577,7 +581,7 @@ export class TasksPage extends LitElement {
                                                 </button>
                                             `;
                                         })}
-                                    </nav>
+                                    </div>
                                     ${this.lists.length > 0 ? html`
                                         <div class="calendar-lists">
                                             <alps-sidebar-heading heading=${t('tasks.lists')}></alps-sidebar-heading>

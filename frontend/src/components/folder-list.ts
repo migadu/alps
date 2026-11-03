@@ -1279,7 +1279,14 @@ export class FolderList extends LitElement {
             @click=${() => this.dispatchEvent(new CustomEvent('compose'))}
           >${this.i18nStore?.t('folderList.compose')}</alps-create-button>
         </alps-toolbar>
-        <alps-sidebar-content class="sidebar-content" @scroll=${this.handleScroll}>
+        <!-- A navigation landmark named for what it lists, so a screen
+             reader's landmark list says what it is and can jump to it. -->
+        <alps-sidebar-content
+          class="sidebar-content"
+          role="navigation"
+          aria-label=${this.i18nStore?.t('folderList.title') ?? 'Folders'}
+          @scroll=${this.handleScroll}
+        >
           <div class="sidebar-scroll-content">
             ${renderTree(standardNodes)}
             ${standardNodes.length > 0 && customNodes.length > 0 ? html`
