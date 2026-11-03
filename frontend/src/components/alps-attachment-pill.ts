@@ -56,7 +56,7 @@ export class AttachmentPill extends LitElement {
 
     .progress-bar {
       position: absolute;
-      left: 0;
+      inset-inline-start: 0;
       top: 0;
       bottom: 0;
       /* A tint of the theme's accent. It was --bg-selected at 30%: #EFF6FF
@@ -135,7 +135,7 @@ export class AttachmentPill extends LitElement {
       justify-content: center;
       padding: 3px;
       border-radius: 4px;
-      margin-right: -4px;
+      margin-inline-end: -4px;
     }
 
     .remove-btn:hover {
@@ -280,11 +280,11 @@ export class AttachmentPill extends LitElement {
           style="${info.color ? `color: ${info.color}; background: color-mix(in srgb, ${info.color} 12%, transparent)` : ''}"
         >${renderIcon(info.icon)}</div>
       `}
-      <span class="attachment-name">${name}</span>
+      <span class="attachment-name"><bdi>${name}</bdi></span>
       ${this.attachment.missing ? html`
         <span class="attachment-size missing">${this.i18nStore?.t('attachment.addAgain')}</span>
       ` : html`
-        <span class="attachment-size">${uploading ? this.uploadProgress(progress, size) : formatSize(size, this.i18nStore)}</span>
+        <span class="attachment-size"><bdi>${uploading ? this.uploadProgress(progress, size) : formatSize(size, this.i18nStore)}</bdi></span>
       `}
       ${previewable ? html`
         <button class="preview-btn" @click=${this._handlePreview} title="${this.i18nStore?.t('attachment.preview')}">

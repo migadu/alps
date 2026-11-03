@@ -292,7 +292,7 @@ export class TasksList extends LitElement {
                     ${done ? renderIcon('check') : ''}
                 </button>
                 <div class="body">
-                    <div class="title">${task.title || t('tasks.untitled')}</div>
+                    <div class="title"><bdi>${task.title || t('tasks.untitled')}</bdi></div>
                     <div class="meta">
                         ${task.color ? html`<span class="dot" style="background: ${task.color}"></span>` : ''}
                         ${cancelled ? html`<span class="chip">${t('tasks.statuses.cancelled')}</span>` : ''}

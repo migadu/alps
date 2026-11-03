@@ -1,6 +1,10 @@
 /* Premium Professional Light Theme for Alps Webmail */
 
 :root {
+  /* 1 left to right, -1 right to left: the horizontal scale that mirrors an
+     icon whose shape points along the reading direction (utils/ui.ts). */
+  --ui-inline-direction: 1;
+
   /* Colors - Light Theme Default */
   --bg-primary: #ffffff;
 
@@ -67,6 +71,10 @@
   --radius-lg: 8px;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+:root[dir='rtl'] {
+  --ui-inline-direction: -1;
 }
 
 /* Optional Dark Theme Support based on config class */

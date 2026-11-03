@@ -114,7 +114,8 @@ export const de: TranslationDictionary = {
       serbianLatin: 'Srpski (latinica)',
       french: 'Français',
       portuguese: 'Português',
-      danish: 'Dansk'
+      danish: 'Dansk',
+      arabic: 'العربية'
     },
   },
   linkedAccounts: {

@@ -82,7 +82,8 @@ export class AlpsToast extends LitElement {
       color: var(--toast-fg, #fff);
       border: 1px solid var(--toast-border, rgba(255, 255, 255, 0.1));
       border-radius: 6px;
-      padding: 0 4px 0 16px;
+      padding-block: 0;
+      padding-inline: 16px 4px;
       min-height: 36px;
       box-sizing: border-box;
       font-size: 13px;

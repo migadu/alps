@@ -1289,7 +1289,7 @@ export class AlpsFloatingComposer extends LitElement {
       flex-direction: column;
       gap: 12px;
       min-width: 240px;
-      text-align: left;
+      text-align: start;
     }
     .popup-form .field-group {
       display: flex;
@@ -1428,7 +1428,8 @@ export class AlpsFloatingComposer extends LitElement {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 6px 6px 6px 10px;
+      padding-block: 6px;
+      padding-inline: 10px 6px;
       background: var(--bg-secondary);
       border-bottom: 1px solid var(--border-color);
       color: var(--text-color);
@@ -1537,7 +1538,7 @@ export class AlpsFloatingComposer extends LitElement {
     .saving-indicator {
       font-size: 12px;
       color: var(--text-muted, #666);
-      margin-right: 8px;
+      margin-inline-end: 8px;
       align-self: center;
     }
 
@@ -1612,6 +1613,11 @@ export class AlpsFloatingComposer extends LitElement {
 
     let topPx, leftPx, widthPx, heightPx;
     const isMobile = this.windowWidth <= 768;
+    // rightOffset is the distance from the dock's inline end, which is the
+    // window's left edge in a right-to-left interface: the whole row of
+    // composers, minimized ones too, docks there instead.
+    const rtl = getComputedStyle(this).direction === 'rtl';
+    const dockedLeft = (width: number) => rtl ? rightOffset : this.windowWidth - rightOffset - width;
     const expanded = this._isExpanded;
 
     if (this.showDiscardConfirm) {
@@ -1632,7 +1638,7 @@ export class AlpsFloatingComposer extends LitElement {
       } else {
         widthPx = this.instance.minimized ? minimizeWidth : composerWidth;
         heightPx = this.instance.minimized ? 40 : dockedHeight;
-        leftPx = this.windowWidth - rightOffset - widthPx;
+        leftPx = dockedLeft(widthPx);
         topPx = this.windowHeight - bottomOffset - heightPx;
         this.removeAttribute('expanded');
       }
@@ -1654,7 +1660,7 @@ export class AlpsFloatingComposer extends LitElement {
     } else {
       widthPx = this.instance.minimized ? minimizeWidth : composerWidth;
       heightPx = this.instance.minimized ? 40 : dockedHeight;
-      leftPx = this.windowWidth - rightOffset - widthPx;
+      leftPx = dockedLeft(widthPx);
       topPx = this.windowHeight - bottomOffset - heightPx;
 
       this.style.zIndex = `${this.instance.zIndex || 1000}`;
@@ -1717,7 +1723,7 @@ export class AlpsFloatingComposer extends LitElement {
         ` : ''}
         
         <div class="header" @click=${this._handleHeaderClick}>
-          <div class="header-title">${this.instance.subject || this.i18nStore?.t('floatingComposer.newMessage')}</div>
+          <div class="header-title" dir="auto">${this.instance.subject || this.i18nStore?.t('floatingComposer.newMessage')}</div>
           <div class="header-actions">
             ${this.isSaving ? html`<span class="saving-indicator">${this.i18nStore?.t('floatingComposer.saving')}</span>` : (this.instance.draftUid && !this.instance.dirty) ? html`<span class="saving-indicator">${this.i18nStore?.t('floatingComposer.autosaved')}</span>` : ''}
             <alps-icon-btn 
@@ -1852,7 +1858,7 @@ export class AlpsFloatingComposer extends LitElement {
                 @click=${this._handleAttachClick}>
               </alps-icon-btn>
               ${(this.instance.format || 'html') === 'html' ? html`
-                <alps-popup id="linkPopup" align="left" position="top">
+                <alps-popup id="linkPopup" align="start" position="top">
                   <alps-icon-btn slot="trigger" title=${this.i18nStore?.t('floatingComposer.insertLink')} icon="linkSimple" @mousedown=${(e: Event) => e.preventDefault()} @click=${this._handleLinkClick}></alps-icon-btn>
                   <div class="popup-form" @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleLinkSubmit(); }}>
                     ${this.linkPromptFields.map(f => html`

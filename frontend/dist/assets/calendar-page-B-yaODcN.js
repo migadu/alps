@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js";import{t as c}from"./vendor-Bey7gDeL.js";import{G as l,Y as u,_t as d,at as f,d as p,f as m,ft as h,i as g,m as _,n as v,ot as y,p as b,r as x,rt as S,st as ee,vt as C}from"./index-CMdaXNq5.js";import"./alps-address-input-D56QF5UX.js";import{S as w,a as T,c as E,i as D,l as O,m as k,n as A,o as j,r as M,s as N,t as P,u as F}from"./task-modal-uL37giAc.js";var I=class extends i{constructor(...e){super(...e),this.options=[],this.value=``}static{this.styles=e`
+import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js";import{t as c}from"./vendor-Bey7gDeL.js";import{G as l,Y as u,_t as d,at as f,d as p,f as m,ft as h,i as g,m as _,n as v,ot as y,p as b,r as x,rt as S,st as ee,vt as C}from"./index-CMrxKlZ-.js";import"./alps-address-input-CztvZo8n.js";import{S as w,a as T,c as E,i as D,l as O,m as k,n as A,o as j,r as M,s as N,t as P,u as F}from"./task-modal-BTrUA08H.js";var I=class extends i{constructor(...e){super(...e),this.options=[],this.value=``}static{this.styles=e`
     :host {
       display: inline-flex;
       background-color: var(--bg-secondary, #f3f4f6);
@@ -210,7 +210,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
 
                 <div class="form-group">
                     <label for="event-description">${this.i18nStore?.t(`calendar.description`)}</label>
-                    <textarea 
+                    <textarea dir="auto" 
                         id="event-description"
                         .value=${this.description} 
                         @input=${e=>this.description=e.target.value}
@@ -313,7 +313,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
         .mini-day.today.has-event .day-num::after {
             background-color: #ffffff;
         }
-    `}getMonthGrid(){let e=this.getFirstDayOfWeek(),t=(new Date(this.year,this.month,1).getDay()-e+7)%7,n=1-t,r=new Date(this.year,this.month+1,0).getDate(),i=Math.ceil((r+t)/7)*7,a=[];for(let e=0;e<i;e++)a.push(new Date(this.year,this.month,n+e));return a}hasEventsForDate(e){if(!this.events||this.events.length===0)return!1;let t=new Date(e);t.setHours(0,0,0,0);let n=new Date(e);return n.setHours(23,59,59,999),this.events.some(e=>{if(T(e)){let n=e.start.split(`T`)[0],r=e.end.split(`T`)[0],i=new Date(n+`T00:00:00`),a=new Date(r+`T00:00:00`);return i<=t&&a>t}else{let r=new Date(e.start),i=new Date(e.end);return i.getTime()===t.getTime()&&r.getTime()<i.getTime()?!1:r<=n&&i>=t}})}handleDateClick(e){this.focusDay=e,this.dispatchEvent(new CustomEvent(`date-selected`,{detail:{date:e},bubbles:!0,composed:!0}))}tabStop(e){if((t=>!!t&&e.some(e=>e.getTime()===t.getTime()))(this.focusDay))return this.focusDay;let t=new Date;t.setHours(0,0,0,0);for(let e of[this.currentDate,t])if(e&&e.getFullYear()===this.year&&e.getMonth()===this.month)return new Date(this.year,this.month,e.getDate());return new Date(this.year,this.month,1)}handleDayKeyDown(e,t,n){if(e.key===`Enter`||e.key===` `){if(e.preventDefault(),e.key===` `&&e.repeat)return;this.handleDateClick(t);return}let r=e.key===`ArrowLeft`?-1:e.key===`ArrowRight`?1:e.key===`ArrowUp`?-7:e.key===`ArrowDown`?7:0;if(!r)return;e.preventDefault();let i=new Date(t.getFullYear(),t.getMonth(),t.getDate()+r);n.some(e=>e.getTime()===i.getTime())&&(this.focusDay=i,this.updateComplete.then(()=>this.renderRoot.querySelector(`.mini-day[tabindex="0"]`)?.focus()))}willUpdate(e){let t=e.get(`currentDate`);(e.has(`year`)||e.has(`month`)||e.has(`currentDate`)&&t?.getTime()!==this.currentDate?.getTime())&&(this.focusDay=null),this.dayHadFocus=!!this.renderRoot?.activeElement?.classList.contains(`mini-day`)}updated(e){this.dayHadFocus&&(e.has(`year`)||e.has(`month`))&&this.renderRoot.querySelector(`.mini-day[tabindex="0"]`)?.focus()}render(){let e=this.getMonthGrid(),t=this.getFirstDayOfWeek(),n=Array.from({length:7},(e,n)=>{let r=(t+n)%7;return this.i18nStore?.t(`calendar.daysNarrow.${r}`)}),i=new Date;i.setHours(0,0,0,0);let a=this.tabStop(e).getTime(),o=new Intl.DateTimeFormat(this.i18nStore?.getIntlLanguage?.(),{dateStyle:`full`}),c=this.i18nStore?.t(`calendar.months.${this.month}`);return s`
+    `}getMonthGrid(){let e=this.getFirstDayOfWeek(),t=(new Date(this.year,this.month,1).getDay()-e+7)%7,n=1-t,r=new Date(this.year,this.month+1,0).getDate(),i=Math.ceil((r+t)/7)*7,a=[];for(let e=0;e<i;e++)a.push(new Date(this.year,this.month,n+e));return a}hasEventsForDate(e){if(!this.events||this.events.length===0)return!1;let t=new Date(e);t.setHours(0,0,0,0);let n=new Date(e);return n.setHours(23,59,59,999),this.events.some(e=>{if(T(e)){let n=e.start.split(`T`)[0],r=e.end.split(`T`)[0],i=new Date(n+`T00:00:00`),a=new Date(r+`T00:00:00`);return i<=t&&a>t}else{let r=new Date(e.start),i=new Date(e.end);return i.getTime()===t.getTime()&&r.getTime()<i.getTime()?!1:r<=n&&i>=t}})}handleDateClick(e){this.focusDay=e,this.dispatchEvent(new CustomEvent(`date-selected`,{detail:{date:e},bubbles:!0,composed:!0}))}tabStop(e){if((t=>!!t&&e.some(e=>e.getTime()===t.getTime()))(this.focusDay))return this.focusDay;let t=new Date;t.setHours(0,0,0,0);for(let e of[this.currentDate,t])if(e&&e.getFullYear()===this.year&&e.getMonth()===this.month)return new Date(this.year,this.month,e.getDate());return new Date(this.year,this.month,1)}handleDayKeyDown(e,t,n){if(e.key===`Enter`||e.key===` `){if(e.preventDefault(),e.key===` `&&e.repeat)return;this.handleDateClick(t);return}let r=getComputedStyle(this).direction===`rtl`?`ArrowLeft`:`ArrowRight`,i=r===`ArrowLeft`?`ArrowRight`:`ArrowLeft`,a=e.key===i?-1:e.key===r?1:e.key===`ArrowUp`?-7:e.key===`ArrowDown`?7:0;if(!a)return;e.preventDefault();let o=new Date(t.getFullYear(),t.getMonth(),t.getDate()+a);n.some(e=>e.getTime()===o.getTime())&&(this.focusDay=o,this.updateComplete.then(()=>this.renderRoot.querySelector(`.mini-day[tabindex="0"]`)?.focus()))}willUpdate(e){let t=e.get(`currentDate`);(e.has(`year`)||e.has(`month`)||e.has(`currentDate`)&&t?.getTime()!==this.currentDate?.getTime())&&(this.focusDay=null),this.dayHadFocus=!!this.renderRoot?.activeElement?.classList.contains(`mini-day`)}updated(e){this.dayHadFocus&&(e.has(`year`)||e.has(`month`))&&this.renderRoot.querySelector(`.mini-day[tabindex="0"]`)?.focus()}render(){let e=this.getMonthGrid(),t=this.getFirstDayOfWeek(),n=Array.from({length:7},(e,n)=>{let r=(t+n)%7;return this.i18nStore?.t(`calendar.daysNarrow.${r}`)}),i=new Date;i.setHours(0,0,0,0);let a=this.tabStop(e).getTime(),o=new Intl.DateTimeFormat(this.i18nStore?.getIntlLanguage?.(),{dateStyle:`full`}),c=this.i18nStore?.t(`calendar.months.${this.month}`);return s`
             ${this.showTitle?s`<div class="year-month-title">${c}</div>`:``}
             <div class="mini-grid">
                 ${n.map(e=>s`<div class="mini-day-name">${e}</div>`)}
@@ -377,7 +377,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
 
         .edit-btn {
             color: var(--text-secondary, #6b7280);
-            margin-left: 12px;
+            margin-inline-start: 12px;
             flex-shrink: 0;
         }
 
@@ -414,7 +414,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
         .card-text {
             font-size: 13px;
             color: var(--text-secondary, #4b5563);
-            margin-left: 22px;
+            margin-inline-start: 22px;
             line-height: 1.4;
         }
 
@@ -510,7 +510,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             <div class="header">
                 <div class="title-container">
                     <div class="color-dot" style="background-color: ${t.color||`var(--accent-color, #2563eb)`}"></div>
-                    <h3 class="title">${e.title||this.i18nStore?.t(`tasks.untitled`)}</h3>
+                    <h3 class="title"><bdi>${e.title||this.i18nStore?.t(`tasks.untitled`)}</bdi></h3>
                 </div>
                 <div style="display: flex; gap: 4px;">
                     <alps-icon-btn class="complete-btn" icon="checkCircle" title=${this.i18nStore?.t(`tasks.markDone`)} @click=${this.handleComplete}></alps-icon-btn>
@@ -528,13 +528,13 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             ${e.description?s`
             <div class="card">
                 <div class="card-label">${this.i18nStore?.t(`tasks.notes`)}</div>
-                <div class="description-text">${e.description}</div>
+                <div class="description-text" dir="auto">${e.description}</div>
             </div>`:``}
         `}render(){if(!this.event)return s``;if(this.event.task)return this.renderTask(this.event.task);let e=this.event;return s`
             <div class="header">
                 <div class="title-container">
                     <div class="color-dot" style="background-color: ${e.color||`var(--accent-color, #2563eb)`}"></div>
-                    <h3 class="title">${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</h3>
+                    <h3 class="title"><bdi>${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</bdi></h3>
                 </div>
                 <div style="display: flex; gap: 4px;">
                     <alps-icon-btn class="edit-btn" icon="pen" title=${this.i18nStore?.t(`calendar.editEvent`)} @click=${this.handleEdit}></alps-icon-btn>
@@ -552,13 +552,13 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             ${e.location?s`
             <div class="card">
                 <div class="card-label">${this.i18nStore?.t(`calendar.location`)}</div>
-                <div class="description-text">${e.location}</div>
+                <div class="description-text" dir="auto">${e.location}</div>
             </div>`:``}
 
             ${e.description?s`
             <div class="card">
                 <div class="card-label">${this.i18nStore?.t(`calendar.notes`)}</div>
-                <div class="description-text">${e.description}</div>
+                <div class="description-text" dir="auto">${e.description}</div>
             </div>`:``}
         `}};f([t({context:C})],z.prototype,`i18nStore`,void 0),f([o({type:Object})],z.prototype,`event`,void 0),z=f([a(`calendar-event-preview`)],z);var B=class extends i{constructor(...e){super(...e),this.days=[],this.events=[],this.scrolled=!1,this.now=new Date}connectedCallback(){super.connectedCallback(),this.now=new Date,this.nowTimer=window.setInterval(()=>{this.now=new Date},6e4)}disconnectedCallback(){super.disconnectedCallback(),this.nowTimer!==void 0&&(clearInterval(this.nowTimer),this.nowTimer=void 0)}static{this.styles=e`
         :host {
@@ -597,7 +597,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             width: 60px;
             flex-shrink: 0;
             box-sizing: border-box;
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
         }
 
         .time-grid-days {
@@ -611,13 +611,13 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             padding: 8px;
             text-align: center;
             box-sizing: border-box;
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 4px;
         }
-        .time-grid-day-header:last-child { border-right: none; }
+        .time-grid-day-header:last-child { border-inline-end: none; }
 
         .time-grid-day-name {
             font-size: 11px;
@@ -655,8 +655,8 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             color: var(--text-muted, #6b7280);
             padding: 4px 8px;
             box-sizing: border-box;
-            text-align: right;
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            text-align: end;
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
         }
 
         .all-day-content {
@@ -666,14 +666,14 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             grid-auto-columns: minmax(0, 1fr);
         }
         .all-day-cell {
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
             padding: 2px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             gap: 2px;
         }
-        .all-day-cell:last-child { border-right: none; }
+        .all-day-cell:last-child { border-inline-end: none; }
 
         .time-grid-scroll {
             flex: 1;
@@ -694,13 +694,13 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             width: 60px;
             flex-shrink: 0;
             box-sizing: border-box;
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
             position: relative;
         }
 
         .time-label {
             position: absolute;
-            right: 8px;
+            inset-inline-end: 8px;
             font-size: 11px;
             color: var(--text-muted, #6b7280);
             transform: translateY(-50%);
@@ -717,10 +717,10 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
         }
 
         .time-column {
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
             position: relative;
         }
-        .time-column:last-child { border-right: none; }
+        .time-column:last-child { border-inline-end: none; }
 
         alps-popup.time-event-popup {
             position: absolute;
@@ -784,7 +784,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             background-color: var(--bg-primary, #ffffff);
             color: var(--text-primary, #111827);
             border: 1px solid;
-            border-left-width: 3px;
+            border-inline-start-width: 3px;
             box-shadow: none;
         }
         .event-chip.task svg {
@@ -806,7 +806,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
         .now-line::before {
             content: '';
             position: absolute;
-            left: 0;
+            inset-inline-start: 0;
             /* The padding box starts below the 2px border, so -5px centers the
                8px dot on the line. */
             top: -5px;
@@ -837,12 +837,12 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
                                 ${this.days.map(e=>s`
                                         <div class="all-day-cell" @click=${()=>this.handleAllDayCellClick(e)} style="cursor: pointer;">
                                             ${this.getEventsForDate(e,!0).map(e=>s`
-                                                <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${e=>e.stopPropagation()}>
+                                                <alps-popup align="start" position="bottom" style="width: 100%; display: block;" @click=${e=>e.stopPropagation()}>
                                                     <div slot="trigger"
                                                         class="event-chip ${e.task?`task`:``} ${e.status===`declined`?`declined`:``}" 
                                                         style=${e.task?`border-color: ${e.color}`:e.color?`background-color: ${e.color}`:``}
                                                         title="${e.summary||this.i18nStore?.t(`calendar.noTitle`)}">
-                                                        ${e.task?d(`checkCircle`):``}${e.summary||this.i18nStore?.t(`calendar.noTitle`)}
+                                                        ${e.task?d(`checkCircle`):``}<bdi>${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</bdi>
                                                     </div>
                                                     <calendar-event-preview .event=${e}></calendar-event-preview>
                                                 </alps-popup>
@@ -868,14 +868,14 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
                                         ${n.map(e=>{let t=new Date(e.start),n=new Date(e.end),a=t<r?r:t,o=n>i?i:n,c=t<=r?0:a.getHours()*48+a.getMinutes()/60*48,l=n>i?1152:o.getHours()*48+o.getMinutes()/60*48,u=l<=c&&o>a?(o.getTime()-a.getTime())/36e5*48:l-c;return u<20&&(u=20),c+u>1152&&(u=1152-c),s`
                                                 <alps-popup 
                                                     class="time-event-popup"
-                                                    align="left" position="bottom" 
+                                                    align="start" position="bottom" 
                                                     style="top: ${c}px; height: ${u}px;"
                                                     @click=${e=>e.stopPropagation()}>
                                                     <div slot="trigger"
                                                         class="time-event ${e.status===`declined`?`declined`:``}" 
                                                         style="${e.color?`background-color: ${e.color}; border-color: ${e.color};`:``}" 
                                                         title="${e.summary||this.i18nStore?.t(`calendar.noTitle`)}">
-                                                        <div class="time-event-title">${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</div>
+                                                        <div class="time-event-title"><bdi>${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</bdi></div>
                                                     </div>
                                                     <calendar-event-preview .event=${e}></calendar-event-preview>
                                                 </alps-popup>
@@ -932,14 +932,14 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
         }
 
         .month-header-cell {
-            text-align: right;
+            text-align: end;
             padding: 8px 12px;
             font-size: 13px;
             font-weight: 500;
             color: var(--text-secondary, #4b5563);
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
         }
-        .month-header-cell:last-child { border-right: none; }
+        .month-header-cell:last-child { border-inline-end: none; }
 
         .month-grid {
             flex: 1;
@@ -1010,7 +1010,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             background-color: var(--bg-primary, #ffffff);
             color: var(--text-primary, #111827);
             border: 1px solid;
-            border-left-width: 3px;
+            border-inline-start-width: 3px;
             box-shadow: none;
         }
         .event-chip.task svg {
@@ -1032,17 +1032,17 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
                             <div class="month-cell ${t?`other-month`:``}" @click=${()=>this.handleCellClick(e)} style="cursor: pointer;">
                                 <div class="date-number ${n?`today`:``}">${e.getDate()}</div>
                                 ${i.slice(0,4).map(e=>s`
-                                    <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${e=>e.stopPropagation()}>
+                                    <alps-popup align="start" position="bottom" style="width: 100%; display: block;" @click=${e=>e.stopPropagation()}>
                                         <div slot="trigger"
                                             class="event-chip ${T(e)?`all-day`:``} ${e.task?`task`:``} ${e.status===`declined`?`declined`:``}" 
                                             style=${e.task?`border-color: ${e.color}`:e.color?`background-color: ${e.color}`:``}
                                             title="${e.summary||this.i18nStore?.t(`calendar.noTitle`)}">
-                                            ${e.task?d(`checkCircle`):``}${e.summary||this.i18nStore?.t(`calendar.noTitle`)}
+                                            ${e.task?d(`checkCircle`):``}<bdi>${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</bdi>
                                         </div>
                                         <calendar-event-preview .event=${e}></calendar-event-preview>
                                     </alps-popup>
                                 `)}
-                                ${i.length>4?s`<div style="font-size: 11px; color: var(--text-muted); padding-left: 4px;">${this.i18nStore?.t(`calendar.moreEvents`,{count:i.length-4})}</div>`:``}
+                                ${i.length>4?s`<div style="font-size: 11px; color: var(--text-muted); padding-inline-start: 4px;">${this.i18nStore?.t(`calendar.moreEvents`,{count:i.length-4})}</div>`:``}
                             </div>
                         `})}
                 </div>
@@ -1212,7 +1212,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             `:s`
             <div class="list-container">
                 ${[...this.events].sort((e,t)=>new Date(e.start).getTime()-new Date(t.start).getTime()).map(e=>{let t=T(e),n=t?new Date(e.start.split(`T`)[0]+`T00:00:00`):new Date(e.start);return s`
-                        <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${e=>e.stopPropagation()}>
+                        <alps-popup align="start" position="bottom" style="width: 100%; display: block;" @click=${e=>e.stopPropagation()}>
                             <div slot="trigger" class="event-item ${e.status===`declined`?`declined`:``}">
                                 <div class="event-date">
                                     <span class="date-day">${n.getDate()}</span>
@@ -1224,7 +1224,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
                                 <div class="event-details">
                                     <h3 class="event-title">
                                         <div class="color-dot" style="background-color: ${e.color||`#2563eb`}"></div>
-                                        ${e.summary||this.i18nStore?.t(`calendar.noTitle`)}
+                                        <bdi>${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</bdi>
                                     </h3>
                                     ${e.location?s`
                                         <div class="event-location">
@@ -1311,18 +1311,22 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
         }
 
         .nav-buttons button:first-child {
-            border-radius: 6px 0 0 6px;
+            border-radius: 0;
+            border-start-start-radius: 6px;
+            border-end-start-radius: 6px;
         }
         
         .nav-buttons button:last-child {
-            border-radius: 0 6px 6px 0;
-            border-left: none;
+            border-radius: 0;
+            border-start-end-radius: 6px;
+            border-end-end-radius: 6px;
+            border-inline-start: none;
         }
         
         .nav-buttons button:nth-child(2) {
-            border-left: none;
-            padding-left: 16px;
-            padding-right: 16px;
+            border-inline-start: none;
+            padding-inline-start: 16px;
+            padding-inline-end: 16px;
         }
 
         @media (hover: hover) {
@@ -1351,9 +1355,9 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
         }
 
         .app-container.collapsed .main-content {
-            box-shadow: rgba(95, 95, 95, 0.1) -4px 0 4px -2px;
+            box-shadow: rgba(95, 95, 95, 0.1) calc(-4px * var(--ui-inline-direction, 1)) 0 4px -2px;
             z-index: 25;
-            border-left: 1px solid var(--border-color, #e5e7eb);
+            border-inline-start: 1px solid var(--border-color, #e5e7eb);
             position: relative;
         }
 
@@ -1434,7 +1438,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             justify-content: center;
             box-sizing: border-box;
             background-color: transparent;
-            margin-right: 8px;
+            margin-inline-end: 8px;
             flex-shrink: 0;
         }
 
@@ -1477,8 +1481,8 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
         .calendar-actions {
             display: none;
             align-items: center;
-            margin-left: auto;
-            margin-right: -4px;
+            margin-inline-start: auto;
+            margin-inline-end: -4px;
         }
 
         @media (hover: hover) {
@@ -1654,12 +1658,12 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
                                                 <div class="calendar-checkbox ${this.activeCalendars.has(e.path)?`checked`:``}" style="--cal-color: ${e.color}">
                                                     ${this.activeCalendars.has(e.path)?d(`check`):``}
                                                 </div>
-                                                <span>${e.name}</span>
+                                                <span><bdi>${e.name}</bdi></span>
                                             </div>
 
                                             <div class="calendar-actions ${this.activeKebabMenu===e.path?`popup-open`:``}" @click=${e=>e.stopPropagation()}>
                                                 <alps-popup 
-                                                    align="right" 
+                                                    align="end" 
                                                     position="bottom"
                                                     @popup-open=${()=>{this.activeKebabMenu=e.path}}
                                                     @popup-close=${()=>{this.activeKebabMenu===e.path&&(this.activeKebabMenu=null)}}

@@ -680,7 +680,7 @@ export class MessageReader extends LitElement {
     }
 
     .tags-popup .dropdown-item.active svg {
-      margin-left: auto;
+      margin-inline-start: auto;
       color: var(--text-secondary, #9ca3af);
     }
 
@@ -722,11 +722,11 @@ export class MessageReader extends LitElement {
     }
 
     .tag-pills {
-      float: right;
+      float: inline-end;
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      margin-left: 12px;
+      margin-inline-start: 12px;
       margin-bottom: 4px;
     }
 
@@ -802,8 +802,8 @@ export class MessageReader extends LitElement {
       font-weight: 600;
       color: var(--text-color);
       width: 40px;
-      text-align: right;
-      margin-right: 16px;
+      text-align: end;
+      margin-inline-end: 16px;
       line-height: 1.5;
       flex-shrink: 0;
     }
@@ -858,7 +858,7 @@ export class MessageReader extends LitElement {
     .spinner {
       animation: spin 3s linear infinite;
       display: flex;
-      margin-right: 8px;
+      margin-inline-end: 8px;
     }
 
     .spinner .icon {
@@ -2823,14 +2823,14 @@ export class MessageReader extends LitElement {
         <alps-icon-btn class="desktop-only" ?active=${(isBulk && this.allSelectedStarred) || (!isBulk && this.message?.Flags?.includes(FLAG_FLAGGED))} title=${this.i18nStore?.t('messageReader.star')} @click=${() => this._handleAction('star')} icon=${(isBulk && this.allSelectedStarred) || (!isBulk && this.message?.Flags?.includes(FLAG_FLAGGED)) ? 'starFourFill' : 'starFour'}></alps-icon-btn>
         ` : ''}
         
-        <alps-popup align="left" class="tags-popup">
+        <alps-popup align="start" class="tags-popup">
           <alps-icon-btn slot="trigger" class="desktop-only" title=${this.i18nStore?.t('messageReader.tags')} icon="tag"></alps-icon-btn>
           ${['$label1', '$label2', '$label3', '$label4', '$label5'].map(tag => {
       const isActive = this.hasTag(tag);
 
       return html`
               <button class="dropdown-item ${isActive ? 'active' : ''}" @click=${() => this._handleTag(tag)}>
-                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${getTagColor(tag)};margin-right:12px;opacity:0.9;"></span>
+                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${getTagColor(tag)};margin-inline-end:12px;opacity:0.9;"></span>
                 <span class="item-text">${getTagName(tag, this.i18nStore)}</span>
               </button>
             `;
@@ -2839,7 +2839,7 @@ export class MessageReader extends LitElement {
             <div class="dropdown-divider"></div>
             ${otherTags.map(tag => html`
               <button class="dropdown-item active" title=${this.i18nStore?.t('messageReader.removeTag')} @click=${() => this._handleTag(tag)}>
-                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${getTagColor(tag)};margin-right:12px;opacity:0.9;"></span>
+                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${getTagColor(tag)};margin-inline-end:12px;opacity:0.9;"></span>
                 <span class="item-text">${getTagName(tag, this.i18nStore)}</span>
                 ${renderIcon('x')}
               </button>
@@ -2861,7 +2861,7 @@ export class MessageReader extends LitElement {
               <alps-icon-btn title=${this.i18nStore?.t('messageReader.reply')} @click=${() => this._handleAction('reply')} icon="arrowBendUpLeft"></alps-icon-btn>
             ` : ''}
             
-            <alps-popup align="right" class="more-menu-popup">
+            <alps-popup align="end" class="more-menu-popup">
               <alps-icon-btn slot="trigger" class="more-btn" title=${this.i18nStore?.t('messageReader.moreOptions')} icon="dotsThreeVertical"></alps-icon-btn>
             
             ${!(this.message?.Flags?.includes(FLAG_DRAFT) || isDrafts || isConversation) ? html`
@@ -3021,8 +3021,8 @@ export class MessageReader extends LitElement {
                 </div>
               </div>
               <div class="desktop-date-container">
-                <div class="reader-date desktop-date">${dateStr}</div>
-                ${msg.RFC822Size ? html`<div class="reader-size desktop-only">${formatSize(msg.RFC822Size, this.i18nStore)}</div>` : ''}
+                <div class="reader-date desktop-date"><bdi>${dateStr}</bdi></div>
+                ${msg.RFC822Size ? html`<div class="reader-size desktop-only"><bdi>${formatSize(msg.RFC822Size, this.i18nStore)}</bdi></div>` : ''}
               </div>
             </div>
             
@@ -3048,8 +3048,8 @@ export class MessageReader extends LitElement {
               <div class="reader-recipients mobile-only">
                 <span class="reader-recipients-label">${this.i18nStore?.t('messageReader.date') || 'Date:'}</span>
                 <div class="reader-recipients-list mobile-date-container" style="flex-direction: row; align-items: baseline; gap: 8px; margin-top: 0;">
-                  <span class="reader-date mobile-date" style="color: var(--text-primary);">${dateStr}</span>
-                  ${msg.RFC822Size ? html`<span class="reader-size mobile-size">(${formatSize(msg.RFC822Size, this.i18nStore)})</span>` : ''}
+                  <span class="reader-date mobile-date" style="color: var(--text-primary);"><bdi>${dateStr}</bdi></span>
+                  ${msg.RFC822Size ? html`<span class="reader-size mobile-size">(<bdi>${formatSize(msg.RFC822Size, this.i18nStore)}</bdi>)</span>` : ''}
                 </div>
               </div>
             </div>

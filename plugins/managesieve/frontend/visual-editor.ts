@@ -59,7 +59,7 @@ export class VisualEditor extends LitElement {
 		.rule-header {
 			position: absolute;
 			top: 16px;
-			right: 16px;
+			inset-inline-end: 16px;
 			display: flex;
 			align-items: center;
 		}
@@ -73,7 +73,7 @@ export class VisualEditor extends LitElement {
 			font-weight: 600;
 			font-size: 13px;
 			color: var(--text-secondary);
-			text-align: right;
+			text-align: end;
 		}
 		.row-content {
 			display: flex;
@@ -94,7 +94,7 @@ export class VisualEditor extends LitElement {
 			color: var(--text-muted);
 			opacity: 0.5;
 			padding: 8px 0;
-			margin-left: 40px;
+			margin-inline-start: 40px;
 		}
 		.connector-icon svg {
 			width: 24px;
@@ -111,7 +111,7 @@ export class VisualEditor extends LitElement {
 			color: var(--text-muted);
 			font-style: italic;
 			padding: 16px 0;
-			text-align: left;
+			text-align: start;
 		}
 	`;
 

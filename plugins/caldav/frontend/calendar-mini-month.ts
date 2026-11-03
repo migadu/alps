@@ -190,7 +190,11 @@ export class CalendarMiniMonth extends LitElement {
             this.handleDateClick(d);
             return;
         }
-        const step = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' ? -7 : e.key === 'ArrowDown' ? 7 : 0;
+        // A right-to-left week runs from right to left, so there the left
+        // arrow is the next day.
+        const forward = getComputedStyle(this).direction === 'rtl' ? 'ArrowLeft' : 'ArrowRight';
+        const back = forward === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft';
+        const step = e.key === back ? -1 : e.key === forward ? 1 : e.key === 'ArrowUp' ? -7 : e.key === 'ArrowDown' ? 7 : 0;
         if (!step) return;
         e.preventDefault();
         const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + step);

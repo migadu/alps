@@ -98,7 +98,7 @@ export class AlpsFolderSelectorPopup extends LitElement {
       background: none;
       border: none;
       cursor: pointer;
-      text-align: left;
+      text-align: start;
       transition: background-color 0.2s;
     }
 
@@ -172,7 +172,7 @@ export class AlpsFolderSelectorPopup extends LitElement {
       .filter(({ name, caption }) => name.toLowerCase().includes(this.filterQuery) || caption.toLowerCase().includes(this.filterQuery));
 
     return html`
-      <alps-popup align="right" @click=${this._handlePopupToggle}>
+      <alps-popup align="end" @click=${this._handlePopupToggle}>
         <slot name="trigger" slot="trigger"></slot>
         
         <div class="selector-container" @click=${(e: Event) => e.stopPropagation()}>
@@ -215,7 +215,7 @@ export class AlpsFolderSelectorPopup extends LitElement {
             ${filteredFolders.length > 0 ? filteredFolders.map(({ name, caption }) => html`
               <button class="folder-item" title=${name} @click=${() => this._handleSelect(name)}>
                 ${renderIcon('folder')}
-                <span class="folder-name">${caption}</span>
+                <span class="folder-name"><bdi>${caption}</bdi></span>
               </button>
             `) : html`
               <div class="no-results">${this.i18nStore?.t('folderSelector.noResults')}</div>

@@ -52,7 +52,7 @@ export class RawEditor extends LitElement {
 		.highlight-layer, textarea {
 			position: absolute;
 			top: 0;
-			left: 0;
+			inset-inline-start: 0;
 			width: 100%;
 			height: 100%;
 			padding: 12px;
@@ -197,7 +197,8 @@ export class RawEditor extends LitElement {
 	render() {
 		return html`
 			<div class="editor-container">
-				<div class="code-area">
+				<!-- A Sieve script is code, written left to right in every language. -->
+				<div class="code-area" dir="ltr">
 					<div class="highlight-layer">${this.highlight(this.script)}</div>
 					<!-- Named by what it holds: nothing else on the page labels it. -->
 					<textarea aria-label=${this.i18nStore?.t('managesieve.raw.script') ?? ''} .value=${this.script} @input=${this.handleInput} @scroll=${this.handleScroll} spellcheck="false"></textarea>

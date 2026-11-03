@@ -94,8 +94,8 @@ export class TasksPage extends LitElement {
             .app-container.collapsed .main-content {
                 position: relative;
                 z-index: 25;
-                border-left: 1px solid var(--border-color, #e5e7eb);
-                box-shadow: rgba(95, 95, 95, 0.1) -4px 0 4px -2px;
+                border-inline-start: 1px solid var(--border-color, #e5e7eb);
+                box-shadow: rgba(95, 95, 95, 0.1) calc(-4px * var(--ui-inline-direction, 1)) 0 4px -2px;
             }
             .layout {
                 display: flex;
@@ -134,7 +134,7 @@ export class TasksPage extends LitElement {
                 color: var(--text-primary, #111827);
                 font-family: inherit;
                 font-size: 14px;
-                text-align: left;
+                text-align: start;
                 cursor: pointer;
                 user-select: none;
             }
@@ -580,7 +580,7 @@ export class TasksPage extends LitElement {
                                                     @click=${() => this.selectCalendar(list.path)}
                                                 >
                                                     <span class="list-dot" style="background: ${list.color}"></span>
-                                                    <span class="label">${list.name}</span>
+                                                    <span class="label"><bdi>${list.name}</bdi></span>
                                                 </button>
                                             `)}
                                         </div>
@@ -600,7 +600,7 @@ export class TasksPage extends LitElement {
                         <div class="toolbar">
                             <h2>
                                 ${this.searchQuery ? t('tasks.searchResults') : t(current.label)}
-                                ${calendarName ? html`<span class="sub-title">${calendarName}</span>` : ''}
+                                ${calendarName ? html`<span class="sub-title"><bdi>${calendarName}</bdi></span>` : ''}
                             </h2>
                             <alps-icon-btn
                                 icon="arrowsClockwise"

@@ -65,7 +65,7 @@ export class AlpsCategoryItem extends LitElement {
       flex-shrink: 0;
       display: flex;
       align-items: center;
-      margin-right: 12px;
+      margin-inline-end: 12px;
       opacity: 0.7;
     }
 

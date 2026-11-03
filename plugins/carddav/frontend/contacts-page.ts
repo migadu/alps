@@ -127,7 +127,7 @@ export class ContactsPage extends LitElement {
       display: flex;
       flex-direction: column;
       position: relative;
-      border-right: 1px solid var(--border-color, #e5e7eb);
+      border-inline-end: 1px solid var(--border-color, #e5e7eb);
     }
     .resizer {
       background: transparent;
@@ -146,7 +146,7 @@ export class ContactsPage extends LitElement {
       width: 3px;
       top: 0;
       bottom: 0;
-      left: 1px;
+      inset-inline-start: 1px;
     }
     .resizer:hover, .resizer.dragging {
       z-index: 9999;
@@ -154,12 +154,12 @@ export class ContactsPage extends LitElement {
     .resizer:hover::after, .resizer.dragging::after {
       background: var(--accent-color, #005A9E);
       width: 3px;
-      left: 0;
+      inset-inline-start: 0;
     }
     .app-container.collapsed .contact-list-pane {
-      box-shadow: rgba(95, 95, 95, 0.1) -4px 0 4px -2px;
+      box-shadow: rgba(95, 95, 95, 0.1) calc(-4px * var(--ui-inline-direction, 1)) 0 4px -2px;
       z-index: 25;
-      border-left: 1px solid var(--border-color, #e5e7eb);
+      border-inline-start: 1px solid var(--border-color, #e5e7eb);
     }
     .contact-reader-pane {
       background: var(--bg-primary, #ffffff);
@@ -1490,9 +1490,12 @@ export class ContactsPage extends LitElement {
 
     const startX = e.clientX;
     const startWidth = this.listWidth;
+    // The handle is on the list's inline end: dragging it left widens the
+    // list in a right-to-left interface.
+    const inlineDirection = getComputedStyle(this).direction === 'rtl' ? -1 : 1;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
-      const delta = moveEvent.clientX - startX;
+      const delta = (moveEvent.clientX - startX) * inlineDirection;
       this.listWidth = Math.max(250, Math.min(800, startWidth + delta));
     };
 

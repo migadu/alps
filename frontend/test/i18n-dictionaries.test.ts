@@ -17,10 +17,11 @@ import { pt } from '../src/i18n/pt';
 import { rs } from '../src/i18n/rs';
 import { sr } from '../src/i18n/sr';
 import { da } from '../src/i18n/da';
+import { ar } from '../src/i18n/ar';
 
 type Dict = Record<string, unknown>;
 
-const CORE: [string, Dict][] = [['da', da], ['de', de], ['es', es], ['fr', fr], ['it', itLocale], ['pt', pt], ['rs', rs], ['sr', sr]] as [string, Dict][];
+const CORE: [string, Dict][] = [['ar', ar], ['da', da], ['de', de], ['es', es], ['fr', fr], ['it', itLocale], ['pt', pt], ['rs', rs], ['sr', sr]] as [string, Dict][];
 const intlTag = (code: string) => (code === 'rs' ? 'sr-Cyrl' : code === 'sr' ? 'sr-Latn' : code);
 
 const PLUGIN_LOCALES = import.meta.glob('../../plugins/*/frontend/i18n/*.ts', { eager: true }) as Record<string, Dict>;
@@ -132,7 +133,7 @@ function checkFamily(name: string, source: Dict, locales: [string, Dict][]) {
 describe('locales', () => {
   it('found the plugin dictionaries', () => {
     expect(byPlugin.size).toBeGreaterThanOrEqual(5);
-    for (const [plugin, locales] of byPlugin) expect([...locales.keys()].sort(), plugin).toEqual(['da', 'de', 'en', 'es', 'fr', 'it', 'pt', 'rs', 'sr']);
+    for (const [plugin, locales] of byPlugin) expect([...locales.keys()].sort(), plugin).toEqual(['ar', 'da', 'de', 'en', 'es', 'fr', 'it', 'pt', 'rs', 'sr']);
   });
 
   it('core: every locale has en\'s keys, its language\'s plural forms, and en\'s placeholders', () => {
@@ -372,6 +373,7 @@ const ENDONYMS: Record<string, string> = {
   danish: 'Dansk',
   serbian: 'Српски (ћирилица)',
   serbianLatin: 'Srpski (latinica)',
+  arabic: 'العربية',
 };
 
 describe('the language picker', () => {

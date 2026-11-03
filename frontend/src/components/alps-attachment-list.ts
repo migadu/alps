@@ -357,7 +357,7 @@ export class AttachmentList extends LitElement {
           <div class="attachments-actions">
             ${figure ? html`
               <span class="attachments-size ${this.composerMode && this.totalBytes > this.maxBytes ? 'over' : ''}"
-                >${figure}</span>
+                ><bdi>${figure}</bdi></span>
             ` : ''}
             ${!this.composerMode ? html`
               <div 

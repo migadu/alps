@@ -141,7 +141,7 @@ export class TaskModal extends LitElement {
                 width: 100%;
             }
             .actions .delete {
-                margin-right: auto;
+                margin-inline-end: auto;
             }
         `,
     ];
@@ -448,7 +448,7 @@ export class TaskModal extends LitElement {
 
                 <div class="form-group">
                     <label for="task-notes">${t('tasks.notes')}</label>
-                    <textarea
+                    <textarea dir="auto"
                         id="task-notes"
                         .value=${this.description}
                         placeholder=${t('tasks.addNotes')}

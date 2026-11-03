@@ -172,7 +172,10 @@ export class AttachmentPreview extends LitElement {
       // list underneath.
       e.preventDefault();
       e.stopPropagation();
-      if (e.key === 'ArrowLeft') this.prev();
+      // The keys follow the buttons: Previous is at the inline start, which
+      // is the right in a right-to-left interface.
+      const rtl = getComputedStyle(this).direction === 'rtl';
+      if (e.key === (rtl ? 'ArrowRight' : 'ArrowLeft')) this.prev();
       else this.next();
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       // Kept from the page too: the mailbox steps the message list on an
@@ -415,7 +418,7 @@ export class AttachmentPreview extends LitElement {
     .line-num {
       color: var(--text-muted);
       width: 36px;
-      text-align: right;
+      text-align: end;
       flex-shrink: 0;
       user-select: none;
     }
@@ -493,8 +496,8 @@ export class AttachmentPreview extends LitElement {
       cursor: pointer;
       z-index: 2;
     }
-    .nav-arrow.prev { left: 24px; }
-    .nav-arrow.next { right: 24px; }
+    .nav-arrow.prev { inset-inline-start: 24px; }
+    .nav-arrow.next { inset-inline-end: 24px; }
     .loading-state, .error-state {
       color: var(--text-muted);
       font-size: 14px;
@@ -526,9 +529,9 @@ export class AttachmentPreview extends LitElement {
               style="${info.color ? `color: ${info.color}; background: color-mix(in srgb, ${info.color} 12%, transparent)` : ''}"
             >${renderIcon(info.icon)}</div>
             <div class="file-details">
-              <span class="file-title" id="preview-title" title="${name}">${name}</span>
+              <span class="file-title" id="preview-title" title="${name}"><bdi>${name}</bdi></span>
               <span class="file-sub">
-                <span>${formatSize(size, this.i18nStore)}</span>
+                <span><bdi>${formatSize(size, this.i18nStore)}</bdi></span>
                 ${total > 1 ? html`<span>•</span><span>${this.activeIndex + 1} / ${total}</span>` : ''}
               </span>
             </div>
@@ -619,7 +622,7 @@ export class AttachmentPreview extends LitElement {
           <div class="card-icon" style="${info.color ? `color: ${info.color}; background: color-mix(in srgb, ${info.color} 12%, transparent)` : ''}">
             ${renderIcon('fileAudio')}
           </div>
-          <div class="card-title">${name}</div>
+          <div class="card-title"><bdi>${name}</bdi></div>
           <audio controls src="${url}"></audio>
         </div>
       `;
@@ -641,8 +644,8 @@ export class AttachmentPreview extends LitElement {
     return html`
       <div class="fallback-card">
         <div class="card-icon">${renderIcon(info.icon)}</div>
-        <div class="card-title">${name}</div>
-        <div class="card-desc">${t('attachment.cannotPreview')} (${formatSize(size, this.i18nStore)})</div>
+        <div class="card-title"><bdi>${name}</bdi></div>
+        <div class="card-desc">${t('attachment.cannotPreview')} (<bdi>${formatSize(size, this.i18nStore)}</bdi>)</div>
         ${url ? html`
           <button class="action-btn download" @click=${this.download}>
             ${renderIcon('downloadSimple')}

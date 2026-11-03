@@ -457,7 +457,7 @@ export class CalendarEventModal extends LitElement {
 
                 <div class="form-group">
                     <label for="event-description">${this.i18nStore?.t('calendar.description')}</label>
-                    <textarea 
+                    <textarea dir="auto" 
                         id="event-description"
                         .value=${this.description} 
                         @input=${(e: any) => this.description = e.target.value}

@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js";import{_t as c,at as l,l as u,vt as d}from"./index-CMdaXNq5.js";import{n as f,o as p,r as m,t as h}from"./unsaved-JTDUVW02.js";var g=class extends r{constructor(...e){super(...e),this.isDirty=!1,this.script=``,this.stored=``,this.isValidating=!1,this.isSaving=!1}get hasUnsavedChanges(){return this.script!==this.stored||this.isSaving}static{this.styles=e`
+import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js";import{_t as c,at as l,l as u,vt as d}from"./index-CMrxKlZ-.js";import{n as f,o as p,r as m,t as h}from"./unsaved-D0lWVeJx.js";var g=class extends r{constructor(...e){super(...e),this.isDirty=!1,this.script=``,this.stored=``,this.isValidating=!1,this.isSaving=!1}get hasUnsavedChanges(){return this.script!==this.stored||this.isSaving}static{this.styles=e`
 		.editor-container {
 			display: flex;
 			flex-direction: column;
@@ -20,7 +20,7 @@ import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js
 		.highlight-layer, textarea {
 			position: absolute;
 			top: 0;
-			left: 0;
+			inset-inline-start: 0;
 			width: 100%;
 			height: 100%;
 			padding: 12px;
@@ -69,7 +69,8 @@ import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js
 	`}willUpdate(e){(e.has(`script`)||e.has(`stored`))&&(this.isDirty=this.script!==this.stored)}highlight(e){if(!e)return``;let t=e.replace(/&/g,`&amp;`).replace(/</g,`&lt;`).replace(/>/g,`&gt;`);return t=t.replace(/(#.*|\/\*[\s\S]*?\*\/)|("[^"\\]*(?:\\.[^"\\]*)*")|\b(require|if|else|elsif|stop|fileinto|keep|discard|redirect)\b|\b(anyof|allof|not|contains|is|matches|over|under)\b/gi,(e,t,n,r,i)=>t?`<span class="sieve-comment">${t}</span>`:n?`<span class="sieve-string">${n}</span>`:r?`<span class="sieve-keyword">${r}</span>`:i?`<span class="sieve-operator">${i}</span>`:e),t.endsWith(`
 `)&&(t+=` `),i(t)}handleScroll(e){let t=e.target,n=this.shadowRoot?.querySelector(`.highlight-layer`);n&&(n.scrollTop=t.scrollTop,n.scrollLeft=t.scrollLeft)}handleInput(e){let t=e.target;this.script=t.value,this.dispatchEvent(new CustomEvent(`script-changed`,{detail:{script:this.script}}))}async validate(){this.isValidating=!0;let e=this.script;try{if(await m.validateScript(e),this.script!==e)return;window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore.t(`managesieve.toast.valid`),duration:3e3}}))}catch(t){if(this.script!==e)return;window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:t.message||this.i18nStore.t(`managesieve.toast.networkError`),duration:5e3,type:`error`}}))}finally{this.isValidating=!1}}async save(){this.isSaving=!0;let e=u.generation(),t=this.script;try{let{autoReplyOn:n}=await m.saveScript(t,`PUT`);if(e!==u.generation())return;this.stored=t,this.dispatchEvent(new CustomEvent(`script-saved`,{detail:{script:t}}));let r=t.trim()===``&&!n?`managesieve.toast.deactivated`:`managesieve.toast.saved`;window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore.t(r),duration:3e3}}))}catch(t){if(e!==u.generation())return;let n=t instanceof f?this.i18nStore.t(`managesieve.toast.autoReplyOn`):t.message||this.i18nStore.t(`managesieve.toast.networkError`);window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:n,duration:5e3,type:`error`}}))}finally{this.isSaving=!1}}render(){return s`
 			<div class="editor-container">
-				<div class="code-area">
+				<!-- A Sieve script is code, written left to right in every language. -->
+				<div class="code-area" dir="ltr">
 					<div class="highlight-layer">${this.highlight(this.script)}</div>
 					<!-- Named by what it holds: nothing else on the page labels it. -->
 					<textarea aria-label=${this.i18nStore?.t(`managesieve.raw.script`)??``} .value=${this.script} @input=${this.handleInput} @scroll=${this.handleScroll} spellcheck="false"></textarea>
@@ -103,7 +104,7 @@ import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js
 		.rule-header {
 			position: absolute;
 			top: 16px;
-			right: 16px;
+			inset-inline-end: 16px;
 			display: flex;
 			align-items: center;
 		}
@@ -117,7 +118,7 @@ import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js
 			font-weight: 600;
 			font-size: 13px;
 			color: var(--text-secondary);
-			text-align: right;
+			text-align: end;
 		}
 		.row-content {
 			display: flex;
@@ -138,7 +139,7 @@ import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js
 			color: var(--text-muted);
 			opacity: 0.5;
 			padding: 8px 0;
-			margin-left: 40px;
+			margin-inline-start: 40px;
 		}
 		.connector-icon svg {
 			width: 24px;
@@ -155,7 +156,7 @@ import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js
 			color: var(--text-muted);
 			font-style: italic;
 			padding: 16px 0;
-			text-align: left;
+			text-align: start;
 		}
 	`}addRule(){this.state={...this.state,rules:[...this.state.rules,{id:Math.random().toString(36).substring(7),matchType:`all`,conditions:[{field:`Subject`,operator:`contains`,value:``}],actions:[{type:`fileinto`,value:this.folders[0]||`INBOX`}]}]},this.notifyChange()}deleteRule(e){let t=[...this.state.rules];t.splice(e,1),this.state={...this.state,rules:t},this.notifyChange()}updateRule(e,t){let n=[...this.state.rules];n[e]={...n[e],...t},this.state={...this.state,rules:n},this.notifyChange()}addCondition(e,t){let n=this.state.rules[e],r={field:`Subject`,operator:`contains`,value:``},i=[...n.conditions];t===void 0?i.push(r):i.splice(t,0,r),this.updateRule(e,{conditions:i})}deleteCondition(e,t){let n=[...this.state.rules[e].conditions];n.splice(t,1),this.updateRule(e,{conditions:n})}updateCondition(e,t,n){let r=[...this.state.rules[e].conditions],i=r[t];n.field&&n.field!==i.field&&(n.field===`Size`?i.operator!==`over`&&i.operator!==`under`&&(n.operator=`over`):(i.operator===`over`||i.operator===`under`)&&(n.operator=`contains`)),r[t]={...i,...n},this.updateRule(e,{conditions:r})}addAction(e,t){let n=this.state.rules[e],r={type:`fileinto`,value:this.folders[0]||`INBOX`},i=[...n.actions];t===void 0?i.push(r):i.splice(t,0,r),this.updateRule(e,{actions:i})}deleteAction(e,t){let n=[...this.state.rules[e].actions];n.splice(t,1),this.updateRule(e,{actions:n})}updateAction(e,t,n){let r=[...this.state.rules[e].actions];r[t]={...r[t],...n},this.updateRule(e,{actions:r})}notifyChange(){this.dispatchEvent(new CustomEvent(`state-changed`,{detail:{state:this.state}}))}save(){this.dispatchEvent(new CustomEvent(`save-requested`))}render(){return s`
 			<div class="editor-container">

@@ -161,7 +161,8 @@ describe('where it sits', () => {
     // Comments out first: they talk ABOUT the layout this once rendered,
     // and an assertion that reads them is matching prose, not rules.
     const css = AlpsPagination.styles.toString().replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
-    expect(css).toContain('margin-left: auto');
+    // The END is the inline end: the left of a right-to-left toolbar.
+    expect(css).toContain('margin-inline-start: auto');
     expect(css).not.toContain('margin: 0 auto');
     expect(css).not.toMatch(/:host \{[^}]*flex: 1/);
   });

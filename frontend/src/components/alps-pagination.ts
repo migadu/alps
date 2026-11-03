@@ -61,7 +61,7 @@ export class AlpsPagination extends LitElement {
     :host {
       display: inline-flex;
       align-items: center;
-      margin-left: auto;
+      margin-inline-start: auto;
       flex-shrink: 0;
     }
 

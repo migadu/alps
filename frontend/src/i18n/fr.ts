@@ -112,7 +112,8 @@ export const fr = {
       serbianLatin: 'Srpski (latinica)',
       french: 'Français',
       portuguese: 'Português',
-      danish: 'Dansk'
+      danish: 'Dansk',
+      arabic: 'العربية'
     },
   },
   linkedAccounts: {

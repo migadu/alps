@@ -146,7 +146,7 @@ export class CalendarListView extends LitElement {
                         : new Date(event.start);
                     
                     return html`
-                        <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
+                        <alps-popup align="start" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
                             <div slot="trigger" class="event-item ${event.status === 'declined' ? 'declined' : ''}">
                                 <div class="event-date">
                                     <span class="date-day">${startDate.getDate()}</span>
@@ -158,7 +158,7 @@ export class CalendarListView extends LitElement {
                                 <div class="event-details">
                                     <h3 class="event-title">
                                         <div class="color-dot" style="background-color: ${event.color || '#2563eb'}"></div>
-                                        ${event.summary || (this.i18nStore?.t('calendar.noTitle'))}
+                                        <bdi>${event.summary || (this.i18nStore?.t('calendar.noTitle'))}</bdi>
                                     </h3>
                                     ${event.location ? html`
                                         <div class="event-location">

@@ -1446,7 +1446,7 @@ export class AlpsMessageComposer extends LitElement {
 
     return html`
       <div class="formatting-toolbar">
-        <alps-popup align="left" class="size-popup">
+        <alps-popup align="start" class="size-popup">
           <alps-icon-btn slot="trigger" title=${this.i18nStore?.t('messageComposer.fontSize')} icon="textSize"></alps-icon-btn>
           <button class="dropdown-item ${currentSize === '10px' ? 'active' : ''}" @click=${() => this.editor?.chain().focus().setFontSize('10px').run()}>${this.i18nStore?.t('messageComposer.small')}</button>
           <button class="dropdown-item ${currentSize === '14px' ? 'active' : ''}" @click=${() => this.editor?.chain().focus().setFontSize('14px').run()}>${this.i18nStore?.t('messageComposer.normal')}</button>
@@ -1475,7 +1475,7 @@ export class AlpsMessageComposer extends LitElement {
 
         <div class="divider"></div>
 
-        <alps-popup align="left" class="align-popup">
+        <alps-popup align="start" class="align-popup">
           <alps-icon-btn slot="trigger" title=${this.i18nStore?.t('messageComposer.align')} icon="${alignIcon}"></alps-icon-btn>
           <button class="dropdown-item ${isLeft ? 'active' : ''}" @click=${() => this.editor?.chain().focus().setTextAlign('left').run()}>
             ${renderIcon('textAlignLeft')} <span class="item-text">${this.i18nStore?.t('messageComposer.left')}</span>
@@ -1496,7 +1496,7 @@ export class AlpsMessageComposer extends LitElement {
         <alps-icon-btn class="desktop-only" @click=${() => this.editor?.chain().focus().outdent().run()} title=${this.i18nStore?.t('messageComposer.indentLess')} icon="textOutdent"></alps-icon-btn>
         
         <div class="divider"></div>
-        <alps-popup align="right" class="more-formatting-popup">
+        <alps-popup align="end" class="more-formatting-popup">
           <alps-icon-btn slot="trigger" title=${this.i18nStore?.t('messageComposer.moreFormatting')} icon="dotsThreeVertical"></alps-icon-btn>
           <button class="dropdown-item" @click=${() => this.editor?.chain().focus().undo().run()}>
             ${renderIcon('arrowUUpLeft')} ${this.i18nStore?.t('messageComposer.undo')}

@@ -179,7 +179,7 @@ export class AlpsContactView extends LitElement {
     .selection-icon {
       display: flex;
       padding: 6px;
-      margin-right: 8px;
+      margin-inline-end: 8px;
     }
 
     .selection-icon .icon {
@@ -498,23 +498,29 @@ export class AlpsContactView extends LitElement {
     if (!value) return '';
     
     let content = html`${value}`;
+    // An address, a number or a link is written left to right in every
+    // language; anything else takes the direction of its own text.
+    let dir = 'auto';
     if (isEmail || label === 'Email Address' || label === 'Email' || label.endsWith('Email') || label.endsWith(this.i18nStore?.t('contacts.email') || 'Email')) {
       content = html`<a href="mailto:${value}" @click=${(e: Event) => {
         e.preventDefault();
         const formattedEmail = writtenAddress(this.contact?.name, value);
         this.composeStore?.openComposer({ to: [formattedEmail] });
       }}>${value}</a>`;
+      dir = 'ltr';
     } else if (isPhone || label === 'Phone' || label.endsWith('Phone') || label.endsWith(this.i18nStore?.t('contacts.phone') || 'Phone')) {
       content = html`<a href="tel:${value}">${value}</a>`;
+      dir = 'ltr';
     } else if (label === 'URL') {
       const url = value.startsWith('http') ? value : `https://${value}`;
       content = html`<a href=${url} target="_blank" rel="noopener noreferrer">${value}</a>`;
+      dir = 'ltr';
     }
 
     return html`
       <div class="detail-group">
         <div class="group-label">${label}</div>
-        <div class="group-value">${content}</div>
+        <div class="group-value" dir=${dir}>${content}</div>
       </div>
     `;
   }
@@ -583,7 +589,7 @@ export class AlpsContactView extends LitElement {
 
         <alps-icon-btn title="${this.i18nStore?.t('contacts.delete')}" @click=${() => this.dispatchEvent(new CustomEvent('delete'))} icon="trash" ?disabled=${this.contact?.isTemporary}></alps-icon-btn>
         
-        <alps-popup align="right" @popup-close=${() => {}}>
+        <alps-popup align="end" @popup-close=${() => {}}>
           <alps-icon-btn slot="trigger" title="${this.i18nStore?.t('contacts.addToCategory')}" icon="folderOpen" ?disabled=${this.contact?.isTemporary}></alps-icon-btn>
           
           <div style="padding: 8px; display: flex; gap: 8px; cursor: default; min-width: 200px;" @click=${(e: Event) => e.stopPropagation()}>
@@ -739,8 +745,8 @@ export class AlpsContactView extends LitElement {
             <alps-input placeholder="${this.i18nStore?.t('contacts.address')}" .value=${this.editForm.address || ''} @input=${(e: any) => this.handleInput('address', e.target.value)}></alps-input>
             <alps-input placeholder="${this.i18nStore?.t('contacts.url')}" type="url" .value=${this.editForm.url || ''} @input=${(e: any) => this.handleInput('url', e.target.value)}></alps-input>
             ${this.renderBirthday()}
-            <textarea class="edit-textarea" placeholder="${this.i18nStore?.t('contacts.notes')}" .value=${this.editForm.note || ''} @input=${(e: any) => this.handleInput('note', e.target.value)}></textarea>
-            <textarea class="edit-textarea" placeholder="${this.i18nStore?.t('contacts.publicKey') || 'GPG Public Key Block'}" .value=${this.editForm.public_key || ''} @input=${(e: any) => this.handleInput('public_key', e.target.value)} style="font-family: monospace; white-space: pre;"></textarea>
+            <textarea class="edit-textarea" dir="auto" placeholder="${this.i18nStore?.t('contacts.notes')}" .value=${this.editForm.note || ''} @input=${(e: any) => this.handleInput('note', e.target.value)}></textarea>
+            <textarea class="edit-textarea" dir="ltr" placeholder="${this.i18nStore?.t('contacts.publicKey') || 'GPG Public Key Block'}" .value=${this.editForm.public_key || ''} @input=${(e: any) => this.handleInput('public_key', e.target.value)} style="font-family: monospace; white-space: pre;"></textarea>
           </div>
         ` : html`
           <div class="view-header" style="margin-top: -32px;">
@@ -749,12 +755,12 @@ export class AlpsContactView extends LitElement {
             </div>
             ${this.contact.organization || this.contact.title ? html`
               <div class="view-organization">
-                ${[this.contact.title, this.contact.organization].filter(Boolean).join(', ')}
+                <bdi>${[this.contact.title, this.contact.organization].filter(Boolean).join(', ')}</bdi>
               </div>
             ` : ''}
             ${this.contact.categories && this.contact.categories.length > 0 ? html`
               <div class="view-categories">
-                ${this.contact.categories.map((cat: string) => html`<span class="category-pill">${cat}</span>`)}
+                ${this.contact.categories.map((cat: string) => html`<span class="category-pill"><bdi>${cat}</bdi></span>`)}
               </div>
             ` : ''}
           </div>

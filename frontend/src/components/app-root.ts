@@ -135,7 +135,7 @@ export class AppRoot extends LitElement {
     .toast-stack {
       position: fixed;
       bottom: 24px;
-      left: 24px;
+      inset-inline-start: 24px;
       display: flex;
       flex-direction: column;
       justify-content: flex-end;

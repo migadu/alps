@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js";import{K as c,X as l,Y as u,_t as d,at as f,f as p,ft as m,g as h,gt as g,ht as _,i as v,m as y,mt as b,n as x,nt as S,ot as C,p as w,pt as T,r as E,t as D,u as O,vt as k}from"./index-CMdaXNq5.js";var A=`All Contacts`,j=`Favorites`,M=class extends i{constructor(...e){super(...e),this.contacts=[],this.uniqueCategories=[],this.selectedCategory=``,this.filterQuery=``,this.activeKebabMenu=null,this.sidebarScrolled=!1}static{this.styles=[y,w,e`
+import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js";import{K as c,X as l,Y as u,_t as d,at as f,f as p,ft as m,g as h,gt as g,ht as _,i as v,m as y,mt as b,n as x,nt as S,ot as C,p as w,pt as T,r as E,t as D,u as O,vt as k}from"./index-CMrxKlZ-.js";var A=`All Contacts`,j=`Favorites`,M=class extends i{constructor(...e){super(...e),this.contacts=[],this.uniqueCategories=[],this.selectedCategory=``,this.filterQuery=``,this.activeKebabMenu=null,this.sidebarScrolled=!1}static{this.styles=[y,w,e`
     :host {
       display: flex;
       flex-direction: column;
@@ -18,7 +18,9 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
       background-color: var(--bg-secondary, #f9fafb);
     }
     .sidebar-wrapper.collapsed .category-item {
-      border-radius: 6px 0 0 6px;
+      border-radius: 0;
+      border-start-start-radius: 6px;
+      border-end-start-radius: 6px;
     }
     .sidebar-content {
       flex: 1;
@@ -57,9 +59,9 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
     .category-actions {
       display: none;
       align-items: center;
-      padding-left: 8px;
-      margin-left: auto;
-      margin-right: -4px;
+      padding-inline-start: 8px;
+      margin-inline-start: auto;
+      margin-inline-end: -4px;
     }
     .category-item.active .category-actions {
       display: none;
@@ -127,7 +129,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
     .category-icon {
       display: flex;
       padding: 6px;
-      margin-right: 8px;
+      margin-inline-end: 8px;
       color: var(--text-muted);
     }
     .category-icon .icon {
@@ -171,13 +173,13 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
                     @keydown=${t=>this.handleControlKeyDown(t,e)}
                   >
                     <span class="category-icon">${d(e===`All Contacts`?`users`:e===`Favorites`?`starFourFill`:`folderUser`)}</span>
-                    <span class="category-name">${a}</span>
+                    <span class="category-name"><bdi>${a}</bdi></span>
                   </span>
                   
                   ${i?``:s`
                     <div class="category-actions ${this.activeKebabMenu===e?`popup-open`:``}" @click=${e=>e.stopPropagation()}>
                       <alps-popup 
-                        align="right" 
+                        align="end" 
                         position="bottom"
                         @popup-open=${()=>{this.activeKebabMenu=e}}
                         @popup-close=${()=>{this.activeKebabMenu===e&&(this.activeKebabMenu=null)}}
@@ -237,15 +239,18 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
       transition: background 0.15s, padding 0.2s, gap 0.2s;
     }
     :host(.density-loose) .contact-item {
-      padding: 16px 12px 16px 0;
+      padding-block: 16px;
+      padding-inline: 0 12px;
       gap: 16px;
     }
     :host(.density-compact) .contact-item {
-      padding: 8px 12px 8px 0;
+      padding-block: 8px;
+      padding-inline: 0 12px;
       gap: 12px;
     }
     :host(.density-ultra-compact) .contact-item {
-      padding: 4px 12px 4px 0;
+      padding-block: 4px;
+      padding-inline: 0 12px;
       gap: 12px;
     }
     @media (max-width: 768px) {
@@ -313,7 +318,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
       gap: 8px;
       min-width: 0;
       flex: 1;
-      margin-right: 12px;
+      margin-inline-end: 12px;
     }
     .contact-sender {
       font-weight: 450;
@@ -338,8 +343,8 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
       font-size: 12px;
       color: var(--text-muted);
       white-space: nowrap;
-      margin-left: 8px;
-      text-align: right;
+      margin-inline-start: 8px;
+      text-align: end;
       flex-shrink: 0;
     }
     .contact-item.active .contact-date {
@@ -426,7 +431,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
                     <div class="contact-details">
                       <div class="contact-header-row">
                         <div class="contact-header-inner">
-                          <div class="contact-sender">${e.name||e.email||this.i18nStore?.t(`contacts.unnamedContact`)}</div>
+                          <div class="contact-sender"><bdi>${e.name||e.email||this.i18nStore?.t(`contacts.unnamedContact`)}</bdi></div>
                           <div @click=${t=>{t.stopPropagation(),this.dispatchEvent(new CustomEvent(`toggle-star`,{detail:{contact:e}}))}} class="star-btn ${e.categories?.includes(`Favorites`)?`starred`:``}" style="${e.isTemporary?`opacity: 0.5; pointer-events: none;`:``}">
                             ${d(e.categories?.includes(`Favorites`)?`starFourFill`:`starFour`)}
                           </div>
@@ -497,7 +502,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
     .selection-icon {
       display: flex;
       padding: 6px;
-      margin-right: 8px;
+      margin-inline-end: 8px;
     }
 
     .selection-icon .icon {
@@ -661,10 +666,10 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
       align-items: center;
       gap: 8px;
     }
-  `]}updated(e){if(e.has(`contact`)||e.has(`isEditing`)){let t=e.has(`isEditing`)&&this.isEditing,n=!t&&this.isEditing&&e.get(`contact`)?.isTemporary&&this.contact&&!this.contact.isTemporary&&this.contact.path&&this.editForm&&!this.editForm.path;!n&&(e.has(`isEditing`)&&!this.isEditing||e.has(`contact`)&&e.get(`contact`)?.path!==this.contact?.path||e.get(`contact`)?.isTemporary&&this.contact?.isTemporary&&e.get(`contact`)!==this.contact)&&this.flushPendingSave(),n?this.editForm={...this.editForm,path:this.contact.path}:this.contact&&this.isEditing&&(t||!this.editForm||this.editForm.path!==this.contact.path)&&(this.editContact=this.contact,this.editUsername=c()??(this.settingsStore?.getState().loginUsername||``),this.editForm={...this.contact},this.birthday=I(String(this.editForm.birthday||``)),this.isDirty=!1,Array.isArray(this.editForm.emails)&&this.editForm.emails.length>0?this.editForm.emails=this.editForm.emails.map((e,t)=>({...e,id:e.id||`emails:${t}`})):this.editForm.email?this.editForm.emails=[{value:this.editForm.email,type:``,id:`emails:0`}]:this.editForm.emails=[{value:``,type:``,id:crypto.randomUUID()}],Array.isArray(this.editForm.phones)&&this.editForm.phones.length>0?this.editForm.phones=this.editForm.phones.map((e,t)=>({...e,id:e.id||`phones:${t}`})):this.editForm.phone?this.editForm.phones=[{value:this.editForm.phone,type:``,id:`phones:0`}]:this.editForm.phones=[{value:``,type:``,id:crypto.randomUUID()}])}}disconnectedCallback(){super.disconnectedCallback(),clearTimeout(this.saveTimeout),this.pendingSave=null}flushPendingSave(){let e=this.pendingSave;this.pendingSave=null,clearTimeout(this.saveTimeout),this.saveTimeout=null,e?.()}debouncedSave(){this.saveTimeout&&clearTimeout(this.saveTimeout);let e=this.editForm,t=this.editContact,n=this.editUsername;this.pendingSave=()=>this.handleSave(e,t,n),this.saveTimeout=setTimeout(()=>this.flushPendingSave(),500)}handleInput(e,t){this.editForm={...this.editForm,[e]:t},this.isDirty=!0,this.debouncedSave()}handleBirthdayInput(e,t){this.birthday={...this.birthday,[e]:t};let n=L(this.birthday);n!==null&&n!==L(I(String(this.editForm.birthday||``)))&&this.handleInput(`birthday`,n)}handleMultiInput(e,t,n,r){let i=[...this.editForm[e]||[]];i[t]&&(i[t]={...i[t],[n]:r},this.editForm={...this.editForm,[e]:i,...e===`emails`?{email:i[0]?.value||``}:{phone:i[0]?.value||``}},this.isDirty=!0,this.debouncedSave())}addMultiField(e){let t=[...this.editForm[e]||[]];t.push({value:``,type:``,id:crypto.randomUUID()}),this.editForm={...this.editForm,[e]:t},this.requestUpdate()}removeMultiField(e,t){let n=[...this.editForm[e]||[]];n.splice(t,1),this.editForm={...this.editForm,[e]:n,...e===`emails`?{email:n[0]?.value||``}:{phone:n[0]?.value||``}},this.isDirty=!0,this.debouncedSave()}formatTypeLabel(e,t){if(!e)return t;let n=e.toLowerCase();return`${{home:this.i18nStore?.t(`contacts.typeHome`)||`Home`,work:this.i18nStore?.t(`contacts.typeWork`)||`Work`,other:this.i18nStore?.t(`contacts.typeOther`)||`Other`,cell:this.i18nStore?.t(`contacts.typeMobile`)||`Mobile`,mobile:this.i18nStore?.t(`contacts.typeMobile`)||`Mobile`}[n]||e.charAt(0).toUpperCase()+e.slice(1).toLowerCase()} ${t}`}handleSave(e=this.editForm,t=this.editContact,n=this.editUsername){clearTimeout(this.saveTimeout),this.saveTimeout=null,this.pendingSave=null,this.dispatchEvent(Object.assign(new CustomEvent(`save`,{detail:e,bubbles:!0,composed:!0}),{sourceContact:t,sourceUsername:n}))}renderDetailRow(e,t,n=!1,r=!1){if(!t)return``;let i=s`${t}`;return n||e===`Email Address`||e===`Email`||e.endsWith(`Email`)||e.endsWith(this.i18nStore?.t(`contacts.email`)||`Email`)?i=s`<a href="mailto:${t}" @click=${e=>{e.preventDefault();let n=S(this.contact?.name,t);this.composeStore?.openComposer({to:[n]})}}>${t}</a>`:r||e===`Phone`||e.endsWith(`Phone`)||e.endsWith(this.i18nStore?.t(`contacts.phone`)||`Phone`)?i=s`<a href="tel:${t}">${t}</a>`:e===`URL`&&(i=s`<a href=${t.startsWith(`http`)?t:`https://${t}`} target="_blank" rel="noopener noreferrer">${t}</a>`),s`
+  `]}updated(e){if(e.has(`contact`)||e.has(`isEditing`)){let t=e.has(`isEditing`)&&this.isEditing,n=!t&&this.isEditing&&e.get(`contact`)?.isTemporary&&this.contact&&!this.contact.isTemporary&&this.contact.path&&this.editForm&&!this.editForm.path;!n&&(e.has(`isEditing`)&&!this.isEditing||e.has(`contact`)&&e.get(`contact`)?.path!==this.contact?.path||e.get(`contact`)?.isTemporary&&this.contact?.isTemporary&&e.get(`contact`)!==this.contact)&&this.flushPendingSave(),n?this.editForm={...this.editForm,path:this.contact.path}:this.contact&&this.isEditing&&(t||!this.editForm||this.editForm.path!==this.contact.path)&&(this.editContact=this.contact,this.editUsername=c()??(this.settingsStore?.getState().loginUsername||``),this.editForm={...this.contact},this.birthday=I(String(this.editForm.birthday||``)),this.isDirty=!1,Array.isArray(this.editForm.emails)&&this.editForm.emails.length>0?this.editForm.emails=this.editForm.emails.map((e,t)=>({...e,id:e.id||`emails:${t}`})):this.editForm.email?this.editForm.emails=[{value:this.editForm.email,type:``,id:`emails:0`}]:this.editForm.emails=[{value:``,type:``,id:crypto.randomUUID()}],Array.isArray(this.editForm.phones)&&this.editForm.phones.length>0?this.editForm.phones=this.editForm.phones.map((e,t)=>({...e,id:e.id||`phones:${t}`})):this.editForm.phone?this.editForm.phones=[{value:this.editForm.phone,type:``,id:`phones:0`}]:this.editForm.phones=[{value:``,type:``,id:crypto.randomUUID()}])}}disconnectedCallback(){super.disconnectedCallback(),clearTimeout(this.saveTimeout),this.pendingSave=null}flushPendingSave(){let e=this.pendingSave;this.pendingSave=null,clearTimeout(this.saveTimeout),this.saveTimeout=null,e?.()}debouncedSave(){this.saveTimeout&&clearTimeout(this.saveTimeout);let e=this.editForm,t=this.editContact,n=this.editUsername;this.pendingSave=()=>this.handleSave(e,t,n),this.saveTimeout=setTimeout(()=>this.flushPendingSave(),500)}handleInput(e,t){this.editForm={...this.editForm,[e]:t},this.isDirty=!0,this.debouncedSave()}handleBirthdayInput(e,t){this.birthday={...this.birthday,[e]:t};let n=L(this.birthday);n!==null&&n!==L(I(String(this.editForm.birthday||``)))&&this.handleInput(`birthday`,n)}handleMultiInput(e,t,n,r){let i=[...this.editForm[e]||[]];i[t]&&(i[t]={...i[t],[n]:r},this.editForm={...this.editForm,[e]:i,...e===`emails`?{email:i[0]?.value||``}:{phone:i[0]?.value||``}},this.isDirty=!0,this.debouncedSave())}addMultiField(e){let t=[...this.editForm[e]||[]];t.push({value:``,type:``,id:crypto.randomUUID()}),this.editForm={...this.editForm,[e]:t},this.requestUpdate()}removeMultiField(e,t){let n=[...this.editForm[e]||[]];n.splice(t,1),this.editForm={...this.editForm,[e]:n,...e===`emails`?{email:n[0]?.value||``}:{phone:n[0]?.value||``}},this.isDirty=!0,this.debouncedSave()}formatTypeLabel(e,t){if(!e)return t;let n=e.toLowerCase();return`${{home:this.i18nStore?.t(`contacts.typeHome`)||`Home`,work:this.i18nStore?.t(`contacts.typeWork`)||`Work`,other:this.i18nStore?.t(`contacts.typeOther`)||`Other`,cell:this.i18nStore?.t(`contacts.typeMobile`)||`Mobile`,mobile:this.i18nStore?.t(`contacts.typeMobile`)||`Mobile`}[n]||e.charAt(0).toUpperCase()+e.slice(1).toLowerCase()} ${t}`}handleSave(e=this.editForm,t=this.editContact,n=this.editUsername){clearTimeout(this.saveTimeout),this.saveTimeout=null,this.pendingSave=null,this.dispatchEvent(Object.assign(new CustomEvent(`save`,{detail:e,bubbles:!0,composed:!0}),{sourceContact:t,sourceUsername:n}))}renderDetailRow(e,t,n=!1,r=!1){if(!t)return``;let i=s`${t}`,a=`auto`;return n||e===`Email Address`||e===`Email`||e.endsWith(`Email`)||e.endsWith(this.i18nStore?.t(`contacts.email`)||`Email`)?(i=s`<a href="mailto:${t}" @click=${e=>{e.preventDefault();let n=S(this.contact?.name,t);this.composeStore?.openComposer({to:[n]})}}>${t}</a>`,a=`ltr`):r||e===`Phone`||e.endsWith(`Phone`)||e.endsWith(this.i18nStore?.t(`contacts.phone`)||`Phone`)?(i=s`<a href="tel:${t}">${t}</a>`,a=`ltr`):e===`URL`&&(i=s`<a href=${t.startsWith(`http`)?t:`https://${t}`} target="_blank" rel="noopener noreferrer">${t}</a>`,a=`ltr`),s`
       <div class="detail-group">
         <div class="group-label">${e}</div>
-        <div class="group-value">${i}</div>
+        <div class="group-value" dir=${a}>${i}</div>
       </div>
     `}get isStarred(){return this.selectedCount>0?this.allSelectedStarred:this.contact?.categories?.includes(`Favorites`)||!1}get formattedBirthday(){if(!this.contact?.birthday)return``;let e=String(this.contact.birthday),t=this.settingsStore?.getState()?.dateFormat||`YYYY-MM-DD`,n=F(e);return n?n.year===void 0?_(n.month,n.day,t):g(P(n.year,n.month,n.day),t,`24`).split(` `)[0]:e}renderBirthday(){let e=e=>this.i18nStore?.t(e)||``,t=new Intl.DateTimeFormat(this.i18nStore?.getIntlLanguage?.(),{month:`long`}),n=(e,t)=>Array.from({length:e},(e,n)=>({value:String(n+1),label:t(n+1)})),r=s`<alps-select class="birthday-day" label=${e(`contacts.birthdayDay`)} .value=${this.birthday.day}
       .options=${[{value:``,label:e(`contacts.birthdayDay`)},...n(31,String)]}
@@ -687,7 +692,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
 
         <alps-icon-btn title="${this.i18nStore?.t(`contacts.delete`)}" @click=${()=>this.dispatchEvent(new CustomEvent(`delete`))} icon="trash" ?disabled=${this.contact?.isTemporary}></alps-icon-btn>
         
-        <alps-popup align="right" @popup-close=${()=>{}}>
+        <alps-popup align="end" @popup-close=${()=>{}}>
           <alps-icon-btn slot="trigger" title="${this.i18nStore?.t(`contacts.addToCategory`)}" icon="folderOpen" ?disabled=${this.contact?.isTemporary}></alps-icon-btn>
           
           <div style="padding: 8px; display: flex; gap: 8px; cursor: default; min-width: 200px;" @click=${e=>e.stopPropagation()}>
@@ -811,8 +816,8 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             <alps-input placeholder="${this.i18nStore?.t(`contacts.address`)}" .value=${this.editForm.address||``} @input=${e=>this.handleInput(`address`,e.target.value)}></alps-input>
             <alps-input placeholder="${this.i18nStore?.t(`contacts.url`)}" type="url" .value=${this.editForm.url||``} @input=${e=>this.handleInput(`url`,e.target.value)}></alps-input>
             ${this.renderBirthday()}
-            <textarea class="edit-textarea" placeholder="${this.i18nStore?.t(`contacts.notes`)}" .value=${this.editForm.note||``} @input=${e=>this.handleInput(`note`,e.target.value)}></textarea>
-            <textarea class="edit-textarea" placeholder="${this.i18nStore?.t(`contacts.publicKey`)||`GPG Public Key Block`}" .value=${this.editForm.public_key||``} @input=${e=>this.handleInput(`public_key`,e.target.value)} style="font-family: monospace; white-space: pre;"></textarea>
+            <textarea class="edit-textarea" dir="auto" placeholder="${this.i18nStore?.t(`contacts.notes`)}" .value=${this.editForm.note||``} @input=${e=>this.handleInput(`note`,e.target.value)}></textarea>
+            <textarea class="edit-textarea" dir="ltr" placeholder="${this.i18nStore?.t(`contacts.publicKey`)||`GPG Public Key Block`}" .value=${this.editForm.public_key||``} @input=${e=>this.handleInput(`public_key`,e.target.value)} style="font-family: monospace; white-space: pre;"></textarea>
           </div>
         `:s`
           <div class="view-header" style="margin-top: -32px;">
@@ -821,12 +826,12 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
             </div>
             ${this.contact.organization||this.contact.title?s`
               <div class="view-organization">
-                ${[this.contact.title,this.contact.organization].filter(Boolean).join(`, `)}
+                <bdi>${[this.contact.title,this.contact.organization].filter(Boolean).join(`, `)}</bdi>
               </div>
             `:``}
             ${this.contact.categories&&this.contact.categories.length>0?s`
               <div class="view-categories">
-                ${this.contact.categories.map(e=>s`<span class="category-pill">${e}</span>`)}
+                ${this.contact.categories.map(e=>s`<span class="category-pill"><bdi>${e}</bdi></span>`)}
               </div>
             `:``}
           </div>
@@ -842,7 +847,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
         `}
         `}
       </div>
-    `}};f([o({type:Object})],R.prototype,`contact`,void 0),f([o({type:Boolean})],R.prototype,`isEditing`,void 0),f([o({type:Boolean})],R.prototype,`saving`,void 0),f([o({type:Array})],R.prototype,`uniqueCategories`,void 0),f([o({type:Boolean})],R.prototype,`isMobile`,void 0),f([o({type:Number})],R.prototype,`selectedCount`,void 0),f([o({type:Boolean})],R.prototype,`allSelectedStarred`,void 0),f([n()],R.prototype,`scrolled`,void 0),f([t({context:k})],R.prototype,`i18nStore`,void 0),f([t({context:h})],R.prototype,`composeStore`,void 0),f([t({context:u,subscribe:!0})],R.prototype,`settingsStore`,void 0),f([n()],R.prototype,`editForm`,void 0),f([n()],R.prototype,`birthday`,void 0),f([n()],R.prototype,`isDirty`,void 0),f([n()],R.prototype,`newCategoryName`,void 0),R=f([a(`alps-contact-view`)],R);var z=e=>`alps_contacts_categories_${e}`,B=`contacts_categories_cache`,V=/^#\/contacts\/?([^\/]*)\/?(.*)$/,H=class extends i{constructor(...e){super(...e),this.contacts=[],this.sortOrder=`asc`,this.showOnlyStarred=!1,this.loading=!0,this.isSpinning=!1,this.showInitialLoader=!window.alpsAppLoaded,this.selectedContact=null,this.filterQuery=``,this.isEditing=!1,this.saving=!1,this.selectedCategory=``,this.showCreatePrompt=!1,this.showDeleteConfirm=!1,this.addedCategories=[],this.sidebarWidth=250,this.listWidth=380,this.sidebarCollapsed=!1,this.isMobile=window.innerWidth<=768,this.mobileSidebarOpen=!1,this.isSidebarDragging=!1,this.isPaneDragging=!1,this.densityMode=`compact`,this.selectedContacts=new Set,this.listScrolled=!1,this.categoryToRename=null,this.categoryToDelete=null,this.syncIntervalTimer=null,this.readEpoch=0,this.loadedQuery=``,this.wholeBook=[],this.wholeCardPath=null,this.cardRead=null,this.cardGeneration=0,this.mergedBook=null,this._handleSettingsChange=()=>{if(this.settingsStore){let e=this.settingsStore.getState();if(this.sidebarCollapsed=e.sidebarCollapsed,this.densityMode=e.densityMode||`compact`,this.syncIntervalTimer&&=(clearInterval(this.syncIntervalTimer),null),e.checkMailInterval&&e.checkMailInterval>0){let t=e.checkMailInterval*60*1e3;this.syncIntervalTimer=setInterval(()=>{this.fetchContacts()},t)}}},this._handleWindowResize=()=>{this.isMobile=window.innerWidth<=768},this.restoringHash=!0,this.loadAddedCategories=()=>{try{localStorage.removeItem(B);let e=c(),t=e?JSON.parse(localStorage.getItem(z(e))||`[]`):[];this.addedCategories=Array.isArray(t)?t:[]}catch{this.addedCategories=[]}},this._handleHashChange=()=>{v(window.location.hash)||this.readHash(window.location.hash)},this.toolbarVersions=new Map,this.queuedSaves=[],this.saveTargets=new WeakMap,this.saveActive=!0,this.saveLifetime=0,this.handleSaveOwnerChange=()=>{this.saveLifetime++,this.queuedSaves=[],this.saveTargets=new WeakMap,this.toolbarVersions.clear(),this.loadAddedCategories()},this.saveRunning=!1,this.conflictedPath=null,this.stopResize=null,this.startResize=e=>{e.preventDefault(),this.stopResize?.(),this.isPaneDragging=!0;let t=e.clientX,n=this.listWidth,r=e=>{let r=e.clientX-t;this.listWidth=Math.max(250,Math.min(800,n+r))},i=()=>{this.stopResize=null,this.isPaneDragging=!1,window.removeEventListener(`mousemove`,r),window.removeEventListener(`mouseup`,i)};this.stopResize=i,window.addEventListener(`mousemove`,r),window.addEventListener(`mouseup`,i)}}static{this.styles=[D.styles,O.styles,y,e`
+    `}};f([o({type:Object})],R.prototype,`contact`,void 0),f([o({type:Boolean})],R.prototype,`isEditing`,void 0),f([o({type:Boolean})],R.prototype,`saving`,void 0),f([o({type:Array})],R.prototype,`uniqueCategories`,void 0),f([o({type:Boolean})],R.prototype,`isMobile`,void 0),f([o({type:Number})],R.prototype,`selectedCount`,void 0),f([o({type:Boolean})],R.prototype,`allSelectedStarred`,void 0),f([n()],R.prototype,`scrolled`,void 0),f([t({context:k})],R.prototype,`i18nStore`,void 0),f([t({context:h})],R.prototype,`composeStore`,void 0),f([t({context:u,subscribe:!0})],R.prototype,`settingsStore`,void 0),f([n()],R.prototype,`editForm`,void 0),f([n()],R.prototype,`birthday`,void 0),f([n()],R.prototype,`isDirty`,void 0),f([n()],R.prototype,`newCategoryName`,void 0),R=f([a(`alps-contact-view`)],R);var z=e=>`alps_contacts_categories_${e}`,B=`contacts_categories_cache`,V=/^#\/contacts\/?([^\/]*)\/?(.*)$/,H=class extends i{constructor(...e){super(...e),this.contacts=[],this.sortOrder=`asc`,this.showOnlyStarred=!1,this.loading=!0,this.isSpinning=!1,this.showInitialLoader=!window.alpsAppLoaded,this.selectedContact=null,this.filterQuery=``,this.isEditing=!1,this.saving=!1,this.selectedCategory=``,this.showCreatePrompt=!1,this.showDeleteConfirm=!1,this.addedCategories=[],this.sidebarWidth=250,this.listWidth=380,this.sidebarCollapsed=!1,this.isMobile=window.innerWidth<=768,this.mobileSidebarOpen=!1,this.isSidebarDragging=!1,this.isPaneDragging=!1,this.densityMode=`compact`,this.selectedContacts=new Set,this.listScrolled=!1,this.categoryToRename=null,this.categoryToDelete=null,this.syncIntervalTimer=null,this.readEpoch=0,this.loadedQuery=``,this.wholeBook=[],this.wholeCardPath=null,this.cardRead=null,this.cardGeneration=0,this.mergedBook=null,this._handleSettingsChange=()=>{if(this.settingsStore){let e=this.settingsStore.getState();if(this.sidebarCollapsed=e.sidebarCollapsed,this.densityMode=e.densityMode||`compact`,this.syncIntervalTimer&&=(clearInterval(this.syncIntervalTimer),null),e.checkMailInterval&&e.checkMailInterval>0){let t=e.checkMailInterval*60*1e3;this.syncIntervalTimer=setInterval(()=>{this.fetchContacts()},t)}}},this._handleWindowResize=()=>{this.isMobile=window.innerWidth<=768},this.restoringHash=!0,this.loadAddedCategories=()=>{try{localStorage.removeItem(B);let e=c(),t=e?JSON.parse(localStorage.getItem(z(e))||`[]`):[];this.addedCategories=Array.isArray(t)?t:[]}catch{this.addedCategories=[]}},this._handleHashChange=()=>{v(window.location.hash)||this.readHash(window.location.hash)},this.toolbarVersions=new Map,this.queuedSaves=[],this.saveTargets=new WeakMap,this.saveActive=!0,this.saveLifetime=0,this.handleSaveOwnerChange=()=>{this.saveLifetime++,this.queuedSaves=[],this.saveTargets=new WeakMap,this.toolbarVersions.clear(),this.loadAddedCategories()},this.saveRunning=!1,this.conflictedPath=null,this.stopResize=null,this.startResize=e=>{e.preventDefault(),this.stopResize?.(),this.isPaneDragging=!0;let t=e.clientX,n=this.listWidth,r=getComputedStyle(this).direction===`rtl`?-1:1,i=e=>{let i=(e.clientX-t)*r;this.listWidth=Math.max(250,Math.min(800,n+i))},a=()=>{this.stopResize=null,this.isPaneDragging=!1,window.removeEventListener(`mousemove`,i),window.removeEventListener(`mouseup`,a)};this.stopResize=a,window.addEventListener(`mousemove`,i),window.addEventListener(`mouseup`,a)}}static{this.styles=[D.styles,O.styles,y,e`
     :host {
       display: flex;
       flex-direction: column;
@@ -865,7 +870,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
       display: flex;
       flex-direction: column;
       position: relative;
-      border-right: 1px solid var(--border-color, #e5e7eb);
+      border-inline-end: 1px solid var(--border-color, #e5e7eb);
     }
     .resizer {
       background: transparent;
@@ -884,7 +889,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
       width: 3px;
       top: 0;
       bottom: 0;
-      left: 1px;
+      inset-inline-start: 1px;
     }
     .resizer:hover, .resizer.dragging {
       z-index: 9999;
@@ -892,12 +897,12 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDw
     .resizer:hover::after, .resizer.dragging::after {
       background: var(--accent-color, #005A9E);
       width: 3px;
-      left: 0;
+      inset-inline-start: 0;
     }
     .app-container.collapsed .contact-list-pane {
-      box-shadow: rgba(95, 95, 95, 0.1) -4px 0 4px -2px;
+      box-shadow: rgba(95, 95, 95, 0.1) calc(-4px * var(--ui-inline-direction, 1)) 0 4px -2px;
       z-index: 25;
-      border-left: 1px solid var(--border-color, #e5e7eb);
+      border-inline-start: 1px solid var(--border-color, #e5e7eb);
     }
     .contact-reader-pane {
       background: var(--bg-primary, #ffffff);

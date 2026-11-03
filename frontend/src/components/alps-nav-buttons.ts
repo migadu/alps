@@ -48,18 +48,22 @@ export class AlpsNavButtons extends LitElement {
         }
 
         .nav-buttons button:first-child {
-            border-radius: 6px 0 0 6px;
+            border-radius: 0;
+            border-start-start-radius: 6px;
+            border-end-start-radius: 6px;
         }
         
         .nav-buttons button:last-child {
-            border-radius: 0 6px 6px 0;
-            border-left: none;
+            border-radius: 0;
+            border-start-end-radius: 6px;
+            border-end-end-radius: 6px;
+            border-inline-start: none;
         }
         
         .nav-buttons button:nth-child(2) {
-            border-left: none;
-            padding-left: 16px;
-            padding-right: 16px;
+            border-inline-start: none;
+            padding-inline-start: 16px;
+            padding-inline-end: 16px;
         }
 
         @media (hover: hover) {

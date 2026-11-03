@@ -54,6 +54,23 @@ export function intlTag(code: string): string {
   return code;
 }
 
+/** Scripts written right to left, as `Intl.Locale` names them. */
+const RTL_SCRIPTS = ['Arab', 'Hebr', 'Syrc', 'Thaa', 'Nkoo', 'Adlm', 'Rohg'];
+
+/**
+ * The direction one of alps's language codes is written in, from its script:
+ * `maximize` supplies the likely script for a bare language (`ar` → Arab),
+ * and an explicit script subtag wins over it.
+ */
+export function textDirection(code: string): 'ltr' | 'rtl' {
+  try {
+    const script = new Intl.Locale(intlTag(code)).maximize().script;
+    return RTL_SCRIPTS.includes(script ?? '') ? 'rtl' : 'ltr';
+  } catch {
+    return 'ltr';
+  }
+}
+
 export class I18nStore extends EventTarget {
   private language: string = 'en';
   private dictionary: TranslationDictionary = en;
@@ -68,6 +85,14 @@ export class I18nStore extends EventTarget {
   /** Kept in one place so the initial value and every change agree. */
   private applyDocumentLanguage(): void {
     document.documentElement.lang = this.getIntlLanguage();
+    // The whole layout follows: logical CSS properties, flex and grid order,
+    // and the icons that point along the reading direction.
+    document.documentElement.dir = textDirection(this.language);
+  }
+
+  /** The direction of the active language; see textDirection. */
+  getDirection(): 'ltr' | 'rtl' {
+    return textDirection(this.language);
   }
 
   async setLanguage(lang: string) {

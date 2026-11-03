@@ -250,11 +250,11 @@ export class UserProfileMenu extends LitElement {
         <div class="user-info">
           <alps-avatar .name=${displayName} .size=${28}></alps-avatar>
           <div class="user-text-container">
-            <span class="user-name-text">${displayName}</span>
-            <span class="user-address-text">${this.username}</span>
+            <span class="user-name-text"><bdi>${displayName}</bdi></span>
+            <span class="user-address-text"><bdi dir="ltr">${this.username}</bdi></span>
           </div>
         </div>
-        <alps-popup align="right">
+        <alps-popup align="end">
           <alps-icon-btn
             slot="trigger"
             .icon=${'dotsThreeVertical'}
@@ -267,8 +267,8 @@ export class UserProfileMenu extends LitElement {
             return html`
               ${accounts.map(account => html`
                 <button class="dropdown-item" @click="${() => this._handleSwitchAccount(account.username)}">
-                  <alps-avatar .name=${account.display_name || account.username} .size=${16} style="margin-right: 4px;"></alps-avatar>
-                  <span class="item-text" style="font-weight: 500;" title="${account.username}">${account.display_name || account.username}</span>
+                  <alps-avatar .name=${account.display_name || account.username} .size=${16} style="margin-inline-end: 4px;"></alps-avatar>
+                  <span class="item-text" style="font-weight: 500;" title="${account.username}"><bdi>${account.display_name || account.username}</bdi></span>
                 </button>
               `)}
               <div class="dropdown-divider"></div>

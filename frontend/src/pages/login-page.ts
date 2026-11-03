@@ -49,6 +49,19 @@ export class LoginPage extends LitElement {
       padding-left: 36px;
     }
 
+    /* The address and the password are written left to right in every
+       language, but the icon follows the interface: in a right-to-left one it
+       sits on the right, and the room for it moves there with it. Physical
+       sides, because the input's own direction is not the interface's. */
+    :host(:dir(rtl)) .has-left-icon .native-input {
+      padding-left: 12px;
+      padding-right: 36px;
+    }
+
+    :host(:dir(rtl)) .native-input:placeholder-shown {
+      text-align: right;
+    }
+
     .native-input:focus {
       border-color: var(--accent-color, #005A9E);
       box-shadow: 0 0 0 2px rgba(0, 90, 158, 0.2);
@@ -60,7 +73,7 @@ export class LoginPage extends LitElement {
 
     .icon-left {
       position: absolute;
-      left: 10px;
+      inset-inline-start: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -101,7 +114,7 @@ export class LoginPage extends LitElement {
       height: 16px;
       margin: 0;
       margin-top: 2px;
-      margin-right: 8px;
+      margin-inline-end: 8px;
       cursor: pointer;
       accent-color: var(--accent-color, #2563eb);
     }
@@ -393,6 +406,7 @@ export class LoginPage extends LitElement {
               <span class="icon-left">${renderIcon('at')}</span>
               <input 
                 type="text" 
+                dir="ltr"
                 id="username" 
                 name="username"
                 class="native-input"
@@ -409,6 +423,7 @@ export class LoginPage extends LitElement {
               <span class="icon-left">${renderIcon('key')}</span>
               <input 
                 type="password" 
+                dir="ltr"
                 id="password" 
                 name="password"
                 class="native-input"

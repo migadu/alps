@@ -59,6 +59,7 @@ describe('the language picker', () => {
       ['fr', 'fr', 'Français'],
       ['pt', 'pt', 'Português'],
       ['da', 'da', 'Dansk'],
+      ['ar', 'ar', 'العربية'],
     ]);
   });
 

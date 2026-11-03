@@ -187,7 +187,7 @@ export class MailboxPage extends LitElement {
     /* Vertical: Sidebar (250px) | Message List (min 300px) | Reader (flex) */
     .layout-vertical alps-sidebar.desktop-sidebar { width: var(--sidebar-width, ${SIDEBAR_WIDTH_DEFAULT}px); flex-shrink: 0; }
     .layout-vertical .main-view { flex: 1; display: flex; flex-direction: row; min-width: 0; }
-    .layout-vertical .message-list-pane { width: ${MESSAGE_LIST_WIDTH_MIN}px; flex-shrink: 0; border-right: 1px solid var(--border-color); }
+    .layout-vertical .message-list-pane { width: ${MESSAGE_LIST_WIDTH_MIN}px; flex-shrink: 0; border-inline-end: 1px solid var(--border-color); }
     .layout-vertical .message-reader-pane { flex: 1; min-width: 0; }
 
     /* Horizontal: Sidebar (250px) | [ Message List (50%) / Reader (50%) ] */
@@ -224,8 +224,8 @@ export class MailboxPage extends LitElement {
 
     .mobile-bulk-actions-count {
       font-weight: 600;
-      margin-left: 8px;
-      margin-right: auto;
+      margin-inline-start: 8px;
+      margin-inline-end: auto;
     }
 
     .pane {
@@ -259,7 +259,7 @@ export class MailboxPage extends LitElement {
       width: 3px;
       top: 0;
       bottom: 0;
-      left: 1px;
+      inset-inline-start: 1px;
     }
 
     .layout-horizontal .resizer {
@@ -312,9 +312,9 @@ export class MailboxPage extends LitElement {
     }
 
     .app-container.collapsed .message-list-pane {
-      box-shadow: rgba(95, 95, 95, 0.1) -4px 0 4px -2px;
+      box-shadow: rgba(95, 95, 95, 0.1) calc(-4px * var(--ui-inline-direction, 1)) 0 4px -2px;
       z-index: 25;
-      border-left: 1px solid var(--border-color);
+      border-inline-start: 1px solid var(--border-color);
     }
 
 
@@ -1345,7 +1345,12 @@ export class MailboxPage extends LitElement {
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (this.layoutMode === 'vertical') {
         const sidebarW = this.sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : this.sidebarWidth;
-        const newX = Math.max(sidebarW + this.computedMinListWidth, Math.min(moveEvent.clientX, window.innerWidth - MESSAGE_READER_WIDTH_MIN));
+        // Measured from the inline start, where the sidebar is: the right
+        // edge of the window in a right-to-left interface.
+        const inlineX = getComputedStyle(this).direction === 'rtl'
+          ? window.innerWidth - moveEvent.clientX
+          : moveEvent.clientX;
+        const newX = Math.max(sidebarW + this.computedMinListWidth, Math.min(inlineX, window.innerWidth - MESSAGE_READER_WIDTH_MIN));
         this.resizerPositionX = newX;
       } else if (this.layoutMode === 'horizontal') {
         this.listHeight = Math.max(HORIZONTAL_LIST_HEIGHT_MIN, Math.min(moveEvent.clientY - HEADER_HEIGHT, window.innerHeight - HORIZONTAL_LIST_HEIGHT_MIN));

@@ -136,15 +136,18 @@ export class AlpsContactsList extends LitElement {
       transition: background 0.15s, padding 0.2s, gap 0.2s;
     }
     :host(.density-loose) .contact-item {
-      padding: 16px 12px 16px 0;
+      padding-block: 16px;
+      padding-inline: 0 12px;
       gap: 16px;
     }
     :host(.density-compact) .contact-item {
-      padding: 8px 12px 8px 0;
+      padding-block: 8px;
+      padding-inline: 0 12px;
       gap: 12px;
     }
     :host(.density-ultra-compact) .contact-item {
-      padding: 4px 12px 4px 0;
+      padding-block: 4px;
+      padding-inline: 0 12px;
       gap: 12px;
     }
     @media (max-width: 768px) {
@@ -212,7 +215,7 @@ export class AlpsContactsList extends LitElement {
       gap: 8px;
       min-width: 0;
       flex: 1;
-      margin-right: 12px;
+      margin-inline-end: 12px;
     }
     .contact-sender {
       font-weight: 450;
@@ -237,8 +240,8 @@ export class AlpsContactsList extends LitElement {
       font-size: 12px;
       color: var(--text-muted);
       white-space: nowrap;
-      margin-left: 8px;
-      text-align: right;
+      margin-inline-start: 8px;
+      text-align: end;
       flex-shrink: 0;
     }
     .contact-item.active .contact-date {
@@ -405,7 +408,7 @@ export class AlpsContactsList extends LitElement {
                     <div class="contact-details">
                       <div class="contact-header-row">
                         <div class="contact-header-inner">
-                          <div class="contact-sender">${c.name || c.email || this.i18nStore?.t('contacts.unnamedContact')}</div>
+                          <div class="contact-sender"><bdi>${c.name || c.email || this.i18nStore?.t('contacts.unnamedContact')}</bdi></div>
                           <div @click=${(e: Event) => { e.stopPropagation(); this.dispatchEvent(new CustomEvent('toggle-star', { detail: { contact: c } })); }} class="star-btn ${c.categories?.includes('Favorites') ? 'starred' : ''}" style="${c.isTemporary ? 'opacity: 0.5; pointer-events: none;' : ''}">
                             ${renderIcon(c.categories?.includes('Favorites') ? 'starFourFill' : 'starFour')}
                           </div>

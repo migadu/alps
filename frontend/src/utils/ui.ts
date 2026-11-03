@@ -1,10 +1,24 @@
-import { html, type TemplateResult } from 'lit';
+import { html, nothing, type TemplateResult } from 'lit';
 import type { I18nStore } from '../store/i18n-store';
 import { ALL_MAILBOXES, FOLDER_SPAM, mailboxDelimiter, specialMailboxRole, type MailboxRole } from './folders';
 
+/**
+ * Icons whose shape points along the reading direction: navigation, reply and
+ * forward, undo and redo, indenting, the sidebar's edge. A right-to-left page
+ * draws them mirrored. Everything else keeps its shape: a clock, a padlock or
+ * a refresh arrow means the same thing either way.
+ */
+const DIRECTIONAL_ICONS = new Set([
+  'arrowLeft', 'caretLeft', 'caretRight',
+  'arrowBendUpLeft', 'arrowBendDoubleUpLeft', 'arrowBendUpRight',
+  'arrowUUpLeft', 'arrowUUpRight',
+  'textIndent', 'textOutdent',
+  'sidebar',
+]);
+
 export function renderIcon(name: string): TemplateResult {
   return html`
-    <svg class="icon">
+    <svg class="icon" style=${DIRECTIONAL_ICONS.has(name) ? 'scale: var(--ui-inline-direction, 1) 1' : nothing}>
       <use href="/assets/icons/sprite.svg?v=13#${name}"></use>
     </svg>
   `;

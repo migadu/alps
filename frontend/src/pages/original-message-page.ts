@@ -63,7 +63,7 @@ export class OriginalMessagePage extends LitElement {
     .metadata-table th,
     .metadata-table td {
       padding: 12px 16px;
-      text-align: left;
+      text-align: start;
       border-bottom: 1px solid var(--border-color, #e5e7eb);
       font-size: 14px;
     }
@@ -304,7 +304,7 @@ export class OriginalMessagePage extends LitElement {
           ` : ''}
         </div>
 
-        <pre class="raw-content">${this.rawText}</pre>
+        <pre class="raw-content" dir="ltr">${this.rawText}</pre>
       </div>
     `;
   }

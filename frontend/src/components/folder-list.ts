@@ -211,7 +211,9 @@ export class FolderList extends LitElement {
     }
 
     .sidebar-wrapper.collapsed .folder-item {
-      border-radius: 6px 0 0 6px;
+      border-radius: 0;
+      border-start-start-radius: 6px;
+      border-end-start-radius: 6px;
     }
 
     .folder-item {
@@ -302,14 +304,14 @@ export class FolderList extends LitElement {
     }
 
     .folder-children {
-      margin-left: 12px;
+      margin-inline-start: 12px;
     }
 
     .folder-actions {
       display: none;
       align-items: center;
-      padding-left: 8px;
-      margin-left: auto;      
+      padding-inline-start: 8px;
+      margin-inline-start: auto;      
     }
 
     .folder-item.active .folder-actions {
@@ -412,7 +414,7 @@ export class FolderList extends LitElement {
     }
 
     .folder-icon {
-      margin-right: 10px;
+      margin-inline-end: 10px;
       font-size: 16px;
       display: flex;
       align-items: center;
@@ -434,7 +436,7 @@ export class FolderList extends LitElement {
       flex: 1;
     }
     .dropdown-item.submenu-trigger .caret-icon {
-      margin-left: auto;
+      margin-inline-start: auto;
       color: var(--text-muted, #6b7280);
       display: flex;
       align-items: center;
@@ -1090,12 +1092,12 @@ export class FolderList extends LitElement {
               aria-current=${isActive ? 'true' : nothing}
               aria-expanded=${isNoSelect && hasChildren ? String(isExpanded) : nothing}
               @keydown=${isControl ? handleKeyDown : nothing}
-            >${label}</div>
+            ><bdi>${label}</bdi></div>
             
             ${hasActions ? html`
               <div class="folder-actions ${this.activeKebabMenu === node.fullName ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
                 <alps-popup 
-                  align="right" 
+                  align="end" 
                   position="bottom"
                   @popup-open=${() => { this.activeKebabMenu = node.fullName; }}
                   @popup-close=${() => { if (this.activeKebabMenu === node.fullName) this.activeKebabMenu = null; }}
@@ -1142,7 +1144,7 @@ export class FolderList extends LitElement {
                     activeKebabMenu while the outer menu was still open.
                   -->
                   <alps-popup
-                    position="right"
+                    position="inline-end"
                     align="top"
                     triggerOn="hover"
                     @click=${(e: Event) => e.stopPropagation()}

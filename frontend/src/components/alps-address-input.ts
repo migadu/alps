@@ -292,7 +292,8 @@ export class AlpsAddressInput extends LitElement {
       background: var(--bg-selected);
       border: none;
       border-radius: 4px;
-      padding: 2px 2px 2px 6px;
+      padding-block: 2px;
+      padding-inline: 6px 2px;
       font-size: 13px;
       font-weight: 600;
       color: var(--accent-hover);
@@ -344,7 +345,7 @@ export class AlpsAddressInput extends LitElement {
     .suggestions-dropdown {
       position: absolute;
       top: 100%;
-      left: 0;
+      inset-inline-start: 0;
       z-index: 40010;
       min-width: 200px;
       max-width: 320px;

@@ -323,7 +323,7 @@ export class AlpsThreadCard extends LitElement {
       border: none;
       background: transparent;
       font-size: 14px;
-      text-align: left;
+      text-align: start;
       cursor: pointer;
       color: var(--text-primary);
       transition: background-color 0.15s ease;
@@ -617,7 +617,7 @@ export class AlpsThreadCard extends LitElement {
           <div class="thread-card-meta">
             ${this.item.isSent ? html`<span class="thread-card-badge">${this.i18nStore?.t('folderList.sent') || 'Sent'}</span>` : ''}
             ${this.item.mailbox !== this.mailbox && !this.item.isSent ? html`<span class="thread-card-badge">${this.item.mailbox}</span>` : ''}
-            <div class="thread-card-date">${dateStr}</div>
+            <div class="thread-card-date"><bdi>${dateStr}</bdi></div>
             
             <alps-icon-btn
               title=${this.i18nStore?.t('messageReader.star') || 'Star'}
@@ -633,7 +633,7 @@ export class AlpsThreadCard extends LitElement {
                 icon="arrowBendUpLeft"
               ></alps-icon-btn>
               
-              <alps-popup align="right" class="card-more-menu" @click=${(e: Event) => e.stopPropagation()}>
+              <alps-popup align="end" class="card-more-menu" @click=${(e: Event) => e.stopPropagation()}>
                 <alps-icon-btn
                   slot="trigger"
                   title=${this.i18nStore?.t('messageReader.moreOptions')}

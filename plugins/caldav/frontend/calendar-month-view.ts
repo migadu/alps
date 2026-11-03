@@ -45,14 +45,14 @@ export class CalendarMonthView extends LitElement {
         }
 
         .month-header-cell {
-            text-align: right;
+            text-align: end;
             padding: 8px 12px;
             font-size: 13px;
             font-weight: 500;
             color: var(--text-secondary, #4b5563);
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
         }
-        .month-header-cell:last-child { border-right: none; }
+        .month-header-cell:last-child { border-inline-end: none; }
 
         .month-grid {
             flex: 1;
@@ -123,7 +123,7 @@ export class CalendarMonthView extends LitElement {
             background-color: var(--bg-primary, #ffffff);
             color: var(--text-primary, #111827);
             border: 1px solid;
-            border-left-width: 3px;
+            border-inline-start-width: 3px;
             box-shadow: none;
         }
         .event-chip.task svg {
@@ -227,17 +227,17 @@ export class CalendarMonthView extends LitElement {
                             <div class="month-cell ${isOtherMonth ? 'other-month' : ''}" @click=${() => this.handleCellClick(d)} style="cursor: pointer;">
                                 <div class="date-number ${isToday ? 'today' : ''}">${d.getDate()}</div>
                                 ${dayEvents.slice(0, 4).map(e => html`
-                                    <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
+                                    <alps-popup align="start" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
                                         <div slot="trigger"
                                             class="event-chip ${isAllDayEvent(e) ? 'all-day' : ''} ${e.task ? 'task' : ''} ${e.status === 'declined' ? 'declined' : ''}" 
                                             style=${e.task ? `border-color: ${e.color}` : e.color ? `background-color: ${e.color}` : ''}
                                             title="${e.summary || (this.i18nStore?.t('calendar.noTitle'))}">
-                                            ${e.task ? renderIcon('checkCircle') : ''}${e.summary || (this.i18nStore?.t('calendar.noTitle'))}
+                                            ${e.task ? renderIcon('checkCircle') : ''}<bdi>${e.summary || (this.i18nStore?.t('calendar.noTitle'))}</bdi>
                                         </div>
                                         <calendar-event-preview .event=${e}></calendar-event-preview>
                                     </alps-popup>
                                 `)}
-                                ${dayEvents.length > 4 ? html`<div style="font-size: 11px; color: var(--text-muted); padding-left: 4px;">${this.i18nStore?.t('calendar.moreEvents', { count: dayEvents.length - 4 })}</div>` : ''}
+                                ${dayEvents.length > 4 ? html`<div style="font-size: 11px; color: var(--text-muted); padding-inline-start: 4px;">${this.i18nStore?.t('calendar.moreEvents', { count: dayEvents.length - 4 })}</div>` : ''}
                             </div>
                         `;
                     })}

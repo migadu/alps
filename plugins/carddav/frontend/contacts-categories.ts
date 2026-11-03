@@ -44,7 +44,9 @@ export class AlpsContactsCategories extends LitElement {
       background-color: var(--bg-secondary, #f9fafb);
     }
     .sidebar-wrapper.collapsed .category-item {
-      border-radius: 6px 0 0 6px;
+      border-radius: 0;
+      border-start-start-radius: 6px;
+      border-end-start-radius: 6px;
     }
     .sidebar-content {
       flex: 1;
@@ -83,9 +85,9 @@ export class AlpsContactsCategories extends LitElement {
     .category-actions {
       display: none;
       align-items: center;
-      padding-left: 8px;
-      margin-left: auto;
-      margin-right: -4px;
+      padding-inline-start: 8px;
+      margin-inline-start: auto;
+      margin-inline-end: -4px;
     }
     .category-item.active .category-actions {
       display: none;
@@ -153,7 +155,7 @@ export class AlpsContactsCategories extends LitElement {
     .category-icon {
       display: flex;
       padding: 6px;
-      margin-right: 8px;
+      margin-inline-end: 8px;
       color: var(--text-muted);
     }
     .category-icon .icon {
@@ -237,13 +239,13 @@ export class AlpsContactsCategories extends LitElement {
                     @keydown=${(e: KeyboardEvent) => this.handleControlKeyDown(e, cat)}
                   >
                     <span class="category-icon">${renderIcon(cat === CATEGORY_ALL_CONTACTS ? 'users' : (cat === CATEGORY_FAVORITES ? 'starFourFill' : 'folderUser'))}</span>
-                    <span class="category-name">${name}</span>
+                    <span class="category-name"><bdi>${name}</bdi></span>
                   </span>
                   
                   ${!isSystem ? html`
                     <div class="category-actions ${this.activeKebabMenu === cat ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
                       <alps-popup 
-                        align="right" 
+                        align="end" 
                         position="bottom"
                         @popup-open=${() => { this.activeKebabMenu = cat; }}
                         @popup-close=${() => { if (this.activeKebabMenu === cat) this.activeKebabMenu = null; }}
