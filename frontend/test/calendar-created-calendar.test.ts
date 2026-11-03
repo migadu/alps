@@ -2,13 +2,12 @@
  * A calendar the user creates from the Calendar sidebar.
  *
  * Creating one read the calendars again, but nothing checked the new one: the
- * page checks every calendar only on the read that lists its first ones, so
+ * page checked every calendar only on the read that listed its first ones, so
  * beside a calendar the user already had the new one came unchecked, and the
  * events added to it stayed hidden until the user found its box and ticked it.
  *
- * Only the user's own new calendar is checked. One that appears by other
- * means, made in another client, is left unchecked as before, and a rename
- * keeps the box as it was.
+ * A new calendar is checked, the user's own as one made in another client,
+ * and a rename keeps the box as it was.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../plugins/caldav/frontend/calendar-page';
@@ -156,7 +155,7 @@ describe('a calendar the user creates', () => {
 });
 
 describe('a calendar the user did not create here', () => {
-  it('is left unchecked when another client adds it', async () => {
+  it('is checked when another client adds it', async () => {
     const listed = [work()];
     const { el, reads } = await calendarPage(listed);
 
@@ -164,7 +163,7 @@ describe('a calendar the user did not create here', () => {
     const asked = reads();
     shadow(el, 'alps-icon-btn[icon="arrowsClockwise"]').click();
     await readAgain(el, reads, asked);
-    expect(boxes(el)).toEqual({ Work: true, Trips: false });
+    expect(boxes(el)).toEqual({ Work: true, Trips: true });
   });
 });
 

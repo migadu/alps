@@ -1,12 +1,14 @@
 /**
  * Which calendars are checked in the sidebar.
  *
- * Every calendar is checked when the page first lists calendars. The page
- * did that whenever none was checked, on every read: a navigation, the
- * periodic refresh, a save, coming back to the page. That was meant for the
- * first read, but a user who unchecked every calendar leaves the same empty
- * choice behind, so the next read checked them all again and their events
- * came back.
+ * A calendar is checked on the first read that lists it. The page once
+ * checked every calendar whenever none was checked, on every read: a
+ * navigation, the periodic refresh, a save, coming back to the page. A user
+ * who unchecked every calendar leaves the same empty choice behind, so the
+ * next read checked them all again and their events came back. Then it
+ * checked calendars only on the read that listed its first ones, and one
+ * added later, in another client or shared by another account, came
+ * unchecked, its events hidden until the user found its box.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../plugins/caldav/frontend/calendar-page';
@@ -121,31 +123,70 @@ describe('the calendars checked in the sidebar', () => {
     expect(boxes(el)).toEqual({ Work: false });
   });
 
-  it('checks a calendar that appears only when no calendar was listed before it', async () => {
-    const listed: object[] = [work];
+  it('checks a calendar another client adds, and keeps the boxes of the others', async () => {
+    const listed: object[] = [work, trips];
     const { el, reads } = await calendarPage(listed);
-    deletesFrom(listed);
     const refresh = async () => {
       const asked = reads();
       shadow(el, 'alps-icon-btn[icon="arrowsClockwise"]').click();
       await readAgain(el, reads, asked);
     };
+    await click(shadowAll(el, calendarBoxes).find((box) => box.textContent!.trim() === 'Trips')!, el);
 
-    // Beside a calendar the user already has, one made in another client is
-    // left unchecked.
-    listed.push(trips);
-    await refresh();
-    expect(boxes(el)).toEqual({ Work: true, Trips: false });
-
-    // With every calendar deleted there is no choice left to keep, and the
-    // next calendar is checked as the first ones were.
-    for (const calendar of [work, trips]) {
-      el.handleDeleteCalendar(calendar);
-      await el._executeDeleteCalendar();
-    }
-    expect(boxes(el)).toEqual({});
     listed.push({ name: 'Home', description: '', path: '/cal/home/' });
     await refresh();
-    expect(boxes(el)).toEqual({ Home: true });
+    expect(boxes(el)).toEqual({ Work: true, Trips: false, Home: true });
+    // Checked once, on the read that first lists it, and not again.
+    await click(shadowAll(el, calendarBoxes).find((box) => box.textContent!.trim() === 'Home')!, el);
+    await refresh();
+    expect(boxes(el)).toEqual({ Work: true, Trips: false, Home: false });
+  });
+
+  it('checks only the new calendar when every other was unchecked', async () => {
+    const listed: object[] = [work, trips];
+    const { el, reads } = await calendarPage(listed);
+    await uncheckAll(el);
+
+    // As a calendar shared by another account appears.
+    listed.push({ name: 'Shared', description: '', path: '/cal/shared/' });
+    const asked = reads();
+    shadow(el, 'alps-icon-btn[icon="arrowsClockwise"]').click();
+    await readAgain(el, reads, asked);
+    expect(boxes(el)).toEqual({ Work: false, Trips: false, Shared: true });
+  });
+
+  it('checks a calendar that comes back once it was no longer listed', async () => {
+    const listed: object[] = [work, trips];
+    const { el, reads } = await calendarPage(listed);
+    const refresh = async () => {
+      const asked = reads();
+      shadow(el, 'alps-icon-btn[icon="arrowsClockwise"]').click();
+      await readAgain(el, reads, asked);
+    };
+    await uncheckAll(el);
+
+    // Deleted in another client, then made again under the same path.
+    listed.splice(1, 1);
+    await refresh();
+    expect(boxes(el)).toEqual({ Work: false });
+    expect([...el.activeCalendars]).toEqual([]);
+    listed.push(trips);
+    await refresh();
+    expect(boxes(el)).toEqual({ Work: false, Trips: true });
+  });
+
+  it('checks every calendar listed after every calendar was deleted', async () => {
+    const listed: object[] = [work];
+    const { el, reads } = await calendarPage(listed);
+    deletesFrom(listed);
+    el.handleDeleteCalendar(work);
+    await el._executeDeleteCalendar();
+    expect(boxes(el)).toEqual({});
+
+    listed.push(trips, { name: 'Home', description: '', path: '/cal/home/' });
+    const asked = reads();
+    shadow(el, 'alps-icon-btn[icon="arrowsClockwise"]').click();
+    await readAgain(el, reads, asked);
+    expect(boxes(el)).toEqual({ Trips: true, Home: true });
   });
 });
