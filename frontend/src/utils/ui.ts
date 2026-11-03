@@ -50,7 +50,88 @@ export function getAvatarColor(identifier: string): string {
   return colors[index];
 }
 
-export function formatDateList(dateInput: string | Date, dateFormatStr: string = 'YYYY-MM-DD', hourFormatStr: string = '12'): string {
+/**
+ * Whether this browser writes the time on a 12-hour clock.
+ *
+ * Asked of `Intl` with no locale, on purpose: every time alps writes is
+ * formatted for the browser's own locale (`toLocaleTimeString(undefined, …)`),
+ * which is the clock this reads. It need not be the clock of the interface's
+ * language, which is the dictionary nearest the browser's languages rather
+ * than the locale the browser formats in.
+ */
+export function detectBrowserHourFormat(): '12' | '24' {
+  try {
+    const format = new Intl.DateTimeFormat(undefined, { hour: 'numeric' });
+    const cycle = format.resolvedOptions().hourCycle;
+    if (cycle === 'h11' || cycle === 'h12') return '12';
+    if (cycle === 'h23' || cycle === 'h24') return '24';
+    // An engine that resolves no cycle: whether 13:00 keeps its 13.
+    return format.format(new Date(2020, 0, 1, 13)).includes('13') ? '24' : '12';
+  } catch {
+    return '24';
+  }
+}
+
+let browserHourFormat: '12' | '24' | null = null;
+
+/**
+ * The clock a time format setting stands for. `auto`, and no setting, is the
+ * browser's, asked once per page: the message list asks for every row it
+ * draws, and the answer does not change without a reload.
+ */
+export function resolveHourFormat(hourFormatStr?: string): '12' | '24' {
+  if (hourFormatStr === '12' || hourFormatStr === '24') return hourFormatStr;
+  return (browserHourFormat ??= detectBrowserHourFormat());
+}
+
+/** For tests: ask the browser again, as a reload does. */
+export function forgetBrowserHourFormat(): void {
+  browserHourFormat = null;
+}
+
+function formatTime(date: Date, hourFormatStr?: string): string {
+  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: resolveHourFormat(hourFormatStr) === '12' });
+}
+
+/**
+ * The date formats a user can choose, each as its fields in order. `auto`, and
+ * any other value, is the browser's own: its order and its separators.
+ */
+const DATE_FORMATS: Record<string, { order: DateField[]; separator: string }> = {
+  'YYYY-MM-DD': { order: ['year', 'month', 'day'], separator: '-' },
+  'MM/DD/YYYY': { order: ['month', 'day', 'year'], separator: '/' },
+  'DD.MM.YYYY': { order: ['day', 'month', 'year'], separator: '.' },
+};
+
+export type DateField = 'year' | 'month' | 'day';
+
+/** One of the formats above, or undefined for the browser's own. */
+const chosenDateFormat = (dateFormatStr: string) =>
+  Object.hasOwn(DATE_FORMATS, dateFormatStr) ? DATE_FORMATS[dateFormatStr] : undefined;
+
+/** The browser's numeric date: `06/15/2022`, `15.06.2022`, `15. 06. 2022.` */
+const BROWSER_DATE: Intl.DateTimeFormatOptions = { year: 'numeric', month: '2-digit', day: '2-digit' };
+
+/**
+ * The order a date format writes a date's fields in, for a form that asks for
+ * them one by one. Under `auto` it is the browser's order.
+ */
+export function dateFieldOrder(dateFormatStr: string = 'auto'): DateField[] {
+  const chosen = chosenDateFormat(dateFormatStr);
+  if (chosen) return chosen.order;
+  try {
+    const order = new Intl.DateTimeFormat(undefined, BROWSER_DATE)
+      .formatToParts(new Date(2000, 0, 31))
+      .map((part) => part.type)
+      .filter((type): type is DateField => type === 'year' || type === 'month' || type === 'day');
+    if (order.length === 3) return order;
+  } catch {
+    // An engine without formatToParts: the order alps defaulted to before.
+  }
+  return DATE_FORMATS['YYYY-MM-DD'].order;
+}
+
+export function formatDateList(dateInput: string | Date, dateFormatStr: string = 'auto', hourFormatStr: string = 'auto'): string {
   if (!dateInput) return '';
   const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
   const now = new Date();
@@ -58,51 +139,54 @@ export function formatDateList(dateInput: string | Date, dateFormatStr: string =
   if (date.getDate() === now.getDate() && 
       date.getMonth() === now.getMonth() && 
       date.getFullYear() === now.getFullYear()) {
-    return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: hourFormatStr === '12' });
+    return formatTime(date, hourFormatStr);
   }
   
   if (date.getFullYear() !== now.getFullYear()) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    
-    if (dateFormatStr === 'YYYY-MM-DD') return `${y}-${m}-${d}`;
-    if (dateFormatStr === 'MM/DD/YYYY') return `${m}/${d}/${y}`;
-    if (dateFormatStr === 'DD.MM.YYYY') return `${d}.${m}.${y}`;
-    
+    if (chosenDateFormat(dateFormatStr)) return formatDateOnly(date, dateFormatStr);
     return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   }
   
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-export function formatFullDate(dateInput: string | Date, dateFormatStr: string = 'YYYY-MM-DD', hourFormatStr: string = '12'): string {
+/**
+ * A date without its time, in the date format.
+ *
+ * Asked for here rather than cut from formatFullDate: under `auto` several
+ * locales write spaces inside the date itself (`15. 06. 2022.` in Croatian,
+ * Czech and Slovak, `2022. 06. 15.` in Hungarian), so the date is not the
+ * full form's first word.
+ */
+export function formatDateOnly(date: Date, dateFormatStr: string = 'auto'): string {
+  const chosen = chosenDateFormat(dateFormatStr);
+  if (!chosen) return date.toLocaleDateString(undefined, BROWSER_DATE);
+  const fields: Record<DateField, string> = {
+    year: String(date.getFullYear()),
+    month: String(date.getMonth() + 1).padStart(2, '0'),
+    day: String(date.getDate()).padStart(2, '0'),
+  };
+  return chosen.order.map((field) => fields[field]).join(chosen.separator);
+}
+
+export function formatFullDate(dateInput: string | Date, dateFormatStr: string = 'auto', hourFormatStr: string = 'auto'): string {
   if (!dateInput) return '';
   const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-  
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  
-  let datePart = `${y}-${m}-${d}`;
-  if (dateFormatStr === 'MM/DD/YYYY') datePart = `${m}/${d}/${y}`;
-  else if (dateFormatStr === 'DD.MM.YYYY') datePart = `${d}.${m}.${y}`;
-  
-  const timePart = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: hourFormatStr === '12' });
-  
-  return `${datePart} ${timePart}`;
+  return `${formatDateOnly(date, dateFormatStr)} ${formatTime(date, hourFormatStr)}`;
 }
 
 /**
  * A day of the year with no year to it, such as a birthday whose year the
  * card does not give: the date format without its year.
  */
-export function formatDayMonth(month: number, day: number, dateFormatStr: string = 'YYYY-MM-DD'): string {
+export function formatDayMonth(month: number, day: number, dateFormatStr: string = 'auto'): string {
   const m = String(month).padStart(2, '0');
   const d = String(day).padStart(2, '0');
   if (dateFormatStr === 'MM/DD/YYYY') return `${m}/${d}`;
   if (dateFormatStr === 'DD.MM.YYYY') return `${d}.${m}.`;
-  return `${m}-${d}`;
+  if (dateFormatStr === 'YYYY-MM-DD') return `${m}-${d}`;
+  // In a leap year, so that 29 February is a day.
+  return new Date(2000, month - 1, day).toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' });
 }
 
 /** The caption of each special folder, by its role. A \All folder has none:

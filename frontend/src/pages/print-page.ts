@@ -326,8 +326,8 @@ export class PrintPage extends LitElement {
       ? isolatedCaption(sender.Name, senderAddress)
       : this.i18nStore?.t('messageList.unknownSender');
 
-    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
-    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
+    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'auto';
+    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || 'auto');
     const dateStr = msg.Envelope?.Date ? formatFullDate(msg.Envelope.Date, dateFormat, hourFormat) : '';
 
     // Each name and each address in an isolate of its own (see utils/bidi),

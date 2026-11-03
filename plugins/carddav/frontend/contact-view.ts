@@ -5,7 +5,7 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { composeContext, ComposeStore } from '../../../frontend/src/store/compose-store';
 import { activeUsername, settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { formatDayMonth, formatFullDate, renderIcon } from '../../../frontend/src/utils/ui';
+import { dateFieldOrder, formatDateOnly, formatDayMonth, renderIcon } from '../../../frontend/src/utils/ui';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/alps-input';
@@ -538,13 +538,13 @@ export class AlpsContactView extends LitElement {
     // What is not read as a date, a year alone or a text value, is shown as
     // written.
     const raw = String(this.contact.birthday);
-    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
+    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'auto';
     const parts = birthdayParts(raw);
     if (!parts) return raw;
     if (parts.year === undefined) return formatDayMonth(parts.month, parts.day, dateFormat);
     // That day where the reader is: read as UTC midnight, which west of UTC
     // is the evening before, the birthday showed a day early.
-    return formatFullDate(dateOf(parts.year, parts.month, parts.day)!, dateFormat, '24').split(' ')[0];
+    return formatDateOnly(dateOf(parts.year, parts.month, parts.day)!, dateFormat);
   }
 
   /** The birthday's day, month and year, in the order the date format puts them. */
@@ -561,10 +561,8 @@ export class AlpsContactView extends LitElement {
       @change=${(e: any) => this.handleBirthdayInput('month', e.target.value)}></alps-select>`;
     const year = html`<alps-input class="birthday-year" placeholder=${t('contacts.birthdayYear')} label=${t('contacts.birthdayYear')} .value=${this.birthday.year}
       @input=${(e: any) => this.handleBirthdayInput('year', e.target.value)}></alps-input>`;
-    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
-    const fields = dateFormat === 'MM/DD/YYYY' ? [month, day, year]
-      : dateFormat === 'DD.MM.YYYY' ? [day, month, year]
-      : [year, month, day];
+    const byField = { year, month, day };
+    const fields = dateFieldOrder(this.settingsStore?.getState()?.dateFormat || 'auto').map((field) => byField[field]);
     return html`
       <div role="group" aria-labelledby="birthday-label">
         <div class="birthday-label" id="birthday-label">${t('contacts.birthday')}</div>

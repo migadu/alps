@@ -39,8 +39,8 @@ export function generateQuote(
   textBody: string,
   rawMessageHtml: string | null,
   hasHtml: boolean,
-  dateFormat: string = 'YYYY-MM-DD',
-  hourFormat: string = '12',
+  dateFormat: string = 'auto',
+  hourFormat: string = 'auto',
   self: string[] = []
 ) {
   const originalSubject = message?.Envelope?.Subject || '';

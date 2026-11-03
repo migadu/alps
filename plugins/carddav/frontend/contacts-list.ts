@@ -278,8 +278,8 @@ export class AlpsContactsList extends LitElement {
     if (d.length === 16 && d.indexOf('-') === -1) {
       d = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T${d.slice(9, 11)}:${d.slice(11, 13)}:${d.slice(13, 16)}`;
     }
-    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
-    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
+    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'auto';
+    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || 'auto');
     return formatDateList(new Date(d), dateFormat, hourFormat);
   }
 

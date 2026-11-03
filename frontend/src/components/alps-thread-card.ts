@@ -475,8 +475,8 @@ export class AlpsThreadCard extends LitElement {
     }
 
     const msg = this.item.message || {};
-    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
-    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
+    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'auto';
+    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || 'auto');
     const dateStr = msg.Envelope?.Date ? formatFullDate(msg.Envelope.Date, dateFormat, hourFormat) : '';
 
     return html`
@@ -581,8 +581,8 @@ export class AlpsThreadCard extends LitElement {
     const hasDistinctName = Boolean(senderAddress && sender.Name?.trim() && sender.Name.trim() !== senderAddress);
     const senderTitle = hasDistinctName ? `${sender.Name} <${senderAddress}>` : (senderAddress || senderName);
 
-    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
-    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
+    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'auto';
+    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || 'auto');
     const dateStr = msg.Envelope?.Date ? formatFullDate(msg.Envelope.Date, dateFormat, hourFormat) : '';
 
     const bimiUrl = bimiAvatarUrlFor(msg, sender);
