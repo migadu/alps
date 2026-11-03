@@ -1,4 +1,4 @@
-import{d as e,f as t,g as n,l as r,r as i,u as a,x as o,y as s}from"./lit-CBBf5Ahu.js";import{Mt as c,ct as l,f as u,gt as d}from"./index-BnI9R-E9.js";import{n as f,o as p,r as m,t as h}from"./unsaved-BJ6G3rMP.js";var g=class extends n{constructor(...e){super(...e),this.isDirty=!1,this.script=``,this.stored=``,this.isValidating=!1,this.isSaving=!1}get hasUnsavedChanges(){return this.script!==this.stored||this.isSaving}static{this.styles=o`
+import{d as e,f as t,g as n,l as r,r as i,u as a,x as o,y as s}from"./lit-CBBf5Ahu.js";import{Nt as c,_t as l,f as u,lt as d}from"./index-D1RV01ny.js";import{n as f,o as p,r as m,t as h}from"./unsaved-BtbUe166.js";var g=class extends n{constructor(...e){super(...e),this.isDirty=!1,this.script=``,this.stored=``,this.isValidating=!1,this.isSaving=!1}get hasUnsavedChanges(){return this.script!==this.stored||this.isSaving}static{this.styles=o`
 		.editor-container {
 			display: flex;
 			flex-direction: column;
@@ -94,7 +94,7 @@ import{d as e,f as t,g as n,l as r,r as i,u as a,x as o,y as s}from"./lit-CBBf5A
 					</alps-button>
 				</div>
 			</div>
-		`}};l([r()],g.prototype,`isDirty`,void 0),l([t({context:d})],g.prototype,`i18nStore`,void 0),l([a({type:String})],g.prototype,`script`,void 0),l([a({type:String})],g.prototype,`stored`,void 0),l([r()],g.prototype,`isValidating`,void 0),l([r()],g.prototype,`isSaving`,void 0),g=l([e(`alps-raw-editor`)],g);var _=class extends n{constructor(...e){super(...e),this.isSaving=!1,this.initialSnapshot=``,this.state={rules:[]},this.folders=[]}willUpdate(e){e.has(`state`)&&this.initialSnapshot===``&&(this.initialSnapshot=JSON.stringify(this.state))}get isDirty(){return this.initialSnapshot!==``&&this.initialSnapshot!==JSON.stringify(this.state)}markClean(e=JSON.stringify(this.state)){this.initialSnapshot=e,this.requestUpdate()}static{this.styles=o`
+		`}};d([r()],g.prototype,`isDirty`,void 0),d([t({context:l})],g.prototype,`i18nStore`,void 0),d([a({type:String})],g.prototype,`script`,void 0),d([a({type:String})],g.prototype,`stored`,void 0),d([r()],g.prototype,`isValidating`,void 0),d([r()],g.prototype,`isSaving`,void 0),g=d([e(`alps-raw-editor`)],g);var _=class extends n{constructor(...e){super(...e),this.isSaving=!1,this.initialSnapshot=``,this.state={rules:[]},this.folders=[]}willUpdate(e){e.has(`state`)&&this.initialSnapshot===``&&(this.initialSnapshot=JSON.stringify(this.state))}get isDirty(){return this.initialSnapshot!==``&&this.initialSnapshot!==JSON.stringify(this.state)}markClean(e=JSON.stringify(this.state)){this.initialSnapshot=e,this.requestUpdate()}static{this.styles=o`
 		.editor-container {
 			display: flex;
 			flex-direction: column;
@@ -258,7 +258,7 @@ import{d as e,f as t,g as n,l as r,r as i,u as a,x as o,y as s}from"./lit-CBBf5A
 					${this.isDirty?s`<alps-button variant="primary" ?spinning=${this.isSaving} ?disabled=${this.isSaving} @click=${this.save}>${this.i18nStore.t(`managesieve.visual.saveFilters`)}</alps-button>`:``}
 				</div>
 			</div>
-		`}};l([a({type:Boolean})],_.prototype,`isSaving`,void 0),l([r()],_.prototype,`initialSnapshot`,void 0),l([t({context:d,subscribe:!0})],_.prototype,`i18nStore`,void 0),l([a({type:Object})],_.prototype,`state`,void 0),l([a({type:Array})],_.prototype,`folders`,void 0),_=l([e(`alps-visual-editor`)],_);var v=new h,y=class extends n{constructor(...e){super(...e),this.mode=`visual`,this.script=``,this.storedScript=``,this.visualState={rules:[]},this.storedVisualSnapshot=JSON.stringify(this.visualState),this.folders=[],this.isLoading=!0,this.loadFailed=!1,this.isSaving=!1,this.showSwitchRawConfirm=!1,this.visit=v.visit(),this.retainEdit=!0,this.loadRequest=0}static{this.styles=o`
+		`}};d([a({type:Boolean})],_.prototype,`isSaving`,void 0),d([r()],_.prototype,`initialSnapshot`,void 0),d([t({context:l,subscribe:!0})],_.prototype,`i18nStore`,void 0),d([a({type:Object})],_.prototype,`state`,void 0),d([a({type:Array})],_.prototype,`folders`,void 0),_=d([e(`alps-visual-editor`)],_);var v=new h,y=class extends n{constructor(...e){super(...e),this.mode=`visual`,this.script=``,this.storedScript=``,this.visualState={rules:[]},this.storedVisualSnapshot=JSON.stringify(this.visualState),this.folders=[],this.isLoading=!0,this.loadFailed=!1,this.isSaving=!1,this.showSwitchRawConfirm=!1,this.visit=v.visit(),this.retainEdit=!0,this.loadRequest=0}static{this.styles=o`
 		.container {
 			display: flex;
 			flex-direction: column;
@@ -322,4 +322,4 @@ import{d as e,f as t,g as n,l as r,r as i,u as a,x as o,y as s}from"./lit-CBBf5A
 					@cancel=${()=>this.showSwitchRawConfirm=!1}
 				></ui-confirm>
 			`:``}
-		`}};l([t({context:d,subscribe:!0})],y.prototype,`i18nStore`,void 0),l([r()],y.prototype,`mode`,void 0),l([r()],y.prototype,`script`,void 0),l([r()],y.prototype,`storedScript`,void 0),l([r()],y.prototype,`visualState`,void 0),l([r()],y.prototype,`folders`,void 0),l([r()],y.prototype,`isLoading`,void 0),l([r()],y.prototype,`loadFailed`,void 0),l([r()],y.prototype,`isSaving`,void 0),l([r()],y.prototype,`showSwitchRawConfirm`,void 0),y=l([e(`alps-managesieve-page`)],y);export{y as ManageSievePage};
+		`}};d([t({context:l,subscribe:!0})],y.prototype,`i18nStore`,void 0),d([r()],y.prototype,`mode`,void 0),d([r()],y.prototype,`script`,void 0),d([r()],y.prototype,`storedScript`,void 0),d([r()],y.prototype,`visualState`,void 0),d([r()],y.prototype,`folders`,void 0),d([r()],y.prototype,`isLoading`,void 0),d([r()],y.prototype,`loadFailed`,void 0),d([r()],y.prototype,`isSaving`,void 0),d([r()],y.prototype,`showSwitchRawConfirm`,void 0),y=d([e(`alps-managesieve-page`)],y);export{y as ManageSievePage};

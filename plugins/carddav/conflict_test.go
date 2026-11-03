@@ -124,6 +124,11 @@ func (b *memBooks) PutAddressObject(_ context.Context, p string, card vcard.Card
 	defer b.mu.Unlock()
 	b.ifMatch = append(b.ifMatch, string(opts.IfMatch))
 	current, exists := b.objects[p]
+	if opts.IfNoneMatch.IsSet() && exists {
+		if matches, err := opts.IfNoneMatch.MatchETag(current.ETag); err != nil || matches {
+			return nil, webdav.NewHTTPError(http.StatusPreconditionFailed, nil)
+		}
+	}
 	if opts.IfMatch.IsSet() {
 		if ok, err := opts.IfMatch.MatchETag(current.ETag); err != nil || !exists || !ok {
 			return nil, webdav.NewHTTPError(http.StatusPreconditionFailed, nil)

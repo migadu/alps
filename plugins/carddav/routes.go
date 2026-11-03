@@ -307,13 +307,20 @@ func deleteFailed(what string, err error) error {
 }
 
 // putCard writes card to objectPath, conditional on etag when there is one, and
-// returns the ETag of the version written.
-func (p *plugin) putCard(ctx *alps.Context, c *carddav.Client, objectPath string, card vcard.Card, etag string) (string, error) {
+// returns the ETag of the version written. createOnly refuses an existing path.
+func (p *plugin) putCard(ctx *alps.Context, c *carddav.Client, objectPath string, card vcard.Card, etag string, createOnly bool) (string, error) {
 	var buf bytes.Buffer
 	if err := encodeCard(&buf, card); err != nil {
 		return "", fmt.Errorf("failed to encode address object: %v", err)
 	}
-	newETag, err := davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), objectPath), vcard.MIMEType, buf.Bytes(), etag)
+	target := davsave.URL(p.urlFor(ctx.Session.Username()), objectPath)
+	var newETag string
+	var err error
+	if createOnly {
+		newETag, err = davsave.Create(ctx.Request.Context(), p.httpClient(ctx.Session), target, vcard.MIMEType, buf.Bytes())
+	} else {
+		newETag, err = davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), target, vcard.MIMEType, buf.Bytes(), etag)
+	}
 	if errors.Is(err, davsave.ErrConflict) {
 		return "", errChangedElsewhere
 	}
@@ -753,6 +760,8 @@ func registerRoutes(p *plugin) {
 			// its path, which suits the composer saving each recipient but not
 			// a contact the user is typing in.
 			AllowDuplicate bool `json:"allow_duplicate"`
+			// One identity for every retry of the editor's new contact.
+			CreationID string `json:"creation_id"`
 			// What the page last held of the address part by part, sent by a
 			// page that edits it so, with the parts in AddressParts. A page
 			// that does not sends the parts it was given back with the rest of
@@ -762,6 +771,15 @@ func registerRoutes(p *plugin) {
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
 		}
+		creationID := uuid.New()
+		if req.CreationID != "" {
+			var err error
+			creationID, err = uuid.Parse(req.CreationID)
+			if err != nil || creationID == uuid.Nil {
+				return alps.NewHTTPError(http.StatusBadRequest, fmt.Errorf("invalid contact creation identity"))
+			}
+		}
+
 		changed := func(field string) bool {
 			if req.ChangedFields == nil {
 				return true
@@ -1122,7 +1140,7 @@ func registerRoutes(p *plugin) {
 			}
 		}
 
-		id := uuid.New()
+		id := creationID
 		if _, ok := card[vcard.FieldUID]; !ok {
 			card.SetValue(vcard.FieldUID, id.URN())
 		}
@@ -1136,7 +1154,7 @@ func registerRoutes(p *plugin) {
 
 		touchRevision(card)
 
-		etag, err := p.putCard(ctx, c, objectPath, card, baseETag)
+		etag, err := p.putCard(ctx, c, objectPath, card, baseETag, ao == nil && req.CreationID != "")
 		if err != nil {
 			return err
 		}
@@ -1189,7 +1207,7 @@ func registerRoutes(p *plugin) {
 			}
 			setCategories(ao.Card, req.Categories)
 			touchRevision(ao.Card)
-			etag, err := p.putCard(ctx, c, objectPath, ao.Card, ao.ETag)
+			etag, err := p.putCard(ctx, c, objectPath, ao.Card, ao.ETag, false)
 			if errors.Is(err, errChangedElsewhere) && attempt == 1 {
 				continue
 			}

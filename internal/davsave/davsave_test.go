@@ -101,3 +101,16 @@ func TestURL(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateDoesNotOverwriteAnExistingResource(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("If-None-Match") != "*" || r.Header.Get("If-Match") != "" {
+			t.Errorf("create preconditions: %v", r.Header)
+		}
+		w.WriteHeader(http.StatusPreconditionFailed)
+	}))
+	defer server.Close()
+	if _, err := Create(context.Background(), server.Client(), server.URL, "text/vcard", []byte("card")); !errors.Is(err, ErrConflict) {
+		t.Fatalf("create error %v", err)
+	}
+}

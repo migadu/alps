@@ -272,7 +272,7 @@ test.describe("with a security key", () => {
 
     // An empty password is answered in the prompt and never sent.
     await remove.click();
-    await expect(prompt.getByRole("alert")).toHaveText("Enter your current password.");
+    await expect(prompt.locator('.field-error[role="alert"]')).toHaveText("Enter your current password.");
     expect(removals, "an empty password reached the server").toEqual([]);
 
     // A wrong one is refused by the server: the prompt stays, says so, and
@@ -281,12 +281,12 @@ test.describe("with a security key", () => {
     const refused = page.waitForResponse((r) => new URL(r.url()).pathname.endsWith("/delete"));
     await remove.click();
     expect((await refused).status()).toBe(403);
-    await expect(prompt.getByRole("alert")).toHaveText("That password is not right.");
+    await expect(prompt.locator('.field-error[role="alert"]')).toHaveText("That password is not right.");
     await expect(row).toBeVisible();
 
     // Typing again clears the error; the right password removes the key.
     await password.fill(PASSWORD);
-    await expect(prompt.getByRole("alert")).toHaveCount(0);
+    await expect(prompt.locator('.field-error[role="alert"]')).toHaveCount(0);
     const accepted = page.waitForResponse((r) => new URL(r.url()).pathname.endsWith("/delete"));
     await remove.click();
     expect((await accepted).status()).toBe(200);

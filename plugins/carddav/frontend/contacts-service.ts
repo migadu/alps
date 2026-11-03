@@ -33,6 +33,8 @@ export function sameAddressParts(a: AddressParts | undefined, b: AddressParts | 
 }
 
 export interface ContactPayload {
+  /** Stable UUID for all retries of one new card; the server uses create-only PUT. */
+  creation_id?: string;
   name?: string;
   email?: string;
   emails?: ContactProperty[];
@@ -212,3 +214,21 @@ class ContactsService {
 }
 
 export const contactsService = new ContactsService();
+
+/** Whether a fresh card confirms the fields an unacknowledged form tried to save. */
+export function confirmsContactSave(card: any, payload: ContactPayload): boolean {
+  const text = (value: unknown) => String(value ?? '').trim();
+  for (const key of ['name', 'email', 'phone', 'organization', 'title', 'birthday', 'note', 'url', 'nickname', 'public_key']) {
+    if ((key === 'email' && Array.isArray(payload.emails)) || (key === 'phone' && Array.isArray(payload.phones))) continue;
+    if (Object.hasOwn(payload, key) && text(card[key]) !== text(payload[key])) return false;
+  }
+  if (payload.address_parts) {
+    if (!sameAddressParts(card.address_parts, payload.address_parts)) return false;
+  } else if (Object.hasOwn(payload, 'address') && text(card.address) !== text(payload.address)) return false;
+  for (const key of ['emails', 'phones']) {
+    if (!Array.isArray(payload[key])) continue;
+    const normalized = (items: any[]) => items.filter(item => text(item.value)).map(item => [text(item.value), text(item.type).toLowerCase()]);
+    if (JSON.stringify(normalized(card[key] || [])) !== JSON.stringify(normalized(payload[key]))) return false;
+  }
+  return true;
+}
