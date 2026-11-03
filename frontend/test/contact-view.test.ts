@@ -1,7 +1,7 @@
 /**
  * The open contact card.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, mount, record, shadowAll, waitFor } from './helpers/dom';
 import '../../plugins/carddav/frontend/contact-view';
 
@@ -11,6 +11,7 @@ const originalZone = process.env.TZ;
 
 afterEach(() => {
   process.env.TZ = originalZone;
+  vi.restoreAllMocks();
   cleanup();
 });
 
@@ -62,6 +63,13 @@ describe('the birthday', () => {
     process.env.TZ = 'America/New_York';
     expect(view('1953-10-15T02:00:00Z', 'YYYY-MM-DD').formattedBirthday).toBe('1953-10-15');
     expect(view('19531015T020000Z', 'DD.MM.YYYY').formattedBirthday).toBe('15.10.1953');
+  });
+
+  it('is the browser\'s date under auto, whole when it has spaces in it', () => {
+    // Croatian, Czech and Slovak write `15. 05. 1990.`: the date's first word
+    // alone showed those readers `15.` as the birthday.
+    vi.spyOn(Date.prototype, 'toLocaleDateString').mockReturnValue('15. 05. 1990.');
+    expect(view('1990-05-15', 'auto').formattedBirthday).toBe('15. 05. 1990.');
   });
 
   it('takes a year below 100 for that year, not for 19xx', () => {
@@ -192,6 +200,13 @@ describe('the birthday in the editor', () => {
     expect(await order('YYYY-MM-DD')).toEqual(['year', 'month', 'day']);
     expect(await order('MM/DD/YYYY')).toEqual(['month', 'day', 'year']);
     expect(await order('DD.MM.YYYY')).toEqual(['day', 'month', 'year']);
+  });
+
+  it('puts its fields in the browser\'s order under auto', async () => {
+    const written = (...types: string[]) => types.map((type) => ({ type, value: '1' }));
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts').mockReturnValue(written('day', 'month', 'year') as Intl.DateTimeFormatPart[]);
+    const fields = birthdayFields(await editing('1985-10-31', { dateFormat: 'auto' }));
+    expect(fields.map(f => (Object.keys(LABELS) as Part[]).find(p => LABELS[p] === f.label))).toEqual(['day', 'month', 'year']);
   });
 
   it('names the months in the language of the page', async () => {

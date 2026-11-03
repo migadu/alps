@@ -106,6 +106,7 @@ export const de: TranslationDictionary = {
       monday: 'Montag',
       format12h: '12-Stunden (AM/PM)',
       format24h: '24-Stunden',
+      auto: 'Automatisch (Browser-Standard)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',
@@ -113,9 +114,17 @@ export const de: TranslationDictionary = {
       serbian: 'Српски (ћирилица)',
       serbianLatin: 'Srpski (latinica)',
       french: 'Français',
-      portuguese: 'Português',
+      portuguese: 'Português (Portugal)',
       danish: 'Dansk',
-      arabic: 'العربية'
+      arabic: 'العربية',
+      portugueseBrazil: 'Português (Brasil)',
+      russian: 'Русский',
+      turkish: 'Türkçe',
+      hindi: 'हिन्दी',
+      indonesian: 'Bahasa Indonesia',
+      japanese: '日本語',
+      korean: '한국어',
+      chineseTraditional: '繁體中文'
     },
   },
   linkedAccounts: {

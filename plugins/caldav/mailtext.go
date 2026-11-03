@@ -94,6 +94,64 @@ var mailDictionaries = map[string]mailWords{
 		hasAccepted: "%s prihvata.", mayAttend: "%s možda dolazi.", hasDeclined: "%s odbija.", hasCompleted: "%s: zadatak je završen.",
 		isCancelled: "Ovo je otkazano.",
 	},
+	// The frontend's "pt-BR", lowercased as wordsFor looks it up.
+	"pt-br": {
+		invitation: "Convite", updated: "Convite atualizado", cancelled: "Cancelado", task: "Tarefa",
+		accepted: "Aceito", tentative: "Talvez", declined: "Recusado", completed: "Concluído",
+		when: "Quando", where: "Onde", organizer: "Organizador",
+		hasAccepted: "%s aceitou.", mayAttend: "%s talvez participe.", hasDeclined: "%s recusou.", hasCompleted: "%s concluiu a tarefa.",
+		isCancelled: "Isto foi cancelado.",
+	},
+	"ru": {
+		invitation: "Приглашение", updated: "Обновлённое приглашение", cancelled: "Отменено", task: "Задача",
+		accepted: "Принято", tentative: "Возможно", declined: "Отклонено", completed: "Завершено",
+		when: "Когда", where: "Где", organizer: "Организатор",
+		hasAccepted: "%s принимает приглашение.", mayAttend: "%s, возможно, примет участие.", hasDeclined: "%s отклоняет приглашение.", hasCompleted: "%s: задача выполнена.",
+		isCancelled: "Это отменено.",
+	},
+	"tr": {
+		invitation: "Davet", updated: "Güncellenmiş davet", cancelled: "İptal edildi", task: "Görev",
+		accepted: "Kabul edildi", tentative: "Belki", declined: "Reddedildi", completed: "Tamamlandı",
+		when: "Ne zaman", where: "Nerede", organizer: "Düzenleyen",
+		hasAccepted: "%s kabul etti.", mayAttend: "%s katılabilir.", hasDeclined: "%s reddetti.", hasCompleted: "%s görevi tamamladı.",
+		isCancelled: "Bu iptal edildi.",
+	},
+	"id": {
+		invitation: "Undangan", updated: "Undangan diperbarui", cancelled: "Dibatalkan", task: "Tugas",
+		accepted: "Diterima", tentative: "Mungkin", declined: "Ditolak", completed: "Selesai",
+		when: "Waktu", where: "Lokasi", organizer: "Penyelenggara",
+		hasAccepted: "%s telah menerima.", mayAttend: "%s mungkin hadir.", hasDeclined: "%s telah menolak.", hasCompleted: "%s telah menyelesaikan tugas ini.",
+		isCancelled: "Ini telah dibatalkan.",
+	},
+	"hi": {
+		invitation: "आमंत्रण", updated: "अपडेट किया गया आमंत्रण", cancelled: "रद्द", task: "कार्य",
+		accepted: "स्वीकार किया", tentative: "शायद", declined: "अस्वीकार किया", completed: "पूरा हुआ",
+		when: "कब", where: "कहाँ", organizer: "आयोजक",
+		hasAccepted: "%s ने स्वीकार किया है।", mayAttend: "%s शायद शामिल हों।", hasDeclined: "%s ने अस्वीकार किया है।", hasCompleted: "%s ने कार्य पूरा कर लिया है।",
+		isCancelled: "इसे रद्द कर दिया गया है।",
+	},
+	"ja": {
+		invitation: "招待", updated: "更新された招待", cancelled: "キャンセル", task: "タスク",
+		accepted: "承諾", tentative: "未定", declined: "辞退", completed: "完了",
+		when: "日時", where: "場所", organizer: "主催者",
+		hasAccepted: "%sが承諾しました。", mayAttend: "%sは参加する可能性があります。", hasDeclined: "%sが辞退しました。", hasCompleted: "%sがタスクを完了しました。",
+		isCancelled: "これはキャンセルされました。",
+	},
+	"ko": {
+		invitation: "초대", updated: "업데이트된 초대", cancelled: "취소됨", task: "작업",
+		accepted: "수락", tentative: "미정", declined: "거절", completed: "완료",
+		when: "일시", where: "장소", organizer: "주최자",
+		hasAccepted: "%s님이 수락했습니다.", mayAttend: "%s님이 참석할 수도 있습니다.", hasDeclined: "%s님이 거절했습니다.", hasCompleted: "%s님이 작업을 완료했습니다.",
+		isCancelled: "취소되었습니다.",
+	},
+	// The frontend's "zh-Hant", lowercased as wordsFor looks it up.
+	"zh-hant": {
+		invitation: "邀請", updated: "已更新的邀請", cancelled: "已取消", task: "工作",
+		accepted: "已接受", tentative: "暫定", declined: "已拒絕", completed: "已完成",
+		when: "時間", where: "地點", organizer: "主辦人",
+		hasAccepted: "%s 已接受。", mayAttend: "%s 可能會參加。", hasDeclined: "%s 已拒絕。", hasCompleted: "%s 已完成此工作。",
+		isCancelled: "此項目已取消。",
+	},
 }
 
 // wordsFor returns the words for a language the frontend names ("de",

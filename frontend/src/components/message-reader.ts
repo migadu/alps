@@ -171,8 +171,8 @@ export class MessageReader extends LitElement {
         textBody = htmlToPlainText(this.rawMessageHtml);
       }
 
-      const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
-      const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
+      const dateFormat = this.settingsStore?.getState()?.dateFormat || 'auto';
+      const hourFormat = String(this.settingsStore?.getState()?.hourFormat || 'auto');
 
       const { subject, to, cc, quotedText, quotedHtml } = generateQuote(
         action,
@@ -2364,8 +2364,8 @@ export class MessageReader extends LitElement {
         textBody = htmlToPlainText(item.rawMessageHtml);
       }
 
-      const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
-      const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
+      const dateFormat = this.settingsStore?.getState()?.dateFormat || 'auto';
+      const hourFormat = String(this.settingsStore?.getState()?.hourFormat || 'auto');
 
       const { subject, to, cc, quotedText, quotedHtml } = generateQuote(
         action,
@@ -2757,8 +2757,8 @@ export class MessageReader extends LitElement {
     const sender = msg.Envelope?.From?.[0] || {};
     const senderAddress = sender.Mailbox && sender.Host ? `${sender.Mailbox}@${sender.Host}` : '';
     const senderName = sender.Name || senderAddress || (this.i18nStore?.t('messageList.unknownSender'));
-    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
-    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
+    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'auto';
+    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || 'auto');
     const dateStr = msg.Envelope?.Date ? formatFullDate(msg.Envelope.Date, dateFormat, hourFormat) : '';
 
     const bimiUrl = bimiAvatarUrlFor(msg, sender);

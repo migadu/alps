@@ -295,7 +295,8 @@ test("each settings panel renders its labelled dropdowns", async ({ page }) => {
   await expect(page.getByText("List Density", { exact: true })).toBeVisible();
 
   await page.goto("/#/settings/localization");
-  await expect(setting(page, "Date Format")).toHaveValue("YYYY-MM-DD");
+  await expect(setting(page, "Date Format")).toHaveValue("auto");
+  await expect(setting(page, "Date Format")).toContainText("DD.MM.YYYY");
 });
 
 test("the theme mode applies at once and survives a reload", async ({ page }) => {

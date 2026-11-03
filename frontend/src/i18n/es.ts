@@ -104,6 +104,7 @@ export const es = {
       monday: 'Lunes',
       format12h: '12 horas (AM/PM)',
       format24h: '24 horas',
+      auto: 'Automático (predeterminado del navegador)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',
@@ -111,9 +112,17 @@ export const es = {
       serbian: 'Српски (ћирилица)',
       serbianLatin: 'Srpski (latinica)',
       french: 'Français',
-      portuguese: 'Português',
+      portuguese: 'Português (Portugal)',
       danish: 'Dansk',
-      arabic: 'العربية'
+      arabic: 'العربية',
+      portugueseBrazil: 'Português (Brasil)',
+      russian: 'Русский',
+      turkish: 'Türkçe',
+      hindi: 'हिन्दी',
+      indonesian: 'Bahasa Indonesia',
+      japanese: '日本語',
+      korean: '한국어',
+      chineseTraditional: '繁體中文'
     },
   },
   linkedAccounts: {

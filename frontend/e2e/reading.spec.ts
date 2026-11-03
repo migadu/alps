@@ -131,7 +131,8 @@ test("the reader shows who the open message is from, to, and when", async ({ pag
   await expect(meta).toContainText("Ada Lovelace");
   await expect(meta).toContainText("ada@remote.test");
   await expect(meta).toContainText(USER.address);
-  await expect(meta.locator(".reader-date.desktop-date")).toHaveText(/^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}/);
+  // In the browser's own date form, as the account has chosen none.
+  await expect(meta.locator(".reader-date.desktop-date")).toHaveText(/^\d{2}\/\d{2}\/\d{4}\s+\d{1,2}:\d{2}/);
 });
 
 test("an HTML message renders as markup, not as source", async ({ page }) => {

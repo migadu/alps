@@ -1,0 +1,18 @@
+export default {
+  settings: {
+    categories: {
+      password: 'Пароль'
+    },
+    password: {
+      title: 'Пароль',
+      changePassword: 'Изменить пароль',
+      changePasswordDesc: 'Измените пароль своего аккаунта.',
+      oldPassword: 'Текущий пароль',
+      newPassword: 'Новый пароль',
+      confirmPassword: 'Подтвердите новый пароль',
+      updatePassword: 'Обновить пароль',
+      fillAllFields: 'Заполните все поля.',
+      passwordMismatch: 'Новые пароли не совпадают.'
+    }
+  }
+};

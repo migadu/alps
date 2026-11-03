@@ -1614,8 +1614,8 @@ export class MessageList extends LitElement {
     const totalRendered = displayAvatars.length + (extraCount > 0 ? 1 : 0);
 
     const subject = msg.Envelope?.Subject || (this.i18nStore?.t('messageList.noSubject'));
-    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
-    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
+    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'auto';
+    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || 'auto');
     const dateStr = msg.Envelope?.Date ? formatDateList(msg.Envelope.Date, dateFormat, hourFormat) : '';
     const msgSize = msg.RFC822Size || msg.Size;
     const sizeStr = msgSize ? formatSize(msgSize, this.i18nStore) : '';
