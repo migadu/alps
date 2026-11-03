@@ -42,7 +42,7 @@ for (const remove of [false, true]) {
     await row.hover();
     await row.getByRole('button', { name: 'More options' }).click();
     await expect(row.locator('alps-popup')).toHaveAttribute('open', '');
-    await row.getByRole('button', { name: remove ? 'Delete' : 'Rename' }).click();
+    await row.locator('button.dropdown-item').filter({ hasText: remove ? 'Delete' : 'Rename' }).click();
     await page.route(/\/contacts\/[^/?]+\/categories$/, async route => {
       const response = await route.fetch();
       expect(response.status()).toBe(200);

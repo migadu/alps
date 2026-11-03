@@ -307,7 +307,7 @@ func deleteFailed(what string, err error) error {
 }
 
 // putCard writes card to objectPath, conditional on etag when there is one, and
-// returns the ETag of the version written.
+// returns the ETag of the version written. createOnly refuses an existing path.
 func (p *plugin) putCard(ctx *alps.Context, c *carddav.Client, objectPath string, card vcard.Card, etag string, createOnly bool) (string, error) {
 	var buf bytes.Buffer
 	if err := encodeCard(&buf, card); err != nil {
