@@ -107,8 +107,9 @@ export class UserProfileMenu extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: var(--error, #ef4444);
+      background: #b91c1c;
       color: #ffffff;
+      border: 1px solid #ffffff;
       font-size: 10px;
       font-weight: 700;
       line-height: 1;
@@ -116,10 +117,12 @@ export class UserProfileMenu extends LitElement {
 
     /* Drawn by its background, which forced colors repaint as the page. */
     @media (forced-colors: active) {
-      .storage-badge {
+      .storage-badge,
+      .storage-badge.critical {
         forced-color-adjust: none;
         background: CanvasText;
         color: Canvas;
+        border-color: Canvas;
         box-shadow: 0 0 0 2px Canvas;
       }
     }

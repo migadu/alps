@@ -41,9 +41,8 @@ func (p *IMAPProvider) HasQuotas() (bool, error) {
 // domain's say, each with a limit of its own. The fullest of them, as a share
 // of its limit, is answered: it is the one closest to refusing mail. A root
 // with no STORAGE resource limits something else, the number of messages
-// say, and is passed over, as is one with a STORAGE limit of 0. That has no
-// share to answer, and a mailbox shown full for it would be shown so wrongly
-// wherever the server meant no limit by it.
+// say, and is passed over. A STORAGE limit of 0 prohibits usage (RFC 9208
+// section 3.1.2), and takes priority over every positive limit.
 //
 // An error the server answered stays an *imap.Error under the wrapping, for
 // the caller to tell a refusal from a failure.
@@ -56,7 +55,7 @@ func (p *IMAPProvider) StorageQuota() (*provider.StorageQuota, error) {
 	for _, root := range roots {
 		for name, storage := range root.Resources {
 			// Resource names are atoms, which IMAP reads whatever their case.
-			if !strings.EqualFold(string(name), string(imap.QuotaResourceStorage)) || storage.Limit <= 0 {
+			if !strings.EqualFold(string(name), string(imap.QuotaResourceStorage)) || storage.Limit < 0 {
 				continue
 			}
 			quota := &provider.StorageQuota{Used: storageBytes(storage.Usage), Limit: storageBytes(storage.Limit)}
@@ -71,6 +70,12 @@ func (p *IMAPProvider) StorageQuota() (*provider.StorageQuota, error) {
 // fuller reports whether a takes more of its limit than b does of its own,
 // or, taking as much, has the lower limit, with less room left in it.
 func fuller(a, b *provider.StorageQuota) bool {
+	if a.Limit == 0 || b.Limit == 0 {
+		if a.Limit != b.Limit {
+			return a.Limit == 0
+		}
+		return a.Used > b.Used
+	}
 	ra, rb := float64(a.Used)/float64(a.Limit), float64(b.Used)/float64(b.Limit)
 	if ra != rb {
 		return ra > rb

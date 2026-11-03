@@ -78,6 +78,14 @@ afterEach(() => {
 });
 
 describe('with a storage limit', () => {
+  it.each([0, 10])('shows a zero limit as full with usage %s', async used => {
+    limited(used, 0);
+    const el = await section();
+    expect(text(el, '.percent')).toBe('100%');
+    expect(severity(el)).toBe('critical');
+    expect(shadow<HTMLElement>(el, '.fill').style.width).toBe('100%');
+  });
+
   it('shows what is used of the limit, and the share', async () => {
     limited(25 * MB, 100 * MB);
     const el = await section();
@@ -143,7 +151,6 @@ describe('without a storage limit', () => {
   it.each([
     ['a server without quotas', { supported: false }],
     ['quotas, none on storage', { supported: true }],
-    ['a limit of 0', { supported: true, used: 10, limit: 0 }],
   ])('draws nothing for %s', async (_, body) => {
     quota(body);
     const { el, changes } = await recorded();

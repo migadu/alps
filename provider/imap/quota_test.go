@@ -2,6 +2,7 @@ package imap
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -47,6 +48,22 @@ func TestStorageQuotaIsAnsweredInBytes(t *testing.T) {
 	}
 }
 
+func TestStorageQuotaKeepsAZeroLimit(t *testing.T) {
+	for _, used := range []int64{0, 10} {
+		t.Run(fmt.Sprint(used), func(t *testing.T) {
+			srv := &scriptedIMAP{caps: "IMAP4rev1 QUOTA", quota: []string{
+				`* QUOTAROOT INBOX room closed`,
+				`* QUOTA room (STORAGE 95 100)`,
+				fmt.Sprintf(`* QUOTA closed (STORAGE %d 0)`, used),
+			}}
+			got := storageQuota(t, scriptedProvider(t, srv))
+			if got == nil || got.Limit != 0 || got.Used != used*1024 {
+				t.Fatalf("quota %+v, want zero limit with usage %d", got, used*1024)
+			}
+		})
+	}
+}
+
 // A server without QUOTA keeps no quotas, which is said without asking it
 // anything: GETQUOTAROOT would only be refused.
 func TestStorageQuotaWithoutQuotaIsNotAsked(t *testing.T) {
@@ -79,16 +96,14 @@ func TestStorageQuotaWithoutStorageIsNone(t *testing.T) {
 }
 
 // Under several roots, the fullest is answered, as a share of its limit: it
-// is the one closest to refusing mail. A STORAGE limit of 0 has no share to
-// answer and is passed over, and a resource is read whatever its case.
+// is the one closest to refusing mail. A resource is read whatever its case.
 func TestStorageQuotaIsTheFullestRoot(t *testing.T) {
 	srv := &scriptedIMAP{
 		caps: "IMAP4rev1 QUOTA",
 		quota: []string{
-			`* QUOTAROOT INBOX user domain closed`,
+			`* QUOTAROOT INBOX user domain`,
 			`* QUOTA user (STORAGE 9000 10000 MESSAGE 1 100)`,
 			`* QUOTA domain (storage 9500 10000)`,
-			`* QUOTA closed (STORAGE 10 0)`,
 		},
 	}
 	got := storageQuota(t, scriptedProvider(t, srv))

@@ -1,12 +1,5 @@
-// How much of the mailbox's storage is used, in the account menu.
-//
-// The mail server of this stack keeps no quotas: it does not list QUOTA. So
-// what can be seen here is the other half, which a jsdom test cannot show
-// against a real server: the menu asks, the server says plainly that there
-// is nothing to show, and nothing is drawn, no badge, no bar, no 0% for a
-// mailbox without a limit, and nothing is logged as an error (the fixture
-// fails the test on any). The figures and the warnings are covered by the
-// unit tests, against answers with a limit.
+// Native unsupported-server behavior, zero-limit warnings, and forced colors.
+// Supported quota answers are intercepted because the native stack lacks QUOTA.
 
 import type { Page } from "@playwright/test";
 import { expect, login, test } from "./fixtures";
@@ -33,4 +26,38 @@ test("a mail server without quotas draws no storage, and logs no error", async (
   await expect(section.locator(".storage")).toHaveCount(0);
   await expect(section).toHaveText("");
   await expect(menu(page).locator("alps-popup > .dropdown-divider")).toHaveCount(1);
+});
+
+for (const used of [0, 10]) {
+  test(`a zero storage limit warns even with ${used} bytes used`, async ({ page }) => {
+    await page.route('**/quota', route => route.fulfill({ json: { supported: true, used, limit: 0 } }));
+    await login(page);
+    await expect(menu(page).locator('.storage-badge.critical')).toHaveText('!');
+    const trigger = menu(page).getByRole('button', { name: /Profile options \(Mailbox 100% full/ });
+    await trigger.click();
+    await expect(menu(page).locator('alps-storage-usage .percent')).toHaveText('100%');
+    expect(await menu(page).locator('alps-storage-usage .fill').evaluate(el => Number.isFinite(el.getBoundingClientRect().width))).toBe(true);
+  });
+}
+
+test('the critical storage badge uses system foreground and background under forced colors', async ({ page }) => {
+  await page.route('**/quota', route => route.fulfill({ json: { supported: true, used: 97, limit: 100 } }));
+  await login(page);
+  const badge = menu(page).locator('.storage-badge.critical');
+  await expect(badge).toHaveText('!');
+  await page.emulateMedia({ forcedColors: 'active' });
+  const colors = await badge.evaluate(el => {
+    const paint = (color: string) => {
+      const probe = document.createElement('span');
+      probe.style.color = color;
+      document.body.append(probe);
+      const resolved = getComputedStyle(probe).color;
+      probe.remove();
+      return resolved;
+    };
+    const style = getComputedStyle(el);
+    return { fill: style.backgroundColor, text: style.color, canvas: paint('Canvas'), canvasText: paint('CanvasText') };
+  });
+  expect(colors.fill).toBe(colors.canvasText);
+  expect(colors.text).toBe(colors.canvas);
 });

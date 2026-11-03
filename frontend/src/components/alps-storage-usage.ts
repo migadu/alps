@@ -44,6 +44,7 @@ const READ_TTL_MS = 60 * 1000;
  * the words and the warning never disagree.
  */
 export function storagePercent(usage: StorageUsage): number {
+  if (usage.limit === 0) return 100;
   return Math.min(100, Math.max(0, Math.floor((usage.used * 100) / usage.limit)));
 }
 
@@ -56,13 +57,13 @@ export function storageSeverity(usage: StorageUsage | null): StorageSeverity {
 /**
  * The figures in an answer of GET /quota, or null when it has none to show:
  * the mail server keeps no quotas, or none of them limits storage. A limit of
- * 0 has no share to draw either. `unsupported` says that the server keeps no
+ * 0 prohibits usage and is shown as full. `unsupported` says that the server keeps no
  * quotas at all, which only an answer that says so outright is taken for.
  */
 function usageOf(body: any): { usage: StorageUsage | null; unsupported: boolean } {
   if (body?.supported !== true) return { usage: null, unsupported: body?.supported === false };
   const { used, limit } = body;
-  if (typeof used !== 'number' || typeof limit !== 'number' || !(limit > 0) || !(used >= 0)) {
+  if (typeof used !== 'number' || typeof limit !== 'number' || !(limit >= 0) || !(used >= 0)) {
     return { usage: null, unsupported: false };
   }
   return { usage: { used, limit }, unsupported: false };
@@ -75,7 +76,8 @@ function usageOf(body: any): { usage: StorageUsage | null; unsupported: boolean 
  * A mailbox without a storage limit shows nothing at all. Unlimited is not
  * zero: a bar filled to 0% against no limit says the mailbox is empty, which
  * is a lie whatever it holds. The same goes for a mail server that keeps no
- * quotas, and for one whose figures could not be read.
+ * quotas, and for one whose figures have never been read. A failed refresh keeps
+ * the last successfully read figures.
  *
  * Urgency leaves the menu. A closed menu is not where a mailbox about to
  * refuse mail may whisper about it: the severity is reflected as `severity`,
@@ -250,7 +252,7 @@ export class AlpsStorageUsage extends LitElement {
   render() {
     const usage = this.usage;
     if (!usage) return nothing;
-    const share = Math.min(1, usage.used / usage.limit);
+    const share = usage.limit === 0 ? 1 : Math.min(1, usage.used / usage.limit);
     const percent = storagePercent(usage);
     const used = isolatedSentence(this.i18nStore, 'storage.used', {
       used: html`<bdi>${formatSize(usage.used, this.i18nStore)}</bdi>`,

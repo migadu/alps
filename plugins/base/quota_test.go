@@ -67,6 +67,19 @@ func TestHTTP_QuotaAnswersTheStorageInBytes(t *testing.T) {
 	}
 }
 
+// Zero is a quota that prohibits storage, not a missing limit. Keep both
+// numeric fields even when they are zero so the client can warn about it.
+func TestHTTP_QuotaPreservesAZeroLimit(t *testing.T) {
+	s := quotaServer(t, func(p provider.MailProvider) provider.MailProvider {
+		return quotaProvider{MailProvider: p, has: true, quota: &provider.StorageQuota{}}
+	})
+	got, _ := s.readQuota(http.StatusOK)
+	want := map[string]any{"supported": true, "used": float64(0), "limit": float64(0)}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("answered %v, want %v", got, want)
+	}
+}
+
 // A provider that cannot read quotas at all (the maildir one), and a mail
 // server that keeps none (no QUOTA), are each answered as unsupported, with
 // no figures.

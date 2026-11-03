@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CSSResult } from 'lit';
 import { AlpsButton } from '../src/components/alps-button';
 import { LoginPage } from '../src/pages/login-page';
+import { UserProfileMenu } from '../src/components/user-profile-menu';
 import { THEME_BUNDLES } from '../src/store/themes';
 import { rulesOf } from './helpers/styles';
 
@@ -34,6 +35,17 @@ const buttons = [
 describe.each(Object.values(THEME_BUNDLES))('$id warning colour', theme => {
   it.each(['bg-primary', 'bg-secondary', 'bg-tertiary'] as const)('keeps text and graphics readable on %s', surface => {
     expect(contrast(theme.colors.warning, theme.colors[surface])).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe.each(Object.values(THEME_BUNDLES))('$id critical storage badge', theme => {
+  it('keeps the small exclamation mark readable', () => {
+    const rule = rulesOf(cssText(UserProfileMenu.styles)).find(rule => rule.selectorText === '.storage-badge.critical')!.style;
+    const resolve = (value: string) => {
+      const variable = /^var\(--([^,]+),\s*(.+)\)$/.exec(value);
+      return variable ? (theme.colors as Record<string, string>)[variable[1]!] ?? variable[2]! : value;
+    };
+    expect(contrast(resolve(rule.getPropertyValue('color')), resolve(rule.getPropertyValue('background')))).toBeGreaterThanOrEqual(4.5);
   });
 });
 

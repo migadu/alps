@@ -82,6 +82,13 @@ describe('the storage section', () => {
 });
 
 describe('the urgency, while the menu is closed', () => {
+  it.each([0, 10])('warns about prohibited storage with usage %s and a zero limit', async used => {
+    body = { supported: true, used, limit: 0 };
+    const el = await menu();
+    expect(badge(el)?.textContent?.trim()).toBe('!');
+    expect(trigger(el).title).toContain('Mailbox 100% full');
+  });
+
   it('shows nothing while storage is fine', async () => {
     const el = await menu();
     expect(badge(el)).toBeNull();
