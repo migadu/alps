@@ -1,3 +1,4 @@
+import { confirmsContactSave } from './contacts-service';
 import { html, css, LitElement } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { CATEGORY_ALL_CONTACTS, CATEGORY_FAVORITES } from './constants';
@@ -53,6 +54,8 @@ type ContactSaveTarget = {
   username: string;
   conflicted: boolean;
   toolbarVersion?: { etag: string };
+  creationId?: string;
+  unconfirmed?: { before: any; payload: any };
 };
 
 @customElement('contacts-page')
@@ -347,9 +350,11 @@ export class ContactsPage extends LitElement {
     window.removeEventListener('alps-active-user-changed', this.handleSaveOwnerChange);
     this.saveActive = false;
     this.saveLifetime++;
+    this.readEpoch++;
     this.queuedSaves = [];
     this.saveTargets = new WeakMap();
     this.toolbarVersions.clear();
+    this.pendingCategoryChanges.clear();
     if (this.settingsStore) {
       this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     }
@@ -376,8 +381,11 @@ export class ContactsPage extends LitElement {
       const username = activeUsername();
       const saved = username ? JSON.parse(localStorage.getItem(categoriesKeyFor(username)) || '[]') : [];
       this.addedCategories = Array.isArray(saved) ? saved : [];
+      const pending = username ? JSON.parse(localStorage.getItem(categoriesKeyFor(username) + '_pending') || '[]') : [];
+      this.pendingCategoryChanges = new Map(Array.isArray(pending) ? pending.filter(entry => Array.isArray(entry) && typeof entry[0] === 'string' && (typeof entry[1] === 'string' || entry[1] === null)).map(([oldName, newName]) => [oldName, newName ?? undefined]) : []);
     } catch {
       this.addedCategories = [];
+      this.pendingCategoryChanges.clear();
     }
   };
 
@@ -386,6 +394,7 @@ export class ContactsPage extends LitElement {
     if (!username) return;
     try {
       localStorage.setItem(categoriesKeyFor(username), JSON.stringify(this.addedCategories));
+      localStorage.setItem(categoriesKeyFor(username) + '_pending', JSON.stringify([...this.pendingCategoryChanges]));
     } catch {
       // Storage unavailable: the categories last as long as this page.
     }
@@ -565,14 +574,18 @@ export class ContactsPage extends LitElement {
       ]);
       if (epoch !== this.readEpoch) return;
 
-      this.contacts = data.contacts || [];
+      // A list read does not navigate away from a form opened while it waited.
+      const keepEditor = this.isEditing && this.selectedContact;
+      const temporary = keepEditor?.isTemporary ? keepEditor : null;
+      this.contacts = temporary ? [temporary, ...(data.contacts || [])] : data.contacts || [];
       this.loadedQuery = query;
       if (!query) this.wholeBook = this.contacts;
       else if (whole) this.wholeBook = whole.contacts || [];
+      if (!query || whole) this.reconcileCategoryNames(this.wholeBook);
       if (this.restoringHash) {
         this.restoringHash = false;
-        this.readHash(pageHash() ?? '');
-      } else {
+        if (!keepEditor) this.readHash(pageHash() ?? '');
+      } else if (!keepEditor) {
         this._handleHashChange(); // Keep live Settings edits untouched.
       }
     } catch (e) {
@@ -820,7 +833,8 @@ export class ContactsPage extends LitElement {
     const newContact = {
       name: this.i18nStore?.t('contacts.unnamedContact'),
       categories: this.selectedCategory ? [this.selectedCategory] : [],
-      isTemporary: true
+      isTemporary: true,
+      creation_id: crypto.randomUUID()
     };
 
     // Remove any existing temporary contacts first
@@ -879,6 +893,24 @@ export class ContactsPage extends LitElement {
     if (card) this.selectedContact = { ...this.selectedContact, categories: card.categories };
   }
 
+  private reconcileCategoryNames(book: any[]) {
+    for (const [oldName, newName] of this.pendingCategoryChanges) {
+      if (book.some(c => c.categories?.includes(oldName))) continue;
+      const next = newName && book.some(c => c.categories?.includes(newName)) ? newName : '';
+      this.pendingCategoryChanges.delete(oldName);
+      this.addedCategories = [...new Set(this.addedCategories.flatMap(c => c === oldName ? (next ? [next] : []) : [c]))];
+      this.saveAddedCategories();
+      const byPath = new Map(book.map(c => [c.path, c]));
+      this.contacts = this.contacts.map(c => byPath.has(c.path) ? { ...c, categories: byPath.get(c.path).categories } : c);
+      const open = byPath.get(this.selectedContact?.path);
+      if (open) this.selectedContact = { ...this.selectedContact, categories: open.categories };
+      if (this.selectedCategory === oldName) {
+        this.selectedCategory = next;
+        this.writeHash(this.categoryHash(next), 'replace');
+      }
+    }
+  }
+
   private async handleRenameCategorySubmit(e: CustomEvent) {
     const newName = e.detail.name?.trim();
     if (!newName || !this.categoryToRename || newName === this.categoryToRename) {
@@ -913,9 +945,17 @@ export class ContactsPage extends LitElement {
         const { total, done, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.showWrittenCategories(contactsToModify, etags);
-        this.fetchContacts();
         if (failed > 0) this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: failed - uncertain, total, uncertain });
+        if (done === 0 && uncertain > 0) {
+          this.pendingCategoryChanges.set(oldName, newName);
+          this.saveAddedCategories();
+          await this.fetchContacts();
+          return;
+        }
+        this.fetchContacts();
         if (done === 0) return;
+        this.pendingCategoryChanges.delete(oldName);
+        this.saveAddedCategories();
       } catch (e) {
         console.error('Error renaming category', e);
         this.fetchContacts();
@@ -970,9 +1010,17 @@ export class ContactsPage extends LitElement {
         const { total, done, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.showWrittenCategories(contactsToModify, etags);
-        this.fetchContacts();
         if (failed > 0) this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: failed - uncertain, total, uncertain });
+        if (done === 0 && uncertain > 0) {
+          this.pendingCategoryChanges.set(oldName, undefined);
+          this.saveAddedCategories();
+          await this.fetchContacts();
+          return;
+        }
+        this.fetchContacts();
         if (done === 0) return;
+        this.pendingCategoryChanges.delete(oldName);
+        this.saveAddedCategories();
       } catch (e) {
         console.error('Error deleting category', e);
         this.fetchContacts();
@@ -1076,15 +1124,19 @@ export class ContactsPage extends LitElement {
   }
 
   /** Coalesced per card, so a second card cannot replace the first card's queued edits. */
+  private pendingCategoryChanges = new Map<string, string | undefined>();
+
   private queuedSaves: { payload: any; target: ContactSaveTarget }[] = [];
   private saveTargets = new WeakMap<object, ContactSaveTarget>();
   private saveActive = true;
   private saveLifetime = 0;
   private handleSaveOwnerChange = () => {
     this.saveLifetime++;
+    this.readEpoch++;
     this.queuedSaves = [];
     this.saveTargets = new WeakMap();
     this.toolbarVersions.clear();
+    this.pendingCategoryChanges.clear();
     this.loadAddedCategories();
   };
 
@@ -1119,6 +1171,7 @@ export class ContactsPage extends LitElement {
         generation: showing ? this.cardGeneration : -1, lifetime: this.saveLifetime,
         username: activeUsername() ?? this.username, conflicted: false,
         toolbarVersion: this.toolbarVersions.get(source.path),
+        creationId: source.isTemporary ? (source.creation_id || crypto.randomUUID()) : undefined,
       };
       this.saveTargets.set(source, target);
     }
@@ -1148,6 +1201,7 @@ export class ContactsPage extends LitElement {
   }
 
   private async saveOnce(payload: any, target: ContactSaveTarget) {
+    if (target.unconfirmed && !await this.reconcileSave(target)) return;
     // Another card can hold the queue while this card's toolbar completes a
     // write. Advance to that acknowledged version before sending its form.
     const latest = this.toolbarVersions.get(target.contact.path);
@@ -1215,7 +1269,7 @@ export class ContactsPage extends LitElement {
         // its address: answered with that card's path, the editor went on to
         // edit the other card, without its version or fields.
         data = await contactsService.createContact({
-          ...payload, allow_duplicate: true,
+          ...payload, allow_duplicate: true, creation_id: target.creationId,
           ...(payload.address_parts && { address_parts_from: {} }),
         });
       }
@@ -1250,7 +1304,11 @@ export class ContactsPage extends LitElement {
     } catch (e) {
       console.error('Error saving contact', e);
       if (!this.ownsSave(target)) return;
-      if (editing && isVersionConflict(e)) {
+      if (outcomeUnknown(e) || (!editing && isVersionConflict(e))) {
+        target.unconfirmed = { before, payload };
+        this.reportFailure(UNCONFIRMED.update[1]);
+        await this.reconcileSave(target);
+      } else if (editing && isVersionConflict(e)) {
         target.conflicted = true;
         if (this.showingSave(target)) this.conflictedPath = before.path;
         this.reportFailure('contacts.saveConflict');
@@ -1260,6 +1318,40 @@ export class ContactsPage extends LitElement {
     } finally {
       if (this.showingSave(target)) this.saving = false;
     }
+  }
+
+  /** No further write is safe until the previous attempt can be observed. */
+  private async reconcileSave(target: ContactSaveTarget): Promise<boolean> {
+    const pending = target.unconfirmed;
+    if (!pending) return true;
+    try {
+      const { contacts = [] } = await contactsService.fetchContacts();
+      if (!this.ownsSave(target)) return false;
+      const fresh = contacts.find((card: any) => pending.before.isTemporary
+        ? String(card.uid || '').replace(/^urn:uuid:/i, '').toLowerCase() === target.creationId?.toLowerCase()
+        : card.path === pending.before.path);
+      // A new card absent from a successful read can be created again at its
+      // same UUID path. If the first write arrives late, If-None-Match protects it.
+      if (!fresh && pending.before.isTemporary) { target.unconfirmed = undefined; return true; }
+      if (fresh && ((!pending.before.isTemporary && pending.before.etag && fresh.etag === pending.before.etag) || confirmsContactSave(fresh, pending.payload))) {
+        const showing = this.showingSave(target);
+        target.contact = { ...fresh };
+        target.unconfirmed = undefined;
+        const index = this.contacts.findIndex(c => c === target.original || c.path === fresh.path);
+        this.contacts = index < 0 ? [fresh, ...this.contacts] : this.contacts.map((c, i) => i === index ? fresh : c);
+        if (showing) { this.selectedContact = target.contact; this.wholeCardPath = fresh.path; }
+        this.saveTargets.set(target.contact, target);
+        return true;
+      }
+      // Another version has appeared: do not apply an old form over it.
+      target.unconfirmed = undefined;
+      target.conflicted = true;
+      if (this.showingSave(target)) this.conflictedPath = pending.before.path;
+      this.reportFailure('contacts.saveConflict');
+    } catch (error) {
+      console.error('Could not confirm the contact save', error);
+    }
+    return false;
   }
 
   private handleSaveEvent(e: CustomEvent & { sourceContact?: any; sourceUsername?: string }) {

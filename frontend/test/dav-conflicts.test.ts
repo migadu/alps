@@ -116,16 +116,17 @@ describe('saving a contact', () => {
     expect(update.mock.calls[1][1].etag).toBe('v7');
   });
 
-  it('calls any other failure a failure, and goes on saving', async () => {
+  it('reports a gateway failure as unconfirmed and retries after reading the unchanged card', async () => {
     const el = contactsPage(grace());
     const failures = vi.spyOn(el, 'reportFailure').mockImplementation(() => {});
     const update = vi.spyOn(contactsService, 'updateContact')
       .mockRejectedValueOnce(new HttpStatusError(502, 'Bad Gateway'))
       .mockResolvedValue(saved('v2'));
 
+    vi.spyOn(contactsService, 'fetchContacts').mockResolvedValue({ contacts: [grace()] });
     await el.handleSave({ path: '/book/grace.vcf', name: 'Mine', categories: '' });
     await el.handleSave({ path: '/book/grace.vcf', name: 'Mine', categories: '' });
-    expect(failures.mock.calls).toEqual([['contacts.saveFailed']]);
+    expect(failures.mock.calls).toEqual([['contacts.updateOneUnconfirmed']]);
     expect(update).toHaveBeenCalledTimes(2);
   });
 });

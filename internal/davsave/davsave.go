@@ -49,6 +49,15 @@ func URL(endpoint *url.URL, href string) string {
 // carried none: RFC 4791 §5.3.4 lets a server withhold it when what it stored
 // differs from what it was sent.
 func Put(ctx context.Context, hc *http.Client, target, contentType string, body []byte, etag string) (string, error) {
+	return put(ctx, hc, target, contentType, body, etag, false)
+}
+
+// Create writes a new resource, refusing to replace a resource already there.
+func Create(ctx context.Context, hc *http.Client, target, contentType string, body []byte) (string, error) {
+	return put(ctx, hc, target, contentType, body, "", true)
+}
+
+func put(ctx context.Context, hc *http.Client, target, contentType string, body []byte, etag string, create bool) (string, error) {
 	// A bytes.Reader, so the request states its Content-Length: some servers
 	// refuse a chunked PUT (go-webdav buffers for the same reason).
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, target, bytes.NewReader(body))
@@ -60,7 +69,9 @@ func Put(ctx context.Context, hc *http.Client, target, contentType string, body 
 	// weak one matches nothing and every save would be refused. Such a write
 	// goes out unconditional, as it did before; the caller's own comparison of
 	// the version it read is still made.
-	if etag != "" && !strings.HasPrefix(etag, "W/") {
+	if create {
+		req.Header.Set("If-None-Match", "*")
+	} else if etag != "" && !strings.HasPrefix(etag, "W/") {
 		req.Header.Set("If-Match", `"`+Unquote(etag)+`"`)
 	}
 

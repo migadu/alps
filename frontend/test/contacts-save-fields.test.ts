@@ -49,6 +49,7 @@ it('does not acknowledge fields from a failed request', async () => {
   const write = vi.spyOn(contactsService, 'updateContact')
     .mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValue({ ok: 'true', path: initial.path, etag: 'v2' });
+  vi.spyOn(contactsService, 'fetchContacts').mockResolvedValue({ contacts: [{ ...el.selectedContact }] });
   await el.handleSave({ ...initial, address: '' });
   await el.handleSave({ ...initial, address: '', note: 'Retry' });
   expect(write.mock.calls[1][1]).toMatchObject({ changed_fields: ['note', 'address'], etag: 'v1' });
@@ -94,6 +95,7 @@ it('keeps source positions after a failed request and keeps legacy lists unindex
     .mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValue({ ok: 'true', path: initial.path, etag: 'v2' });
   const payload = { ...initial, emails: [{ id: 'emails:1', value: 'changed@example.test' }] };
+  vi.spyOn(contactsService, 'fetchContacts').mockResolvedValue({ contacts: [{ ...el.selectedContact }] });
   await el.handleSave(payload);
   await el.handleSave(payload);
   expect(write.mock.calls[1][1].emails![0].source_index).toBe(1);

@@ -45,3 +45,22 @@ func TestCreateFromTheEditorMakesTheCardWhoeverHasItsAddress(t *testing.T) {
 		t.Fatalf("the known card's name is now %q", got)
 	}
 }
+
+func TestCreateRetryUsesTheSameIdentityAndNeverOverwrites(t *testing.T) {
+	h := newHarness(t)
+	id := "c389f7f5-7fbd-4f16-8940-cc506d9b298a"
+	payload := map[string]any{"name": "First", "allow_duplicate": true, "creation_id": id}
+	r := h.do("POST", "/contacts/create", payload)
+	h.expect(r, http.StatusOK)
+	var made struct{ Path, ETag string }
+	h.decode(r, &made)
+	if made.Path != testBook+id+".vcf" {
+		t.Fatalf("created at %q", made.Path)
+	}
+	payload["name"] = "Retry"
+	h.expect(h.do("POST", "/contacts/create", payload), http.StatusPreconditionFailed)
+	if got := valueOf(h.dav.get(t, made.Path).Card, vcard.FieldFormattedName); got != "First" {
+		t.Fatalf("retry overwrote %q", got)
+	}
+	h.expect(h.do("POST", "/contacts/create", map[string]any{"creation_id": "../bad"}), http.StatusBadRequest)
+}
