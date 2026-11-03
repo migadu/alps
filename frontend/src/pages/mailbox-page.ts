@@ -8,7 +8,7 @@ import type { MessageReader, ReaderActionDetail } from '../components/message-re
 import type { MessageList } from '../components/message-list';
 import '../components/ui-confirm.js';
 import '../components/app-header';
-import { closeSidebarPeek } from '../components/alps-sidebar';
+import { closeSidebarPeek, SIDEBAR_WIDTH_MIN } from '../components/alps-sidebar';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { messageSync, type MailboxData } from '../services/message-sync';
@@ -20,6 +20,7 @@ import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
 import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxPath, mailboxRoleByName, findMailboxNameByRole, acceptsDroppedMessages } from '../utils/folders';
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
+import { endBoot, isBooting } from '../utils/boot-splash';
 import { Logger } from '../utils/logger';
 import { MessageCache } from '../utils/message-cache';
 import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
@@ -27,6 +28,7 @@ import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/
 import { canonicalRecipient, parseWrittenAddress } from '../utils/address-display';
 import { isSettingsHash } from '../utils/routes';
 import { pageHash, updateSettingsBackground } from '../utils/settings-history';
+import { motionStyles } from '../utils/motion';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -88,7 +90,6 @@ interface PendingDelete {
 type MoveOutcome = { ok: boolean; reason?: string; uidMapping: Record<string, string> };
 
 const SIDEBAR_WIDTH_DEFAULT = 250;
-const SIDEBAR_WIDTH_MIN = 150;
 const SIDEBAR_WIDTH_MAX = 500;
 const SIDEBAR_WIDTH_COLLAPSED = 64;
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;
@@ -156,7 +157,7 @@ export class MailboxPage extends LitElement {
     document.removeEventListener('keydown', this.unlockAudio);
   };
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: flex;
       flex-direction: column;
@@ -319,13 +320,13 @@ export class MailboxPage extends LitElement {
 
 
 
-    `;
+    `];
 
   @state() private mailboxes: any[] = [];
   @state() private messages: any[] = [];
   @state() private currentMailbox = FOLDER_INBOX;
   @state() private loadingMessages = true;
-  @state() private showInitialLoader = !(window as any).alpsAppLoaded;
+  @state() private showInitialLoader = isBooting();
   @state() private selectedMessage: any = null;
   /** The checked messages, by {@link messageKey}: a search across every folder
    * lists several folders' messages, and a UID means nothing outside its own.
@@ -417,16 +418,18 @@ export class MailboxPage extends LitElement {
     }
   }
 
-  private showGlobalToast(message: string, actionLabel = '', actionFn?: () => void, duration = 3000) {
+  /** `type` is 'error' for a toast that reports a failure, which the shell
+   * reads out at once rather than in turn. */
+  private showGlobalToast(message: string, actionLabel = '', actionFn?: () => void, duration = 3000, type?: string) {
     window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: { message, actionLabel, actionFn, duration }
+      detail: { message, actionLabel, actionFn, duration, type }
     }));
   }
 
   /** Shows a child's `toast` event. Both lists report through it; only the
    * folder list's were shown, so emptying Trash or Junk said nothing at all. */
   private _relayToast = (e: CustomEvent) => {
-    this.showGlobalToast(e.detail.message, e.detail.actionLabel, e.detail.actionFn, e.detail.duration);
+    this.showGlobalToast(e.detail.message, e.detail.actionLabel, e.detail.actionFn, e.detail.duration, e.detail.type);
   };
 
   /**
@@ -444,7 +447,7 @@ export class MailboxPage extends LitElement {
    * Callers stay quiet on `auth`, which the shell answers with the login screen.
    */
   private reportActionFailed(key: string, fallback: string) {
-    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000);
+    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000, 'error');
   }
 
   private reportFlagFailure(result: FlagResult) {
@@ -453,7 +456,7 @@ export class MailboxPage extends LitElement {
     const fallback = result.reason === 'unsupported'
       ? 'That tag is not supported by this mail server'
       : 'Could not update the messages';
-    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000);
+    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000, 'error');
   }
 
   /**
@@ -1207,7 +1210,7 @@ export class MailboxPage extends LitElement {
       if (this.showInitialLoader) {
         setTimeout(() => {
           this.showInitialLoader = false;
-          (window as any).alpsAppLoaded = true;
+          endBoot();
         }, 100);
       }
     }
@@ -1284,7 +1287,7 @@ export class MailboxPage extends LitElement {
   };
 
   private handleMailboxNotFound = () => {
-    this.showGlobalToast(this.i18nStore.t('mailboxPage.mailboxNotFound'), '', undefined, 3000);
+    this.showGlobalToast(this.i18nStore.t('mailboxPage.mailboxNotFound'), '', undefined, 3000, 'error');
     this.updateUrl(FOLDER_INBOX, 0, null, null);
   };
 

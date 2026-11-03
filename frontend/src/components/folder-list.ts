@@ -22,6 +22,7 @@ import { sidebarLayoutStyles } from './alps-sidebar';
 import { sidebarStripContext } from './alps-sidebar-strip';
 import { sectionHeadingStyles } from './alps-sidebar-heading';
 import './alps-popup';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-folder-list')
 export class FolderList extends LitElement {
@@ -43,6 +44,9 @@ export class FolderList extends LitElement {
   @consume({ context: sidebarStripContext, subscribe: true })
   @state() private strip = false;
   @state() private isScrolled = false;
+  /** How far the folders were scrolled, for when the list is put back in the
+   * document (see connectedCallback). */
+  private scrolledTo = 0;
 
   @state() private showCreatePrompt = false;
   /** True while the create request is out; disables the prompt's buttons. */
@@ -157,6 +161,12 @@ export class FolderList extends LitElement {
       if (this.settingsStore) {
         this.settingsStore.addEventListener('change', this._handleStoreChange);
       }
+      // The mailbox page is kept while another tab shows, out of the
+      // document, and an element out of the document loses its scroll
+      // offset: coming back from Calendar put a long folder list back at the
+      // top. It goes back to where the user left it.
+      const folders = this.renderRoot.querySelector<HTMLElement>('.sidebar-content');
+      if (folders && this.scrolledTo > 0) folders.scrollTop = this.scrolledTo;
     });
   }
 
@@ -177,6 +187,7 @@ export class FolderList extends LitElement {
   };
 
   static styles = [
+    motionStyles,
     popupStyles,
     sidebarLayoutStyles,
     sectionHeadingStyles,
@@ -456,6 +467,7 @@ export class FolderList extends LitElement {
 
   private handleScroll = (e: Event) => {
     const target = e.target as HTMLElement;
+    this.scrolledTo = target.scrollTop;
     this.isScrolled = target.scrollTop > 0;
   };
 
@@ -1128,8 +1140,8 @@ export class FolderList extends LitElement {
               void mailboxOperations.setSubscribed(node.fullName, subscribing).then(result => {
                 if (result.ok) this.subscriptionChanged(node.fullName, subscribing);
                 if (result.ok || result.reason === 'auth') return;
-                if (subscribing) this.toast(this.i18nStore?.t('toast.subscribeFailed'), 'Could not subscribe');
-                else this.toast(this.i18nStore?.t('toast.unsubscribeFailed'), 'Could not unsubscribe');
+                if (subscribing) this.toast(this.i18nStore?.t('toast.subscribeFailed'), 'Could not subscribe', { type: 'error' });
+                else this.toast(this.i18nStore?.t('toast.unsubscribeFailed'), 'Could not unsubscribe', { type: 'error' });
               });
             }}>
                     ${renderIcon(node.mb?.Subscribed ? 'eyeSlash' : 'eye')} <span class="item-text">${node.mb?.Subscribed ? this.i18nStore?.t('folderList.unsubscribe') : this.i18nStore?.t('folderList.subscribe')}</span>
@@ -1257,7 +1269,8 @@ export class FolderList extends LitElement {
            sidebarLayoutStyles gives it pointer-events: none, which keeps the
            mouse out; inert keeps the keyboard out too, so Tab cannot walk
            into folder carets clipped past the strip's edge. Compose, above,
-           stays live. -->
+           stays live, and the keyboard reaching it (or the expand button)
+           opens the overlay, where the folders are live. -->
       <alps-sidebar-frame class="sidebar-wrapper">
         <alps-toolbar class="sidebar-header" ?scrolled=${this.isScrolled}>
           <alps-create-button 
@@ -1267,7 +1280,14 @@ export class FolderList extends LitElement {
             @click=${() => this.dispatchEvent(new CustomEvent('compose'))}
           >${this.i18nStore?.t('folderList.compose')}</alps-create-button>
         </alps-toolbar>
-        <alps-sidebar-content class="sidebar-content" @scroll=${this.handleScroll}>
+        <!-- A navigation landmark named for what it lists, so a screen
+             reader's landmark list says what it is and can jump to it. -->
+        <alps-sidebar-content
+          class="sidebar-content"
+          role="navigation"
+          aria-label=${this.i18nStore?.t('folderList.title') ?? 'Folders'}
+          @scroll=${this.handleScroll}
+        >
           <div class="sidebar-scroll-content">
             ${renderTree(standardNodes)}
             ${standardNodes.length > 0 && customNodes.length > 0 ? html`

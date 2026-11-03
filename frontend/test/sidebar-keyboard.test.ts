@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/folder-list';
 import '../../plugins/carddav/frontend/contacts-categories';
 import '../../plugins/caldav/frontend/calendar-page';
+import '../../plugins/caldav/frontend/tasks-page';
 import '../../plugins/caldav/frontend/alps-sidebar-calendar';
 import '../../plugins/caldav/frontend/calendar-mini-month';
 import '../src/components/settings-window';
@@ -304,6 +305,38 @@ describe('the calendar sidebar', () => {
     const el = await calendarPage();
     expect(await buttonName(shadow(el, '.calendar-item .kebab-btn'))).toBe('general.moreOptions');
     expect(await buttonName(shadow(el, 'alps-icon-btn[icon="calendarPlus"]'))).toBe('calendar.addCalendar');
+  });
+});
+
+describe('the tasks sidebar', () => {
+  async function tasksPage(hash: string): Promise<El> {
+    vi.spyOn(tasksService, 'fetchTasks').mockResolvedValue({
+      tasks: [],
+      calendars: [
+        { name: 'Groceries', description: '', path: '/cal/groceries/' },
+        { name: 'Family', description: '', path: '/cal/family/' },
+      ],
+      failedCalendars: 0,
+    } as any);
+    window.location.hash = hash;
+    const el = await mount<El>('tasks-page', { i18nStore, settingsStore });
+    await waitFor(() => !el.loading && shadowAll(el, '.task-list').length === 2, 'the lists');
+    return el;
+  }
+
+  const current = (el: El) => shadowAll<HTMLElement>(el, '.nav-item')
+    .filter(row => row.hasAttribute('aria-current'))
+    .map(row => [row.textContent?.trim(), row.getAttribute('aria-current')]);
+
+  it('says which view is open and which list it is narrowed to', async () => {
+    // Both are current at once, one in each group: the view is the page.
+    const el = await tasksPage('#/tasks/today?list=%2Fcal%2Ffamily%2F');
+    expect(current(el)).toEqual([['tasks.today', 'page'], ['Family', 'true']]);
+  });
+
+  it('marks no view while search results are shown, as none is highlighted', async () => {
+    const el = await tasksPage('#/tasks/all?q=milk');
+    expect(current(el)).toEqual([]);
   });
 });
 

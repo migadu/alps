@@ -4,6 +4,7 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { getDestinationLabel, renderIcon } from '../utils/ui';
 import './alps-popup';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-folder-selector-popup')
 export class AlpsFolderSelectorPopup extends LitElement {
@@ -21,7 +22,7 @@ export class AlpsFolderSelectorPopup extends LitElement {
   @query('alps-popup') popup!: any;
   @query('input') filterInput!: HTMLInputElement;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: inline-block;
     }
@@ -74,8 +75,11 @@ export class AlpsFolderSelectorPopup extends LitElement {
       outline: none;
     }
 
+    /* Forced colors drop the border colour and give the transparent outline
+       a system colour. */
     .search-input:focus {
       border-color: var(--accent-color, #005A9E);
+      outline: 2px solid transparent;
     }
 
     .folder-list {
@@ -133,7 +137,7 @@ export class AlpsFolderSelectorPopup extends LitElement {
       cursor: pointer;
       margin: 0;
     }
-  `;
+  `];
 
   private _handleFilter(e: Event) {
     const target = e.target as HTMLInputElement;

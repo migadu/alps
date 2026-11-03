@@ -116,6 +116,7 @@ export function uploadFiles(
     window.dispatchEvent(new CustomEvent('show-toast', {
       detail: {
         message: refusal || DEFAULT_TOO_LARGE,
+        type: 'error',
         duration: 5000
       }
     }));

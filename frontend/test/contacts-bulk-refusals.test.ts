@@ -436,3 +436,150 @@ describe('the refusal toast', () => {
     expect(shown).toEqual(['2 of 2 contacts could not be updated.']);
   });
 });
+
+/**
+ * Cards a write's answer never came back from. A timeout or a lost connection
+ * says nothing of what the server did, but the toast counted those cards with
+ * the refused ones, so a delete made behind a lost answer was reported as not
+ * made. They are counted apart now, in the same toast, with a word to refresh
+ * before trying again; and the list is read again, so it shows what the
+ * server holds.
+ */
+describe('a toast for cards whose answer never came', () => {
+  async function toastFrom(language: string, act: (el: Page) => Promise<void>, contacts = five(), open: any = null) {
+    const el = page(contacts, open ? [] : contacts.map((c) => c.path), open);
+    el.i18nStore = new I18nStore();
+    await el.i18nStore.setLanguage(language);
+    const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
+    const shown: string[] = [];
+    const listen = (e: Event) => shown.push((e as CustomEvent).detail.message);
+    window.addEventListener('show-toast', listen);
+    try {
+      await act(el);
+    } finally {
+      window.removeEventListener('show-toast', listen);
+    }
+    return { shown, reread };
+  }
+
+  const five = () => ['a', 'b', 'c', 'd', 'e'].map((path) => card(path, ['Work']));
+  const rename = (el: Page) => {
+    el.categoryToRename = 'Work';
+    return el.handleRenameCategorySubmit(new CustomEvent('x', { detail: { name: 'Office' } }));
+  };
+  const removeCategory = (el: Page) => {
+    el.categoryToDelete = 'Work';
+    return el.handleDeleteCategorySubmit();
+  };
+  const fileUnder = (el: Page) => el.handleUpdateCategories(new CustomEvent('x', { detail: { category: 'Home' } }));
+  const star = (el: Page) => el.handleToggleStarEvent();
+  const remove = (el: Page) => el.confirmDelete();
+
+  it('counts the refused cards and the unconfirmed ones apart, without counting either twice', async () => {
+    // Three failed: one refused, two whose answer never came.
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 5, done: 2, failed: 3, uncertain: 2 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 2, failed: 3, uncertain: 2 });
+    const unconfirmed = '2 of 5 contacts could not be confirmed as updated. Refresh the list before trying again.';
+
+    expect((await toastFrom('en', remove)).shown).toEqual([
+      '1 of 5 contacts could not be deleted. 2 of 5 contacts could not be confirmed as deleted. Refresh the list before trying again.',
+    ]);
+    expect((await toastFrom('en', star)).shown).toEqual([`1 of 5 contacts could not be updated. ${unconfirmed}`]);
+    expect((await toastFrom('en', fileUnder)).shown).toEqual([`1 of 5 contacts could not be updated. ${unconfirmed}`]);
+    expect((await toastFrom('en', rename)).shown).toEqual([
+      `1 of 5 contacts could not be updated, so the category was only partly renamed. ${unconfirmed}`,
+    ]);
+    expect((await toastFrom('en', removeCategory)).shown).toEqual([
+      `1 of 5 contacts could not be updated, so the category was only partly removed. ${unconfirmed}`,
+    ]);
+  });
+
+  it('does not call a card whose answer never came refused, and reads the list again', async () => {
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 5, done: 3, failed: 2, uncertain: 2 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 3, failed: 2, uncertain: 2 });
+    for (const act of [remove, star, fileUnder, rename, removeCategory]) {
+      const { shown, reread } = await toastFrom('en', act);
+      expect(shown).toHaveLength(1);
+      expect(shown[0]).toMatch(/^2 of 5 contacts could not be confirmed as (deleted|updated)\. Refresh the list before trying again\.$/);
+      expect(reread).toHaveBeenCalled();
+    }
+  });
+
+  it('reads the list again when no card is known to have taken a category change', async () => {
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 0, failed: 5, uncertain: 5 });
+    for (const act of [fileUnder, rename, removeCategory]) {
+      expect((await toastFrom('en', act)).reread).toHaveBeenCalled();
+    }
+  });
+
+  it('says it of the one card a write was aimed at without "1 of 1"', async () => {
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 1, done: 0, failed: 1, uncertain: 1 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, uncertain: 1 });
+    const one = () => [card('a', ['Work'])];
+    const shown = [
+      ...(await toastFrom('en', remove, one())).shown,
+      ...(await toastFrom('en', star, one())).shown,
+      ...(await toastFrom('en', fileUnder, one())).shown,
+      ...(await toastFrom('en', rename, one())).shown,
+    ];
+    expect(shown).toEqual([
+      'The contact could not be confirmed as deleted. Refresh the list before trying again.',
+      'The contact could not be confirmed as updated. Refresh the list before trying again.',
+      'The contact could not be confirmed as updated. Refresh the list before trying again.',
+      'The contact could not be confirmed as updated. Refresh the list before trying again.',
+    ]);
+  });
+
+  it('says it of a star on a row of the list, and a refusal as before', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(contactsService, 'fetchContact').mockResolvedValue(card('a'));
+    const write = vi.spyOn(contactsService, 'updateCategories').mockRejectedValue(new TypeError('Failed to fetch'));
+    const rowStar = (el: Page) => el.handleToggleStar(new Event('click'), el.contacts[0]);
+    const lost = (await toastFrom('en', rowStar, [card('a')])).shown;
+    write.mockRejectedValue(new HttpStatusError(403, 'Forbidden'));
+    const refused = (await toastFrom('en', rowStar, [card('a')])).shown;
+    expect([...lost, ...refused]).toEqual([
+      'The contact could not be confirmed as updated. Refresh the list before trying again.',
+      'The contact could not be updated.',
+    ]);
+  });
+
+  it('agrees with its own number, in each Serbian and Russian form', async () => {
+    const outcome = vi.spyOn(contactsService, 'bulkDeleteContacts');
+    const shown: string[] = [];
+    for (const [language, uncertain] of [['sr', 1], ['sr', 2], ['sr', 5], ['rs', 2], ['ru', 1], ['ru', 2], ['ru', 5]] as const) {
+      outcome.mockResolvedValue({ total: 5, done: 5 - uncertain, failed: uncertain, uncertain });
+      shown.push(...(await toastFrom(language, remove)).shown);
+    }
+    expect(shown).toEqual([
+      'Nije bilo moguće potvrditi brisanje 1 kontakta od ukupno 5. Osvežite listu pre ponovnog pokušaja.',
+      'Nije bilo moguće potvrditi brisanje 2 kontakta od ukupno 5. Osvežite listu pre ponovnog pokušaja.',
+      'Nije bilo moguće potvrditi brisanje 5 kontakata od ukupno 5. Osvežite listu pre ponovnog pokušaja.',
+      'Није било могуће потврдити брисање 2 контакта од укупно 5. Освежите листу пре поновног покушаја.',
+      'Не удалось подтвердить удаление контактов: 1 из 5. Обновите список перед повторной попыткой.',
+      'Не удалось подтвердить удаление контактов: 2 из 5. Обновите список перед повторной попыткой.',
+      'Не удалось подтвердить удаление контактов: 5 из 5. Обновите список перед повторной попыткой.',
+    ]);
+  });
+
+  it('runs a Japanese refusal and an unconfirmed count together without a space', async () => {
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 2, failed: 3, uncertain: 2 });
+    expect((await toastFrom('ja', star)).shown).toEqual([
+      '5件中1件の連絡先を更新できませんでした。5件中2件の連絡先の更新を確認できませんでした。再試行する前に一覧を更新してください。',
+    ]);
+  });
+
+  it('fills every placeholder in every language', async () => {
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 5, done: 1, failed: 4, uncertain: 3 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 1, failed: 4, uncertain: 3 });
+    const languages = ['ar', 'da', 'de', 'en', 'es', 'fr', 'hi', 'id', 'it', 'ja', 'ko', 'pt', 'pt-BR', 'rs', 'ru', 'sr', 'tr', 'zh-Hant'];
+    for (const language of languages) {
+      for (const act of [remove, star]) {
+        const [text] = (await toastFrom(language, act)).shown;
+        expect(text, language).toMatch(/3/);
+        expect(text, language).toMatch(/5/);
+        expect(text, language).not.toMatch(/[{}]|contacts\./);
+      }
+    }
+  });
+});

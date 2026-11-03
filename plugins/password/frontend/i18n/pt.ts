@@ -1,18 +1,18 @@
 export default {
     settings: {
         categories: {
-            password: 'Senha'
+            password: 'Palavra-passe'
         },
         password: {
-            title: 'Senha',
-            changePassword: 'Mudar senha',
-            changePasswordDesc: 'Atualize a senha da sua conta.',
-            oldPassword: 'Senha atual',
-            newPassword: 'Nova senha',
-            confirmPassword: 'Confirmar nova senha',
-            updatePassword: 'Atualizar senha',
+            title: 'Palavra-passe',
+            changePassword: 'Alterar palavra-passe',
+            changePasswordDesc: 'Atualize a palavra-passe da sua conta.',
+            oldPassword: 'Palavra-passe atual',
+            newPassword: 'Nova palavra-passe',
+            confirmPassword: 'Confirmar nova palavra-passe',
+            updatePassword: 'Atualizar palavra-passe',
             fillAllFields: 'Por favor, preencha todos os campos.',
-            passwordMismatch: 'As novas senhas não coincidem.'
+            passwordMismatch: 'As novas palavras-passe não coincidem.'
         }
     }
 };

@@ -14,6 +14,7 @@ import type { AlpsAddressInput } from '../../../frontend/src/components/alps-add
 import '../../../frontend/src/components/ui-confirm';
 import { modalButtonStyles } from '../../../frontend/src/components/ui-modal';
 import { isolatedCaption, isolatedSentence } from '../../../frontend/src/utils/bidi';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 @customElement('calendar-event-modal')
 export class CalendarEventModal extends LitElement {
@@ -48,6 +49,7 @@ export class CalendarEventModal extends LitElement {
     @state() askNotify = false;
 
     static styles = [
+        motionStyles,
         modalButtonStyles,
         css`
             .form-group {
@@ -83,8 +85,11 @@ export class CalendarEventModal extends LitElement {
                 background: var(--bg-primary, #ffffff);
                 color: var(--text-primary, #111827);
             }
+            /* The transparent outline paints nothing here; forced colors,
+               which drop the border colour and the shadow, give it a system
+               colour. */
             textarea:focus {
-                outline: none;
+                outline: 2px solid transparent;
                 border-color: var(--accent-color, #2563eb);
                 box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
             }
@@ -238,7 +243,7 @@ export class CalendarEventModal extends LitElement {
         // quietly makes an all-day one a single day.
         if (this.endsBeforeStart()) {
             window.dispatchEvent(new CustomEvent('show-toast', {
-                detail: { message: this.i18nStore?.t('calendar.endBeforeStart'), duration: 8000 }
+                detail: { message: this.i18nStore?.t('calendar.endBeforeStart'), type: 'error', duration: 8000 }
             }));
             return;
         }
@@ -294,7 +299,7 @@ export class CalendarEventModal extends LitElement {
 
             if (saved?.sendFailed) {
                 window.dispatchEvent(new CustomEvent('show-toast', {
-                    detail: { message: this.i18nStore?.t('invitations.notTold'), duration: 8000 }
+                    detail: { message: this.i18nStore?.t('invitations.notTold'), type: 'error', duration: 8000 }
                 }));
             }
             this.open = false;
@@ -308,7 +313,7 @@ export class CalendarEventModal extends LitElement {
             const conflict = isVersionConflict(e);
             if (conflict) this.dispatchEvent(new CustomEvent('conflict'));
             window.dispatchEvent(new CustomEvent('show-toast', {
-                detail: { message: this.i18nStore?.t(conflict ? 'calendar.saveConflict' : 'calendar.saveEventFailed'), duration: 8000 }
+                detail: { message: this.i18nStore?.t(conflict ? 'calendar.saveConflict' : 'calendar.saveEventFailed'), type: 'error', duration: 8000 }
             }));
         } finally {
             this.isSaving = false;

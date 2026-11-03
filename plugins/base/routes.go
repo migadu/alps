@@ -1888,10 +1888,17 @@ func handleLogin(ctx *alps.Context) error {
 				ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
 			}
 
-			return ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
+			body := map[string]interface{}{
 				"error":       reason,
 				"retry_after": int(retryAfter.Seconds()),
-			})
+			}
+			// The reason is English, for the log and for other clients. The
+			// sign-in page says what a refusal is in its own language, and
+			// the global limit is no excess of this user's attempts.
+			if reason == alps.ReasonServerBusy {
+				body["code"] = "server_busy"
+			}
+			return ctx.JSON(http.StatusTooManyRequests, body)
 		}
 	}
 

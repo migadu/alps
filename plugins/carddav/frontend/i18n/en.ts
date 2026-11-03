@@ -28,6 +28,16 @@ export default {
       other: '{count} of {total} contacts could not be updated.'
     },
     starOneFailed: 'The contact could not be updated.',
+    deleteUnconfirmed: {
+      one: '{count} of {total} contacts could not be confirmed as deleted. Refresh the list before trying again.',
+      other: '{count} of {total} contacts could not be confirmed as deleted. Refresh the list before trying again.'
+    },
+    deleteOneUnconfirmed: 'The contact could not be confirmed as deleted. Refresh the list before trying again.',
+    updateUnconfirmed: {
+      one: '{count} of {total} contacts could not be confirmed as updated. Refresh the list before trying again.',
+      other: '{count} of {total} contacts could not be confirmed as updated. Refresh the list before trying again.'
+    },
+    updateOneUnconfirmed: 'The contact could not be confirmed as updated. Refresh the list before trying again.',
     unnamedContact: 'Unnamed Contact',
     title: 'Contacts',
     allContacts: 'All Contacts',
@@ -73,6 +83,13 @@ export default {
     email: 'Email',
     phone: 'Phone',
     address: 'Address',
+    addressStreet: 'Street',
+    addressExtended: 'Apartment or suite',
+    addressPoBox: 'PO box',
+    addressCity: 'City',
+    addressRegion: 'State or region',
+    addressPostcode: 'Postal code',
+    addressCountry: 'Country',
     url: 'URL',
     birthday: 'Birthday',
     birthdayDay: 'Day',

@@ -10,6 +10,7 @@ import { logoStyles, renderLogo } from '../utils/branding';
 import './alps-header';
 import './alps-input';
 import './alps-icon-btn';
+import { motionStyles } from '../utils/motion';
 
 @customElement('app-header')
 export class AppHeader extends LitElement {
@@ -67,7 +68,7 @@ export class AppHeader extends LitElement {
     }
   };
 
-  static styles = [logoStyles, css`
+  static styles = [motionStyles, logoStyles, css`
     :host {
       display: block;
       width: 100%;

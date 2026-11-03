@@ -10,6 +10,7 @@ The rate limiter operates on three distinct levels. A login request must pass al
 Protects the server from being overwhelmed by a massive volume of requests, regardless of the source IP or target username.
 - **Metric**: Total login requests per second across all users.
 - **Config Option**: `global_requests_per_second` (Default: 100)
+- **Response**: HTTP 429 with `"code": "server_busy"`, which no other refusal carries, so the sign-in page says the service is busy rather than that the user tried too often.
 
 ### 2. IP-Based Rate Limits
 Tracks all login attempts originating from a single IP address to stop single bad actors.

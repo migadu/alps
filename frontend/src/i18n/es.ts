@@ -24,7 +24,7 @@ export const es = {
       checkMailInterval: 'Intervalo de comprobación de correo',
       checkMailIntervalDesc: 'Con qué frecuencia buscar correo nuevo automáticamente.',
       autoLogout: 'Cierre de sesión automático',
-      autoLogoutDesc: 'Cerrar sesión automáticamente después de inactividad.',
+      autoLogoutDesc: 'Cierra tu sesión tras el tiempo elegido sin actividad en ninguna pestaña abierta. También se aplica si elegiste mantener la sesión iniciada al cerrar el navegador. Con "Nunca", se te seguirá pidiendo de vez en cuando que vuelvas a iniciar sesión.',
       desktopNotifications: 'Habilitar notificaciones de escritorio',
       soundNotifications: 'Reproducir sonido para mensajes nuevos',
       everyMinute: 'Cada minuto',
@@ -151,14 +151,15 @@ export const es = {
     loginFailed: 'Error de inicio de sesión. Por favor, verifica tus credenciales.',
     tooManyConnections: 'Hay demasiadas conexiones abiertas en esta cuenta. Cierra otra aplicación de correo o cierra sesión en otro navegador y vuelve a intentarlo.',
     networkError: 'Ocurrió un error de red. Por favor, inténtalo de nuevo.',
+    serviceUnavailable: 'El servicio no ha podido iniciar tu sesión ahora mismo. Vuelve a intentarlo en un momento.',
     pleaseWait: 'Por favor espera',
     wait: 'Esperar',
     signedOut: 'Has cerrado sesión.',
     signedOutDraftsKept: 'Se ha cerrado tu sesión. Algunos borradores sin enviar no se pudieron guardar en el servidor. Se quedan en este dispositivo y se vuelven a abrir cuando inicies sesión de nuevo.',
     sessionExpired: 'Tu sesión ha expirado. Por favor, inicia sesión de nuevo.',
     secondFactorExpired: 'El inicio de sesión ha caducado antes de comprobar la clave de seguridad. Vuelve a iniciar sesión.',
-    inactivitySignedOut: 'Has cerrado sesión por inactividad.',
-    inactivitySignedOutDraftsKept: "Has cerrado sesión por inactividad. Algunos borradores sin enviar no se pudieron guardar en el servidor. Se quedan en este dispositivo y se vuelven a abrir cuando inicies sesión de nuevo."
+    inactivitySignedOut: 'Se cerró tu sesión tras un periodo de inactividad. Puedes cambiar o desactivar este tiempo en Configuración, en "General".',
+    inactivitySignedOutDraftsKept: 'Se cerró tu sesión tras un periodo de inactividad. Algunos borradores sin enviar no se pudieron guardar en el servidor. Se quedan en este dispositivo y se vuelven a abrir cuando inicies sesión de nuevo. Puedes cambiar o desactivar este tiempo en Configuración, en "General".'
   },
   folderList: {
     compose: 'Redactar',

@@ -33,6 +33,18 @@ export default {
       other: 'Nije bilo moguće ažurirati {count} kontakata od ukupno {total}.'
     },
     starOneFailed: 'Kontakt nije mogao biti ažuriran.',
+    deleteUnconfirmed: {
+      one: 'Nije bilo moguće potvrditi brisanje {count} kontakta od ukupno {total}. Osvežite listu pre ponovnog pokušaja.',
+      few: 'Nije bilo moguće potvrditi brisanje {count} kontakta od ukupno {total}. Osvežite listu pre ponovnog pokušaja.',
+      other: 'Nije bilo moguće potvrditi brisanje {count} kontakata od ukupno {total}. Osvežite listu pre ponovnog pokušaja.'
+    },
+    deleteOneUnconfirmed: 'Nije bilo moguće potvrditi brisanje kontakta. Osvežite listu pre ponovnog pokušaja.',
+    updateUnconfirmed: {
+      one: 'Nije bilo moguće potvrditi ažuriranje {count} kontakta od ukupno {total}. Osvežite listu pre ponovnog pokušaja.',
+      few: 'Nije bilo moguće potvrditi ažuriranje {count} kontakta od ukupno {total}. Osvežite listu pre ponovnog pokušaja.',
+      other: 'Nije bilo moguće potvrditi ažuriranje {count} kontakata od ukupno {total}. Osvežite listu pre ponovnog pokušaja.'
+    },
+    updateOneUnconfirmed: 'Nije bilo moguće potvrditi ažuriranje kontakta. Osvežite listu pre ponovnog pokušaja.',
     unnamedContact: 'Neimenovani kontakt',
     title: 'Kontakti',
     allContacts: 'Svi kontakti',
@@ -79,6 +91,13 @@ export default {
     email: 'E-pošta',
     phone: 'Telefon',
     address: 'Adresa',
+    addressStreet: 'Ulica',
+    addressExtended: 'Stan ili sprat',
+    addressPoBox: 'Poštanski pregradak',
+    addressCity: 'Grad',
+    addressRegion: 'Region',
+    addressPostcode: 'Poštanski broj',
+    addressCountry: 'Država',
     url: 'URL',
     birthday: 'Rođendan',
     birthdayDay: 'Dan',

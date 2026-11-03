@@ -103,6 +103,16 @@ export class CalendarMiniMonth extends LitElement {
         .mini-day.today.has-event .day-num::after {
             background-color: #ffffff;
         }
+        /* The mark that a day has events is drawn by its background alone,
+           which forced colors repaint as the page: there it takes the text's
+           system colour. */
+        @media (forced-colors: active) {
+            .mini-day.has-event .day-num::after,
+            .mini-day.today.has-event .day-num::after {
+                forced-color-adjust: none;
+                background-color: CanvasText;
+            }
+        }
     `;
 
     private getMonthGrid() {

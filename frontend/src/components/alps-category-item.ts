@@ -1,6 +1,7 @@
 import { LitElement, html, css, type PropertyValues } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { motionStyles } from '../utils/motion';
 
 /**
  * A row of the Settings sidebar, and its button.
@@ -45,7 +46,7 @@ export class AlpsCategoryItem extends LitElement {
     this.click();
   };
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: flex;
       align-items: center;
@@ -95,7 +96,7 @@ export class AlpsCategoryItem extends LitElement {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-  `;
+  `];
 
   render() {
     return html`

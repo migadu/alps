@@ -4,6 +4,7 @@ import { renderIcon, formatSize } from '../utils/ui';
 import { getAttachmentTypeInfo, type AttachmentTypeInfo } from '../utils/attachment-type';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
+import { motionStyles } from '../utils/motion';
 
 /**
  * The largest image an attachment pill draws a thumbnail from, 1 MiB: most
@@ -31,7 +32,7 @@ export class AttachmentPill extends LitElement {
     if (changed.has('attachment')) this.imgError = false;
   }
 
-  static styles = css`
+  static styles = [motionStyles, css`
     .attachment-chip {
       display: inline-flex;
       align-items: center;
@@ -202,7 +203,7 @@ export class AttachmentPill extends LitElement {
       width: 14px;
       height: 14px;
     }
-  `;
+  `];
 
   /** The name the pill shows. A stored part says Filename, a composer entry filename. */
   private get name(): string {

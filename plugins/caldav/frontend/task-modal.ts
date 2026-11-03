@@ -16,6 +16,7 @@ import { addressOfPerson, personFromAddress, taskTellsSomeone } from './calendar
 import { statusKey } from './calendar-invitation-banner';
 import { isolatedCaption, isolatedSentence } from '../../../frontend/src/utils/bidi';
 import type { TaskData, TaskInput, TaskList, TaskStatus } from './tasks-service';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 const PRESETS = ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as const;
 
@@ -71,6 +72,7 @@ export class TaskModal extends LitElement {
     private openedDue = { date: '', time: '', allDay: true };
 
     static styles = [
+        motionStyles,
         modalButtonStyles,
         css`
             .form-group {
@@ -116,9 +118,12 @@ export class TaskModal extends LitElement {
                 min-height: 80px;
                 resize: vertical;
             }
+            /* The transparent outline paints nothing here; forced colors,
+               which drop the border colour and the shadow, give it a system
+               colour. */
             input.number:focus,
             textarea:focus {
-                outline: none;
+                outline: 2px solid transparent;
                 border-color: var(--accent-color, #2563eb);
                 box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
             }
@@ -255,7 +260,7 @@ export class TaskModal extends LitElement {
                 : await tasksService.createTask(input);
             if (saved?.sendFailed) {
                 window.dispatchEvent(new CustomEvent('show-toast', {
-                    detail: { message: this.i18nStore?.t('invitations.notTold'), duration: 8000 },
+                    detail: { message: this.i18nStore?.t('invitations.notTold'), type: 'error', duration: 8000 },
                 }));
             }
             this.open = false;
@@ -267,7 +272,7 @@ export class TaskModal extends LitElement {
             const conflict = isVersionConflict(e);
             if (conflict) this.dispatchEvent(new CustomEvent('conflict'));
             window.dispatchEvent(new CustomEvent('show-toast', {
-                detail: { message: this.i18nStore?.t(conflict ? 'tasks.saveConflict' : 'tasks.saveFailed'), duration: 8000 },
+                detail: { message: this.i18nStore?.t(conflict ? 'tasks.saveConflict' : 'tasks.saveFailed'), type: 'error', duration: 8000 },
             }));
         } finally {
             this.saving = false;

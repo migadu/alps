@@ -30,7 +30,7 @@ import { zhHant } from '../src/i18n/zh-Hant';
 type Dict = Record<string, unknown>;
 
 const CORE: [string, Dict][] = [['ar', ar], ['da', da], ['de', de], ['es', es], ['fr', fr], ['it', itLocale], ['pt', pt], ['rs', rs], ['sr', sr], ['pt-BR', ptBR], ['ru', ru], ['tr', tr], ['id', idLocale], ['hi', hi], ['ja', ja], ['ko', ko], ['zh-Hant', zhHant]] as [string, Dict][];
-const intlTag = (code: string) => (code === 'rs' ? 'sr-Cyrl' : code === 'sr' ? 'sr-Latn' : code);
+const intlTag = (code: string) => (code === 'rs' ? 'sr-Cyrl' : code === 'sr' ? 'sr-Latn' : code === 'pt' ? 'pt-PT' : code);
 
 const PLUGIN_LOCALES = import.meta.glob('../../plugins/*/frontend/i18n/*.ts', { eager: true }) as Record<string, Dict>;
 const dictOf = (module: Dict) => (module.default ?? Object.values(module)[0] ?? {}) as Dict;
@@ -918,6 +918,9 @@ describe('Serbian terms, titles and twins', () => {
 const SERBIAN_NAMES = new Set([
   // The composer's Bcc field, by the name the identity settings give it.
   'Bcc',
+  // The Settings window, where the inactivity notice sends the user: "u
+  // Podešavanjima".
+  'Podešavanjima',
 ]);
 
 /**
@@ -993,11 +996,11 @@ describe('Serbian capitals', () => {
  * labels, a proper noun, a unit symbol, and the ends of the alphabet.
  */
 const NAMES_IN_SENTENCES: Record<string, string[]> = {
-  it: ['Posta in arrivo', 'Cestino', 'Risposta automatica', 'Filtri', 'Rispondi a', 'Ccn', 'Internet', 'A-Z', 'Z-A'],
-  fr: ['Réponse automatique', 'Filtres', 'Reply-To', 'Cci', 'Internet', 'Ko', 'A-Z', 'Z-A'],
-  es: ['Bandeja de entrada', 'Borradores', 'Papelera', 'Respuesta automática', 'Filtros', 'Reply-To', 'Internet', 'A-Z', 'Z-A'],
+  it: ['Posta in arrivo', 'Cestino', 'Impostazioni', 'Risposta automatica', 'Filtri', 'Rispondi a', 'Ccn', 'Internet', 'A-Z', 'Z-A'],
+  fr: ['Paramètres', 'Réponse automatique', 'Filtres', 'Reply-To', 'Cci', 'Internet', 'Ko', 'A-Z', 'Z-A'],
+  es: ['Bandeja de entrada', 'Borradores', 'Papelera', 'Configuración', 'Respuesta automática', 'Filtros', 'Reply-To', 'Internet', 'A-Z', 'Z-A'],
   // The Drafts folder only after "em": elsewhere "rascunhos" is the plural of a draft.
-  pt: ['Lixeira', 'em Rascunhos', 'Resposta automática', 'Filtros', 'Cco', 'Internet', 'A-Z', 'Z-A'],
+  pt: ['Lixo', 'em Rascunhos', 'Definições', 'Resposta automática', 'Filtros', 'Bcc', 'Internet', 'A-Z', 'Z-A'],
 };
 
 const nameIn = (name: string) => new RegExp(`(?<![\\p{L}-])${name}(?![\\p{L}-])`, 'gu');
@@ -1062,10 +1065,10 @@ describe('capitals in Italian, French, Spanish and Portuguese', () => {
     expect(portuguese('Gerar Novo Par de Chaves')).toEqual(['Novo', 'Par', 'Chaves']);
     expect(portuguese('Endereço de E-mail')).toEqual(['E']);
     expect(portuguese('Descartar Rascunhos?')).toEqual(['Rascunhos']);
-    expect(portuguese('Não é possível criptografar: Chaves públicas ausentes para:\n{keys}')).toEqual(['Chaves']);
+    expect(portuguese('Não é possível encriptar: Faltam chaves públicas para:\n{keys}')).toEqual(['Faltam']);
     for (const text of [
-      'Tem certeza de que deseja mover "{folder}" para a Lixeira?', 'Sempre me enviar Cco em e-mails enviados',
-      'Não foi possível excluir o rascunho do servidor e ele ainda está em Rascunhos.', 'Classificar A-Z',
+      'Tem a certeza de que pretende mover "{folder}" para o Lixo?', 'Incluir-me sempre em Bcc nos e-mails enviados',
+      'Não foi possível eliminar o rascunho do servidor e este continua em Rascunhos.', 'Ordenar A-Z',
     ]) {
       expect(portuguese(text), text).toEqual([]);
     }

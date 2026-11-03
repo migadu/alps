@@ -23,6 +23,14 @@ export default {
       other: '{count} dari {total} kontak tidak dapat diperbarui.'
     },
     starOneFailed: 'Kontak tidak dapat diperbarui.',
+    deleteUnconfirmed: {
+      other: 'Penghapusan {count} dari {total} kontak tidak dapat dikonfirmasi. Segarkan daftar sebelum mencoba lagi.'
+    },
+    deleteOneUnconfirmed: 'Penghapusan kontak tidak dapat dikonfirmasi. Segarkan daftar sebelum mencoba lagi.',
+    updateUnconfirmed: {
+      other: 'Pembaruan {count} dari {total} kontak tidak dapat dikonfirmasi. Segarkan daftar sebelum mencoba lagi.'
+    },
+    updateOneUnconfirmed: 'Pembaruan kontak tidak dapat dikonfirmasi. Segarkan daftar sebelum mencoba lagi.',
     unnamedContact: 'Kontak Tanpa Nama',
     title: 'Kontak',
     allContacts: 'Semua Kontak',
@@ -67,6 +75,13 @@ export default {
     email: 'Email',
     phone: 'Telepon',
     address: 'Alamat',
+    addressStreet: 'Jalan',
+    addressExtended: 'Apartemen atau unit',
+    addressPoBox: 'Kotak pos',
+    addressCity: 'Kota',
+    addressRegion: 'Provinsi atau wilayah',
+    addressPostcode: 'Kode pos',
+    addressCountry: 'Negara',
     url: 'URL',
     birthday: 'Ulang tahun',
     birthdayDay: 'Hari',

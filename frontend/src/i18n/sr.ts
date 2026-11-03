@@ -24,7 +24,7 @@ export const sr = {
       checkMailInterval: 'Interval provere pošte',
       checkMailIntervalDesc: 'Koliko često automatski proveravati novu poštu.',
       autoLogout: 'Automatska odjava',
-      autoLogoutDesc: 'Automatska odjava nakon neaktivnosti.',
+      autoLogoutDesc: 'Odjavljuje vas nakon izabranog vremena bez aktivnosti ni u jednoj otvorenoj kartici. To važi i ako ste izabrali da ostanete prijavljeni i posle zatvaranja pregledača. I uz "Nikada" povremeno ćete morati ponovo da se prijavite.',
       desktopNotifications: 'Omogući obaveštenja na radnoj površini',
       soundNotifications: 'Reprodukuj zvuk za nove poruke',
       everyMinute: 'Svakog minuta',
@@ -151,14 +151,15 @@ export const sr = {
     loginFailed: 'Prijavljivanje nije uspelo. Proverite svoje podatke.',
     tooManyConnections: 'Ovaj nalog ima previše otvorenih veza. Zatvorite neki drugi program za poštu ili se odjavite u drugom pregledaču, pa pokušajte ponovo.',
     networkError: 'Došlo je do greške na mreži. Pokušajte ponovo.',
+    serviceUnavailable: 'Servis trenutno nije mogao da vas prijavi. Pokušajte ponovo za koji trenutak.',
     pleaseWait: 'Molimo sačekajte',
     wait: 'Sačekajte',
     signedOut: 'Odjavljeni ste.',
     signedOutDraftsKept: 'Odjavljeni ste. Neke neposlate nacrte nije bilo moguće sačuvati na serveru. Ostaju na ovom uređaju i otvoriće se ponovo kada se sledeći put prijavite.',
     sessionExpired: 'Vaša sesija je istekla. Prijavite se ponovo.',
     secondFactorExpired: 'Prijava je istekla pre nego što je bezbednosni ključ proveren. Prijavite se ponovo.',
-    inactivitySignedOut: 'Odjavljeni ste zbog neaktivnosti.',
-    inactivitySignedOutDraftsKept: "Odjavljeni ste zbog neaktivnosti. Neke neposlate nacrte nije bilo moguće sačuvati na serveru. Ostaju na ovom uređaju i otvoriće se ponovo kada se sledeći put prijavite."
+    inactivitySignedOut: 'Odjavljeni ste nakon perioda neaktivnosti. To vreme možete da promenite ili isključite u Podešavanjima, u odeljku "Opšte".',
+    inactivitySignedOutDraftsKept: 'Odjavljeni ste nakon perioda neaktivnosti. Neke neposlate nacrte nije bilo moguće sačuvati na serveru. Ostaju na ovom uređaju i otvoriće se ponovo kada se sledeći put prijavite. To vreme možete da promenite ili isključite u Podešavanjima, u odeljku "Opšte".'
   },
   folderList: {
     compose: 'Napiši',

@@ -13,21 +13,21 @@ export default {
     "tabs": {
       "switchToRaw": "Editor bruto"
     },
-    "warningRawSwitchTitle": "Mudar para modo bruto",
+    "warningRawSwitchTitle": "Mudar para o modo bruto",
     "warningRawSwitchConfirm": "Mudar",
-    "warningRawSwitch": "Mudar para o modo bruto significa que o script não será mais editável visualmente. Continuar?",
+    "warningRawSwitch": "Mudar para o modo bruto significa que o script deixa de poder ser editado visualmente. Continuar?",
     "toast": {
-      "saved": "Regras salvas e ativadas.",
+      "saved": "Regras guardadas e ativadas.",
       "deactivated": "Regras desativadas.",
       "valid": "O script é válido!",
       "networkError": "Ocorreu um erro de rede.",
-      "autoReplyOn": "A resposta automática está ativada e precisa ser desativada em Resposta automática antes que os filtros enviem uma própria."
+      "autoReplyOn": "A resposta automática está ativada e tem de ser desativada em Resposta automática antes de os filtros enviarem uma própria."
     },
     "visual": {
       "newRule": "Nova regra",
       "noRules": "Nenhuma regra definida.",
-      "saveFilters": "Salvar regras",
-      "deleteRule": "Excluir regra",
+      "saveFilters": "Guardar regras",
+      "deleteRule": "Eliminar regra",
       "remove": "Remover",
       "add": "Adicionar",
       "if": "SE",
@@ -46,7 +46,7 @@ export default {
       "folder": "Pasta",
       "actions": {
         "fileinto": "Mover para pasta",
-        "discard": "Descartar (excluir)",
+        "discard": "Descartar (eliminar)",
         "redirect": "Redirecionar para e-mail",
         "stop": "Parar de avaliar regras"
       },
@@ -69,7 +69,7 @@ export default {
     },
     "raw": {
       "validate": "Validar",
-      "save": "Salvar",
+      "save": "Guardar",
       "script": "Script dos filtros"
     },
     "autoReply": {
@@ -78,34 +78,34 @@ export default {
       "enable": "Enviar resposta automática",
       "stateActive": "Os remetentes recebem uma resposta agora.",
       "stateActiveUntil": "Os remetentes recebem uma resposta até {date}.",
-      "stateScheduled": "Início programado para {date}.",
-      "stateFinished": "A data de término já passou, então ninguém recebe resposta.",
+      "stateScheduled": "Início agendado para {date}.",
+      "stateFinished": "A data de fim já passou, por isso ninguém recebe resposta.",
       "subject": "Assunto",
       "subjectDesc": "Opcional. Se ficar vazio, o servidor de e-mail escolhe um.",
       "subjectPlaceholder": "Fora do escritório",
       "message": "Mensagem",
       "messageDesc": "O que recebe cada pessoa que escreve.",
-      "messagePlaceholder": "Estou fora até o dia 15 e responderei quando voltar.",
+      "messagePlaceholder": "Estou ausente até ao dia 15 e responderei quando voltar.",
       "dates": "Datas",
-      "datesDesc": "Opcional. Uma data vazia deixa aquele extremo em aberto. Cada dia vai da meia-noite à meia-noite no fuso horário local.",
+      "datesDesc": "Opcional. Uma data vazia deixa esse extremo em aberto. Cada dia vai da meia-noite à meia-noite no fuso horário local.",
       "startDate": "Data de início",
-      "endDate": "Data de término",
+      "endDate": "Data de fim",
       "interval": "Nova resposta ao mesmo remetente após",
       "intervalDesc": "Quem escreve várias vezes nesse período recebe uma única resposta. Listas de e-mail e mensagens automáticas nunca recebem.",
       "days": {
         "one": "{count} dia",
         "other": "{count} dias"
       },
-      "save": "Salvar",
-      "saved": "Resposta automática salva.",
+      "save": "Guardar",
+      "saved": "Resposta automática guardada.",
       "turnedOff": "Resposta automática desativada.",
       "unsupported": "Este servidor de e-mail não oferece respostas automáticas.",
-      "ownVacation": "Os filtros já enviam uma resposta automática própria, que precisa ser removida no editor bruto em Filtros antes de configurar uma aqui.",
+      "ownVacation": "Os filtros já enviam uma resposta automática própria, que tem de ser removida no editor bruto em Filtros antes de configurar uma aqui.",
       "errors": {
         "emptyMessage": "Sem mensagem, a resposta automática não pode ser ativada.",
-        "invalidWindow": "A data de início não pode ser posterior à data de término.",
+        "invalidWindow": "A data de início não pode ser posterior à data de fim.",
         "loadError": "Não foi possível carregar a resposta automática.",
-        "saveError": "Não foi possível salvar a resposta automática."
+        "saveError": "Não foi possível guardar a resposta automática."
       }
     }
   }

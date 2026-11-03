@@ -59,7 +59,7 @@ describe('the language picker', () => {
       ['rs', 'sr-Cyrl', 'Српски (ћирилица)'],
       ['sr', 'sr-Latn', 'Srpski (latinica)'],
       ['fr', 'fr', 'Français'],
-      ['pt', 'pt', 'Português (Portugal)'],
+      ['pt', 'pt-PT', 'Português (Portugal)'],
       ['pt-BR', 'pt-BR', 'Português (Brasil)'],
       ['da', 'da', 'Dansk'],
       ['ru', 'ru', 'Русский'],

@@ -16,7 +16,9 @@ import { createContext, consume } from '@lit/context';
  *    class the pages' own row styles key on.
  *  - `<alps-sidebar-content>`: the scrolling content; dimmed by
  *    `sidebarLayoutStyles` and `inert` in the strip, so the keyboard cannot
- *    walk rows the pointer cannot use.
+ *    walk rows the pointer cannot use. Both reach the rows through the
+ *    overlay: the pointer resting on the strip opens it, and so does keyboard
+ *    focus coming into it (alps-sidebar).
  *  - `alps-create-button`: its small form.
  *
  * Collapsing changes nothing else about what a sidebar contains.

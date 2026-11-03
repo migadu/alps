@@ -7,6 +7,7 @@ import { renderIcon } from '../../../frontend/src/utils/ui';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar-strip';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 @customElement('alps-contacts-categories')
 export class AlpsContactsCategories extends LitElement {
@@ -22,6 +23,7 @@ export class AlpsContactsCategories extends LitElement {
   @state() private sidebarScrolled = false;
 
   static styles = [
+    motionStyles,
     popupStyles,
     sidebarLayoutStyles,
     css`
@@ -197,7 +199,14 @@ export class AlpsContactsCategories extends LitElement {
           >${this.i18nStore?.t('contacts.addContact')}</alps-create-button>
         </alps-toolbar>
         
-        <alps-sidebar-content class="sidebar-content" @scroll=${this.handleSidebarScroll}>
+        <!-- A navigation landmark named for the tab, so a screen reader's
+             landmark list says what the list is and can jump to it. -->
+        <alps-sidebar-content
+          class="sidebar-content"
+          role="navigation"
+          aria-label=${this.i18nStore?.t('navigation.contacts') ?? 'Contacts'}
+          @scroll=${this.handleSidebarScroll}
+        >
           <div class="sidebar-scroll-content">
             ${[CATEGORY_ALL_CONTACTS, CATEGORY_FAVORITES, ...this.uniqueCategories.filter(c => c !== CATEGORY_FAVORITES)].map((cat, index) => {
       const count = cat === CATEGORY_ALL_CONTACTS

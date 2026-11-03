@@ -9,6 +9,7 @@ import './calendar-event-preview';
 
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 @customElement('calendar-time-grid')
 export class CalendarTimeGrid extends LitElement {
@@ -37,7 +38,7 @@ export class CalendarTimeGrid extends LitElement {
         }
     }
 
-    static styles = css`
+    static styles = [motionStyles, css`
         :host {
             display: flex;
             flex-direction: column;
@@ -292,7 +293,7 @@ export class CalendarTimeGrid extends LitElement {
             border-radius: 50%;
             background-color: var(--error, #ef4444);
         }
-    `;
+    `];
 
     private getEventsForDate(date: Date, includeAllDay: boolean) {
         if (!this.events) return [];

@@ -23,6 +23,14 @@ export default {
       other: '{total} 位聯絡人中有 {count} 位無法更新。'
     },
     starOneFailed: '無法更新聯絡人。',
+    deleteUnconfirmed: {
+      other: '{total} 位聯絡人中有 {count} 位無法確認是否已刪除。請重新整理清單後再重試。'
+    },
+    deleteOneUnconfirmed: '無法確認聯絡人是否已刪除。請重新整理清單後再重試。',
+    updateUnconfirmed: {
+      other: '{total} 位聯絡人中有 {count} 位無法確認是否已更新。請重新整理清單後再重試。'
+    },
+    updateOneUnconfirmed: '無法確認聯絡人是否已更新。請重新整理清單後再重試。',
     unnamedContact: '未命名的聯絡人',
     title: '聯絡人',
     allContacts: '所有聯絡人',
@@ -67,6 +75,13 @@ export default {
     email: '電子郵件',
     phone: '電話',
     address: '地址',
+    addressStreet: '街道',
+    addressExtended: '樓層或室號',
+    addressPoBox: '郵政信箱',
+    addressCity: '城市',
+    addressRegion: '州或地區',
+    addressPostcode: '郵遞區號',
+    addressCountry: '國家',
     url: 'URL',
     birthday: '生日',
     birthdayDay: '日',

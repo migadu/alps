@@ -688,10 +688,18 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
   csp.content = `default-src 'none'; img-src ${resourceSources}; media-src ${resourceSources}; style-src 'unsafe-inline'; font-src ${resourceSources}; script-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; form-action 'none'; base-uri 'none';`;
   doc.head.prepend(csp);
 
+  // The body's 24px is the one a plain-text body takes in the reader, and it
+  // drops to 16px only where that one does: at the reader's
+  // `@media (max-width: 768px)`, which asks the app window. Asked from inside
+  // the frame, the same query measured the FRAME, so in a reader pane
+  // narrower than 768px on a desktop window an HTML message took the phone's
+  // padding and a plain-text one did not. Decided when the document is built,
+  // so after a resize across the line it follows on the next open.
+  const phoneLayout = window.innerWidth <= 768;
   const style = doc.createElement('style');
   style.textContent = `
     body { margin: 0; padding: 24px; box-sizing: border-box; font: 14px -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif; overflow-x: auto; word-wrap: break-word; background-color: #ffffff; color: #000000; }
-    @media (max-width: 768px) { body { padding: 16px !important; } }
+    ${phoneLayout ? 'body { padding: 16px !important; }' : ''}
     html:not(.x), body:not(.x) { height: auto !important; }
     p:first-child { margin-top: 0; }
     p:last-child { margin-bottom: 0; }

@@ -18,6 +18,7 @@
  * removed after session teardown cannot put the previous account's edit back.
  */
 import { MessageCache } from '../../../frontend/src/utils/message-cache';
+import { registerEditKeeper } from '../../../frontend/src/utils/kept-edits';
 
 export interface EditVisit {
 	readonly session: number;
@@ -32,11 +33,18 @@ export class UnsavedEdit<T> {
 
 	get revision(): number { return this.writes; }
 
+	/** Whether this session's edit is kept for the next visit. The shell holds
+	 * automatic reloads back while one is (see utils/kept-edits). */
+	get hasKeptEdit(): boolean {
+		return this.kept !== null && this.session === MessageCache.generation();
+	}
+
 	constructor() {
 		window.addEventListener('session-cleared', () => {
 			this.kept = null;
 			this.saved.clear();
 		});
+		registerEditKeeper(this);
 	}
 
 	/** Also follows account-switch teardown, which clears MessageCache directly. */

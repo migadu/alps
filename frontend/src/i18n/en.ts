@@ -30,7 +30,7 @@ export const en = {
       checkMailInterval: 'Check mail interval',
       checkMailIntervalDesc: 'How often to automatically check for new mail.',
       autoLogout: 'Auto-logout',
-      autoLogoutDesc: 'Automatically log out after inactivity.',
+      autoLogoutDesc: 'Signs you out after the selected time with no activity in any open tab. This also applies if you chose to stay signed in after closing the browser. When set to Never, you will still be asked to sign in again from time to time.',
       desktopNotifications: 'Enable Desktop Notifications',
       soundNotifications: 'Play sound notification on new messages',
       everyMinute: 'Every minute',
@@ -205,14 +205,15 @@ export const en = {
     loginFailed: 'Login failed. Please check your credentials.',
     tooManyConnections: 'Too many connections are open to this account. Close another mail app, or sign out in another browser, and try again.',
     networkError: 'Network error occurred. Please try again.',
+    serviceUnavailable: 'The service could not sign you in just now. Please try again in a moment.',
     pleaseWait: 'Please wait',
     wait: 'Wait',
     signedOut: 'You have been signed out.',
     signedOutDraftsKept: 'You have been signed out. Some unsent drafts could not be saved to the server. They are kept on this device and reopen when you sign in again.',
     sessionExpired: 'Your session has expired. Please sign in again.',
     secondFactorExpired: 'Your sign-in timed out before the security key was checked. Please sign in again.',
-    inactivitySignedOut: "You've been signed out due to inactivity.",
-    inactivitySignedOutDraftsKept: "You've been signed out due to inactivity. Some unsent drafts could not be saved to the server. They are kept on this device and reopen when you sign in again."
+    inactivitySignedOut: "You've been signed out after a period of inactivity. You can change or turn off this timeout in Settings, under General.",
+    inactivitySignedOutDraftsKept: "You've been signed out after a period of inactivity. Some unsent drafts could not be saved to the server. They are kept on this device and reopen when you sign in again. You can change or turn off this timeout in Settings, under General."
   },
   folderList: {
     compose: 'Compose',

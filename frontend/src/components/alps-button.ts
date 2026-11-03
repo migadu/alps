@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { motionStyles } from '../utils/motion';
 
 export type ButtonVariant = 'primary' | 'normal' | 'danger' | 'text';
 export type ButtonType = 'button' | 'submit' | 'reset';
@@ -47,7 +48,7 @@ export class AlpsButton extends LitElement {
     }
   };
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: inline-flex;
     }
@@ -76,6 +77,13 @@ export class AlpsButton extends LitElement {
       box-sizing: border-box;
       line-height: normal;
       outline: none;
+    }
+
+    /* Keyboard focus, in the accent the list rows' cursor is drawn in. Not on
+       a pointer press, which :focus would ring too. */
+    button:focus-visible {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: 2px;
     }
 
     button:disabled {
@@ -178,7 +186,7 @@ export class AlpsButton extends LitElement {
       justify-content: center;
       white-space: nowrap;
     }
-  `;
+  `];
 
   render() {
     return html`

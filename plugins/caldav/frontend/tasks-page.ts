@@ -1,9 +1,9 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { closeSidebarPeek, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
+import { closeSidebarPeek, SIDEBAR_WIDTH_MIN, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar-strip';
 import { sectionHeadingStyles } from '../../../frontend/src/components/alps-sidebar-heading';
@@ -21,9 +21,9 @@ import { formatDue, inSmartList, intlLocale, isClosed, scopeOf, tasksService } f
 import type { SmartList, TaskData, TaskList, TaskScope } from './tasks-service';
 import './tasks-list';
 import './task-modal';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 const SIDEBAR_WIDTH_DEFAULT = 250;
-const SIDEBAR_WIDTH_MIN = 150;
 const SIDEBAR_WIDTH_MAX = 500;
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;
 
@@ -82,6 +82,7 @@ export class TasksPage extends LitElement {
     private mutationEpoch = 0;
 
     static styles = [
+        motionStyles,
         sidebarLayoutStyles,
         sectionHeadingStyles,
         css`
@@ -162,12 +163,16 @@ export class TasksPage extends LitElement {
                 font-size: 12px;
                 color: var(--text-muted, #6b7280);
             }
+            /* A list's colour, the one its tasks' dots wear. Drawn by its
+               background alone, which forced colors repaint as the page:
+               kept. */
             .list-dot {
                 flex-shrink: 0;
                 width: 10px;
                 height: 10px;
                 margin: 0 4px;
                 border-radius: 50%;
+                forced-color-adjust: none;
             }
             .main-content {
                 flex: 1;
@@ -333,7 +338,7 @@ export class TasksPage extends LitElement {
             this.loadedScope = scope;
             this.scheduling = listing.scheduling === 'server' ? 'server' : 'email';
             this.settling = new Set();
-            if (listing.failedCalendars > 0) this.toast('tasks.someListsFailed');
+            if (listing.failedCalendars > 0) this.toast('tasks.someListsFailed', undefined, 'error');
         } catch (e) {
             if (epoch !== this.readEpoch) return;
             console.error('Failed to load tasks', e);
@@ -380,7 +385,7 @@ export class TasksPage extends LitElement {
             const saved = await tasksService.completeTask(task.path, done, this.i18nStore?.getLanguage?.());
             this.replaceTask(task.path, saved);
             // On a task assigned to the user the tick was their answer.
-            if (saved.sendFailed) this.toast('invitations.notTold');
+            if (saved.sendFailed) this.toast('invitations.notTold', undefined, 'error');
             if (done && !isClosed(saved)) {
                 // It repeats: ticked off, it moved to its next occurrence instead.
                 this.toast('tasks.movedToNext', { date: this.formatDue(saved) });
@@ -424,7 +429,7 @@ export class TasksPage extends LitElement {
         this.taskToDelete = null;
         try {
             const removed = await tasksService.deleteTask(task.path, { notify, lang: this.i18nStore?.getLanguage?.() });
-            if (removed?.sendFailed) this.toast('invitations.notTold');
+            if (removed?.sendFailed) this.toast('invitations.notTold', undefined, 'error');
             this.mutationEpoch++;
             this.tasks = this.tasks.filter(t => t.path !== task.path);
         } catch (e) {
@@ -481,12 +486,13 @@ export class TasksPage extends LitElement {
     /** Says an action failed, unless the session ending is why: that has its
      * own notice already. */
     private failed(key: string, error: unknown) {
-        if (!isSessionExpiry(error)) this.toast(key);
+        if (!isSessionExpiry(error)) this.toast(key, undefined, 'error');
     }
 
-    private toast(key: string, params?: Record<string, string | number>) {
+    /** `type` is 'error' for a failure, which the shell reads out at once. */
+    private toast(key: string, params?: Record<string, string | number>, type?: 'error') {
         window.dispatchEvent(new CustomEvent('show-toast', {
-            detail: { message: this.i18nStore?.t(key, params), duration: 5000 },
+            detail: { message: this.i18nStore?.t(key, params), type, duration: 5000 },
         }));
     }
 
@@ -551,15 +557,24 @@ export class TasksPage extends LitElement {
                                     @click=${() => this.openCreate()}
                                 >${t('tasks.addTask')}</alps-create-button>
                             </alps-toolbar>
-                            <alps-sidebar-content class="sidebar-content">
+                            <!-- A navigation landmark named for the tab. The
+                                 smart lists inside are a plain group: an
+                                 unnamed navigation of their own, nested in it,
+                                 left the task lists outside. -->
+                            <alps-sidebar-content class="sidebar-content" role="navigation" aria-label=${t('navigation.tasks')}>
                                 <div class="sidebar-scroll-content">
-                                    <nav class="smart-lists">
+                                    <div class="smart-lists">
                                         ${SMART_LISTS.map(list => {
                                             const count = this.countFor(list.id);
+                                            // Two rows are current at once: the view open
+                                            // (the page) and, below, the list it is
+                                            // narrowed to.
+                                            const open = list.id === this.selectedList && !this.searchQuery;
                                             return html`
                                                 <button
-                                                    class="nav-item smart-list ${list.id === this.selectedList && !this.searchQuery ? 'active' : ''}"
+                                                    class="nav-item smart-list ${open ? 'active' : ''}"
                                                     data-list=${list.id}
+                                                    aria-current=${open ? 'page' : nothing}
                                                     title=${t(list.label)}
                                                     @click=${() => this.selectList(list.id)}
                                                 >
@@ -569,7 +584,7 @@ export class TasksPage extends LitElement {
                                                 </button>
                                             `;
                                         })}
-                                    </nav>
+                                    </div>
                                     ${this.lists.length > 0 ? html`
                                         <div class="calendar-lists">
                                             <alps-sidebar-heading heading=${t('tasks.lists')}></alps-sidebar-heading>
@@ -577,6 +592,7 @@ export class TasksPage extends LitElement {
                                                 <button
                                                     class="nav-item task-list ${list.path === this.selectedCalendar ? 'active' : ''}"
                                                     data-path=${list.path}
+                                                    aria-current=${list.path === this.selectedCalendar ? 'true' : nothing}
                                                     @click=${() => this.selectCalendar(list.path)}
                                                 >
                                                     <span class="list-dot" style="background: ${list.color}"></span>

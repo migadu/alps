@@ -28,6 +28,16 @@ export default {
       other: '{total} kişiden {count} tanesi güncellenemedi.'
     },
     starOneFailed: 'Kişi güncellenemedi.',
+    deleteUnconfirmed: {
+      one: '{total} kişiden {count} tanesinin silindiği doğrulanamadı. Yeniden denemeden önce listeyi yenileyin.',
+      other: '{total} kişiden {count} tanesinin silindiği doğrulanamadı. Yeniden denemeden önce listeyi yenileyin.'
+    },
+    deleteOneUnconfirmed: 'Kişinin silindiği doğrulanamadı. Yeniden denemeden önce listeyi yenileyin.',
+    updateUnconfirmed: {
+      one: '{total} kişiden {count} tanesinin güncellendiği doğrulanamadı. Yeniden denemeden önce listeyi yenileyin.',
+      other: '{total} kişiden {count} tanesinin güncellendiği doğrulanamadı. Yeniden denemeden önce listeyi yenileyin.'
+    },
+    updateOneUnconfirmed: 'Kişinin güncellendiği doğrulanamadı. Yeniden denemeden önce listeyi yenileyin.',
     unnamedContact: 'Adsız Kişi',
     title: 'Kişiler',
     allContacts: 'Tüm Kişiler',
@@ -73,6 +83,13 @@ export default {
     email: 'E-posta',
     phone: 'Telefon',
     address: 'Adres',
+    addressStreet: 'Sokak',
+    addressExtended: 'Daire veya ofis',
+    addressPoBox: 'Posta kutusu',
+    addressCity: 'Şehir',
+    addressRegion: 'İl veya bölge',
+    addressPostcode: 'Posta kodu',
+    addressCountry: 'Ülke',
     url: 'URL',
     birthday: 'Doğum günü',
     birthdayDay: 'Gün',

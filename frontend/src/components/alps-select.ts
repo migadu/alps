@@ -2,6 +2,7 @@ import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
 import { focusOnLabelClick } from '../utils/label-focus';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-select')
 export class AlpsSelect extends LitElement {
@@ -23,7 +24,7 @@ export class AlpsSelect extends LitElement {
 	 */
 	@property({ type: Boolean }) disabled = false;
 
-	static styles = css`
+	static styles = [motionStyles, css`
 		:host {
 			display: block;
 			position: relative;
@@ -56,9 +57,12 @@ export class AlpsSelect extends LitElement {
 			cursor: pointer;
 		}
 
+		/* The transparent outline paints nothing here; forced colors, which drop
+		   the border colour and the shadow, give it a system colour. */
 		select:focus {
 			border-color: var(--accent-color, #005A9E);
 			box-shadow: 0 0 0 2px rgba(0, 90, 158, 0.2);
+			outline: 2px solid transparent;
 		}
 
 		select:disabled {
@@ -83,7 +87,7 @@ export class AlpsSelect extends LitElement {
 			width: 100%;
 			height: 100%;
 		}
-	`;
+	`];
 
 	public focus() {
 		this.shadowRoot?.querySelector('select')?.focus();

@@ -6,6 +6,7 @@ import { formatSize, renderIcon } from '../utils/ui';
 import { FOLDER_INBOX } from '../utils/folders';
 import { attachmentPartUrl } from '../utils/attachment-url';
 import './alps-attachment-pill';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-attachment-list')
 export class AttachmentList extends LitElement {
@@ -147,7 +148,7 @@ export class AttachmentList extends LitElement {
     });
   }
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: block;
       width: 100%;
@@ -342,7 +343,7 @@ export class AttachmentList extends LitElement {
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       }
     }
-  `;
+  `];
 
   render() {
     if (!this.attachments || this.attachments.length === 0) return html``;

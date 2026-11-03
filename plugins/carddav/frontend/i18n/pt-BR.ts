@@ -33,6 +33,18 @@ export default {
       other: 'Não foi possível atualizar {count} de {total} contatos.'
     },
     starOneFailed: 'Não foi possível atualizar o contato.',
+    deleteUnconfirmed: {
+      one: 'Não foi possível confirmar a exclusão de {count} de {total} contatos. Atualize a lista antes de tentar novamente.',
+      many: 'Não foi possível confirmar a exclusão de {count} de {total} contatos. Atualize a lista antes de tentar novamente.',
+      other: 'Não foi possível confirmar a exclusão de {count} de {total} contatos. Atualize a lista antes de tentar novamente.'
+    },
+    deleteOneUnconfirmed: 'Não foi possível confirmar a exclusão do contato. Atualize a lista antes de tentar novamente.',
+    updateUnconfirmed: {
+      one: 'Não foi possível confirmar a atualização de {count} de {total} contatos. Atualize a lista antes de tentar novamente.',
+      many: 'Não foi possível confirmar a atualização de {count} de {total} contatos. Atualize a lista antes de tentar novamente.',
+      other: 'Não foi possível confirmar a atualização de {count} de {total} contatos. Atualize a lista antes de tentar novamente.'
+    },
+    updateOneUnconfirmed: 'Não foi possível confirmar a atualização do contato. Atualize a lista antes de tentar novamente.',
     unnamedContact: 'Contato sem nome',
     title: 'Contatos',
     allContacts: 'Todos os contatos',
@@ -79,6 +91,13 @@ export default {
     email: 'E-mail',
     phone: 'Telefone',
     address: 'Endereço',
+    addressStreet: 'Rua',
+    addressExtended: 'Complemento',
+    addressPoBox: 'Caixa postal',
+    addressCity: 'Cidade',
+    addressRegion: 'Estado ou região',
+    addressPostcode: 'CEP',
+    addressCountry: 'País',
     url: 'URL',
     birthday: 'Aniversário',
     birthdayDay: 'Dia',

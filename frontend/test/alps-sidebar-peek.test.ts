@@ -23,10 +23,13 @@
  *  - on mobile there is no strip and no overlay.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LitElement, html } from 'lit';
 import { cleanup, mount, shadow, shadowAll, update, waitFor } from './helpers/dom';
-import { settleSidebar } from './helpers/sidebar';
+import { inSidebar, setSidebar, settleSidebar } from './helpers/sidebar';
 import { readSources } from './helpers/sources';
-import { PEEK_CLOSE_DELAY_MS, PEEK_OPEN_DELAY_MS, type AlpsSidebar } from '../src/components/alps-sidebar';
+import { PEEK_CLOSE_DELAY_MS, PEEK_OPEN_DELAY_MS, closeSidebarPeek, type AlpsSidebar } from '../src/components/alps-sidebar';
+import '../src/components/alps-sidebar-strip';
+import { deepActiveElement } from '../src/utils/active-element';
 import '../src/pages/mailbox-page';
 import '../../plugins/carddav/frontend/contacts-page';
 import '../../plugins/caldav/frontend/tasks-page';
@@ -188,6 +191,267 @@ describe('the sidebar', () => {
       await wait(el, PEEK_OPEN_DELAY_MS * 2);
       expect(el.peeking).toBe(false);
     });
+  });
+});
+
+/**
+ * The overlay from the keyboard. The strip's content is inert, so before
+ * this a keyboard user went from Create to the expand button and on, and
+ * reached no row without expanding the sidebar for good.
+ *
+ *  - keyboard focus coming into the collapsed sidebar opens the overlay at
+ *    once, and the content goes live;
+ *  - a click that focuses Create or the expand button opens nothing;
+ *  - the focus leaving closes it, and holds it open until then, whatever the
+ *    pointer does; moving between the sidebar's controls opens nothing;
+ *  - Escape closes it, but not the Escape that closes a menu opened from it;
+ *  - closing it from the keyboard (Escape, a choice) moves a focus the strip
+ *    takes away to the expand button, so the keyboard is not sent back to
+ *    the top of the page.
+ */
+describe('peek from the keyboard', () => {
+  /** A sidebar's content as the pages draw it: Create, then the rows. */
+  class KeyboardContent extends LitElement {
+    render() {
+      return html`
+        <alps-sidebar-frame class="sidebar-wrapper">
+          <div class="sidebar-header"><button class="create">Create</button></div>
+          <alps-sidebar-content class="sidebar-content">
+            <button class="row">Inbox</button>
+            <button class="row">Archive</button>
+            <dialog open><button class="menu-item">Rename</button></dialog>
+          </alps-sidebar-content>
+        </alps-sidebar-frame>
+      `;
+    }
+  }
+  if (!customElements.get('test-keyboard-content')) customElements.define('test-keyboard-content', KeyboardContent);
+
+  let outside: HTMLButtonElement;
+
+  // Real timers: the sidebar helpers wait on them for the strip state to
+  // reach the content.
+  beforeEach(() => {
+    outside = document.createElement('button');
+    outside.textContent = 'Message list';
+    document.body.append(outside);
+    outside.focus();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function collapsed(props: Partial<Pick<AlpsSidebar, 'collapsed' | 'isMobile'>> = {}) {
+    const { sidebar, el } = await inSidebar<El>('test-keyboard-content', {}, { i18nStore, collapsed: true, ...props } as never);
+    const action = document.createElement('button');
+    action.slot = 'footer-actions';
+    sidebar.append(action);
+    await settleSidebar(sidebar);
+    const part = (selector: string) => el.shadowRoot!.querySelector<HTMLElement>(selector)!;
+    return {
+      sidebar,
+      create: part('.create'),
+      rows: [...el.shadowRoot!.querySelectorAll<HTMLElement>('.row')],
+      menuItem: part('.menu-item'),
+      content: part('alps-sidebar-content'),
+      toggle: () => shadow<El>(sidebar, '.collapse-btn').shadowRoot!.querySelector('button')!,
+      action,
+    };
+  }
+
+  /**
+   * Focuses `target` as the keyboard does, or as a click does: only the
+   * keyboard's focus matches :focus-visible. Both are stated, because jsdom
+   * answers false inside a shadow root whatever moved the focus.
+   */
+  function focus(target: HTMLElement, by: 'keyboard' | 'click' = 'keyboard') {
+    const matches = Element.prototype.matches;
+    const spy = vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector: string) {
+      return selector === ':focus-visible' ? by === 'keyboard' && this === target : matches.call(this, selector);
+    });
+    target.focus();
+    spy.mockRestore();
+  }
+
+  const escape = (target: HTMLElement) => {
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true, cancelable: true });
+    target.dispatchEvent(event);
+    return event;
+  };
+
+  it('opens at once when the keyboard focus comes into the strip, and the rows go live', async () => {
+    const { sidebar, create, content } = await collapsed();
+    expect(content.hasAttribute('inert')).toBe(true);
+
+    focus(create);
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(true);
+    expect(content.hasAttribute('inert')).toBe(false);
+  });
+
+  it('opens from the expand button too, the strip\'s other live control', async () => {
+    const { sidebar, toggle } = await collapsed();
+    focus(toggle());
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(true);
+  });
+
+  it('opens nothing for a click that focuses Create or the expand button', async () => {
+    const { sidebar, create, toggle, content } = await collapsed();
+    focus(create, 'click');
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(false);
+
+    outside.focus();
+    focus(toggle(), 'click');
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(false);
+    expect(content.hasAttribute('inert')).toBe(true);
+  });
+
+  it('stays open while the focus moves inside, and closes when it leaves', async () => {
+    const { sidebar, create, rows, toggle, action, content } = await collapsed();
+    focus(create);
+    await settleSidebar(sidebar);
+    for (const next of [...rows, toggle(), action]) {
+      focus(next);
+      await settleSidebar(sidebar);
+      expect(sidebar.peeking).toBe(true);
+    }
+
+    outside.focus();
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(false);
+    expect(content.hasAttribute('inert')).toBe(true);
+  });
+
+  it('closes when a menu in it gives the focus back to the page', async () => {
+    const { sidebar, create, rows } = await collapsed();
+    focus(create);
+    focus(rows[0]);
+    await settleSidebar(sidebar);
+    // alps-popup blurs its button as it closes.
+    rows[0].blur();
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(false);
+  });
+
+  it('is held open by the keyboard: the pointer leaving does not close it', async () => {
+    const { sidebar, create, rows } = await collapsed();
+    enter(sidebar);
+    focus(create);
+    focus(rows[1]);
+    leave(sidebar);
+    await sleep(PEEK_CLOSE_DELAY_MS + 50);
+    expect(sidebar.peeking).toBe(true);
+
+    outside.focus();
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(false);
+  });
+
+  it('stays open for the pointer resting on it when the focus leaves, until the pointer leaves', async () => {
+    const { sidebar, create } = await collapsed();
+    focus(create);
+    enter(sidebar);
+    outside.focus();
+    await sleep(PEEK_CLOSE_DELAY_MS + 50);
+    expect(sidebar.peeking).toBe(true);
+
+    leave(sidebar);
+    await sleep(PEEK_CLOSE_DELAY_MS + 50);
+    expect(sidebar.peeking).toBe(false);
+  });
+
+  it('closes on Escape and puts the focus from a row on the expand button; only a fresh entry opens it again', async () => {
+    const { sidebar, create, rows, toggle } = await collapsed();
+    focus(create);
+    focus(rows[1]);
+    await settleSidebar(sidebar);
+
+    const event = escape(rows[1]);
+    await settleSidebar(sidebar);
+    expect(event.defaultPrevented).toBe(true);
+    expect(sidebar.peeking).toBe(false);
+    expect(deepActiveElement()).toBe(toggle());
+
+    // Moving to Create, which the strip keeps, is no entry.
+    focus(create);
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(false);
+
+    outside.focus();
+    focus(create);
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(true);
+  });
+
+  it('leaves the focus on Create when Escape closes it from there', async () => {
+    const { sidebar, create } = await collapsed();
+    focus(create);
+    await settleSidebar(sidebar);
+    escape(create);
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(false);
+    expect(deepActiveElement()).toBe(create);
+  });
+
+  it('leaves the Escape that closes a menu opened from it to the menu', async () => {
+    const { sidebar, create, menuItem } = await collapsed();
+    focus(create);
+    focus(menuItem);
+    await settleSidebar(sidebar);
+    const event = escape(menuItem);
+    await settleSidebar(sidebar);
+    expect(event.defaultPrevented).toBe(false);
+    expect(sidebar.peeking).toBe(true);
+  });
+
+  it('moves the focus to the expand button when a choice made from the keyboard closes it', async () => {
+    const { sidebar, create, rows, toggle } = await collapsed();
+    focus(create);
+    focus(rows[0]);
+    await settleSidebar(sidebar);
+    closeSidebarPeek(document.body);
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(false);
+    expect(deepActiveElement()).toBe(toggle());
+  });
+
+  it('leaves the focus where a pointer choice put it', async () => {
+    const { sidebar, rows } = await collapsed();
+    enter(sidebar);
+    await sleep(PEEK_OPEN_DELAY_MS + 50);
+    await settleSidebar(sidebar);
+    focus(rows[0], 'click');
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(true);
+    closeSidebarPeek(document.body);
+    await settleSidebar(sidebar);
+    expect(sidebar.peeking).toBe(false);
+    expect(deepActiveElement()).toBe(rows[0]);
+  });
+
+  it('collapsing from the keyboard opens nothing, though the focus is inside', async () => {
+    const { sidebar, toggle } = await collapsed({ collapsed: false });
+    focus(toggle());
+    await setSidebar(sidebar, { collapsed: true });
+    expect(sidebar.peeking).toBe(false);
+  });
+
+  it('never opens from the keyboard while expanded or on mobile', async () => {
+    for (const props of [{ collapsed: false }, { isMobile: true }]) {
+      const { sidebar, create } = await collapsed(props);
+      focus(create);
+      await settleSidebar(sidebar);
+      expect(sidebar.peeking, JSON.stringify(props)).toBe(false);
+      outside.focus();
+      cleanup();
+      document.body.append(outside);
+    }
   });
 });
 

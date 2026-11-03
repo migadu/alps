@@ -325,10 +325,11 @@ describe('on a phone', () => {
     const back = shadow<HTMLButtonElement>(el, '.back-to-sections');
     expect(deepActiveElement()).toBe(back);
 
+    // Back to the list lands on the section just left, not on General.
     back.focus();
     el.category = '';
     await el.updateComplete;
-    expect(deepActiveElement()).toBe(row(el, 'gear'));
+    expect(deepActiveElement()).toBe(row(el, 'palette'));
   });
 
   it('does not take focus from a composer when the phone view changes', async () => {

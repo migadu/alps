@@ -94,3 +94,35 @@ test("a new contact keeps what was typed during its first save, beside a card wi
   await expect(page.locator("alps-contacts-list .contact-item", { hasText: `Ada New ${run}` })).toBeVisible();
   expect(await readContact(uid)).toContain(`FN:Ada Known ${run}`);
 });
+
+// The address was edited as one line, split back into its parts only while
+// it kept its shape: a part emptied made the whole line the street, and the
+// post office box, which the line left out, was lost.
+test("an address is edited part by part, and keeps the parts not edited", async ({ page }) => {
+  const name = `Hopper Address E2E ${run}`;
+  const uid = `e2e-hopper-address-${run}`;
+  await seedContact({
+    uid,
+    name,
+    email: `hopper.address.${run}@example.test`,
+    lines: ["ADR;TYPE=WORK:PO Box 7;Floor 3;1 Main St;Springfield;IL;62701;USA"],
+  });
+  await login(page);
+  await page.goto("/#/contacts");
+  await page.locator("alps-contacts-list .contact-item", { hasText: name }).click();
+  const view = page.locator("alps-contact-view");
+  const address = view.locator(".detail-group").filter({ has: page.locator(".group-label", { hasText: /^Address$/ }) });
+  // Every part, one to a line.
+  await expect
+    .poll(() => address.locator(".group-value").innerText().catch(() => ""))
+    .toBe("1 Main St\nFloor 3\nPO Box 7\nSpringfield\nIL\n62701\nUSA");
+
+  await view.locator('alps-icon-btn[title="Edit Contact"]').click();
+  await expect(view.locator('input[placeholder="PO box"]')).toHaveValue("PO Box 7");
+  await view.locator('input[placeholder="State or region"]').fill("");
+  await view.locator('input[placeholder="City"]').fill("Evanston");
+
+  await expect
+    .poll(async () => ((await readContact(uid)) ?? "").match(/^ADR.*$/m)?.[0])
+    .toBe("ADR;TYPE=WORK:PO Box 7;Floor 3;1 Main St;Evanston;;62701;USA");
+});

@@ -218,9 +218,12 @@ export class SettingsWindow extends LitElement {
       }
     }
 
+    /* The transparent outline paints nothing here; forced colors, which drop
+       the border colour and the shadow, give it a system colour. */
     select:focus, input:focus, textarea:focus {
       border-color: var(--accent-color, #2563eb);
       box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+      outline: 2px solid transparent;
     }
 
     textarea {
@@ -257,6 +260,9 @@ export class SettingsWindow extends LitElement {
   /** Where focus was when the window opened, to give back when it closes. */
   private previouslyFocused: Element | null = null;
   private hadSectionFocus = false;
+  /** The last section shown, kept while a phone shows the list instead: Back
+   * to the list puts focus on its row (see `focusSection`). */
+  private lastSection = '';
 
   private _handleResize = () => {
     this.isMobile = window.innerWidth <= MOBILE_MAX_WIDTH;
@@ -339,14 +345,23 @@ export class SettingsWindow extends LitElement {
 
   protected updated() {
     if (this.hadSectionFocus && !this.shadowRoot?.activeElement) this.focusSection();
+    if (this.shownCategory) this.lastSection = this.shownCategory;
   }
 
+  /**
+   * Focus onto the section shown, or on a phone showing one, the way back to
+   * the list. On a phone showing the list, onto the row of the section just
+   * left: General, the first row, was where Back put the keyboard, whichever
+   * section the user had been in.
+   */
   private focusSection() {
     const root = this.shadowRoot!;
     if (root.activeElement) return;
+    const rows = [...root.querySelectorAll<HTMLElement>('alps-category-item')];
     const target = root.querySelector('alps-category-item[active]')
       ?? root.querySelector('.back-to-sections')
-      ?? root.querySelector('alps-category-item');
+      ?? rows.find((row) => row.dataset.category === this.lastSection)
+      ?? rows[0];
     (target as HTMLElement | null)?.focus();
   }
 
@@ -419,13 +434,21 @@ export class SettingsWindow extends LitElement {
     if (active instanceof HTMLElement && (active.localName === 'input' || active.localName === 'textarea' || active.isContentEditable)) {
       active.blur();
     }
-    const wrapper = this.shadowRoot?.querySelector('.settings-content-wrapper');
-    const unsaved = [...(wrapper?.children ?? [])].some((section) => (section as Partial<UnsavedChanges>).hasUnsavedChanges === true);
-    if (unsaved) {
+    if (this.hasUnsavedChanges) {
       this.pendingLeave = action;
       return;
     }
     action();
+  }
+
+  /**
+   * Whether the open section holds what its own Save has not stored (see
+   * `UnsavedChanges`): what `leave` asks about, and what the shell asks
+   * before an automatic reload, which waits for it.
+   */
+  get hasUnsavedChanges(): boolean {
+    const wrapper = this.shadowRoot?.querySelector('.settings-content-wrapper');
+    return [...(wrapper?.children ?? [])].some((section) => (section as Partial<UnsavedChanges>).hasUnsavedChanges === true);
   }
 
   private confirmLeave = () => {
@@ -472,6 +495,7 @@ export class SettingsWindow extends LitElement {
     return html`
       <alps-category-item
         ?active=${category === id}
+        data-category=${id}
         @click=${() => this.selectCategory(id)}
         .icon=${icon}
       >${label}</alps-category-item>`;

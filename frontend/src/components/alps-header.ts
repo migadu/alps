@@ -12,6 +12,7 @@ import './user-profile-menu';
 import './alps-icon-btn';
 import './ui-confirm';
 import { Logger } from '../utils/logger';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-header')
 export class AlpsHeader extends LitElement {
@@ -50,7 +51,7 @@ export class AlpsHeader extends LitElement {
     this.requestUpdate();
   };
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: block;
       position: relative;
@@ -106,7 +107,7 @@ export class AlpsHeader extends LitElement {
     ::slotted([slot="center"]) {
       width: 100%;
     }
-  `;
+  `];
 
   private handleSettings() {
     window.location.hash = '/settings';

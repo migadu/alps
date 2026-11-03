@@ -23,6 +23,14 @@ export default {
       other: '{total}件中{count}件の連絡先を更新できませんでした。'
     },
     starOneFailed: '連絡先を更新できませんでした。',
+    deleteUnconfirmed: {
+      other: '{total}件中{count}件の連絡先の削除を確認できませんでした。再試行する前に一覧を更新してください。'
+    },
+    deleteOneUnconfirmed: '連絡先の削除を確認できませんでした。再試行する前に一覧を更新してください。',
+    updateUnconfirmed: {
+      other: '{total}件中{count}件の連絡先の更新を確認できませんでした。再試行する前に一覧を更新してください。'
+    },
+    updateOneUnconfirmed: '連絡先の更新を確認できませんでした。再試行する前に一覧を更新してください。',
     unnamedContact: '名前のない連絡先',
     title: '連絡先',
     allContacts: 'すべての連絡先',
@@ -67,6 +75,13 @@ export default {
     email: 'メール',
     phone: '電話',
     address: '住所',
+    addressStreet: '番地',
+    addressExtended: '建物名・部屋番号',
+    addressPoBox: '私書箱',
+    addressCity: '市区町村',
+    addressRegion: '都道府県・州',
+    addressPostcode: '郵便番号',
+    addressCountry: '国',
     url: 'URL',
     birthday: '誕生日',
     birthdayDay: '日',

@@ -125,7 +125,7 @@ describe('a save outlived by its account or window', () => {
     await waitFor(() => !!finish, 'the save request');
     if (transition === 'session end') window.dispatchEvent(new CustomEvent('session-cleared'));
     else if (transition === 'account cache reset') MessageCache.clear();
-    else el.remove();
+    else { store.closeComposer(instance.id); el.remove(); }
     finish({ uid: '8', mailbox: 'Drafts' });
     await saving;
     expect(news).toHaveLength(0);
@@ -144,6 +144,25 @@ describe('a save outlived by its account or window', () => {
     expect(await saving).toBe(true);
     expect(news).toHaveLength(1);
     expect(store.getComposer(id)?.draftUid).toBe('8');
+  });
+
+  it('applies a pending save to the store when its window has been replaced', async () => {
+    let finish!: (result: any) => void;
+    const save = vi.spyOn(messageOperations, 'saveDraft').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const { store, instance, id } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const saving = el._saveDraft();
+    await waitFor(() => !!finish, 'the save request');
+    el.remove();
+    const replacement = await mount<El>('alps-floating-composer', { instance: store.getComposer(id), composeStore: store, i18nStore });
+    finish({ uid: '8', mailbox: 'Drafts' });
+    expect(await saving).toBe(true);
+    expect(store.getComposer(id)).toMatchObject({ draftUid: '8', dirty: false, isSaving: false });
+    replacement.instance = store.getComposer(id);
+    await replacement.updateComplete;
+    await replacement._handleCloseClick();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(store.getComposer(id)).toBeUndefined();
   });
 
   it('announces Save & close before closing its current window, and announces no refused save', async () => {
@@ -1133,12 +1152,11 @@ describe('a rich quote after a committed plain-text save', () => {
     expect(body.messageHtml).toContain('<td>Figures</td>');
   });
 
-  it.each(['disconnect', 'account reset'])('does not prune a composer after %s while its save waits', async departure => {
+  it('does not prune a composer after an account reset while its save waits', async () => {
     const finish = heldSave();
     const { store, el, id } = await open();
     const saving = el._saveDraft();
-    if (departure === 'disconnect') el.remove();
-    else MessageCache.clear();
+    MessageCache.clear();
     finish({ uid: '8', mailbox: 'Drafts', attachments: [] });
     await saving;
     expect(store.getComposer(id)!.html).toContain('cid:chart@remote.test');
@@ -1245,3 +1263,96 @@ describe("an answer's quote images after a plain-text save", () => {
   });
 });
 
+
+describe('a quote deleted from an HTML reply', () => {
+  // The reply carries the quote's images as inline parts. Posted once the
+  // quote was deleted, they went to the recipients all the same, images
+  // nobody saw, which most mail shows as attachments.
+  const original = { Envelope: { Subject: 'Chart', Date: '2026-09-01T10:00:00Z', From: [{ Mailbox: 'ada', Host: 'remote.test' }] } };
+  const quote = generateQuote('reply', original, 'Chart follows.', '<table><tr><td>Figures</td></tr></table><img src="cid:chart@remote.test">', true);
+  const chart = { name: 'chart.png', type: 'image/png', partPath: '2', inline: true, contentId: 'chart@remote.test' };
+  /** Filed inline and shown by no reference: carried as the body's (see inlinePartsOf). */
+  const logo = { name: 'logo.png', type: 'image/png', partPath: '3', inline: true, contentId: 'logo@remote.test' };
+
+  async function open(attachments: unknown[] = [chart]) {
+    const { store, instance, id } = composerIn({
+      text: quote.quotedText, html: quote.quotedHtml, format: 'html', attachments,
+      quoteSource: { mailbox: 'INBOX', uid: '5', structure: { Children: [{ Type: 'text', Subtype: 'html' }, { ID: '<chart@remote.test>' }] } },
+    });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const body = el.shadowRoot!.querySelector('alps-message-composer') as El;
+    await body.updateComplete;
+    const sync = async () => {
+      el.instance = store.getComposer(id);
+      await el.updateComplete;
+      await body.updateComplete;
+    };
+    return { store, el, body, id, sync };
+  }
+
+  /** As the user deletes it: selected whole, then deleted. */
+  function deleteQuote(body: El) {
+    let at = -1;
+    body.editor.state.doc.descendants((node: any, pos: number) => {
+      if (node.type.name === 'quotedMessage') at = pos;
+    });
+    body.editor.chain().setNodeSelection(at).deleteSelection().run();
+  }
+
+  it('posts its images while the quote is there', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store, el, body, id, sync } = await open();
+    body.editor.chain().insertContentAt(1, 'Agreed.').run();
+    await sync();
+
+    expect(await el._saveDraft()).toBe(true);
+    expect(sentForm(0).get('prev_attachments')).toBe('2');
+    expect(sentForm(0).get('inline_attachments')).toBe('2');
+    expect(store.getComposer(id)!.attachments).toHaveLength(1);
+  });
+
+  it('posts none of them once it is deleted', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    const { store, el, body, id, sync } = await open();
+    deleteQuote(body);
+    await sync();
+    expect(store.getComposer(id)!.html).not.toContain('cid:chart@remote.test');
+
+    expect(await el._saveDraft()).toBe(true);
+    expect(sentForm(0).get('prev_attachments')).toBeNull();
+    expect(sentForm(0).get('inline_attachments')).toBeNull();
+    // Their paths name parts the new draft does not have: see keptAfterSave.
+    expect(store.getComposer(id)!.attachments).toEqual([]);
+  });
+
+  it('still posts a part filed inline that the message never showed', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { el, body, sync } = await open([chart, logo]);
+    deleteQuote(body);
+    await sync();
+
+    expect(await el._saveDraft()).toBe(true);
+    expect(sentForm(0).get('prev_attachments')).toBe('3');
+  });
+
+  it('brings the quote back by Undo without the images the save let go', async () => {
+    // The parts are gone from the composer, so a reference left in the quote
+    // would go out as a broken image.
+    const save = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    const { store, el, body, id, sync } = await open();
+    deleteQuote(body);
+    await sync();
+    expect(await el._saveDraft()).toBe(true);
+    await sync();
+
+    body.editor.commands.undo();
+    await sync();
+    expect(body.messageHtml).toContain('<td>Figures</td>');
+    expect(body.messageHtml).not.toContain('cid:chart@remote.test');
+    expect(store.getComposer(id)!.html).not.toContain('cid:chart@remote.test');
+    expect(await el._saveDraft()).toBe(true);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(sentForm(1).get('html')).toContain('<td>Figures</td>');
+    expect(sentForm(1).get('html')).not.toContain('cid:chart@remote.test');
+  });
+});

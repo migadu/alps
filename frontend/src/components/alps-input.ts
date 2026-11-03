@@ -4,6 +4,7 @@ import { consume } from '@lit/context';
 import { customElement, property, state } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
 import { focusOnLabelClick } from '../utils/label-focus';
+import { motionStyles } from '../utils/motion';
 
 /** Values written left to right whatever the interface language: addresses,
  * passwords, numbers, dates. */
@@ -45,7 +46,7 @@ export class AlpsInput extends LitElement {
 
   @state() private showPassword = false;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: block;
       width: 100%;
@@ -96,9 +97,12 @@ export class AlpsInput extends LitElement {
       text-align: right;
     }
 
+    /* The transparent outline paints nothing here; forced colors, which drop
+       the border colour and the shadow, give it a system colour. */
     input:focus {
       border-color: var(--accent-color, #005A9E);
       box-shadow: 0 0 0 2px rgba(0, 90, 158, 0.2);
+      outline: 2px solid transparent;
     }
 
     input::placeholder {
@@ -141,6 +145,11 @@ export class AlpsInput extends LitElement {
       outline: none;
     }
 
+    .action-btn:focus-visible {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: 2px;
+    }
+
     .action-btn:hover {
       color: var(--text-primary, #111827);
       background: var(--bg-tertiary, #f3f4f6);
@@ -151,7 +160,7 @@ export class AlpsInput extends LitElement {
       height: 16px;
       fill: currentColor;
     }
-  `;
+  `];
 
   private handleInput(e: Event) {
     const target = e.target as HTMLInputElement;

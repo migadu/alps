@@ -8,10 +8,11 @@ import '../../../frontend/src/components/app-header';
 import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-avatar';
-import { closeSidebarPeek } from '../../../frontend/src/components/alps-sidebar';
+import { closeSidebarPeek, SIDEBAR_WIDTH_MIN } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/alps-initial-loader';
+import { endBoot, isBooting } from '../../../frontend/src/utils/boot-splash';
 import '../../../frontend/src/components/alps-popup';
 import '../../../frontend/src/components/alps-create-button';
 import './contacts-categories';
@@ -20,10 +21,11 @@ import './contact-view';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
-import { contactsService } from './contacts-service';
+import { contactsService, sameAddressParts } from './contacts-service';
 import { isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 /** Where the categories this user created, with no one filed into them yet, are kept. */
 const categoriesKeyFor = (username: string) => `alps_contacts_categories_${username}`;
@@ -35,6 +37,13 @@ const CONTACTS_ROUTE = /^#\/contacts\/?([^\/]*)\/?(.*)$/;
 
 /** How an address write lands in the session history; see writeHash. */
 type HashEntry = 'push' | 'replace';
+
+/** The counted and the one-card sentence for cards a write's answer never
+ * came back from, by what the write was; see reportRefusals. */
+const UNCONFIRMED = {
+  delete: ['contacts.deleteUnconfirmed', 'contacts.deleteOneUnconfirmed'],
+  update: ['contacts.updateUnconfirmed', 'contacts.updateOneUnconfirmed'],
+} as const;
 
 type ContactSaveTarget = {
   contact: any;
@@ -59,7 +68,7 @@ export class ContactsPage extends LitElement {
   @state() private showOnlyStarred = false;
   @state() private loading = true;
   @state() private isSpinning = false;
-  @state() private showInitialLoader = !(window as any).alpsAppLoaded;
+  @state() private showInitialLoader = isBooting();
   @state() private selectedContact: any = null;
   @state() private filterQuery = '';
 
@@ -101,6 +110,7 @@ export class ContactsPage extends LitElement {
   private mergedBook: { contacts: any[]; wholeBook: any[]; open: any; merged: any[] } | null = null;
 
   static styles = [
+    motionStyles,
     MailboxPage.styles,
     MessageList.styles,
     popupStyles,
@@ -311,7 +321,7 @@ export class ContactsPage extends LitElement {
     super.connectedCallback();
     this.restoringHash = true;
     this.saveActive = true;
-    this.showInitialLoader = !(window as any).alpsAppLoaded;
+    this.showInitialLoader = isBooting();
     this.classList.add('density-compact');
     this.loadAddedCategories();
     window.addEventListener('alps-active-user-changed', this.handleSaveOwnerChange);
@@ -573,7 +583,7 @@ export class ContactsPage extends LitElement {
       if (this.showInitialLoader) {
         setTimeout(() => {
           this.showInitialLoader = false;
-          (window as any).alpsAppLoaded = true;
+          endBoot();
         }, 100);
       }
     }
@@ -722,7 +732,8 @@ export class ContactsPage extends LitElement {
       }
     } catch (err) {
       console.error('Failed to toggle star:', err);
-      this.reportFailure('contacts.starOneFailed');
+      // Told apart as across a selection: see reportRefusals.
+      this.reportFailure(outcomeUnknown(err) ? UNCONFIRMED.update[1] : 'contacts.starOneFailed');
       // Revert by putting the card's own categories back into the list. This
       // used to edit `contact`, the object the optimistic update had already
       // replaced in `this.contacts`, so the refused star stayed painted; and for
@@ -899,11 +910,11 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.map((c: string) => c === oldName ? newName : c);
           return { ...contact, categories };
         });
-        const { total, done, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+        const { total, done, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.showWrittenCategories(contactsToModify, etags);
         this.fetchContacts();
-        if (failed > 0) this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: failed, total });
+        if (failed > 0) this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: failed - uncertain, total, uncertain });
         if (done === 0) return;
       } catch (e) {
         console.error('Error renaming category', e);
@@ -956,11 +967,11 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.filter((c: string) => c !== oldName);
           return { ...contact, categories };
         });
-        const { total, done, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+        const { total, done, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.showWrittenCategories(contactsToModify, etags);
         this.fetchContacts();
-        if (failed > 0) this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: failed, total });
+        if (failed > 0) this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: failed - uncertain, total, uncertain });
         if (done === 0) return;
       } catch (e) {
         console.error('Error deleting category', e);
@@ -1120,6 +1131,7 @@ export class ContactsPage extends LitElement {
     for (const field of ['emails', 'phones']) {
       if (Array.isArray(payload[field])) payload[field] = payload[field].map((p: any) => ({ ...p }));
     }
+    if (payload.address_parts) payload.address_parts = { ...payload.address_parts };
     const waiting = this.queuedSaves.find(job => job.target === target);
     if (waiting) waiting.payload = payload;
     else this.queuedSaves.push({ payload, target });
@@ -1172,13 +1184,20 @@ export class ContactsPage extends LitElement {
         // Clearing one displayed copy must not clear the next hidden copy on
         // every later autosave. Only fields changed since our last successful
         // form save express a new editing gesture.
+        // The address by its parts, once the editor has them: it edits them
+        // and not the line.
         const changed_fields = ['organization', 'title', 'note', 'url', 'nickname', 'public_key', 'address']
-          .filter(field => String(payload[field] || '').trim() !== String(before[field] || '').trim());
+          .filter(field => field === 'address' && payload.address_parts
+            ? !sameAddressParts(payload.address_parts, before.address_parts)
+            : String(payload[field] || '').trim() !== String(before[field] || '').trim());
         // And what the page held for each: after a clear, the server's next
         // copy is one the page never showed, and a value typed into the
         // emptied field is added beside it rather than put in its place.
         const changed_from = Object.fromEntries(changed_fields.map(field => [field, String(before[field] || '')]));
-        const request = { ...payload, changed_fields, changed_from, etag: before.etag };
+        const request = {
+          ...payload, changed_fields, changed_from, etag: before.etag,
+          ...(payload.address_parts && { address_parts_from: before.address_parts ?? {} }),
+        };
         for (const field of ['emails', 'phones']) {
           const props = payload[field];
           if (!Array.isArray(props) || props.some((p: any) => !p.id)) continue;
@@ -1195,7 +1214,10 @@ export class ContactsPage extends LitElement {
         // The contact the user is typing in, even when another card has
         // its address: answered with that card's path, the editor went on to
         // edit the other card, without its version or fields.
-        data = await contactsService.createContact({ ...payload, allow_duplicate: true });
+        data = await contactsService.createContact({
+          ...payload, allow_duplicate: true,
+          ...(payload.address_parts && { address_parts_from: {} }),
+        });
       }
 
       const savedContact = { ...before, ...payload, path: data.path || (editing ? before.path : ''), etag: data.etag };
@@ -1284,7 +1306,7 @@ export class ContactsPage extends LitElement {
 
       this.contacts = [...this.contacts]; // Trigger re-render immediately
 
-      const { total, done, failed, uncertain, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+      const { total, done, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
       this.applyETags(etags);
       if (failed > 0) {
         if (done === 0) {
@@ -1300,7 +1322,7 @@ export class ContactsPage extends LitElement {
           // Some cards took the change, and the snapshot would un-star them.
           this.fetchContacts();
         }
-        this.reportRefusals('contacts.starFailed', 'contacts.starOneFailed', { count: failed, total });
+        this.reportRefusals('contacts.starFailed', 'contacts.starOneFailed', { count: failed - uncertain, total, uncertain });
       }
     } catch (e) {
       console.error('Error toggling star', e);
@@ -1318,23 +1340,43 @@ export class ContactsPage extends LitElement {
    * that did not happen — so the UI simply showed the state it had hoped for.
    */
   private reportFailure(key: string, params?: Record<string, any>) {
+    this.showFailure(this.i18nStore?.t(key, params));
+  }
+
+  private showFailure(message: string | undefined) {
     window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: { message: this.i18nStore?.t(key, params), duration: 5000 }
+      detail: { message, type: 'error', duration: 5000 }
     }));
   }
 
   /**
-   * Says that `count` of the `total` cards a write was aimed at refused it.
+   * Says that `count` of the `total` cards a write was aimed at refused it,
+   * and that `uncertain` more of them never answered.
    *
-   * The counted sentence agrees with `count`, since the cards that failed are
+   * Each counted sentence agrees with its own number, since those cards are
    * its subject. Picked by the total, the German toast for one card of five
    * put its verb in the plural ("konnten"). A write aimed at a single card is
    * told in a sentence of its own, where the counted one read "1 of 1 contact
    * could not be deleted."
+   *
+   * A bulk outcome's `failed` holds both kinds. A timeout or a lost
+   * connection says nothing of what the server did (see outcomeUnknown), but
+   * the toast called those cards refused as well: a delete that had been made
+   * behind a lost answer was reported as not made, and trying again was the
+   * wrong answer to it. So they are counted apart, and the user is told to
+   * refresh before trying again: the page reads the list again itself, but
+   * that read can fail as the write did. One toast holds both, as a screen
+   * reader reads out only the newest.
    */
-  private reportRefusals(counted: string, single: string, params: { count: number; total: number }) {
-    if (params.total === 1) this.reportFailure(single);
-    else this.reportFailure(counted, params);
+  private reportRefusals(counted: string, single: string, params: { count: number; total: number; uncertain?: number }, write: keyof typeof UNCONFIRMED = 'update') {
+    const { count, total, uncertain = 0 } = params;
+    const sentence = ([countedKey, singleKey]: readonly [string, string], n: number) =>
+      (total === 1 ? this.i18nStore?.t(singleKey) : this.i18nStore?.t(countedKey, { count: n, total })) ?? '';
+    const said: string[] = [];
+    if (count > 0) said.push(sentence([counted, single], count));
+    if (uncertain > 0) said.push(sentence(UNCONFIRMED[write], uncertain));
+    // A Japanese or Chinese sentence ends in a full-width stop, with no space after it.
+    this.showFailure(said.reduce((text, next) => text + (text && !/[。！？]$/.test(text) ? ' ' : '') + next, ''));
   }
 
   private handleDelete() {
@@ -1352,7 +1394,7 @@ export class ContactsPage extends LitElement {
     const selection = this.selectedContacts;
     const pathsToDelete = this.gestureTargets;
     try {
-      const { total, done, failed, uncertain, deletedPaths = [] } = await contactsService.bulkDeleteContacts(pathsToDelete);
+      const { total, done, failed, uncertain = 0, deletedPaths = [] } = await contactsService.bulkDeleteContacts(pathsToDelete);
 
       // Only when something went, and the list is re-read. A delete that
       // removed nothing (offline, say) leaves every card there, and the
@@ -1391,7 +1433,7 @@ export class ContactsPage extends LitElement {
         }
       }
       if (failed > 0) {
-        this.reportRefusals('contacts.deleteFailed', 'contacts.deleteOneFailed', { count: failed, total });
+        this.reportRefusals('contacts.deleteFailed', 'contacts.deleteOneFailed', { count: failed - uncertain, total, uncertain }, 'delete');
       }
     } catch (e) {
       console.error('Error deleting contacts', e);
@@ -1443,12 +1485,12 @@ export class ContactsPage extends LitElement {
         return payload;
       }).filter(Boolean);
 
-      const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+      const { total, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
       this.contacts = [...this.contacts]; // Trigger re-render
       this.applyETags(etags);
       if (failed > 0) {
         this.fetchContacts();
-        this.reportRefusals('contacts.categoryUpdateFailed', 'contacts.categoryUpdateOneFailed', { count: failed, total });
+        this.reportRefusals('contacts.categoryUpdateFailed', 'contacts.categoryUpdateOneFailed', { count: failed - uncertain, total, uncertain });
       }
 
       if (this.selectedContact && this.selectedContacts.size <= 1 && this.selectedCategory !== '') {
@@ -1550,7 +1592,7 @@ export class ContactsPage extends LitElement {
           this.sidebarWidth = 250;
         } else {
           if (this.sidebarCollapsed) this.settingsStore?.updateSettings({ sidebarCollapsed: false });
-          this.sidebarWidth = Math.min(Math.max(newWidth, 150), 500);
+          this.sidebarWidth = Math.min(Math.max(newWidth, SIDEBAR_WIDTH_MIN), 500);
         }
       }}
           @drag-start=${() => this.isSidebarDragging = true}

@@ -5,6 +5,7 @@ import { customElement, property } from 'lit/decorators.js';
 import { modalButtonStyles } from './ui-modal';
 import './ui-modal';
 import './alps-button';
+import { motionStyles } from '../utils/motion';
 
 @customElement('ui-confirm')
 export class UIConfirm extends LitElement {
@@ -22,7 +23,7 @@ export class UIConfirm extends LitElement {
   @property({ type: Boolean }) isDanger: boolean = false;
   @property({ type: Boolean }) dismissible: boolean = false;
 
-  static styles = [modalButtonStyles];
+  static styles = [motionStyles, modalButtonStyles];
 
   private _handleCancel(e: Event) {
     e.stopPropagation();

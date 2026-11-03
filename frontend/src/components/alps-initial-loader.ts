@@ -1,12 +1,13 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import './alps-loader';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-initial-loader')
 export class AlpsInitialLoader extends LitElement {
   @property({ type: Boolean, reflect: true }) hidden = false;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       position: absolute;
       inset: 0;
@@ -23,7 +24,7 @@ export class AlpsInitialLoader extends LitElement {
       visibility: hidden;
       pointer-events: none;
     }
-  `;
+  `];
 
   render() {
     return html`<alps-loader></alps-loader>`;

@@ -118,7 +118,7 @@ export class SettingsAccounts extends LitElement {
             await this.linkedAccountsStore.removeAccount(username);
             window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t('linkedAccounts.removedSuccess') } }));
         } catch (err: any) {
-            window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: err.message || this.i18nStore?.t('linkedAccounts.removeError') } }));
+            window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: err.message || this.i18nStore?.t('linkedAccounts.removeError'), type: 'error' } }));
         }
     }
 

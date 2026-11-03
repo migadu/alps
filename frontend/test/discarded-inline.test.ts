@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cidReferencesOf, withoutCidReferences } from '../src/utils/html-sanitizer';
-import { discardedInlineAfterSave, reconcileSavedAttachments } from '../src/store/compose-store';
+import { discardedInlineAfterSave, keptAfterSave, postedAttachments, reconcileSavedAttachments } from '../src/store/compose-store';
 
 describe('inline resources discarded by a text save', () => {
   it('removes only the discarded URLs across supported resource and link attributes', () => {
@@ -46,6 +46,14 @@ describe('the identities of discarded inline parts', () => {
     });
   });
 
+  it.each(['text', 'html'] as const)('normalizes bracketed Content-IDs after a %s save', format => {
+    const sent = { ...saved, format, initialHtml: html, html: format === 'html' ? '<p>Edited</p>' : html,
+      attachments: [file, { ...image, contentId: '<image>' }] };
+    expect(discardedInlineAfterSave({ ...sent, html, discardedInlineIds: ['<earlier>'] }, sent)).toEqual({
+      html: '<img><a href="cid:file">Download report</a>', discardedInlineIds: ['earlier', 'image'],
+    });
+  });
+
   it('carries the stable Content-ID through draft part-path renumbering', () => {
     const mapped = reconcileSavedAttachments([image], [image], [{ name: 'chart.png', inline: true, partPath: '1.2', source: { partPath: '2' } }]);
     expect(mapped).toEqual([{ name: 'chart.png', inline: true, partPath: '1.2', contentId: 'image' }]);
@@ -66,5 +74,27 @@ describe('the identities of discarded inline parts', () => {
   it('does not guess CID identity from renumbered legacy paths after readback failure', () => {
     const legacy = { ...saved, draftUid: '9', draftMailbox: 'Drafts', attachments: [file, { ...image, partPath: '1.2', contentId: undefined }], quoteSource: { mailbox: 'INBOX', uid: '1', structure: { Children: [{ ID: '<file>' }] } } };
     expect(discardedInlineAfterSave(legacy, legacy)).toEqual({});
+  });
+});
+
+
+describe('inline resources an HTML save leaves out', () => {
+  const chart = { partPath: '2', inline: true, contentId: 'chart' };
+  const opened = '<p>On Monday, Ada wrote:</p><img src="cid:chart">';
+  const saved = { id: 'a', format: 'html' as const, initialHtml: opened, html: '<p>Agreed.</p>', attachments: [chart] };
+
+  it('are the ones the HTML stopped showing', () => {
+    expect(postedAttachments(saved)).toEqual([]);
+    expect(postedAttachments({ ...saved, html: `<p>Agreed.</p>${opened}` })).toEqual([chart]);
+    // Never shown by the message as it opened: carried as the body's.
+    expect(postedAttachments({ ...saved, initialHtml: '<p>On Monday, Ada wrote:</p>' })).toEqual([chart]);
+  });
+
+  it('leave the composer, and a quote brought back during the save', () => {
+    const latest = { ...saved, html: `<p>Agreed.</p>${opened}` };
+    expect(keptAfterSave([chart], saved)).toEqual([]);
+    expect(discardedInlineAfterSave(latest, saved)).toEqual({
+      html: '<p>Agreed.</p><p>On Monday, Ada wrote:</p><img>', discardedInlineIds: ['chart'],
+    });
   });
 });

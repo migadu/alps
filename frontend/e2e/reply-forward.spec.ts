@@ -751,6 +751,31 @@ test("a reply in plain text carries none of the quote's images, saved or sent", 
   expect(sent.data).not.toMatch(/chart\.png|chart@remote\.test/);
 });
 
+// Deleted with its quote, a reply's images went out all the same: images
+// nobody saw, which the recipient's mail lists as attachments.
+test("a reply whose quote is deleted sends none of its images", async ({ page }) => {
+  const subject = `Figures left out ${Date.now()}`;
+  await deliver({ subject, raw: htmlMail(subject) });
+  await login(page);
+  await openHtmlMessage(page, subject);
+  await replyButton(page).click();
+  await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+  await expect.poll(async () => (await frameLayout(quoteFrame(page))).cells).toEqual(["cell A", "cell B"]);
+
+  const editor = composer(page).locator(".ProseMirror");
+  await editor.locator("p").first().click();
+  await editor.pressSequentially("No figures needed.");
+  // A click selects the quote whole, as its frame takes no pointer events.
+  await composer(page).locator(".quoted-message").click();
+  await editor.press("Delete");
+  await expect(composer(page).locator(".quoted-message")).toHaveCount(0);
+  await sendNow(page);
+
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  expect(sent.data).toContain("No figures needed.");
+  expect(sent.data).not.toMatch(/chart\.png|chart@remote\.test/);
+});
+
 /** Each part's Content-Type, Content-Disposition and Content-ID line, in order. */
 const mimeOutline = (data: string) =>
   data.split(/\r?\n/).filter((line) => /^(Content-Type|Content-Disposition|Content-ID):/i.test(line)).map((line) => line.trim());

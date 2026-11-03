@@ -261,7 +261,8 @@ function onPreloadError(event: Event): void {
   reloadMissingPageWhenIdle();
 }
 
-/** Recheck a deferred chunk reload when the last composer closes. */
+/** Recheck a deferred chunk reload once nothing holds it back: the last
+ * composer closes, or the user moves on from a page. */
 export function reloadMissingPageWhenIdle(): void {
   if (!missingPagePending || busy() || within(CHUNK_RELOAD_KEY, CHUNK_RELOAD_COOLDOWN_MS)) return;
   writeSession(CHUNK_RELOAD_KEY, Date.now());

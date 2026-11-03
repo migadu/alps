@@ -1,11 +1,12 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-toolbar')
 export class AlpsToolbar extends LitElement {
   @property({ type: Boolean, reflect: true }) scrolled = false;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: flex;
       align-items: center;
@@ -21,7 +22,7 @@ export class AlpsToolbar extends LitElement {
     :host([scrolled]) {
       box-shadow: rgba(95, 95, 95, 0.1) 0 4px 4px -2px;
     }
-  `;
+  `];
 
   render() {
     return html`<slot></slot>`;

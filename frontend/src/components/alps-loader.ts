@@ -1,13 +1,14 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-loader')
 export class AlpsLoader extends LitElement {
   @property({ type: String }) text = '';
   @property({ type: Boolean, attribute: 'full-height' }) fullHeight = false;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: inline-flex;
       align-items: center;
@@ -36,7 +37,7 @@ export class AlpsLoader extends LitElement {
     @keyframes spin {
       100% { transform: rotate(360deg); }
     }
-  `;
+  `];
 
   render() {
     return html`

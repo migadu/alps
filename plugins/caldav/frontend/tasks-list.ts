@@ -101,6 +101,12 @@ export class TasksList extends LitElement {
         .row.focused {
             background: var(--bg-tertiary, #f3f4f6);
         }
+        /* The keyboard cursor, drawn as the mail list draws its own: an
+           outline, which forced colors keep where they repaint the background. */
+        .scroll:focus-within .row.focused {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
+        }
         .check {
             flex-shrink: 0;
             display: flex;
@@ -155,10 +161,14 @@ export class TasksList extends LitElement {
             font-size: 12px;
             color: var(--text-secondary, #4b5563);
         }
+        /* Which list a task is in: its colour is the only mark of it in the
+           row. Drawn by its background alone, which forced colors repaint as
+           the page: kept. */
         .dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
+            forced-color-adjust: none;
         }
         .due.overdue {
             color: var(--error, #ef4444);

@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { motionStyles } from '../utils/motion';
 
 export interface AlpsToggleOption {
   value: string;
@@ -11,7 +12,7 @@ export class AlpsToggle extends LitElement {
   @property({ type: Array }) options: AlpsToggleOption[] = [];
   @property({ type: String }) value = '';
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: inline-flex;
       background-color: var(--bg-secondary, #f3f4f6);
@@ -47,7 +48,7 @@ export class AlpsToggle extends LitElement {
     :host([full-width]) button {
       flex: 1;
     }
-  `;
+  `];
 
   render() {
     return html`

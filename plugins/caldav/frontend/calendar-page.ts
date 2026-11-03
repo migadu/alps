@@ -6,7 +6,7 @@ import { settingsContext, SettingsStore } from '../../../frontend/src/store/sett
 import { calendarService, taskTellsSomeone, tellsSomeone, getCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
 import { tasksService, type TaskData } from './tasks-service';
 import type { CalendarData, EventData } from './calendar-service';
-import { closeSidebarPeek, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
+import { closeSidebarPeek, SIDEBAR_WIDTH_MIN, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar-strip';
 import { sectionHeadingStyles } from '../../../frontend/src/components/alps-sidebar-heading';
@@ -35,11 +35,11 @@ import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
+import { motionStyles } from '../../../frontend/src/utils/motion';
 
 type ViewMode = 'day' | 'week' | 'month' | 'year';
 
 const SIDEBAR_WIDTH_DEFAULT = 250;
-const SIDEBAR_WIDTH_MIN = 150;
 const SIDEBAR_WIDTH_MAX = 500;
 
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;
@@ -83,6 +83,8 @@ export class CalendarPage extends LitElement {
     @state() initialDate?: Date;
     @state() initialAllDay?: boolean;
     @state() private activeCalendars: Set<string> = new Set();
+    /** The paths of the calendars the last read listed: see fetchData. */
+    private knownCalendarPaths = new Set<string>();
     @state() private showTasks = readShowTasks();
     @state() private taskModalOpen = false;
     @state() private editingTask?: TaskData;
@@ -115,6 +117,7 @@ export class CalendarPage extends LitElement {
     @state() private isSidebarDragging = false;
 
     static styles = [
+        motionStyles,
         sidebarLayoutStyles,
         sectionHeadingStyles,
         popupStyles,
@@ -200,7 +203,11 @@ export class CalendarPage extends LitElement {
             white-space: nowrap;
         }
 
+        /* Drawn in the calendar's colour, the legend for its events.
+           Forced colors would paint the box and its fill in system colours
+           and lose the colour: kept. The check says whether it is on. */
         .calendar-checkbox {
+            forced-color-adjust: none;
             width: 16px;
             height: 16px;
             border-radius: 4px;
@@ -450,7 +457,7 @@ export class CalendarPage extends LitElement {
      * showing the state the user had asked for. */
     private reportFailure(key: string) {
         window.dispatchEvent(new CustomEvent('show-toast', {
-            detail: { message: this.i18nStore?.t(key), duration: 5000 }
+            detail: { message: this.i18nStore?.t(key), type: 'error', duration: 5000 }
         }));
     }
 
@@ -671,19 +678,25 @@ export class CalendarPage extends LitElement {
                 color: ev.color || getCalendarColor(ev.calendarPath || ev.path)
             }));
 
-            const listedNone = this.calendars.length === 0;
             this.calendars = calRes.calendars.filter(holdsEvents).map((c: any) => ({
                 ...c,
                 color: c.color || getCalendarColor(c.path)
             }));
 
-            // Every calendar is checked when the page lists its first ones: on
-            // the first read, or after every calendar was deleted. Not whenever
-            // none is checked, which is also what a user who unchecked every
-            // calendar leaves behind: the next read checked them all again.
-            if (listedNone && this.calendars.length > 0) {
-                this.activeCalendars = new Set(this.calendars.map(c => c.path));
-            }
+            // A calendar is checked on the first read that lists it: every one
+            // on the page's first read, then each one added since, by the user
+            // here, in another client, or shared by another account. Only the
+            // page's first ones used to be, so the events of a calendar that
+            // appeared later stayed hidden until the user found its box. A
+            // calendar listed before keeps the box the user left it with, even
+            // with every box unchecked. One no longer listed is forgotten, and
+            // comes back checked.
+            const listed = new Set(this.calendars.map(c => c.path));
+            this.activeCalendars = new Set([
+                ...[...this.activeCalendars].filter(path => listed.has(path)),
+                ...[...listed].filter(path => !this.knownCalendarPaths.has(path)),
+            ]);
+            this.knownCalendarPaths = listed;
         } catch (e) {
             console.error(e);
             // Said, not stored: `error` was written here and rendered nowhere, so a
@@ -959,11 +972,8 @@ export class CalendarPage extends LitElement {
         if (!name) return;
         try {
             if (this.promptMode === 'add') {
-                const created = await calendarService.createCalendar(name);
-                // Checked, so that the events the user adds to it show: the read
-                // that follows lists it beside the others and checks nothing
-                // new. A calendar made in another client still comes unchecked.
-                if (created?.path) this.activeCalendars = new Set([...this.activeCalendars, created.path]);
+                // Checked by the read that follows, the first to list it.
+                await calendarService.createCalendar(name);
             } else if (this.promptMode === 'rename' && this.promptTarget) {
                 await calendarService.renameCalendar(this.promptTarget.path, name);
             }

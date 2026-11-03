@@ -42,12 +42,15 @@ export class CalendarEventPreview extends LitElement {
             align-items: flex-start;
         }
 
+        /* The event's calendar, by its colour. Drawn by its background
+           alone, which forced colors repaint as the page: kept. */
         .color-dot {
             width: 12px;
             height: 12px;
             border-radius: 50%;
             margin-top: 5px;
             flex-shrink: 0;
+            forced-color-adjust: none;
         }
 
         .title {

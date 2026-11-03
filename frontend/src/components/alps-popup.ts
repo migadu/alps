@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { consumesSpaceAsText, isMultilineTextEntry } from '../utils/active-element';
+import { motionStyles } from '../utils/motion';
 
 export const popupStyles = css`
   .dropdown-header {
@@ -98,7 +99,7 @@ export class AlpsPopup extends LitElement {
   @property({ type: String, reflect: true }) triggerOn: 'click' | 'hover' = 'click';
   @property({ type: Boolean, reflect: true, attribute: 'open' }) openState = false;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: inline-block;
       position: relative;
@@ -238,7 +239,7 @@ export class AlpsPopup extends LitElement {
       border-color: transparent var(--bg-primary, #ffffff) transparent transparent;
     }
 
-  `;
+  `];
 
   public open() {
     this.openState = true;

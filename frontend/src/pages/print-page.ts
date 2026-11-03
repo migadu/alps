@@ -13,6 +13,7 @@ import { sanitizeMessageHTML } from '../utils/html-sanitizer';
 import { isolatedCaption, isolatedEmail, isolatedMailboxes } from '../utils/bidi';
 import '../components/alps-banner';
 import '../components/alps-button';
+import { motionStyles } from '../utils/motion';
 
 @customElement('print-page')
 export class PrintPage extends LitElement {
@@ -34,7 +35,7 @@ export class PrintPage extends LitElement {
   @state() private allowRemoteResources = false;
   private printTriggered = false;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     :host {
       display: block;
       min-height: 100vh;
@@ -125,7 +126,7 @@ export class PrintPage extends LitElement {
       .print-container { padding: 0; max-width: none; }
       alps-banner { display: none !important; }
     }
-  `;
+  `];
 
   connectedCallback() {
     super.connectedCallback();

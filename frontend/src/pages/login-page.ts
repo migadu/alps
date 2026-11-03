@@ -11,13 +11,14 @@ import '../components/alps-input';
 import '../components/alps-button';
 import '../components/alps-loader';
 import '../components/alps-icon-btn';
+import { motionStyles } from '../utils/motion';
 
 @customElement('login-page')
 export class LoginPage extends LitElement {
   @consume({ context: i18nContext })
   i18nStore!: I18nStore;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     .form-group {
       margin-bottom: 16px;
       position: relative;
@@ -62,9 +63,12 @@ export class LoginPage extends LitElement {
       text-align: right;
     }
 
+    /* The transparent outline paints nothing here; forced colors, which drop
+       the border colour and the shadow, give it a system colour. */
     .native-input:focus {
       border-color: var(--accent-color, #005A9E);
       box-shadow: 0 0 0 2px rgba(0, 90, 158, 0.2);
+      outline: 2px solid transparent;
     }
 
     .native-input::placeholder {
@@ -176,6 +180,11 @@ export class LoginPage extends LitElement {
       outline: none;
     }
 
+    .submit-btn:focus-visible {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: 2px;
+    }
+
     .submit-btn:hover:not(:disabled) {
       background-color: var(--accent-fill-hover, #2563eb);
     }
@@ -201,7 +210,7 @@ export class LoginPage extends LitElement {
       height: 100%;
       fill: currentColor;
     }
-  `;
+  `];
 
   @state() private notice: LoginNotice | null = null;
   @state() private username = '';
@@ -350,7 +359,12 @@ export class LoginPage extends LitElement {
       } else {
         // Check if this is a rate limiting error (HTTP 429)
         if (response.status === 429) {
-          this.error = data.error || this.i18nStore?.t('login.tooManyAttempts');
+          // The server's reason is English. The global limit refuses
+          // everyone at once, so it is the service being busy, not too many
+          // attempts from this user.
+          this.error = data.code === 'server_busy'
+            ? this.i18nStore?.t('login.serviceUnavailable')
+            : this.i18nStore?.t('login.tooManyAttempts');
           // A 429 without a parsable `retry_after` is still a 429. Falling
           // through to the generic branch showed "login failed", which reads as
           // "wrong password" and invites the retry the server just refused.
@@ -364,8 +378,24 @@ export class LoginPage extends LitElement {
           // to retype one that works.
           this.error = this.i18nStore?.t('login.tooManyConnections');
           this.isRateLimited = false;
+        } else if (response.status >= 500) {
+          // The server could not answer, or a proxy before it could not
+          // reach it. The password was never looked at: the server's own
+          // English words, or for a proxy's HTML page "check your
+          // credentials", sent the user to retype one that may well be
+          // right. A wait the answer names holds Sign in as the throttle's
+          // does.
+          this.error = this.i18nStore?.t('login.serviceUnavailable');
+          const retryAfter = Number(response.headers.get('Retry-After'));
+          if (retryAfter > 0) {
+            this.startRetryCountdown(retryAfter);
+          } else {
+            this.isRateLimited = false;
+          }
         } else {
-          this.error = data.error || this.i18nStore?.t('login.loginFailed');
+          // Not the server's "Failed to login": that is English whatever
+          // language the page is in.
+          this.error = this.i18nStore?.t('login.loginFailed');
           this.isRateLimited = false;
         }
         this.isSubmitting = false;

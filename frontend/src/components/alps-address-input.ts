@@ -7,6 +7,7 @@ import { addressText, addressWarning, displayAddress, mixedScriptStyles, parseWr
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registry } from '../plugin-registry';
 import { popupStyles } from './alps-popup.js';
+import { motionStyles } from '../utils/motion';
 
 @customElement('alps-address-input')
 export class AlpsAddressInput extends LitElement {
@@ -267,6 +268,7 @@ export class AlpsAddressInput extends LitElement {
   }
 
   static styles = [
+    motionStyles,
     popupStyles,
     mixedScriptStyles,
     css`

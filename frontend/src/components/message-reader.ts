@@ -36,6 +36,7 @@ import { applyThemeToIframe as sharedApplyTheme, setupIframeSizing as sharedSetu
 import { renderLinkedText } from '../utils/linkify';
 import { interceptMailtoClicks, openMailtoFromClick } from '../utils/mailto';
 import './alps-thread-card';
+import { motionStyles, scrollOptions } from '../utils/motion';
 
 
 interface ThreadMessageItem {
@@ -671,6 +672,7 @@ export class MessageReader extends LitElement {
   };
 
   static styles = [
+    motionStyles,
     popupStyles,
     css`
     :host {
@@ -682,6 +684,18 @@ export class MessageReader extends LitElement {
     .tags-popup .dropdown-item.active svg {
       margin-inline-start: auto;
       color: var(--text-secondary, #9ca3af);
+    }
+
+    /* A tag's colour, as its pill in the list wears it. Drawn by its
+       background alone, which forced colors repaint as the page: kept. */
+    .tag-dot {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-inline-end: 12px;
+      opacity: 0.9;
+      forced-color-adjust: none;
     }
 
     .toolbar {
@@ -1105,7 +1119,7 @@ export class MessageReader extends LitElement {
       const item = this.threadItems.find(entry => this.itemKey(entry) === key);
       const el = item ? this.shadowRoot?.getElementById(this.cardId(item)) : null;
       if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        el.scrollIntoView(scrollOptions({ behavior: 'smooth', block: 'start' }));
       }
     }, 50);
   }
@@ -1394,7 +1408,7 @@ export class MessageReader extends LitElement {
       this.readRefusalSaid = true;
     }
     window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: { message: this.i18nStore?.t('toast.flagChangeFailed') || 'Could not update the messages', duration: 4000 },
+      detail: { message: this.i18nStore?.t('toast.flagChangeFailed') || 'Could not update the messages', type: 'error', duration: 4000 },
     }));
   }
 
@@ -2495,7 +2509,7 @@ export class MessageReader extends LitElement {
    */
   private _sayBodyUnread() {
     window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: { message: this.i18nStore?.t('messageReader.loadError') },
+      detail: { message: this.i18nStore?.t('messageReader.loadError'), type: 'error' },
     }));
   }
 
@@ -2561,7 +2575,7 @@ export class MessageReader extends LitElement {
           || (card && !this.threadItems.some(item => this.itemKey(item) === key))) return;
       if (read === null) {
         window.dispatchEvent(new CustomEvent('show-toast', {
-          detail: { message: this.i18nStore?.t('messageReader.loadError') },
+          detail: { message: this.i18nStore?.t('messageReader.loadError'), type: 'error' },
         }));
         return;
       }
@@ -2830,7 +2844,7 @@ export class MessageReader extends LitElement {
 
       return html`
               <button class="dropdown-item ${isActive ? 'active' : ''}" @click=${() => this._handleTag(tag)}>
-                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${getTagColor(tag)};margin-inline-end:12px;opacity:0.9;"></span>
+                <span class="tag-dot" style="background: ${getTagColor(tag)}"></span>
                 <span class="item-text">${getTagName(tag, this.i18nStore)}</span>
               </button>
             `;
@@ -2839,7 +2853,7 @@ export class MessageReader extends LitElement {
             <div class="dropdown-divider"></div>
             ${otherTags.map(tag => html`
               <button class="dropdown-item active" title=${this.i18nStore?.t('messageReader.removeTag')} @click=${() => this._handleTag(tag)}>
-                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${getTagColor(tag)};margin-inline-end:12px;opacity:0.9;"></span>
+                <span class="tag-dot" style="background: ${getTagColor(tag)}"></span>
                 <span class="item-text">${getTagName(tag, this.i18nStore)}</span>
                 ${renderIcon('x')}
               </button>

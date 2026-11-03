@@ -28,6 +28,16 @@ export default {
       other: '{total} में से {count} संपर्क अपडेट नहीं हो सके।'
     },
     starOneFailed: 'संपर्क अपडेट नहीं हो सका।',
+    deleteUnconfirmed: {
+      one: '{total} में से {count} संपर्क के हटाए जाने की पुष्टि नहीं हो सकी। फिर कोशिश करने से पहले सूची रीफ़्रेश करें।',
+      other: '{total} में से {count} संपर्कों के हटाए जाने की पुष्टि नहीं हो सकी। फिर कोशिश करने से पहले सूची रीफ़्रेश करें।'
+    },
+    deleteOneUnconfirmed: 'संपर्क के हटाए जाने की पुष्टि नहीं हो सकी। फिर कोशिश करने से पहले सूची रीफ़्रेश करें।',
+    updateUnconfirmed: {
+      one: '{total} में से {count} संपर्क के अपडेट होने की पुष्टि नहीं हो सकी। फिर कोशिश करने से पहले सूची रीफ़्रेश करें।',
+      other: '{total} में से {count} संपर्कों के अपडेट होने की पुष्टि नहीं हो सकी। फिर कोशिश करने से पहले सूची रीफ़्रेश करें।'
+    },
+    updateOneUnconfirmed: 'संपर्क के अपडेट होने की पुष्टि नहीं हो सकी। फिर कोशिश करने से पहले सूची रीफ़्रेश करें।',
     unnamedContact: 'बिना नाम का संपर्क',
     title: 'संपर्क',
     allContacts: 'सभी संपर्क',
@@ -73,6 +83,13 @@ export default {
     email: 'ईमेल',
     phone: 'फ़ोन',
     address: 'पता',
+    addressStreet: 'सड़क',
+    addressExtended: 'अपार्टमेंट या सुइट',
+    addressPoBox: 'पोस्ट बॉक्स',
+    addressCity: 'शहर',
+    addressRegion: 'राज्य या क्षेत्र',
+    addressPostcode: 'पिन कोड',
+    addressCountry: 'देश',
     url: 'URL',
     birthday: 'जन्मदिन',
     birthdayDay: 'दिन',

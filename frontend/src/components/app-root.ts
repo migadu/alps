@@ -2,6 +2,7 @@ import { html, css, LitElement, nothing } from 'lit';
 import { renderIcon } from '../utils/ui';
 import { customElement, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
+import { keyed } from 'lit/directives/keyed.js';
 import { Router } from '../router';
 import { loadComponent, PLUGIN_LOAD_FAILED_EVENT, registry, resetComponentLoadFailures } from '../plugin-registry';
 import './alps-page-load-error';
@@ -36,6 +37,8 @@ import { applyUpdate, registerBusyProbe, reloadForMissingPage, reloadMissingPage
 import { Logger } from '../utils/logger';
 import { isSettingsHash, settingsCategoryOf, settingsHash } from '../utils/routes';
 import { BACKGROUND_CHANGED_EVENT, ensurePageEntry, nextSettingsEntry, pageEntryId, settingsEntry, stampSettingsEntry, type SettingsEntry } from '../utils/settings-history';
+import { endBoot } from '../utils/boot-splash';
+import { anyEditKept } from '../utils/kept-edits';
 
 const DEFAULT_TOAST_TIMEOUT_MS = 3000;
 /** Long enough to be read and acted on; the automatic paths catch a missed one. */
@@ -60,10 +63,16 @@ function routePath(hash: string): string {
 interface ToastItem {
   id: number;
   message: string;
+  /** 'error' for a toast that reports a failure; any other value, or none, is
+   * information. */
+  type?: string;
   actionLabel?: string;
   actionFn?: () => void;
   dismissFn?: () => void;
   timeout: number;
+  /** When it goes, for a toast that goes by itself: the same deadline
+   * wherever it is drawn (see `renderToasts`). */
+  expiresAt?: number;
   show: boolean;
 }
 
@@ -130,6 +139,21 @@ export class AppRoot extends LitElement {
       position: relative;
       z-index: 0;
       height: 100%;
+    }
+
+    /* Read out, never seen. Not display: none or visibility: hidden, either of
+       which takes the node out of the accessibility tree, where a live region
+       has to stay. */
+    .toast-announce {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+      border: 0;
     }
 
     .toast-stack {
@@ -203,9 +227,14 @@ export class AppRoot extends LitElement {
     window.addEventListener(PLUGIN_LOAD_FAILED_EVENT, this._handlePluginLoadFailed);
     window.addEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
     window.addEventListener(UPDATE_AVAILABLE_EVENT, this._handleUpdateAvailable);
-    // A reload waits while a composer is open. Asked of this element because
-    // the composers render inside its shadow root, out of a document query's reach.
-    registerBusyProbe(() => this.composeStore.getState().activeComposers.length > 0);
+    // A reload waits while a composer is open, and while a Settings form
+    // holds an edit its Save has not stored: in the open window, or kept for
+    // the form's next visit after the window went. Asked of this element
+    // because the composers and the window render inside its shadow root,
+    // out of a document query's reach.
+    registerBusyProbe(() => this.composeStore.getState().activeComposers.length > 0
+      || this.settingsUnsaved()
+      || anyEditKept());
 
     if (this.isOffline) {
       this._handleOfflineEvent();
@@ -215,6 +244,12 @@ export class AppRoot extends LitElement {
     if (isLoggedIn) {
       this._fetchSessionData();
     }
+  }
+
+  /** Whether the open Settings window has a section with unsaved changes. */
+  private settingsUnsaved(): boolean {
+    const settings = this.shadowRoot?.querySelector('settings-window') as { hasUnsavedChanges?: boolean } | null;
+    return settings?.hasUnsavedChanges === true;
   }
 
   private _handleOpenAttachmentPreview = (e: CustomEvent) => {
@@ -400,12 +435,14 @@ export class AppRoot extends LitElement {
       message: e.detail.message
         ?? (e.detail.i18nKey ? this.i18nStore?.t(e.detail.i18nKey) : undefined)
         ?? '',
+      type: e.detail.type,
       actionLabel: e.detail.actionLabel || '',
       actionFn: e.detail.actionFn,
       dismissFn: e.detail.dismissFn,
       timeout: e.detail.duration ?? DEFAULT_TOAST_TIMEOUT_MS,
       show: false,
     };
+    if (newToast.timeout > 0) newToast.expiresAt = Date.now() + newToast.timeout;
     
     this.toasts = [...this.toasts, newToast];
 
@@ -414,6 +451,34 @@ export class AppRoot extends LitElement {
       this.toasts = this.toasts.map(t => t.id === id ? { ...t, show: true } : t);
     });
   };
+
+  /**
+   * The newest toast on screen of each kind, as the live regions read it out.
+   * Derived on render, so the regions cannot drift from the stack. A toast
+   * that is leaving (`show` false) is not read again.
+   */
+  private get politeAnnouncement() {
+    return this.announcement(this.newestToast((type) => type !== 'error'));
+  }
+
+  private get assertiveAnnouncement() {
+    return this.announcement(this.newestToast((type) => type === 'error'));
+  }
+
+  private newestToast(matches: (type: string | undefined) => boolean): ToastItem | null {
+    for (let i = this.toasts.length - 1; i >= 0; i--) {
+      const toast = this.toasts[i];
+      if (toast.show && matches(toast.type)) return toast;
+    }
+    return null;
+  }
+
+  /** A toast's text, drawn anew for each toast: a second toast that says
+   * what the first said replaces the text rather than leaving it as it was,
+   * and so is read out again. */
+  private announcement(toast: ToastItem | null) {
+    return toast ? keyed(toast.id, html`${toast.message}`) : '';
+  }
 
   private _handleDismissToast(id: number) {
     this.toasts = this.toasts.map(t => t.id === id ? { ...t, show: false } : t);
@@ -447,7 +512,7 @@ export class AppRoot extends LitElement {
         actionFn: () => {
           if (!this.composeStore.persistNow()) {
             this._handleShowToast(new CustomEvent('show-toast', {
-              detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', duration: 6000 },
+              detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', type: 'error', duration: 6000 },
             }));
             return false;
           }
@@ -481,6 +546,7 @@ export class AppRoot extends LitElement {
     this._handleShowToast(new CustomEvent('show-toast', {
       detail: {
         i18nKey: 'general.pageLoadFailed',
+        type: 'error',
         actionLabel: this.i18nStore.t('general.backToMail'),
         actionFn: () => { window.location.hash = '#/mailbox/INBOX'; },
         // Stay until dismissed: the failed page contains no navigation of its own.
@@ -554,12 +620,13 @@ export class AppRoot extends LitElement {
     this._handleShowToast(new CustomEvent('show-toast', {
       detail: {
         message: `${this.i18nStore.t('composer.windowLoadFailed')} ${this.i18nStore.t('general.pageLoadFailedHint')}`,
+        type: 'error',
         actionLabel: this.i18nStore.t('update.reload'),
         actionFn: () => {
           // Kept open rather than reloaded over composers it could not write.
           if (!this.composeStore.persistNow()) {
             this._handleShowToast(new CustomEvent('show-toast', {
-              detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', duration: 6000 },
+              detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', type: 'error', duration: 6000 },
             }));
             return false;
           }
@@ -680,10 +747,36 @@ export class AppRoot extends LitElement {
         this.loadFailurePath = path;
         resetComponentLoadFailures();
       }
+      this.endBootOnNavigation(event);
       this.trackSettingsEntry(event);
+      // A missing page's reload waits while something would be lost, and
+      // the last composer closing is not the only end of that: an unsaved
+      // Filters or Auto-reply edit is saved or let go in Settings, and the
+      // user then moves on.
+      if (event) reloadMissingPageWhenIdle();
       this.requestUpdate();
     }
   );
+
+  /**
+   * Ends the boot on a move from one page of the signed-in app to another, so
+   * the page it lands on draws no splash (`utils/boot-splash`). Here rather
+   * than in each page, because a page that never ended it was the defect: a
+   * session loaded on the calendar booted until the first tab click, and that
+   * click drew the mailbox's splash.
+   *
+   * Every `hashchange` counts, a folder or a message opened on the boot page
+   * included: what is on screen keeps its own splash, and only pages drawn
+   * from now on ask. Not the first route, which is the boot itself, and not a
+   * move to or from the login screens: the page a sign-in lands on is the boot
+   * of the signed-in app, and its splash is the one the sign-in waits behind.
+   */
+  private endBootOnNavigation(event?: HashChangeEvent) {
+    if (!event?.oldURL) return;
+    const signingIn = (hash: string) => routePath(hash).startsWith('/login');
+    if (signingIn(new URL(event.oldURL).hash) || signingIn(window.location.hash)) return;
+    endBoot();
+  }
 
   /**
    * The page beneath the Settings window: the one its history entry says it
@@ -804,6 +897,44 @@ export class AppRoot extends LitElement {
     `;
   }
 
+  /**
+   * The toasts, in the shell, or inside the attachment preview while it is
+   * open (`slot`): the preview is a modal dialog, drawn above everything else
+   * in the page, with the rest inert. Left in the shell, a toast raised over
+   * it, the undo of a send among them, was hidden behind it and its button
+   * could not be pressed. A move makes new elements, which keep each toast's
+   * deadline (`expiresAt`) rather than starting its wait again.
+   */
+  private renderToasts(slot?: string) {
+    // Toasts are read out from the two regions, not from the toasts: a live
+    // region has to be in the page before its text changes, and a toast is
+    // created with its text; and its text sits in its own shadow root, where
+    // screen readers follow a live region less reliably. A failure
+    // interrupts, anything else waits its turn. They go where the toasts go:
+    // outside the route view, which is inert while Settings is open over it,
+    // and inside the attachment preview's dialog while it is open, the one
+    // part of the page a modal dialog leaves live. A region drawn anew with
+    // the text it already had says nothing again.
+    return html`
+      <div class="toast-announce" role="status" aria-live="polite" slot=${slot ?? nothing}>${this.politeAnnouncement}</div>
+      <div class="toast-announce" role="alert" aria-live="assertive" slot=${slot ?? nothing}>${this.assertiveAnnouncement}</div>
+      <div class="toast-stack" slot=${slot ?? nothing}>
+        ${repeat(this.toasts, toast => toast.id, toast => html`
+          <alps-toast
+            .show=${toast.show}
+            .message=${toast.message}
+            .actionLabel=${toast.actionLabel}
+            .onAction=${toast.actionFn}
+            .onDismiss=${toast.dismissFn}
+            .timeout=${toast.timeout}
+            .expiresAt=${toast.expiresAt}
+            @dismiss=${() => this._handleDismissToast(toast.id)}
+          ></alps-toast>
+        `)}
+      </div>
+    `;
+  }
+
   render() {
     const totalOpen = this.activeComposers.filter(c => !c.minimized).length;
     const totalMinimized = this.activeComposers.filter(c => c.minimized).length;
@@ -842,19 +973,7 @@ export class AppRoot extends LitElement {
         `;
       })}
       
-      <div class="toast-stack">
-        ${this.toasts.map(toast => html`
-          <alps-toast
-            .show=${toast.show}
-            .message=${toast.message}
-            .actionLabel=${toast.actionLabel}
-            .onAction=${toast.actionFn}
-            .onDismiss=${toast.dismissFn}
-            .timeout=${toast.timeout}
-            @dismiss=${() => this._handleDismissToast(toast.id)}
-          ></alps-toast>
-        `)}
-      </div>
+      ${this.attachmentPreview ? '' : this.renderToasts()}
 
       ${this.attachmentPreview ? html`
         <alps-attachment-preview
@@ -863,7 +982,7 @@ export class AppRoot extends LitElement {
           .messageUid=${this.attachmentPreview.messageUid}
           .activeIndex=${this.attachmentPreview.index}
           @close=${() => { this.attachmentPreview = null; }}
-        ></alps-attachment-preview>
+        >${this.renderToasts('notifications')}</alps-attachment-preview>
       ` : ''}
 
       ${this.isOffline ? html`

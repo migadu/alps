@@ -28,6 +28,16 @@ export default {
       other: '{count} af {total} kontakter kunne ikke opdateres.'
     },
     starOneFailed: 'Kontakten kunne ikke opdateres.',
+    deleteUnconfirmed: {
+      one: 'Det kunne ikke bekræftes, at {count} af {total} kontakter blev slettet. Opdater listen, før du prøver igen.',
+      other: 'Det kunne ikke bekræftes, at {count} af {total} kontakter blev slettet. Opdater listen, før du prøver igen.'
+    },
+    deleteOneUnconfirmed: 'Det kunne ikke bekræftes, at kontakten blev slettet. Opdater listen, før du prøver igen.',
+    updateUnconfirmed: {
+      one: 'Det kunne ikke bekræftes, at {count} af {total} kontakter blev opdateret. Opdater listen, før du prøver igen.',
+      other: 'Det kunne ikke bekræftes, at {count} af {total} kontakter blev opdateret. Opdater listen, før du prøver igen.'
+    },
+    updateOneUnconfirmed: 'Det kunne ikke bekræftes, at kontakten blev opdateret. Opdater listen, før du prøver igen.',
     unnamedContact: 'Unavngiven kontakt',
     title: 'Kontakter',
     allContacts: 'Alle kontakter',
@@ -73,6 +83,13 @@ export default {
     email: 'E-mail',
     phone: 'Telefon',
     address: 'Adresse',
+    addressStreet: 'Gade',
+    addressExtended: 'Lejlighed eller etage',
+    addressPoBox: 'Postboks',
+    addressCity: 'By',
+    addressRegion: 'Region',
+    addressPostcode: 'Postnummer',
+    addressCountry: 'Land',
     url: 'URL',
     birthday: 'Fødselsdag',
     birthdayDay: 'Dag',

@@ -22,6 +22,7 @@ import './alps-banner';
 import './ui-confirm';
 import './alps-loader';
 import { repeat } from 'lit/directives/repeat.js';
+import { motionStyles, scrollOptions } from '../utils/motion';
 
 /** The filter bar's own toggles, which narrow a FOLDER rather than search it. */
 const FILTER_TOGGLES = new Set(['is:starred', 'is:unread']);
@@ -115,6 +116,9 @@ export class MessageList extends LitElement {
   @state() private isSpinning = false;
   @state() private isScrolled = false;
   @state() private isAtBottom = false;
+  /** How far the rows were scrolled, for when the list is put back in the
+   * document (see connectedCallback). */
+  private scrolledTo = 0;
   @state() private focusedIndex = -1;
   @state() private showEmptyConfirm = false;
   /**
@@ -174,7 +178,7 @@ export class MessageList extends LitElement {
   // The row of the first message that check found, to be scrolled to once drawn.
   private _arrivedIndex = -1;
 
-  static styles = [mixedScriptStyles, css`
+  static styles = [motionStyles, mixedScriptStyles, css`
     :host {
       display: flex;
       flex-direction: column;
@@ -1082,6 +1086,12 @@ export class MessageList extends LitElement {
     this.updateComplete.then(() => {
       if (!this.isConnected) return;
       this.i18nStore?.addEventListener('change', this._handleStoreChange);
+      // The mailbox page is kept while another tab shows, out of the
+      // document, and an element out of the document loses its scroll
+      // offset: coming back from Calendar put the rows back at the top. They
+      // go back to where the user left them.
+      const rows = this.renderRoot.querySelector<HTMLElement>('.list-content');
+      if (rows && this.scrolledTo > 0) rows.scrollTop = this.scrolledTo;
     });
   }
 
@@ -1226,6 +1236,7 @@ export class MessageList extends LitElement {
   }
 
   private handleScroll = (e: Event) => {
+    this.scrolledTo = (e.target as HTMLElement).scrollTop;
     this.checkScrollState(e.target as HTMLElement);
   };
 
@@ -1253,7 +1264,7 @@ export class MessageList extends LitElement {
         const listContent = this.renderRoot.querySelector('.list-content');
         const activeItem = listContent?.querySelector('.message-item.active');
         if (activeItem) {
-          activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          activeItem.scrollIntoView(scrollOptions({ behavior: 'smooth', block: 'center' }));
         }
       }, 50);
     }

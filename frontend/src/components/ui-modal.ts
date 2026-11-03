@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { motionStyles } from '../utils/motion';
 
 export const modalButtonStyles = css`
   .btn-cancel {
@@ -56,7 +57,7 @@ export class UIModal extends LitElement {
   /** A header of the caller's own fills the header slot, in the heading's place. */
   @state() private ownHeader = false;
 
-  static styles = css`
+  static styles = [motionStyles, css`
     .modal-dialog {
       position: fixed;
       inset: 0;
@@ -108,7 +109,7 @@ export class UIModal extends LitElement {
       gap: 8px;
       align-items: center;
     }
-  `;
+  `];
 
   firstUpdated() {
     const dialog = this.shadowRoot?.querySelector('.modal-dialog') as HTMLDialogElement | null;

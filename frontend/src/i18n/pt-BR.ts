@@ -30,7 +30,7 @@ export const ptBR = {
       checkMailInterval: 'Intervalo de verificação de e-mails',
       checkMailIntervalDesc: 'Com que frequência verificar automaticamente se há novos e-mails.',
       autoLogout: 'Encerramento automático',
-      autoLogoutDesc: 'Sair automaticamente após um período de inatividade.',
+      autoLogoutDesc: 'Encerra sua sessão após o tempo escolhido sem atividade em nenhuma aba aberta. Isso também vale se você escolheu continuar conectado após fechar o navegador. Mesmo com "Nunca", você precisará entrar novamente de tempos em tempos.',
       desktopNotifications: 'Ativar notificações na área de trabalho',
       soundNotifications: 'Tocar som para novas mensagens',
       everyMinute: 'A cada minuto',
@@ -203,6 +203,7 @@ export const ptBR = {
     signIn: 'Entrar',
     tooManyAttempts: 'Muitas tentativas de login',
     loginFailed: 'Não foi possível entrar. Verifique as suas credenciais.',
+    serviceUnavailable: 'O serviço não conseguiu fazer seu login agora. Tente novamente em instantes.',
     tooManyConnections: 'Há conexões demais abertas nesta conta. Feche outro aplicativo de e-mail ou saia da conta em outro navegador e tente novamente.',
     networkError: 'Ocorreu um erro de rede. Tente novamente.',
     pleaseWait: 'Aguarde um momento',
@@ -211,8 +212,8 @@ export const ptBR = {
     signedOutDraftsKept: 'Você saiu da sua conta. Alguns rascunhos não enviados não puderam ser salvos no servidor. Eles ficam neste dispositivo e serão reabertos quando você entrar novamente.',
     sessionExpired: 'A sua sessão expirou. Entre novamente.',
     secondFactorExpired: 'O tempo para entrar se esgotou antes de a chave de segurança ser verificada. Entre novamente.',
-    inactivitySignedOut: 'Você saiu da sua conta por inatividade.',
-    inactivitySignedOutDraftsKept: 'Você saiu da sua conta por inatividade. Alguns rascunhos não enviados não puderam ser salvos no servidor. Eles ficam neste dispositivo e serão reabertos quando você entrar novamente.'
+    inactivitySignedOut: 'Você foi desconectado após um período de inatividade. Você pode alterar ou desativar esse tempo em Configurações, na seção "Geral".',
+    inactivitySignedOutDraftsKept: 'Você foi desconectado após um período de inatividade. Alguns rascunhos não enviados não puderam ser salvos no servidor. Eles ficam neste dispositivo e serão reabertos quando você entrar novamente. Você pode alterar ou desativar esse tempo em Configurações, na seção "Geral".'
   },
   folderList: {
     compose: 'Escrever',
