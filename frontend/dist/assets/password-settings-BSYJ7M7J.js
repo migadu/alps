@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,h as r,m as i,v as a}from"./lit-CXIqsLEv.js";import{Tt as o,gt as s,ut as c}from"./index-DCA4klVP.js";var l=class extends r{constructor(...e){super(...e),this.passwordForm={old:``,new:``,confirm:``},this.isSubmitting=!1}static{this.styles=e`
+import{b as e,c as t,f as n,h as r,m as i,v as a}from"./lit-CXIqsLEv.js";import{Tt as o,gt as s,ut as c}from"./index-CL8ZE_NW.js";var l=class extends r{constructor(...e){super(...e),this.passwordForm={old:``,new:``,confirm:``},this.isSubmitting=!1}static{this.styles=e`
 		input[type="password"] {
 			width: 100%;
 			box-sizing: border-box;

@@ -128,3 +128,26 @@ test("a send's Undo, still counting down when the preview opens, takes the send 
   await composer.locator("ui-confirm").getByRole("button", { name: "Discard", exact: true }).click();
   await expect(composer).toHaveCount(0);
 });
+
+test("later notifications keep their own deadlines as earlier notifications disappear", async ({ page }) => {
+  await login(page);
+  await page.clock.install();
+  await page.evaluate(() => {
+    const state = window as unknown as { __lastToastDismissed: number };
+    state.__lastToastDismissed = 0;
+    for (const [message, duration] of [["First deadline", 1000], ["Second deadline", 4000], ["Third deadline", 8000]] as const) {
+      window.dispatchEvent(new CustomEvent("show-toast", {
+        detail: { message, duration, dismissFn: message === "Third deadline" ? () => { state.__lastToastDismissed++; } : undefined },
+      }));
+    }
+  });
+  await page.clock.runFor(1400);
+  await expect(toast(page, "First deadline")).toHaveCount(0);
+  await page.clock.runFor(3000);
+  await expect(toast(page, "Second deadline")).toHaveCount(0);
+  await expect(toast(page, "Third deadline")).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __lastToastDismissed: number }).__lastToastDismissed)).toBe(0);
+  await page.clock.runFor(4000);
+  await expect(toast(page, "Third deadline")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { __lastToastDismissed: number }).__lastToastDismissed)).toBe(1);
+});
