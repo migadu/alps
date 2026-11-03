@@ -1,3 +1,4 @@
+import { resolveHourFormat } from '../../../frontend/src/utils/ui';
 /**
  * Tasks: the VTODOs in the user's calendars, through the caldav plugin's
  * /calendar/tasks routes.
@@ -175,11 +176,11 @@ export function intlLocale(language?: string): string | undefined {
  * date otherwise, with the year only when it is not this one. An all-day task
  * never shows a time: it has none, and 00:00 would invent one.
  */
-export function formatDue(task: Pick<TaskData, 'due' | 'allDay'>, now: Date, todayLabel: string, locale?: string): string {
+export function formatDue(task: Pick<TaskData, 'due' | 'allDay'>, now: Date, todayLabel: string, locale?: string, hourFormat?: string): string {
     const due = dueOf(task);
     if (!due) return '';
     const sameDay = due.getFullYear() === now.getFullYear() && due.getMonth() === now.getMonth() && due.getDate() === now.getDate();
-    const time: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
+    const time: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: resolveHourFormat(hourFormat) === '12' };
     const date: Intl.DateTimeFormatOptions = {
         month: 'short',
         day: 'numeric',

@@ -1,3 +1,4 @@
+import { ModalPortal } from '../utils/modal-portal';
 import { html, css, LitElement, nothing } from 'lit';
 import { renderIcon } from '../utils/ui';
 import { customElement, state } from 'lit/decorators.js';
@@ -141,36 +142,12 @@ export class AppRoot extends LitElement {
       height: 100%;
     }
 
-    /* Read out, never seen. Not display: none or visibility: hidden, either of
-       which takes the node out of the accessibility tree, where a live region
-       has to stay. */
-    .toast-announce {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      margin: -1px;
-      padding: 0;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-      border: 0;
-    }
 
-    .toast-stack {
-      position: fixed;
-      bottom: 24px;
-      inset-inline-start: 24px;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      gap: 8px;
-      z-index: 50000;
-      pointer-events: none;
-    }
   `;
 
   constructor() {
     super();
+    new ModalPortal(this, () => this.renderToasts());
     // The router hears `hashchange` only while this shell is in the document:
     // Lit connects and disconnects it with the shell. The field initializers
     // have run by now, so the router exists.
@@ -897,30 +874,44 @@ export class AppRoot extends LitElement {
     `;
   }
 
-  /**
-   * The toasts, in the shell, or inside the attachment preview while it is
-   * open (`slot`): the preview is a modal dialog, drawn above everything else
-   * in the page, with the rest inert. Left in the shell, a toast raised over
-   * it, the undo of a send among them, was hidden behind it and its button
-   * could not be pressed. A move makes new elements, which keep each toast's
-   * deadline (`expiresAt`) rather than starting its wait again.
-   */
-  private renderToasts(slot?: string) {
-    // Toasts are read out from the two regions, not from the toasts: a live
-    // region has to be in the page before its text changes, and a toast is
-    // created with its text; and its text sits in its own shadow root, where
-    // screen readers follow a live region less reliably. A failure
-    // interrupts, anything else waits its turn. They go where the toasts go:
-    // outside the route view, which is inert while Settings is open over it,
-    // and inside the attachment preview's dialog while it is open, the one
-    // part of the page a modal dialog leaves live. A region drawn anew with
-    // the text it already had says nothing again.
+  /** One persistent notification tree follows the top modal without restarting deadlines. */
+  private renderToasts() {
+    // Persistent live regions accompany the actions inside the top modal's
+    // live subtree. Their styles travel too, across shadow-root boundaries.
     return html`
-      <div class="toast-announce" role="status" aria-live="polite" slot=${slot ?? nothing}>${this.politeAnnouncement}</div>
-      <div class="toast-announce" role="alert" aria-live="assertive" slot=${slot ?? nothing}>${this.assertiveAnnouncement}</div>
-      <div class="toast-stack" slot=${slot ?? nothing}>
+      <style>    /* Read out, never seen. Not display: none or visibility: hidden, either of
+       which takes the node out of the accessibility tree, where a live region
+       has to stay. */
+    .toast-announce {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .toast-stack {
+      position: fixed;
+      bottom: 24px;
+      inset-inline-start: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 8px;
+      z-index: 50000;
+      pointer-events: none;
+    }
+      </style>
+      <div class="toast-announce" role="status" aria-live="polite" >${this.politeAnnouncement}</div>
+      <div class="toast-announce" role="alert" aria-live="assertive" >${this.assertiveAnnouncement}</div>
+      <div class="toast-stack" >
         ${repeat(this.toasts, toast => toast.id, toast => html`
           <alps-toast
+            .i18nStore=${this.i18nStore}
             .show=${toast.show}
             .message=${toast.message}
             .actionLabel=${toast.actionLabel}
@@ -973,7 +964,6 @@ export class AppRoot extends LitElement {
         `;
       })}
       
-      ${this.attachmentPreview ? '' : this.renderToasts()}
 
       ${this.attachmentPreview ? html`
         <alps-attachment-preview
@@ -982,7 +972,7 @@ export class AppRoot extends LitElement {
           .messageUid=${this.attachmentPreview.messageUid}
           .activeIndex=${this.attachmentPreview.index}
           @close=${() => { this.attachmentPreview = null; }}
-        >${this.renderToasts('notifications')}</alps-attachment-preview>
+        ></alps-attachment-preview>
       ` : ''}
 
       ${this.isOffline ? html`

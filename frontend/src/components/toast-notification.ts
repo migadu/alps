@@ -22,10 +22,8 @@ export class AlpsToast extends LitElement {
   @property({ type: Object }) onDismiss?: () => void;
   @property({ type: Number }) timeout = 0;
   /**
-   * When the toast goes, as a time (`Date.now()`), if it was given one. The
-   * shell's toasts move into the attachment preview while it is open, and out
-   * again when it closes, each time as a new element: with `timeout` alone,
-   * every move started the full wait again.
+   * When the toast goes, as a time (`Date.now()`), if it was given one. A toast may
+   * reconnect when it moves into a modal dialog. Its deadline stays the same.
    */
   @property({ type: Number }) expiresAt?: number;
 
@@ -42,19 +40,23 @@ export class AlpsToast extends LitElement {
     }
   }
 
-  updated(changedProperties: Map<string, any>) {
-    if (changedProperties.has('show')) {
-      if (this.show && this.timeout > 0) {
-        if (this._timer) clearTimeout(this._timer);
-        const wait = this.expiresAt === undefined ? this.timeout : Math.max(0, this.expiresAt - Date.now());
-        this._timer = setTimeout(() => {
-          this.dismiss();
-        }, wait);
-      } else if (!this.show && this._timer) {
-        clearTimeout(this._timer);
-        this._timer = null;
-      }
+  connectedCallback() {
+    super.connectedCallback();
+    // Moving between dialogs reconnects this same toast. Keep its deadline.
+    if (this.hasUpdated) this.startTimer();
+  }
+
+  private startTimer() {
+    if (this._timer) clearTimeout(this._timer);
+    this._timer = null;
+    if (this.show && this.timeout > 0) {
+      const wait = this.expiresAt === undefined ? this.timeout : Math.max(0, this.expiresAt - Date.now());
+      this._timer = setTimeout(() => this.dismiss(), wait);
     }
+  }
+
+  updated(changedProperties: Map<string, any>) {
+    if (changedProperties.has('show')) this.startTimer();
   }
 
   // Genuine dismissal: X button or auto-timeout. Runs the dismiss handler

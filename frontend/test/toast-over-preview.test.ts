@@ -1,18 +1,5 @@
-/**
- * A toast raised while the attachment preview is open is drawn in it.
- *
- * The preview is a modal dialog: the browser draws it above everything else
- * in the page and makes the rest inert. The toasts were the shell's, under it,
- * so one raised over the preview, the undo of a send among them, was hidden
- * behind it and its button could not be pressed. While the preview is open the
- * shell now draws its toasts inside the dialog (a slot), and back in the shell
- * once it closes. Each move makes new toast elements, so a toast carries its
- * deadline (`expiresAt`), and one that moves keeps its remaining time rather
- * than waiting its whole timeout again.
- *
- * jsdom has no top layer and no hit testing; the e2e spec
- * (attachment-preview-toast.spec.ts) presses the button in a browser.
- */
+/** Notifications follow the top modal, retaining their identity and deadline.
+ * Native inertness and hit testing are exercised in the browser specs. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { messageSync } from '../src/services/message-sync';
 import { cleanup, mount } from './helpers/dom';
@@ -60,17 +47,12 @@ describe('the shell, while the attachment preview is open', () => {
 
     const preview = root.shadowRoot!.querySelector('alps-attachment-preview') as El;
     await preview.updateComplete;
-    const slot = preview.shadowRoot!.querySelector<HTMLSlotElement>('dialog slot[name="notifications"]')!;
-    expect(slot).not.toBeNull();
-    const assigned = slot.assignedElements();
-    // The live regions go with the toasts: outside the dialog they would be
-    // inert, and nothing raised over the preview would be read out.
-    expect(assigned.map((el) => el.className)).toEqual(['toast-announce', 'toast-announce', 'toast-stack']);
-    const stack = assigned[2];
-    expect(messages(stack)).toEqual(['Raised before', 'Raised during']);
-    // One stack and one pair of regions: none left in the shell beneath the dialog.
-    expect(root.shadowRoot!.querySelectorAll('.toast-stack')).toHaveLength(1);
-    expect(root.shadowRoot!.querySelectorAll('.toast-announce')).toHaveLength(2);
+    const dialog = preview.shadowRoot!.querySelector('dialog')!;
+    expect(messages(dialog)).toEqual(['Raised before', 'Raised during']);
+    expect(dialog.querySelectorAll('.toast-announce')).toHaveLength(2);
+    // There is no second stack or inert pair of live regions behind it.
+    expect(root.shadowRoot!.querySelectorAll('.toast-stack')).toHaveLength(0);
+    expect(root.shadowRoot!.querySelectorAll('.toast-announce')).toHaveLength(0);
 
     preview.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }));
     await root.updateComplete;
@@ -129,4 +111,35 @@ describe('independent toast deadlines', () => {
     expect(lastDismiss).not.toHaveBeenCalled();
     expect(messages(root.shadowRoot!)).toEqual(['Third']);
   });
+});
+
+it('moves the same toasts through nested menus and modals without extending their deadline', async () => {
+  history.replaceState(null, '', '#/nowhere');
+  vi.useFakeTimers();
+  const root = await mount<El>('app-root');
+  const dismissed = vi.fn();
+  toast('Deadline', { duration: 2000, dismissFn: dismissed });
+  await root.updateComplete;
+  const original = root.shadowRoot!.querySelector<El>('alps-toast')!;
+  const popup = document.createElement('alps-popup') as El;
+  root.shadowRoot!.append(popup);
+  await popup.updateComplete;
+  await vi.advanceTimersByTimeAsync(500);
+  popup.open();
+  await popup.updateComplete;
+  expect(popup.shadowRoot!.querySelector('dialog alps-toast')).toBe(original);
+  const modal = document.createElement('ui-modal') as El;
+  popup.append(modal);
+  await modal.updateComplete;
+  expect(modal.shadowRoot!.querySelector('dialog alps-toast')).toBe(original);
+  await vi.advanceTimersByTimeAsync(500);
+  modal.remove();
+  expect(popup.shadowRoot!.querySelector('dialog alps-toast')).toBe(original);
+  popup.close();
+  await popup.updateComplete;
+  expect(root.shadowRoot!.querySelector('alps-toast')).toBe(original);
+  await vi.advanceTimersByTimeAsync(999);
+  expect(dismissed).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(dismissed).toHaveBeenCalledOnce();
 });

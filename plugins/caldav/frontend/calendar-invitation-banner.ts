@@ -1,3 +1,4 @@
+import { TimeFormatController } from '../../../frontend/src/utils/time-format-controller';
 import { LitElement, html, css, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
@@ -54,6 +55,8 @@ const STATE_KEYS: Record<string, string> = {
  */
 @customElement('calendar-invitation-banner')
 export class CalendarInvitationBanner extends LitElement {
+    private clock = new TimeFormatController(this);
+
     @consume({ context: i18nContext })
     i18nStore!: I18nStore;
 
@@ -259,7 +262,7 @@ export class CalendarInvitationBanner extends LitElement {
         const dateOnly = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
         if (v.kind === 'task' && !v.start) {
             if (!v.end) return '';
-            const due = v.allDay ? day.format(dateOnly(v.end)) : new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(v.end));
+            const due = v.allDay ? day.format(dateOnly(v.end)) : new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', hour12: this.clock.hour12 }).format(new Date(v.end));
             return this.t('invitations.dueOn', { date: due });
         }
         if (!v.start) return '';
@@ -272,7 +275,7 @@ export class CalendarInvitationBanner extends LitElement {
         }
         const start = new Date(v.start);
         const end = v.end ? new Date(v.end) : start;
-        const format = new Intl.DateTimeFormat(locale, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        const format = new Intl.DateTimeFormat(locale, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: this.clock.hour12 });
         const range = (format as Intl.DateTimeFormat & { formatRange?: (a: Date, b: Date) => string }).formatRange;
         return end > start && range ? range.call(format, start, end) : format.format(start);
     }
