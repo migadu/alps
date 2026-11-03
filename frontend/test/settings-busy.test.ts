@@ -19,10 +19,11 @@ import { messageSync } from '../src/services/message-sync';
 import { cleanup, flush, mount, waitFor } from './helpers/dom';
 import { UnsavedEdit } from '../../plugins/managesieve/frontend/unsaved';
 
-const probe = vi.hoisted(() => ({ current: null as (() => boolean) | null }));
+const probe = vi.hoisted(() => ({ current: null as (() => boolean) | null, rechecks: 0 }));
 vi.mock('../src/services/app-update', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/services/app-update')>()),
   registerBusyProbe: (fn: (() => boolean) | null) => { probe.current = fn; },
+  reloadMissingPageWhenIdle: () => { probe.rechecks++; },
 }));
 
 import '../src/components/app-root';
@@ -104,5 +105,15 @@ describe('the shell holds an automatic reload back', () => {
 
     window.dispatchEvent(new CustomEvent('session-cleared'));
     expect(busy()).toBe(false);
+  });
+
+  it('only until the user moves on, when a held reload is checked again', async () => {
+    // A missing page's reload held back by a Settings edit was checked again
+    // only when the last composer closed, so saving or dropping the edit left
+    // it waiting for a reload by hand.
+    await shell('#/busy-notes/all');
+    const before = probe.rechecks;
+    window.location.hash = '#/busy-notes/other';
+    await waitFor(() => probe.rechecks > before, 'a recheck on navigation');
   });
 });

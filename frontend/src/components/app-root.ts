@@ -699,6 +699,11 @@ export class AppRoot extends LitElement {
       }
       this.endBootOnNavigation(event);
       this.trackSettingsEntry(event);
+      // A missing page's reload waits while something would be lost, and
+      // the last composer closing is not the only end of that: an unsaved
+      // Filters or Auto-reply edit is saved or let go in Settings, and the
+      // user then moves on.
+      if (event) reloadMissingPageWhenIdle();
       this.requestUpdate();
     }
   );
