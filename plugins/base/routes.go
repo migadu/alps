@@ -2927,20 +2927,14 @@ func handleComposeNew(ctx *alps.Context) error {
 		doMail = ctx.Session.DoBackgroundMail
 	}
 
-	fromAddr := ctx.FormValue("from")
-	if fromAddr == "" {
-		// The user's address, not the login: a login can be a bare user
-		// name, which is no address to send from (see Session.Address).
-		fromAddr = ctx.Session.Address()
-		if settings, err := readSettings(ctx); err == nil {
-			// The display name is free text, so it is formatted as an address
-			// rather than pasted in front of one. Written bare, a comma in it
-			// ("Doe, Jane") read as two addresses, the first with none, and
-			// every send and draft save failed; quotes in it were lost.
-			if name := strings.TrimSpace(settings.From); name != "" {
-				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Address()}).String()
-			}
-		}
+	// The composer names the address it sends from, and the server writes the
+	// From itself: the account's, or one of the identities in the settings,
+	// with the name kept there. Any other address is refused.
+	fromAddr, fromIdentity, err := senderFor(ctx, ctx.FormValue("from"))
+	if errors.Is(err, errSenderNotAllowed) {
+		return refuseSender(ctx, err)
+	} else if err != nil {
+		return err
 	}
 
 	// A field that does not read as addresses is refused here, for what it
@@ -3361,7 +3355,7 @@ func handleComposeNew(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "message not sent: " + err.Error()})
 	}
 
-	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
+	err = ctx.Session.DoSMTP(func(c *smtp.Client) error {
 		// A temporary refusal may outlast the browser's wait. Each new
 		// attempt checks again before MAIL, while nothing has been sent.
 		if err := ctx.Request.Context().Err(); err != nil {
@@ -3373,6 +3367,13 @@ func handleComposeNew(ctx *alps.Context) error {
 		var authErr provider.AuthError
 		if errors.As(err, &authErr) {
 			return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Forbidden"})
+		}
+		// The mail server, not alps, decides which addresses a login may send
+		// as, and one that refuses an identity says so in a way the composer
+		// can put to the user: choose another From. A refusal of the account's
+		// own address is some other trouble, and is said as it was.
+		if fromIdentity && senderRefused(err) {
+			return refuseSender(ctx, fmt.Errorf("the mail server refused the sender: %v", err))
 		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send message: " + err.Error()})
 	}
@@ -3460,6 +3461,81 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// errSenderNotAllowed is a message from an address that is neither the
+// account's nor one of its identities.
+var errSenderNotAllowed = errors.New("not an address this account sends from")
+
+// senderFor is the From of a message sent from address, and whether that is
+// one of the identities rather than the account's own address. No address is
+// the account's.
+//
+// An identity's name is the one kept with it, or the account's display name
+// when it has none. An address that is not an identity in the session's copy
+// of the settings is looked for in the record as the server holds it now: it
+// may have been added in another browser since this session read it.
+func senderFor(ctx *alps.Context, address string) (from string, identity bool, err error) {
+	own := ctx.Session.Address()
+	if address == "" || strings.EqualFold(address, own) {
+		// The user's address, not the login: a login can be a bare user
+		// name, which is no address to send from (see Session.Address).
+		if settings, err := readSettings(ctx); err == nil {
+			return mailboxFrom(settings.From, own), false, nil
+		}
+		return own, false, nil
+	}
+	settings, err := readSettings(ctx)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to load settings: %v", err)
+	}
+	found, ok := findIdentity(settings.Identities, address)
+	if !ok {
+		if settings, err = readFreshSettings(ctx); err != nil {
+			return "", false, fmt.Errorf("failed to load settings: %v", err)
+		}
+		found, ok = findIdentity(settings.Identities, address)
+	}
+	if !ok {
+		return "", false, fmt.Errorf("%q: %w", address, errSenderNotAllowed)
+	}
+	name := found.Name
+	if strings.TrimSpace(name) == "" {
+		name = settings.From
+	}
+	return mailboxFrom(name, found.Address), true, nil
+}
+
+// mailboxFrom is a From of name and address, or of the address alone when
+// the name is blank. The display name is free text, so it is formatted as an
+// address rather than pasted in front of one. Written bare, a comma in it
+// ("Doe, Jane") read as two addresses, the first with none, and every send
+// and draft save failed; quotes in it were lost.
+func mailboxFrom(name, address string) string {
+	if name = strings.TrimSpace(name); name == "" {
+		return address
+	}
+	return (&mail.Address{Name: name, Address: address}).String()
+}
+
+// findIdentity is the identity whose address is address, in any case.
+func findIdentity(identities []Identity, address string) (Identity, bool) {
+	for _, id := range identities {
+		if strings.EqualFold(id.Address, address) {
+			return id, true
+		}
+	}
+	return Identity{}, false
+}
+
+// refuseSender answers a send or a draft save from an address the account
+// may not send from. The code is the composer's, to say so in the user's
+// language; the error is for the log and for other clients.
+func refuseSender(ctx *alps.Context, err error) error {
+	return ctx.JSON(http.StatusForbidden, map[string]string{
+		"error": err.Error(),
+		"code":  "sender_not_allowed",
+	})
 }
 
 func handleComposeAttachment(ctx *alps.Context) error {
