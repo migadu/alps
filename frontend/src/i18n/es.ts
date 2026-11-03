@@ -151,6 +151,7 @@ export const es = {
     loginFailed: 'Error de inicio de sesión. Por favor, verifica tus credenciales.',
     tooManyConnections: 'Hay demasiadas conexiones abiertas en esta cuenta. Cierra otra aplicación de correo o cierra sesión en otro navegador y vuelve a intentarlo.',
     networkError: 'Ocurrió un error de red. Por favor, inténtalo de nuevo.',
+    serviceUnavailable: 'El servicio no ha podido iniciar tu sesión ahora mismo. Vuelve a intentarlo en un momento.',
     pleaseWait: 'Por favor espera',
     wait: 'Esperar',
     signedOut: 'Has cerrado sesión.',

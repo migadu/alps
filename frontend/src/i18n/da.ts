@@ -207,6 +207,7 @@ export const da: TranslationDictionary = {
     loginFailed: 'Login mislykkedes. Kontrollér dine loginoplysninger.',
     tooManyConnections: 'Der er for mange åbne forbindelser til denne konto. Luk et andet mailprogram, eller log ud i en anden browser, og prøv igen.',
     networkError: 'Der opstod en netværksfejl. Prøv igen.',
+    serviceUnavailable: 'Tjenesten kunne ikke logge dig ind lige nu. Prøv igen om et øjeblik.',
     pleaseWait: 'Vent venligst',
     wait: 'Vent',
     signedOut: 'Du er blevet logget ud.',

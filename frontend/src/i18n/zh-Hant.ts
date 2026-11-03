@@ -203,6 +203,7 @@ export const zhHant = {
     signIn: '登入',
     tooManyAttempts: '登入嘗試次數過多',
     loginFailed: '登入失敗。請檢查您的登入認證。',
+    serviceUnavailable: '服務目前無法為您登入，請稍後再試。',
     tooManyConnections: '此帳號開啟的連線過多。請關閉其他郵件應用程式，或在其他瀏覽器中登出，然後再試一次。',
     networkError: '發生網路錯誤。請重試。',
     pleaseWait: '請稍候',

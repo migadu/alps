@@ -203,6 +203,7 @@ export const ko = {
     signIn: '로그인',
     tooManyAttempts: '로그인 시도 횟수가 너무 많습니다',
     loginFailed: '로그인하지 못했습니다. 로그인 정보를 확인하세요.',
+    serviceUnavailable: '지금은 로그인을 처리할 수 없습니다. 잠시 후 다시 시도하세요.',
     tooManyConnections: '이 계정에 열린 연결이 너무 많습니다. 다른 메일 앱을 닫거나 다른 브라우저에서 로그아웃한 후 다시 시도하세요.',
     networkError: '네트워크 오류가 발생했습니다. 다시 시도하세요.',
     pleaseWait: '잠시 기다려 주세요',

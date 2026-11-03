@@ -203,6 +203,7 @@ export const ja = {
     signIn: 'ログイン',
     tooManyAttempts: 'ログインの試行回数が多すぎます',
     loginFailed: 'ログインに失敗しました。認証情報を確認してください。',
+    serviceUnavailable: '現在、ログインを処理できませんでした。しばらくしてからもう一度お試しください。',
     tooManyConnections: 'このアカウントへの接続が多すぎます。他のメールアプリを閉じるか、別のブラウザーでログアウトしてから、もう一度お試しください。',
     networkError: 'ネットワークエラーが発生しました。もう一度お試しください。',
     pleaseWait: 'しばらくお待ちください',

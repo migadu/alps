@@ -203,6 +203,7 @@ export const ptBR = {
     signIn: 'Entrar',
     tooManyAttempts: 'Muitas tentativas de login',
     loginFailed: 'Não foi possível entrar. Verifique as suas credenciais.',
+    serviceUnavailable: 'O serviço não conseguiu fazer seu login agora. Tente novamente em instantes.',
     tooManyConnections: 'Há conexões demais abertas nesta conta. Feche outro aplicativo de e-mail ou saia da conta em outro navegador e tente novamente.',
     networkError: 'Ocorreu um erro de rede. Tente novamente.',
     pleaseWait: 'Aguarde um momento',

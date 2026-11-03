@@ -153,6 +153,7 @@ export const de: TranslationDictionary = {
     loginFailed: 'Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Anmeldedaten.',
     tooManyConnections: 'Für dieses Konto sind zu viele Verbindungen geöffnet. Schließen Sie ein anderes E-Mail-Programm oder melden Sie sich in einem anderen Browser ab, und versuchen Sie es dann erneut.',
     networkError: 'Netzwerkfehler aufgetreten. Bitte versuchen Sie es erneut.',
+    serviceUnavailable: 'Der Dienst konnte Sie gerade nicht anmelden. Bitte versuchen Sie es gleich noch einmal.',
     pleaseWait: 'Bitte warten',
     wait: 'Warten',
     signedOut: 'Sie wurden abgemeldet.',

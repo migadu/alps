@@ -203,6 +203,7 @@ export const tr = {
     signIn: 'Oturum Aç',
     tooManyAttempts: 'Çok fazla oturum açma denemesi',
     loginFailed: 'Oturum açılamadı. Bilgilerinizi kontrol edin.',
+    serviceUnavailable: 'Hizmet şu anda oturumunuzu açamadı. Lütfen biraz sonra tekrar deneyin.',
     tooManyConnections: 'Bu hesaba açık çok fazla bağlantı var. Başka bir posta uygulamasını kapatın veya başka bir tarayıcıda oturumu kapatıp tekrar deneyin.',
     networkError: 'Ağ hatası oluştu. Tekrar deneyin.',
     pleaseWait: 'Lütfen bekleyin',

@@ -198,6 +198,7 @@ export const pt = {
     loginFailed: 'Falha no login. Verifique suas credenciais.',
     tooManyConnections: 'Muitas conexões abertas nesta conta. Feche outro aplicativo de e-mail ou saia da conta em outro navegador e tente novamente.',
     networkError: 'Ocorreu um erro de rede. Tente novamente.',
+    serviceUnavailable: 'O serviço não conseguiu iniciar a sua sessão neste momento. Tente novamente dentro de instantes.',
     pleaseWait: 'Por favor, aguarde',
     wait: 'Aguarde',
     signedOut: 'Você foi desconectado.',

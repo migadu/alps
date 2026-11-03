@@ -151,6 +151,7 @@ export const sr = {
     loginFailed: 'Prijavljivanje nije uspelo. Proverite svoje podatke.',
     tooManyConnections: 'Ovaj nalog ima previše otvorenih veza. Zatvorite neki drugi program za poštu ili se odjavite u drugom pregledaču, pa pokušajte ponovo.',
     networkError: 'Došlo je do greške na mreži. Pokušajte ponovo.',
+    serviceUnavailable: 'Servis trenutno nije mogao da vas prijavi. Pokušajte ponovo za koji trenutak.',
     pleaseWait: 'Molimo sačekajte',
     wait: 'Sačekajte',
     signedOut: 'Odjavljeni ste.',

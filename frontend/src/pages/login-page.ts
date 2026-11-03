@@ -364,6 +364,20 @@ export class LoginPage extends LitElement {
           // to retype one that works.
           this.error = this.i18nStore?.t('login.tooManyConnections');
           this.isRateLimited = false;
+        } else if (response.status >= 500) {
+          // The server could not answer, or a proxy before it could not
+          // reach it. The password was never looked at: the server's own
+          // English words, or for a proxy's HTML page "check your
+          // credentials", sent the user to retype one that may well be
+          // right. A wait the answer names holds Sign in as the throttle's
+          // does.
+          this.error = this.i18nStore?.t('login.serviceUnavailable');
+          const retryAfter = Number(response.headers.get('Retry-After'));
+          if (retryAfter > 0) {
+            this.startRetryCountdown(retryAfter);
+          } else {
+            this.isRateLimited = false;
+          }
         } else {
           this.error = data.error || this.i18nStore?.t('login.loginFailed');
           this.isRateLimited = false;

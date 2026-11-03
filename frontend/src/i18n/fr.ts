@@ -151,6 +151,7 @@ export const fr = {
     loginFailed: 'Échec de la connexion. Veuillez vérifier vos identifiants.',
     tooManyConnections: "Trop de connexions sont ouvertes sur ce compte. Fermez une autre application de messagerie ou déconnectez-vous dans un autre navigateur, puis réessayez.",
     networkError: "Une erreur de réseau s'est produite. Veuillez réessayer.",
+    serviceUnavailable: "Le service n'a pas pu vous connecter pour le moment. Veuillez réessayer dans un instant.",
     pleaseWait: 'Veuillez patienter',
     wait: 'Patienter',
     signedOut: 'Vous avez été déconnecté.',

@@ -203,6 +203,7 @@ export const id = {
     signIn: 'Masuk',
     tooManyAttempts: 'Terlalu banyak percobaan masuk',
     loginFailed: 'Gagal masuk. Periksa kredensial Anda.',
+    serviceUnavailable: 'Layanan tidak dapat memasukkan Anda saat ini. Silakan coba lagi sebentar lagi.',
     tooManyConnections: 'Terlalu banyak koneksi terbuka ke akun ini. Tutup aplikasi email lain, atau keluar di browser lain, lalu coba lagi.',
     networkError: 'Terjadi kesalahan jaringan. Coba lagi.',
     pleaseWait: 'Harap tunggu',

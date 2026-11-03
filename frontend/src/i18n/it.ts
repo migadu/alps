@@ -151,6 +151,7 @@ export const it = {
     loginFailed: 'Accesso fallito. Controlla le tue credenziali.',
     tooManyConnections: "Questo account ha troppe connessioni aperte. Chiudi un'altra app di posta o esci dall'account in un altro browser, poi riprova.",
     networkError: 'Si è verificato un errore di rete. Riprova.',
+    serviceUnavailable: 'Il servizio non è riuscito a farti accedere in questo momento. Riprova tra un istante.',
     pleaseWait: 'Attendere prego',
     wait: 'Attendi',
     signedOut: 'Sei stato disconnesso.',
