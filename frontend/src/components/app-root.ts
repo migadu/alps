@@ -919,7 +919,7 @@ export class AppRoot extends LitElement {
       <div class="toast-announce" role="status" aria-live="polite" slot=${slot ?? nothing}>${this.politeAnnouncement}</div>
       <div class="toast-announce" role="alert" aria-live="assertive" slot=${slot ?? nothing}>${this.assertiveAnnouncement}</div>
       <div class="toast-stack" slot=${slot ?? nothing}>
-        ${this.toasts.map(toast => html`
+        ${repeat(this.toasts, toast => toast.id, toast => html`
           <alps-toast
             .show=${toast.show}
             .message=${toast.message}

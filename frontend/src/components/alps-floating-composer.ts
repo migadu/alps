@@ -58,7 +58,6 @@ export class AlpsFloatingComposer extends LitElement {
    * pressed for it, and takes it (see _takeTypedRecipients). */
   @state() private typedRecipient = false;
   @state() private showDiscardConfirm = false;
-  @state() private pendingDiscardType: 'close' | 'delete' | null = null;
   @state() private windowWidth = window.innerWidth;
   @state() private windowHeight = window.innerHeight;
   @state() private isSaving = false;
@@ -348,7 +347,7 @@ export class AlpsFloatingComposer extends LitElement {
       // reader or rows. A remounted window still owned by this session can
       // accept its answer normally.
       if (generation !== MessageCache.generation()) return !!result;
-      if (!this.isConnected || !this.composeStore.getComposer(id)) {
+      if (!this.composeStore.getComposer(id)) {
         // Discarded while this was on the wire: the draft it stored is the
         // discard's to delete, and only this answer says which one it is.
         return result?.uid ? { mailbox: result.mailbox, uid: String(result.uid) } : !!result;
@@ -356,7 +355,8 @@ export class AlpsFloatingComposer extends LitElement {
 
       if (result) {
         const oldUid = this.instance.draftUid;
-        // Optimistically update the UI before checking isConnected so Drafts folder updates instantly
+        // The store still owns this draft even when a replacement element
+        // renders its window. Announce and apply the new UID to that owner.
         window.dispatchEvent(new CustomEvent('draft-autosaved', {
           detail: {
             oldUid,
@@ -382,12 +382,6 @@ export class AlpsFloatingComposer extends LitElement {
             hasAttachments: (currentInstance.attachments || []).some(a => !a.inline && (a.uuid || a.partPath))
           }
         }));
-      }
-
-      if (!this.isConnected) {
-        // The element went away mid-save. Whether the message is safe is still
-        // decided by the server's answer, not by whether we are still on screen.
-        return !!result;
       }
 
       if (result) {
@@ -426,7 +420,7 @@ export class AlpsFloatingComposer extends LitElement {
           ? { uid: result.uid, key: draftContentKey(latestComposer) }
           : null;
         const hasUnsavedAttachments = (latestComposer?.attachments || []).some(a => a.uuid && !sentUuids.includes(a.uuid));
-        if (latestComposer?.dirty || hasUnsavedAttachments) {
+        if (this.isConnected && (latestComposer?.dirty || hasUnsavedAttachments)) {
           this._scheduleAutoSave();
         }
       }
@@ -694,18 +688,15 @@ export class AlpsFloatingComposer extends LitElement {
     // The only condition under which we do not ask for confirmation is if 
     // the message is completely blank and not saved.
     if (!isBlank || isSaved || isDirty) {
-      this.pendingDiscardType = 'delete';
       this.showDiscardConfirm = true;
     } else {
-      this._performDiscard('delete');
+      this._performDiscard();
     }
   }
 
   private async _confirmDiscard() {
     this.showDiscardConfirm = false;
-    const type = this.pendingDiscardType;
-    this.pendingDiscardType = null;
-    this._performDiscard(type);
+    this._performDiscard();
   }
 
   private _toastDiscardFailed() {
@@ -733,7 +724,7 @@ export class AlpsFloatingComposer extends LitElement {
    *
    * The returned promise settles once the draft is deleted. Only tests await it.
    */
-  private async _performDiscard(type: 'close' | 'delete' | null) {
+  private async _performDiscard() {
     this.discarding = true;
     this._clearAutoSave();
     const id = this.instance.id;
@@ -749,7 +740,6 @@ export class AlpsFloatingComposer extends LitElement {
     }
     const saving = this.savingPromise;
     this.composeStore.closeComposer(id);
-    if (type !== 'delete') return;
 
     // A save already on the wire stores a new draft and deletes the one this
     // window knew. Deleting only the one it knew left the save's in Drafts,
@@ -796,7 +786,6 @@ export class AlpsFloatingComposer extends LitElement {
 
   private _cancelDiscard() {
     this.showDiscardConfirm = false;
-    this.pendingDiscardType = null;
     if (this.instance.dirty) {
       this._scheduleAutoSave();
     }

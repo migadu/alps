@@ -125,7 +125,7 @@ describe('a save outlived by its account or window', () => {
     await waitFor(() => !!finish, 'the save request');
     if (transition === 'session end') window.dispatchEvent(new CustomEvent('session-cleared'));
     else if (transition === 'account cache reset') MessageCache.clear();
-    else el.remove();
+    else { store.closeComposer(instance.id); el.remove(); }
     finish({ uid: '8', mailbox: 'Drafts' });
     await saving;
     expect(news).toHaveLength(0);
@@ -144,6 +144,25 @@ describe('a save outlived by its account or window', () => {
     expect(await saving).toBe(true);
     expect(news).toHaveLength(1);
     expect(store.getComposer(id)?.draftUid).toBe('8');
+  });
+
+  it('applies a pending save to the store when its window has been replaced', async () => {
+    let finish!: (result: any) => void;
+    const save = vi.spyOn(messageOperations, 'saveDraft').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const { store, instance, id } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const saving = el._saveDraft();
+    await waitFor(() => !!finish, 'the save request');
+    el.remove();
+    const replacement = await mount<El>('alps-floating-composer', { instance: store.getComposer(id), composeStore: store, i18nStore });
+    finish({ uid: '8', mailbox: 'Drafts' });
+    expect(await saving).toBe(true);
+    expect(store.getComposer(id)).toMatchObject({ draftUid: '8', dirty: false, isSaving: false });
+    replacement.instance = store.getComposer(id);
+    await replacement.updateComplete;
+    await replacement._handleCloseClick();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(store.getComposer(id)).toBeUndefined();
   });
 
   it('announces Save & close before closing its current window, and announces no refused save', async () => {
@@ -1133,12 +1152,11 @@ describe('a rich quote after a committed plain-text save', () => {
     expect(body.messageHtml).toContain('<td>Figures</td>');
   });
 
-  it.each(['disconnect', 'account reset'])('does not prune a composer after %s while its save waits', async departure => {
+  it('does not prune a composer after an account reset while its save waits', async () => {
     const finish = heldSave();
     const { store, el, id } = await open();
     const saving = el._saveDraft();
-    if (departure === 'disconnect') el.remove();
-    else MessageCache.clear();
+    MessageCache.clear();
     finish({ uid: '8', mailbox: 'Drafts', attachments: [] });
     await saving;
     expect(store.getComposer(id)!.html).toContain('cid:chart@remote.test');
