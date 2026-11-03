@@ -110,6 +110,7 @@ export const id = {
       monday: 'Senin',
       format12h: '12 jam (AM/PM)',
       format24h: '24 jam',
+      auto: 'Otomatis (default browser)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

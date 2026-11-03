@@ -110,6 +110,7 @@ export const ptBR = {
       monday: 'Segunda-feira',
       format12h: '12 horas (AM/PM)',
       format24h: '24 horas',
+      auto: 'Automático (padrão do navegador)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

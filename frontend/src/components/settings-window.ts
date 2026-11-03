@@ -769,9 +769,11 @@ export class SettingsWindow extends LitElement {
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.language')}">
           <!-- Each language is named in its own words and marked with its own
                language, so a screen reader reads "Deutsch" in German rather
-               than in the language of the page around it. -->
+               than in the language of the page around it. Auto is a word of
+               the page's own language, and is not marked. -->
           <alps-select label="${this.i18nStore?.t('settings.localization.language')}" @change=${(e: Event) => this.handleUpdate(e, 'language')} .value=${this.settingsState.language}
             .options=${[
+            {value: "auto", label: this.i18nStore?.t('settings.localization.auto') || "auto"},
             {value: "en", lang: intlTag("en"), label: this.i18nStore?.t('settings.localization.english') || "en"},
             {value: "de", lang: intlTag("de"), label: this.i18nStore?.t('settings.localization.german') || "de"},
             {value: "it", lang: intlTag("it"), label: this.i18nStore?.t('settings.localization.italian') || "it"},
@@ -796,6 +798,7 @@ export class SettingsWindow extends LitElement {
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.timeFormat')}">
           <alps-select label="${this.i18nStore?.t('settings.localization.timeFormat')}" @change=${(e: Event) => this.handleUpdate(e, 'hourFormat')} .value=${this.settingsState.hourFormat}
             .options=${[
+            {value: "auto", label: this.i18nStore?.t('settings.localization.auto') || "auto"},
             {value: "12", label: this.i18nStore?.t('settings.localization.format12h') || "12"},
             {value: "24", label: this.i18nStore?.t('settings.localization.format24h') || "24"}
           ]}>
@@ -804,6 +807,7 @@ export class SettingsWindow extends LitElement {
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.dateFormat')}">
           <alps-select label="${this.i18nStore?.t('settings.localization.dateFormat')}" @change=${(e: Event) => this.handleUpdate(e, 'dateFormat')} .value=${this.settingsState.dateFormat}
             .options=${[
+            {value: "auto", label: this.i18nStore?.t('settings.localization.auto') || "auto"},
             {value: "YYYY-MM-DD", label: "YYYY-MM-DD"},
             {value: "MM/DD/YYYY", label: "MM/DD/YYYY"},
             {value: "DD.MM.YYYY", label: "DD.MM.YYYY"}

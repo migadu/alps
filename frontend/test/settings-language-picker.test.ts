@@ -50,6 +50,8 @@ describe('the language picker', () => {
     await select.updateComplete;
 
     expect(options(select)).toEqual([
+      // Auto is a word of the page's own language, so it carries no lang.
+      ['auto', null, 'Auto (Browser default)'],
       ['en', 'en', 'English'],
       ['de', 'de', 'Deutsch'],
       ['it', 'it', 'Italiano'],
@@ -69,6 +71,24 @@ describe('the language picker', () => {
       ['zh-Hant', 'zh-Hant', '繁體中文'],
       ['ar', 'ar', 'العربية'],
     ]);
+  });
+
+  it('offers the browser\'s own first, for the language, the time and the date', async () => {
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage('de');
+    const page = document.createElement('settings-window') as El;
+    Object.assign(page, { i18nStore, settingsState: { language: 'auto', hourFormat: 'auto', dateFormat: 'auto', weekStart: 1 } });
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    render(page.renderLocalization(), host);
+    const [language, time, date, week] = [...host.querySelectorAll('alps-select')] as El[];
+    for (const select of [language, time, date]) {
+      await select.updateComplete;
+      expect(options(select)[0], select.label).toEqual(['auto', null, 'Automatisch (Browser-Standard)']);
+      expect(select.shadowRoot!.querySelector('select')!.value, select.label).toBe('auto');
+    }
+    await week.updateComplete;
+    expect(options(week).map(([value]) => value)).toEqual(['1', '0']);
   });
 
   it('takes the tag from the helper the document language uses', async () => {

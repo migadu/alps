@@ -110,6 +110,7 @@ export const en = {
       monday: 'Monday',
       format12h: '12-hour (AM/PM)',
       format24h: '24-hour',
+      auto: 'Auto (Browser default)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

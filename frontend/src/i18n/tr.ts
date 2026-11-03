@@ -110,6 +110,7 @@ export const tr = {
       monday: 'Pazartesi',
       format12h: '12 saat (AM/PM)',
       format24h: '24 saat',
+      auto: 'Otomatik (tarayıcı varsayılanı)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

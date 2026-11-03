@@ -110,6 +110,7 @@ export const ja = {
       monday: '月曜日',
       format12h: '12時間制（午前・午後）',
       format24h: '24時間制',
+      auto: '自動（ブラウザーの既定）',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

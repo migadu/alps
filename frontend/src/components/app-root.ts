@@ -183,8 +183,7 @@ export class AppRoot extends LitElement {
     autoLogoutService.onBeforeLogout = () => this.composeStore.saveAllDirtyDrafts();
 
     // Initialize language
-    const initialLang = this.settingsStore.getState().language ?? 'en';
-    this.i18nStore.setLanguage(initialLang);
+    this.i18nStore.setLanguage(this.settingsStore.getState().language ?? 'auto');
 
     window.addEventListener('auth-error', this._handleAuthError);
     window.addEventListener('session-cleared', this._handleSessionCleared);
@@ -609,7 +608,7 @@ export class AppRoot extends LitElement {
   private _handleSettingsChange = () => {
     const settings = this.settingsStore.getState();
     autoLogoutService.setLogoutTime(settings.autoLogout ?? 0);
-    this.i18nStore.setLanguage(settings.language ?? 'en');
+    this.i18nStore.setLanguage(settings.language ?? 'auto');
   };
 
   /**

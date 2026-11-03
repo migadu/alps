@@ -110,6 +110,7 @@ export const zhHant = {
       monday: '星期一',
       format12h: '12小時制（AM/PM）',
       format24h: '24小時制',
+      auto: '自動（瀏覽器預設）',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

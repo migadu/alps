@@ -223,6 +223,22 @@ describe('signing in', () => {
     expect(store.getState()).toMatchObject({ signature: 'Ada', language: 'fr' });
   });
 
+  it('leaves an account without a language to each browser\'s own, and sends nothing', async () => {
+    // Neither the account nor this browser has chosen: the account stays
+    // `auto`, and every browser it signs in on shows its own language.
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { signature: 'Ada' } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(calls.map((c) => c.key)).toEqual(['GET /session', 'GET /settings']);
+    expect(store.getState()).toMatchObject({ signature: 'Ada', language: 'auto' });
+  });
+
   it('sends the shell to sign-in when there is no session at all', async () => {
     const authErrors = record('auth-error');
     const calls = serve({});
@@ -887,6 +903,12 @@ describe('local records', () => {
     const store = new SettingsStore();
     expect(store.getState()).toMatchObject({ language: 'fr', themeMode: 'dark', messagesPerPage: 50 });
     expect(document.body.classList.contains('theme-dark')).toBe(true);
+  });
+
+  it('follows the browser\'s language, clock and date until one is chosen', () => {
+    serve({});
+    const store = new SettingsStore();
+    expect(store.getState()).toMatchObject({ language: 'auto', hourFormat: 'auto', dateFormat: 'auto' });
   });
 
   it('reads the signed-in user\'s record over the browser-wide one', () => {

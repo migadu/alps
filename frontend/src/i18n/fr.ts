@@ -104,6 +104,7 @@ export const fr = {
       monday: 'Lundi',
       format12h: '12 heures (AM/PM)',
       format24h: '24 heures',
+      auto: 'Automatique (par défaut du navigateur)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

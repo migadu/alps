@@ -110,6 +110,7 @@ export const ru = {
       monday: 'Понедельник',
       format12h: '12-часовой (AM/PM)',
       format24h: '24-часовой',
+      auto: 'Автоматически (как в браузере)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

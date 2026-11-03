@@ -112,6 +112,7 @@ export const da: TranslationDictionary = {
       monday: 'Mandag',
       format12h: '12-timers (AM/PM)',
       format24h: '24-timers',
+      auto: 'Automatisk (browserens standard)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

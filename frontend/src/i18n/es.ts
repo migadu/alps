@@ -104,6 +104,7 @@ export const es = {
       monday: 'Lunes',
       format12h: '12 horas (AM/PM)',
       format24h: '24 horas',
+      auto: 'Automático (predeterminado del navegador)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

@@ -27,6 +27,10 @@ export default defineConfig({
   outputDir: process.env.E2E_RESULTS ?? "test-results",
   use: {
     baseURL: process.env.ALPS_URL ?? "http://127.0.0.1:8900",
+    // The interface follows the browser's language until the account
+    // chooses one, and the specs read its English: every browser speaks US
+    // English here, unless a spec says otherwise, whatever the machine's.
+    locale: "en-US",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     // A pre-provisioned browser (CI images, containers) may not be the exact

@@ -104,6 +104,7 @@ export const sr = {
       monday: 'Ponedeljak',
       format12h: '12 sati (AM/PM)',
       format24h: '24 sata',
+      auto: 'Automatski (podrazumevano u pregledaču)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

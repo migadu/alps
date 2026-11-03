@@ -110,6 +110,7 @@ export const ko = {
       monday: '월요일',
       format12h: '12시간제(AM/PM)',
       format24h: '24시간제',
+      auto: '자동(브라우저 기본값)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

@@ -42,8 +42,10 @@ export interface SettingsState {
   composeFormat: 'html' | 'text';
   undoTimeout: number;
 
+  /** A language code, or `auto` for the browser's (see resolveLanguage). */
   language: string;
-  hourFormat: '12' | '24';
+  /** `auto` is the browser's clock, and the date format's `auto` its date. */
+  hourFormat: '12' | '24' | 'auto';
   dateFormat: string;
   weekStart: number;
   sortOrder: 'asc' | 'desc';
@@ -101,9 +103,11 @@ const DEFAULT_SETTINGS: SettingsState = {
   composeFormat: 'html',
   undoTimeout: 0,
 
-  language: 'en',
-  hourFormat: '24',
-  dateFormat: 'YYYY-MM-DD',
+  // The browser's, until the user chooses: alps in the browser's language,
+  // times on its clock and dates in its order.
+  language: 'auto',
+  hourFormat: 'auto',
+  dateFormat: 'auto',
   weekStart: 1,
   sortOrder: 'desc',
   messageSortCriteria: 'date',
@@ -720,12 +724,15 @@ export class SettingsStore extends EventTarget {
           if (s.sort_order !== undefined && s.sort_order !== "") updates.sortOrder = s.sort_order;
           if (s.message_sort_criteria !== undefined && s.message_sort_criteria !== "") updates.messageSortCriteria = s.message_sort_criteria;
           
-          // An account that has never saved a language gets the one this
-          // browser shows, so that another browser signs in to it in the same
-          // language. Only the language: this used to save the whole record, so
-          // a read that came back short put this browser's settings over the
-          // account's.
-          if (!s.language) {
+          // An account that has never saved a language gets the one chosen
+          // in this browser, so that another browser signs in to it in the
+          // same language. Only the language: this used to save the whole
+          // record, so a read that came back short put this browser's
+          // settings over the account's. A browser that has chosen none
+          // shows its own language, and so does every other browser the
+          // account signs in on: there is nothing to save, and the account
+          // stays `auto`.
+          if (!s.language && this.state.language && this.state.language !== 'auto') {
             needLanguage = true;
           }
 

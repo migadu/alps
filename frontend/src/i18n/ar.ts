@@ -110,6 +110,7 @@ export const ar = {
       monday: 'الاثنين',
       format12h: '12 ساعة (AM/PM)',
       format24h: '24 ساعة',
+      auto: 'تلقائي (إعداد المتصفح)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

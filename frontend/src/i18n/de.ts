@@ -106,6 +106,7 @@ export const de: TranslationDictionary = {
       monday: 'Montag',
       format12h: '12-Stunden (AM/PM)',
       format24h: '24-Stunden',
+      auto: 'Automatisch (Browser-Standard)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',

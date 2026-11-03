@@ -110,6 +110,7 @@ export const hi = {
       monday: 'सोमवार',
       format12h: '12 घंटे (AM/PM)',
       format24h: '24 घंटे',
+      auto: 'स्वचालित (ब्राउज़र के अनुसार)',
       english: 'English',
       german: 'Deutsch',
       italian: 'Italiano',
