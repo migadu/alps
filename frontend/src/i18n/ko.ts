@@ -30,7 +30,7 @@ export const ko = {
       checkMailInterval: '메일 확인 간격',
       checkMailIntervalDesc: '새 메일을 자동으로 확인하는 주기입니다.',
       autoLogout: '자동 로그아웃',
-      autoLogoutDesc: '아무 작업도 하지 않으면 자동으로 로그아웃합니다.',
+      autoLogoutDesc: '열려 있는 어떤 탭에서도 선택한 시간 동안 활동이 없으면 로그아웃합니다. 브라우저를 닫아도 로그인 상태를 유지하도록 선택한 경우에도 적용됩니다. "사용 안 함"으로 설정해도 때때로 다시 로그인하라는 요청을 받습니다.',
       desktopNotifications: '데스크톱 알림 사용',
       soundNotifications: '새 메일 도착 시 알림음 재생',
       everyMinute: '1분마다',
@@ -212,8 +212,8 @@ export const ko = {
     signedOutDraftsKept: '로그아웃되었습니다. 보내지 않은 일부 초안을 서버에 저장하지 못했습니다. 초안은 이 기기에 보관되며 다시 로그인하면 열립니다.',
     sessionExpired: '세션이 만료되었습니다. 다시 로그인하세요.',
     secondFactorExpired: '보안 키를 확인하기 전에 로그인 시간이 초과되었습니다. 다시 로그인하세요.',
-    inactivitySignedOut: '일정 시간 동안 활동이 없어 로그아웃되었습니다.',
-    inactivitySignedOutDraftsKept: '일정 시간 동안 활동이 없어 로그아웃되었습니다. 보내지 않은 일부 초안을 서버에 저장하지 못했습니다. 초안은 이 기기에 보관되며 다시 로그인하면 열립니다.'
+    inactivitySignedOut: '일정 시간 활동이 없어 로그아웃되었습니다. 이 시간은 설정의 "일반"에서 변경하거나 끌 수 있습니다.',
+    inactivitySignedOutDraftsKept: '일정 시간 활동이 없어 로그아웃되었습니다. 보내지 않은 일부 초안을 서버에 저장하지 못했습니다. 초안은 이 기기에 보관되며 다시 로그인하면 열립니다. 이 시간은 설정의 "일반"에서 변경하거나 끌 수 있습니다.'
   },
   folderList: {
     compose: '메일 쓰기',

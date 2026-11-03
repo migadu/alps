@@ -30,7 +30,7 @@ export const tr = {
       checkMailInterval: 'Posta denetleme sıklığı',
       checkMailIntervalDesc: 'Yeni postanın ne sıklıkla otomatik olarak denetleneceği.',
       autoLogout: 'Otomatik çıkış',
-      autoLogoutDesc: 'Hareketsizlikten sonra otomatik olarak oturumu kapatır.',
+      autoLogoutDesc: 'Açık sekmelerin hiçbirinde seçilen süre boyunca etkinlik olmazsa oturumunuzu kapatır. Tarayıcıyı kapattıktan sonra oturumunuzun açık kalmasını seçtiyseniz de geçerlidir. "Hiçbir zaman" seçili olsa bile zaman zaman yeniden giriş yapmanız istenir.',
       desktopNotifications: 'Masaüstü Bildirimlerini Etkinleştir',
       soundNotifications: 'Yeni iletilerde bildirim sesi çal',
       everyMinute: 'Her dakika',
@@ -212,8 +212,8 @@ export const tr = {
     signedOutDraftsKept: 'Oturumunuz kapatıldı. Gönderilmemiş bazı taslaklar sunucuya kaydedilemedi. Bu cihazda saklanıyorlar ve yeniden oturum açtığınızda açılacaklar.',
     sessionExpired: 'Oturumunuzun süresi doldu. Yeniden oturum açın.',
     secondFactorExpired: 'Güvenlik anahtarı denetlenmeden oturum açma süresi doldu. Lütfen yeniden oturum açın.',
-    inactivitySignedOut: 'Hareketsizlik nedeniyle oturumunuz kapatıldı.',
-    inactivitySignedOutDraftsKept: 'Hareketsizlik nedeniyle oturumunuz kapatıldı. Gönderilmemiş bazı taslaklar sunucuya kaydedilemedi. Bu cihazda saklanıyorlar ve yeniden oturum açtığınızda açılacaklar.'
+    inactivitySignedOut: 'Bir süre etkinlik olmadığı için oturumunuz kapatıldı. Bu süreyi Ayarlar\'daki "Genel" bölümünden değiştirebilir veya kapatabilirsiniz.',
+    inactivitySignedOutDraftsKept: 'Bir süre etkinlik olmadığı için oturumunuz kapatıldı. Gönderilmemiş bazı taslaklar sunucuya kaydedilemedi. Bu cihazda saklanıyorlar ve yeniden oturum açtığınızda açılacaklar. Bu süreyi Ayarlar\'daki "Genel" bölümünden değiştirebilir veya kapatabilirsiniz.'
   },
   folderList: {
     compose: 'Oluştur',

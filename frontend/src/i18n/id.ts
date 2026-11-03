@@ -30,7 +30,7 @@ export const id = {
       checkMailInterval: 'Interval pemeriksaan email',
       checkMailIntervalDesc: 'Seberapa sering email baru diperiksa secara otomatis.',
       autoLogout: 'Keluar otomatis',
-      autoLogoutDesc: 'Keluar secara otomatis setelah tidak aktif.',
+      autoLogoutDesc: 'Mengeluarkan Anda setelah waktu yang dipilih tanpa aktivitas di tab mana pun yang terbuka. Ini juga berlaku jika Anda memilih tetap masuk setelah browser ditutup. Dengan "Tidak pernah", Anda tetap akan diminta masuk lagi dari waktu ke waktu.',
       desktopNotifications: 'Aktifkan Notifikasi Desktop',
       soundNotifications: 'Putar suara notifikasi untuk pesan baru',
       everyMinute: 'Setiap menit',
@@ -212,8 +212,8 @@ export const id = {
     signedOutDraftsKept: 'Anda telah keluar. Beberapa draf yang belum terkirim tidak dapat disimpan ke server. Draf tersebut disimpan di perangkat ini dan dibuka kembali saat Anda masuk lagi.',
     sessionExpired: 'Sesi Anda kedaluwarsa. Masuk kembali.',
     secondFactorExpired: 'Waktu proses masuk habis sebelum kunci keamanan diperiksa. Masuk kembali.',
-    inactivitySignedOut: 'Anda telah keluar karena tidak aktif.',
-    inactivitySignedOutDraftsKept: 'Anda telah keluar karena tidak aktif. Beberapa draf yang belum terkirim tidak dapat disimpan ke server. Draf tersebut disimpan di perangkat ini dan dibuka kembali saat Anda masuk lagi.'
+    inactivitySignedOut: 'Anda telah dikeluarkan setelah tidak ada aktivitas selama beberapa waktu. Anda dapat mengubah atau mematikan batas waktu ini di Pengaturan, pada bagian "Umum".',
+    inactivitySignedOutDraftsKept: 'Anda telah dikeluarkan setelah tidak ada aktivitas selama beberapa waktu. Beberapa draf yang belum terkirim tidak dapat disimpan ke server. Draf tersebut disimpan di perangkat ini dan dibuka kembali saat Anda masuk lagi. Anda dapat mengubah atau mematikan batas waktu ini di Pengaturan, pada bagian "Umum".'
   },
   folderList: {
     compose: 'Tulis',

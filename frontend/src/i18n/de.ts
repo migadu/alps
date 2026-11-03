@@ -26,7 +26,7 @@ export const de: TranslationDictionary = {
       checkMailInterval: 'Intervall für E-Mail-Prüfung',
       checkMailIntervalDesc: 'Wie oft automatisch nach neuen E-Mails gesucht werden soll.',
       autoLogout: 'Automatische Abmeldung',
-      autoLogoutDesc: 'Nach Inaktivität automatisch abmelden.',
+      autoLogoutDesc: 'Meldet Sie ab, wenn Sie die gewählte Zeit lang in keinem geöffneten Tab aktiv waren. Das gilt auch, wenn Sie nach dem Schließen des Browsers angemeldet bleiben wollten. Auch bei "Niemals" werden Sie von Zeit zu Zeit gebeten, sich erneut anzumelden.',
       desktopNotifications: 'Desktop-Benachrichtigungen aktivieren',
       soundNotifications: 'Ton bei neuen Nachrichten abspielen',
       everyMinute: 'Jede Minute',
@@ -160,8 +160,8 @@ export const de: TranslationDictionary = {
     signedOutDraftsKept: 'Sie wurden abgemeldet. Einige ungesendete Entwürfe konnten nicht auf dem Server gespeichert werden. Sie bleiben auf diesem Gerät und werden bei der nächsten Anmeldung wieder geöffnet.',
     sessionExpired: 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.',
     secondFactorExpired: 'Ihre Anmeldung ist abgelaufen, bevor der Sicherheitsschlüssel geprüft wurde. Bitte melden Sie sich erneut an.',
-    inactivitySignedOut: 'Sie wurden wegen Inaktivität abgemeldet.',
-    inactivitySignedOutDraftsKept: "Sie wurden wegen Inaktivität abgemeldet. Einige ungesendete Entwürfe konnten nicht auf dem Server gespeichert werden. Sie bleiben auf diesem Gerät und werden bei der nächsten Anmeldung wieder geöffnet."
+    inactivitySignedOut: 'Sie wurden nach längerer Inaktivität abgemeldet. Diese Zeitspanne können Sie in den Einstellungen unter "Allgemein" ändern oder abschalten.',
+    inactivitySignedOutDraftsKept: 'Sie wurden nach längerer Inaktivität abgemeldet. Einige ungesendete Entwürfe konnten nicht auf dem Server gespeichert werden. Sie bleiben auf diesem Gerät und werden bei der nächsten Anmeldung wieder geöffnet. Diese Zeitspanne können Sie in den Einstellungen unter "Allgemein" ändern oder abschalten.'
   },
   folderList: {
     compose: 'Verfassen',

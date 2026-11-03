@@ -30,7 +30,7 @@ export const zhHant = {
       checkMailInterval: '檢查郵件的間隔',
       checkMailIntervalDesc: '自動檢查新郵件的頻率。',
       autoLogout: '自動登出',
-      autoLogoutDesc: '閒置一段時間後自動登出。',
+      autoLogoutDesc: '若所有開啟的分頁在選定的時間內都沒有活動，就會將您登出。即使您選擇了關閉瀏覽器後保持登入，也同樣適用。即使設為「從不」，系統仍會不時要求您重新登入。',
       desktopNotifications: '啟用桌面通知',
       soundNotifications: '收到新郵件時播放提示音',
       everyMinute: '每分鐘',
@@ -212,8 +212,8 @@ export const zhHant = {
     signedOutDraftsKept: '您已登出。部分未傳送的草稿無法儲存到伺服器，已保留在此裝置上，並會在您再次登入時重新開啟。',
     sessionExpired: '工作階段已過期。請重新登入。',
     secondFactorExpired: '在檢查安全金鑰之前，您的登入已逾時。請重新登入。',
-    inactivitySignedOut: '由於長時間未操作，您已登出。',
-    inactivitySignedOutDraftsKept: '由於長時間未操作，您已登出。部分未傳送的草稿無法儲存到伺服器，已保留在此裝置上，並會在您再次登入時重新開啟。'
+    inactivitySignedOut: '由於一段時間沒有活動，您已被登出。您可以在「設定」的「一般」中變更或關閉此時間。',
+    inactivitySignedOutDraftsKept: '由於一段時間沒有活動，您已被登出。部分未傳送的草稿無法儲存到伺服器，已保留在此裝置上，並會在您再次登入時重新開啟。您可以在「設定」的「一般」中變更或關閉此時間。'
   },
   folderList: {
     compose: '寫郵件',

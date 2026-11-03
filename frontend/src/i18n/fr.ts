@@ -24,7 +24,7 @@ export const fr = {
       checkMailInterval: 'Intervalle de vérification du courrier',
       checkMailIntervalDesc: 'À quelle fréquence vérifier automatiquement les nouveaux messages.',
       autoLogout: 'Déconnexion automatique',
-      autoLogoutDesc: 'Se déconnecter automatiquement après une période d\'inactivité.',
+      autoLogoutDesc: 'Vous déconnecte après la durée choisie sans aucune activité dans les onglets ouverts. Cela s\'applique aussi si vous avez choisi de rester connecté après la fermeture du navigateur. Avec "Jamais", il vous sera tout de même demandé de vous reconnecter de temps en temps.',
       desktopNotifications: 'Activer les notifications sur le bureau',
       soundNotifications: 'Jouer un son pour les nouveaux messages',
       everyMinute: 'Chaque minute',
@@ -158,8 +158,8 @@ export const fr = {
     signedOutDraftsKept: 'Vous avez été déconnecté. Certains brouillons non envoyés n’ont pas pu être enregistrés sur le serveur. Ils restent sur cet appareil et se rouvrent à votre prochaine connexion.',
     sessionExpired: 'Votre session a expiré. Veuillez vous reconnecter.',
     secondFactorExpired: 'Votre connexion a expiré avant la vérification de la clé de sécurité. Veuillez vous reconnecter.',
-    inactivitySignedOut: "Vous avez été déconnecté pour cause d'inactivité.",
-    inactivitySignedOutDraftsKept: "Vous avez été déconnecté pour cause d'inactivité. Certains brouillons non envoyés n’ont pas pu être enregistrés sur le serveur. Ils restent sur cet appareil et se rouvrent à votre prochaine connexion."
+    inactivitySignedOut: 'Vous avez été déconnecté après une période d\'inactivité. Vous pouvez modifier ou désactiver ce délai dans Paramètres, rubrique "Général".',
+    inactivitySignedOutDraftsKept: 'Vous avez été déconnecté après une période d\'inactivité. Certains brouillons non envoyés n’ont pas pu être enregistrés sur le serveur. Ils restent sur cet appareil et se rouvrent à votre prochaine connexion. Vous pouvez modifier ou désactiver ce délai dans Paramètres, rubrique "Général".'
   },
   folderList: {
     compose: 'Nouveau message',

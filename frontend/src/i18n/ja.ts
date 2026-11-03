@@ -30,7 +30,7 @@ export const ja = {
       checkMailInterval: 'メールの確認間隔',
       checkMailIntervalDesc: '新着メールを自動で確認する頻度です。',
       autoLogout: '自動ログアウト',
-      autoLogoutDesc: '操作がないときに自動でログアウトします。',
+      autoLogoutDesc: '開いているどのタブでも、選択した時間操作がないとログアウトします。ブラウザーを閉じてもログインしたままにする設定の場合にも適用されます。「しない」にしても、ときどき再ログインを求められます。',
       desktopNotifications: 'デスクトップ通知を有効にする',
       soundNotifications: '新着メールの通知音を鳴らす',
       everyMinute: '1分ごと',
@@ -212,8 +212,8 @@ export const ja = {
     signedOutDraftsKept: 'ログアウトしました。未送信の下書きの一部をサーバーに保存できませんでした。これらはこの端末に保持され、次にログインしたときに開きます。',
     sessionExpired: 'セッションの有効期限が切れました。もう一度ログインしてください。',
     secondFactorExpired: 'セキュリティキーの確認前にログインがタイムアウトしました。もう一度ログインしてください。',
-    inactivitySignedOut: '操作がなかったため、ログアウトしました。',
-    inactivitySignedOutDraftsKept: '操作がなかったため、ログアウトしました。未送信の下書きの一部をサーバーに保存できませんでした。これらはこの端末に保持され、次にログインしたときに開きます。'
+    inactivitySignedOut: '一定時間操作がなかったため、ログアウトしました。この時間は「設定」の「全般」で変更またはオフにできます。',
+    inactivitySignedOutDraftsKept: '一定時間操作がなかったため、ログアウトしました。未送信の下書きの一部をサーバーに保存できませんでした。これらはこの端末に保持され、次にログインしたときに開きます。この時間は「設定」の「全般」で変更またはオフにできます。'
   },
   folderList: {
     compose: '作成',

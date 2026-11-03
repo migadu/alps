@@ -32,7 +32,7 @@ export const da: TranslationDictionary = {
       checkMailInterval: 'Interval for mailtjek',
       checkMailIntervalDesc: 'Hvor ofte der automatisk skal tjekkes for ny mail.',
       autoLogout: 'Automatisk logud',
-      autoLogoutDesc: 'Log automatisk ud efter inaktivitet.',
+      autoLogoutDesc: 'Logger dig ud, når der ikke har været aktivitet i nogen åben fane i den valgte tid. Det gælder også, selvom du har valgt at forblive logget ind, når browseren lukkes. Med "Aldrig" bliver du stadig bedt om at logge ind igen en gang imellem.',
       desktopNotifications: 'Aktivér notifikationer',
       soundNotifications: 'Afspil lyd ved nye beskeder',
       everyMinute: 'Hvert minut',
@@ -214,8 +214,8 @@ export const da: TranslationDictionary = {
     signedOutDraftsKept: 'Du er blevet logget ud. Nogle kladder, der ikke var sendt, kunne ikke gemmes på serveren. De ligger på denne enhed og åbnes igen, når du logger ind igen.',
     sessionExpired: 'Din session er udløbet. Log ind igen.',
     secondFactorExpired: 'Dit login udløb, før sikkerhedsnøglen blev kontrolleret. Log ind igen.',
-    inactivitySignedOut: 'Du er blevet logget ud på grund af inaktivitet.',
-    inactivitySignedOutDraftsKept: 'Du er blevet logget ud på grund af inaktivitet. Nogle kladder, der ikke var sendt, kunne ikke gemmes på serveren. De ligger på denne enhed og åbnes igen, når du logger ind igen.'
+    inactivitySignedOut: 'Du er blevet logget ud efter en periode uden aktivitet. Du kan ændre tidsgrænsen eller slå den fra i Indstillinger under "Generelt".',
+    inactivitySignedOutDraftsKept: 'Du er blevet logget ud efter en periode uden aktivitet. Nogle kladder, der ikke var sendt, kunne ikke gemmes på serveren. De ligger på denne enhed og åbnes igen, når du logger ind igen. Du kan ændre tidsgrænsen eller slå den fra i Indstillinger under "Generelt".'
   },
   folderList: {
     compose: 'Skriv',

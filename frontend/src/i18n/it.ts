@@ -24,7 +24,7 @@ export const it = {
       checkMailInterval: 'Intervallo di controllo posta',
       checkMailIntervalDesc: 'Con quale frequenza controllare automaticamente la nuova posta.',
       autoLogout: 'Disconnessione automatica',
-      autoLogoutDesc: 'Disconnetti automaticamente dopo inattività.',
+      autoLogoutDesc: 'Ti disconnette dopo il tempo scelto senza attività in nessuna scheda aperta. Vale anche se hai scelto di restare collegato dopo la chiusura del browser. Anche con "Mai", di tanto in tanto ti verrà chiesto di accedere di nuovo.',
       desktopNotifications: 'Abilita notifiche desktop',
       soundNotifications: 'Riproduci suono per i nuovi messaggi',
       everyMinute: 'Ogni minuto',
@@ -158,8 +158,8 @@ export const it = {
     signedOutDraftsKept: 'La sessione è stata chiusa. Alcune bozze non inviate non sono state salvate sul server. Restano su questo dispositivo e si riaprono al prossimo accesso.',
     sessionExpired: "La tua sessione è scaduta. Effettua di nuovo l'accesso.",
     secondFactorExpired: "L'accesso è scaduto prima che la chiave di sicurezza fosse verificata. Effettua di nuovo l'accesso.",
-    inactivitySignedOut: 'Sei stato disconnesso per inattività.',
-    inactivitySignedOutDraftsKept: "Sei stato disconnesso per inattività. Alcune bozze non inviate non sono state salvate sul server. Restano su questo dispositivo e si riaprono al prossimo accesso."
+    inactivitySignedOut: 'Sei stato disconnesso dopo un periodo di inattività. Puoi modificare o disattivare questo limite in Impostazioni, sezione "Generale".',
+    inactivitySignedOutDraftsKept: 'Sei stato disconnesso dopo un periodo di inattività. Alcune bozze non inviate non sono state salvate sul server. Restano su questo dispositivo e si riaprono al prossimo accesso. Puoi modificare o disattivare questo limite in Impostazioni, sezione "Generale".'
   },
   folderList: {
     compose: 'Componi',

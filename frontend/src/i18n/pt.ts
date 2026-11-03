@@ -23,7 +23,7 @@ export const pt = {
       checkMailInterval: 'Intervalo de verificação de e-mail',
       checkMailIntervalDesc: 'Com que frequência verificar novos e-mails automaticamente.',
       autoLogout: 'Encerramento automático',
-      autoLogoutDesc: 'Encerrar sessão automaticamente após inatividade.',
+      autoLogoutDesc: 'Termina a sua sessão após o tempo escolhido sem atividade em nenhum separador aberto. Aplica-se também se optou por manter a sessão iniciada depois de fechar o navegador. Mesmo com "Nunca", ser-lhe-á pedido que inicie sessão novamente de tempos a tempos.',
       desktopNotifications: 'Ativar notificações na área de trabalho',
       soundNotifications: 'Tocar som para novas mensagens',
       everyMinute: 'A cada minuto',
@@ -205,8 +205,8 @@ export const pt = {
     signedOutDraftsKept: 'Você saiu da sua conta. Alguns rascunhos não enviados não puderam ser salvos no servidor. Eles ficam neste dispositivo e serão reabertos quando você entrar novamente.',
     sessionExpired: 'A sua sessão expirou. Inicie sessão novamente.',
     secondFactorExpired: 'O início de sessão expirou antes da verificação da chave de segurança. Inicie sessão novamente.',
-    inactivitySignedOut: 'Você foi desconectado por inatividade.',
-    inactivitySignedOutDraftsKept: "Você foi desconectado por inatividade. Alguns rascunhos não enviados não puderam ser salvos no servidor. Eles ficam neste dispositivo e serão reabertos quando você entrar novamente."
+    inactivitySignedOut: 'A sua sessão foi terminada após um período de inatividade. Pode alterar ou desativar este tempo em Configurações, na secção "Geral".',
+    inactivitySignedOutDraftsKept: 'A sua sessão foi terminada após um período de inatividade. Alguns rascunhos por enviar não puderam ser guardados no servidor. Ficam neste dispositivo e voltam a abrir quando iniciar sessão novamente. Pode alterar ou desativar este tempo em Configurações, na secção "Geral".'
   },
   folderList: {
     compose: 'Escrever',

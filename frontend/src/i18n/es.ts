@@ -24,7 +24,7 @@ export const es = {
       checkMailInterval: 'Intervalo de comprobación de correo',
       checkMailIntervalDesc: 'Con qué frecuencia buscar correo nuevo automáticamente.',
       autoLogout: 'Cierre de sesión automático',
-      autoLogoutDesc: 'Cerrar sesión automáticamente después de inactividad.',
+      autoLogoutDesc: 'Cierra tu sesión tras el tiempo elegido sin actividad en ninguna pestaña abierta. También se aplica si elegiste mantener la sesión iniciada al cerrar el navegador. Con "Nunca", se te seguirá pidiendo de vez en cuando que vuelvas a iniciar sesión.',
       desktopNotifications: 'Habilitar notificaciones de escritorio',
       soundNotifications: 'Reproducir sonido para mensajes nuevos',
       everyMinute: 'Cada minuto',
@@ -158,8 +158,8 @@ export const es = {
     signedOutDraftsKept: 'Se ha cerrado tu sesión. Algunos borradores sin enviar no se pudieron guardar en el servidor. Se quedan en este dispositivo y se vuelven a abrir cuando inicies sesión de nuevo.',
     sessionExpired: 'Tu sesión ha expirado. Por favor, inicia sesión de nuevo.',
     secondFactorExpired: 'El inicio de sesión ha caducado antes de comprobar la clave de seguridad. Vuelve a iniciar sesión.',
-    inactivitySignedOut: 'Has cerrado sesión por inactividad.',
-    inactivitySignedOutDraftsKept: "Has cerrado sesión por inactividad. Algunos borradores sin enviar no se pudieron guardar en el servidor. Se quedan en este dispositivo y se vuelven a abrir cuando inicies sesión de nuevo."
+    inactivitySignedOut: 'Se cerró tu sesión tras un periodo de inactividad. Puedes cambiar o desactivar este tiempo en Configuración, en "General".',
+    inactivitySignedOutDraftsKept: 'Se cerró tu sesión tras un periodo de inactividad. Algunos borradores sin enviar no se pudieron guardar en el servidor. Se quedan en este dispositivo y se vuelven a abrir cuando inicies sesión de nuevo. Puedes cambiar o desactivar este tiempo en Configuración, en "General".'
   },
   folderList: {
     compose: 'Redactar',

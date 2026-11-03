@@ -918,6 +918,9 @@ describe('Serbian terms, titles and twins', () => {
 const SERBIAN_NAMES = new Set([
   // The composer's Bcc field, by the name the identity settings give it.
   'Bcc',
+  // The Settings window, where the inactivity notice sends the user: "u
+  // Podešavanjima".
+  'Podešavanjima',
 ]);
 
 /**
@@ -993,11 +996,11 @@ describe('Serbian capitals', () => {
  * labels, a proper noun, a unit symbol, and the ends of the alphabet.
  */
 const NAMES_IN_SENTENCES: Record<string, string[]> = {
-  it: ['Posta in arrivo', 'Cestino', 'Risposta automatica', 'Filtri', 'Rispondi a', 'Ccn', 'Internet', 'A-Z', 'Z-A'],
-  fr: ['Réponse automatique', 'Filtres', 'Reply-To', 'Cci', 'Internet', 'Ko', 'A-Z', 'Z-A'],
-  es: ['Bandeja de entrada', 'Borradores', 'Papelera', 'Respuesta automática', 'Filtros', 'Reply-To', 'Internet', 'A-Z', 'Z-A'],
+  it: ['Posta in arrivo', 'Cestino', 'Impostazioni', 'Risposta automatica', 'Filtri', 'Rispondi a', 'Ccn', 'Internet', 'A-Z', 'Z-A'],
+  fr: ['Paramètres', 'Réponse automatique', 'Filtres', 'Reply-To', 'Cci', 'Internet', 'Ko', 'A-Z', 'Z-A'],
+  es: ['Bandeja de entrada', 'Borradores', 'Papelera', 'Configuración', 'Respuesta automática', 'Filtros', 'Reply-To', 'Internet', 'A-Z', 'Z-A'],
   // The Drafts folder only after "em": elsewhere "rascunhos" is the plural of a draft.
-  pt: ['Lixeira', 'em Rascunhos', 'Resposta automática', 'Filtros', 'Cco', 'Internet', 'A-Z', 'Z-A'],
+  pt: ['Lixeira', 'em Rascunhos', 'Configurações', 'Resposta automática', 'Filtros', 'Cco', 'Internet', 'A-Z', 'Z-A'],
 };
 
 const nameIn = (name: string) => new RegExp(`(?<![\\p{L}-])${name}(?![\\p{L}-])`, 'gu');
