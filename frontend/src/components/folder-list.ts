@@ -43,6 +43,9 @@ export class FolderList extends LitElement {
   @consume({ context: sidebarStripContext, subscribe: true })
   @state() private strip = false;
   @state() private isScrolled = false;
+  /** How far the folders were scrolled, for when the list is put back in the
+   * document (see connectedCallback). */
+  private scrolledTo = 0;
 
   @state() private showCreatePrompt = false;
   /** True while the create request is out; disables the prompt's buttons. */
@@ -157,6 +160,12 @@ export class FolderList extends LitElement {
       if (this.settingsStore) {
         this.settingsStore.addEventListener('change', this._handleStoreChange);
       }
+      // The mailbox page is kept while another tab shows, out of the
+      // document, and an element out of the document loses its scroll
+      // offset: coming back from Calendar put a long folder list back at the
+      // top. It goes back to where the user left it.
+      const folders = this.renderRoot.querySelector<HTMLElement>('.sidebar-content');
+      if (folders && this.scrolledTo > 0) folders.scrollTop = this.scrolledTo;
     });
   }
 
@@ -456,6 +465,7 @@ export class FolderList extends LitElement {
 
   private handleScroll = (e: Event) => {
     const target = e.target as HTMLElement;
+    this.scrolledTo = target.scrollTop;
     this.isScrolled = target.scrollTop > 0;
   };
 

@@ -115,6 +115,9 @@ export class MessageList extends LitElement {
   @state() private isSpinning = false;
   @state() private isScrolled = false;
   @state() private isAtBottom = false;
+  /** How far the rows were scrolled, for when the list is put back in the
+   * document (see connectedCallback). */
+  private scrolledTo = 0;
   @state() private focusedIndex = -1;
   @state() private showEmptyConfirm = false;
   /**
@@ -1082,6 +1085,12 @@ export class MessageList extends LitElement {
     this.updateComplete.then(() => {
       if (!this.isConnected) return;
       this.i18nStore?.addEventListener('change', this._handleStoreChange);
+      // The mailbox page is kept while another tab shows, out of the
+      // document, and an element out of the document loses its scroll
+      // offset: coming back from Calendar put the rows back at the top. They
+      // go back to where the user left them.
+      const rows = this.renderRoot.querySelector<HTMLElement>('.list-content');
+      if (rows && this.scrolledTo > 0) rows.scrollTop = this.scrolledTo;
     });
   }
 
@@ -1226,6 +1235,7 @@ export class MessageList extends LitElement {
   }
 
   private handleScroll = (e: Event) => {
+    this.scrolledTo = (e.target as HTMLElement).scrollTop;
     this.checkScrollState(e.target as HTMLElement);
   };
 
