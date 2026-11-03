@@ -780,7 +780,8 @@ export class SettingsWindow extends LitElement {
             {value: "sr", lang: intlTag("sr"), label: this.i18nStore?.t('settings.localization.serbianLatin') || "sr"},
             {value: "fr", lang: intlTag("fr"), label: this.i18nStore?.t('settings.localization.french') || "fr"},
             {value: "pt", lang: intlTag("pt"), label: this.i18nStore?.t('settings.localization.portuguese') || "pt"},
-            {value: "da", lang: intlTag("da"), label: this.i18nStore?.t('settings.localization.danish') || "da"}
+            {value: "da", lang: intlTag("da"), label: this.i18nStore?.t('settings.localization.danish') || "da"},
+            {value: "ar", lang: intlTag("ar"), label: this.i18nStore?.t('settings.localization.arabic') || "ar"}
           ]}>
           </alps-select>
         </alps-setting-group>

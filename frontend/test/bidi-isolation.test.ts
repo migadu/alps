@@ -312,7 +312,7 @@ describe('names in invitation sentences', () => {
     expect(text(el, '.clashes')).toBe(`Conflicts with ${OVERRIDE}, ${hebrew}, (No title)`);
   });
 
-  it.each(['da', 'de', 'en', 'es', 'fr', 'it', 'pt', 'rs', 'sr'])('keeps the clashes where %s puts them in its sentence', async (lang) => {
+  it.each(['ar', 'da', 'de', 'en', 'es', 'fr', 'it', 'pt', 'rs', 'sr'])('keeps the clashes where %s puts them in its sentence', async (lang) => {
     const store = new I18nStore();
     await store.setLanguage(lang);
     vi.spyOn(invitationService, 'fetchInvitation').mockResolvedValue(view({
