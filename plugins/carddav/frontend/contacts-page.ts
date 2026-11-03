@@ -8,7 +8,7 @@ import '../../../frontend/src/components/app-header';
 import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-avatar';
-import { closeSidebarPeek } from '../../../frontend/src/components/alps-sidebar';
+import { closeSidebarPeek, SIDEBAR_WIDTH_MIN } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/alps-initial-loader';
@@ -1564,7 +1564,7 @@ export class ContactsPage extends LitElement {
           this.sidebarWidth = 250;
         } else {
           if (this.sidebarCollapsed) this.settingsStore?.updateSettings({ sidebarCollapsed: false });
-          this.sidebarWidth = Math.min(Math.max(newWidth, 150), 500);
+          this.sidebarWidth = Math.min(Math.max(newWidth, SIDEBAR_WIDTH_MIN), 500);
         }
       }}
           @drag-start=${() => this.isSidebarDragging = true}

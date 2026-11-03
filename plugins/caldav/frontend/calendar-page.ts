@@ -6,7 +6,7 @@ import { settingsContext, SettingsStore } from '../../../frontend/src/store/sett
 import { calendarService, taskTellsSomeone, tellsSomeone, getCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
 import { tasksService, type TaskData } from './tasks-service';
 import type { CalendarData, EventData } from './calendar-service';
-import { closeSidebarPeek, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
+import { closeSidebarPeek, SIDEBAR_WIDTH_MIN, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar-strip';
 import { sectionHeadingStyles } from '../../../frontend/src/components/alps-sidebar-heading';
@@ -40,7 +40,6 @@ import { motionStyles } from '../../../frontend/src/utils/motion';
 type ViewMode = 'day' | 'week' | 'month' | 'year';
 
 const SIDEBAR_WIDTH_DEFAULT = 250;
-const SIDEBAR_WIDTH_MIN = 150;
 const SIDEBAR_WIDTH_MAX = 500;
 
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;

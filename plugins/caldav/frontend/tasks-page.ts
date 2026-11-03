@@ -3,7 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { closeSidebarPeek, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
+import { closeSidebarPeek, SIDEBAR_WIDTH_MIN, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar-strip';
 import { sectionHeadingStyles } from '../../../frontend/src/components/alps-sidebar-heading';
@@ -24,7 +24,6 @@ import './task-modal';
 import { motionStyles } from '../../../frontend/src/utils/motion';
 
 const SIDEBAR_WIDTH_DEFAULT = 250;
-const SIDEBAR_WIDTH_MIN = 150;
 const SIDEBAR_WIDTH_MAX = 500;
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;
 

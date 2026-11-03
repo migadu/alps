@@ -63,8 +63,8 @@ export const sidebarLayoutStyles = css`
   }
   /* Docked, the content is as wide as the sidebar, however narrow it is
      dragged: names shorten, and each row's count and menu stay in view at
-     its inline end. It used to keep 215px there too, so a sidebar dragged to
-     150px cut them off instead.
+     its inline end. It used to keep 215px there too, so a sidebar dragged
+     narrower cut them off instead.
 
      In the strip the content keeps at least 215px, so that it is clipped
      rather than reflowed, and slides behind the main view: what the 64px
@@ -78,10 +78,11 @@ export const sidebarLayoutStyles = css`
 
      The slide starts only below 120px of content, narrower than any docked
      sidebar's (a drag below 120px snaps to the strip, and the narrowest
-     docked sidebar, 150px, keeps 133px inside its border and padding), so a
-     sidebar dragged narrow keeps every column in view, the expander carets
-     included. On the way into the strip the content moves with the edge
-     until it has slid --strip-slide.
+     docked sidebar, SIDEBAR_WIDTH_MIN, keeps 163px inside its border and
+     padding, 148px beside a scrollbar that takes room), so a sidebar dragged
+     narrow keeps every column in view, the expander carets included. On the
+     way into the strip the content moves with the edge until it has slid
+     --strip-slide.
 
      Out of the strip, expanding or opening as the overlay, the 215px stay
      while the sidebar widens (its 0.2s) and go once it has: let go at once,
@@ -104,6 +105,18 @@ export const sidebarLayoutStyles = css`
     }
   }
 `;
+
+/**
+ * The narrowest docked sidebar, on every page: a drag that ends between the
+ * strip's snap (120px) and this stops here. The content follows a docked
+ * sidebar's width, so this decides what is left of a name beside a row's
+ * icon and count. At 150px that was the first letters ("In…" for the Inbox
+ * beside its count, "All Co…" and "Favori…" in Contacts), the mini
+ * calendar's seven columns were 15px each, and beside a scrollbar that takes
+ * room mail's content was narrower than the 120px at which the strip's
+ * slide begins, so a docked sidebar slid under its own edge.
+ */
+export const SIDEBAR_WIDTH_MIN = 180;
 
 /** How long the pointer rests on the collapsed strip before the overlay opens.
  *  Passing along the window's left edge on the way elsewhere opens nothing. */

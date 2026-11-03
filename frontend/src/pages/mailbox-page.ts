@@ -8,7 +8,7 @@ import type { MessageReader, ReaderActionDetail } from '../components/message-re
 import type { MessageList } from '../components/message-list';
 import '../components/ui-confirm.js';
 import '../components/app-header';
-import { closeSidebarPeek } from '../components/alps-sidebar';
+import { closeSidebarPeek, SIDEBAR_WIDTH_MIN } from '../components/alps-sidebar';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { messageSync, type MailboxData } from '../services/message-sync';
@@ -90,7 +90,6 @@ interface PendingDelete {
 type MoveOutcome = { ok: boolean; reason?: string; uidMapping: Record<string, string> };
 
 const SIDEBAR_WIDTH_DEFAULT = 250;
-const SIDEBAR_WIDTH_MIN = 150;
 const SIDEBAR_WIDTH_MAX = 500;
 const SIDEBAR_WIDTH_COLLAPSED = 64;
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;

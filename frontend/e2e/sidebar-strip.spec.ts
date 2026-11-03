@@ -66,23 +66,19 @@ test("a sidebar at its narrowest docked width has not slid", async ({ page }) =>
   await login(page);
   await setDocked(page, true);
   const sidebar = page.locator("alps-sidebar.desktop-sidebar").first();
-  // The width a drag to the minimum leaves, set the way the drag sets it.
-  const setWidth = (width: number) =>
-    page.locator("mailbox-page").first().evaluate(async (el, w) => {
-      const pageEl = el as HTMLElement & { sidebarWidth: number; updateComplete: Promise<unknown> };
-      pageEl.sidebarWidth = w;
-      await pageEl.updateComplete;
-    }, width);
-  await setWidth(150);
-  await expect.poll(async () => Math.round((await sidebar.boundingBox())?.width ?? 0)).toBe(150);
-  const slid = await page
-    .locator("alps-folder-list .sidebar-scroll-content")
-    .first()
-    .evaluate((el) => getComputedStyle(el).marginInlineStart);
-  expect(slid).toBe("0px");
-
-  // Back to the default width for the next spec.
-  await setWidth(250);
+  await dragToNarrowest(page, sidebar);
+  try {
+    // The narrowest docked width, SIDEBAR_WIDTH_MIN.
+    expect(Math.round((await sidebar.boundingBox())!.width)).toBe(180);
+    const slid = await page
+      .locator("alps-folder-list .sidebar-scroll-content")
+      .first()
+      .evaluate((el) => getComputedStyle(el).marginInlineStart);
+    expect(slid).toBe("0px");
+  } finally {
+    // Back to the default width for the next spec.
+    await restoreWidth(page, "mailbox-page");
+  }
 });
 
 /** Drags the sidebar's edge to 130px, between the strip's snap (120px) and the
