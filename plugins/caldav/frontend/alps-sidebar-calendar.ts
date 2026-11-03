@@ -37,6 +37,17 @@ export class AlpsSidebarCalendar extends LitElement {
             margin-bottom: 12px;
             font-weight: 500;
             font-size: 14px;
+            gap: 4px;
+        }
+
+        .mini-header alps-icon-btn { flex-shrink: 0; }
+        .month-caption {
+            flex: 1;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
         }
     `;
 
@@ -63,7 +74,7 @@ export class AlpsSidebarCalendar extends LitElement {
             <div class="mini-calendar-wrapper">
                 <div class="mini-header">
                     <alps-icon-btn icon="caretLeft" title=${this.i18nStore?.t('calendar.previousMonth')} @click=${() => this.changeMonth(-1)}></alps-icon-btn>
-                    <span>${monthName} ${year}</span>
+                    <span class="month-caption" title=${`${monthName} ${year}`}>${monthName} ${year}</span>
                     <alps-icon-btn icon="caretRight" title=${this.i18nStore?.t('calendar.nextMonth')} @click=${() => this.changeMonth(1)}></alps-icon-btn>
                 </div>
                 <!-- The month's date-selected bubbles out of this shadow root

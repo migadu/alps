@@ -112,6 +112,10 @@ export class CalendarMiniMonth extends LitElement {
                 forced-color-adjust: none;
                 background-color: CanvasText;
             }
+            .mini-day.today {
+                outline: 2px solid CanvasText;
+                outline-offset: -2px;
+            }
         }
     `;
 
