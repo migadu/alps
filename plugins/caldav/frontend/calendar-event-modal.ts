@@ -83,8 +83,11 @@ export class CalendarEventModal extends LitElement {
                 background: var(--bg-primary, #ffffff);
                 color: var(--text-primary, #111827);
             }
+            /* The transparent outline paints nothing here; forced colors,
+               which drop the border colour and the shadow, give it a system
+               colour. */
             textarea:focus {
-                outline: none;
+                outline: 2px solid transparent;
                 border-color: var(--accent-color, #2563eb);
                 box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
             }

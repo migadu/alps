@@ -49,6 +49,15 @@ export class RawEditor extends LitElement {
 			background-color: var(--bg-primary, #fff);
 			overflow: hidden;
 		}
+		/* The text area fills the box, so the box shows focus, as the other
+		   fields do. The transparent outline paints nothing here; forced
+		   colors, which drop the border colour and the shadow, give it a
+		   system colour. */
+		.code-area:focus-within {
+			border-color: var(--accent-color, #2563eb);
+			box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+			outline: 2px solid transparent;
+		}
 		.highlight-layer, textarea {
 			position: absolute;
 			top: 0;

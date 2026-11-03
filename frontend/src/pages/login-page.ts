@@ -62,9 +62,12 @@ export class LoginPage extends LitElement {
       text-align: right;
     }
 
+    /* The transparent outline paints nothing here; forced colors, which drop
+       the border colour and the shadow, give it a system colour. */
     .native-input:focus {
       border-color: var(--accent-color, #005A9E);
       box-shadow: 0 0 0 2px rgba(0, 90, 158, 0.2);
+      outline: 2px solid transparent;
     }
 
     .native-input::placeholder {
@@ -174,6 +177,11 @@ export class LoginPage extends LitElement {
       transition: all 0.2s ease;
       box-sizing: border-box;
       outline: none;
+    }
+
+    .submit-btn:focus-visible {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: 2px;
     }
 
     .submit-btn:hover:not(:disabled) {

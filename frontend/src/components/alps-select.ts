@@ -56,9 +56,12 @@ export class AlpsSelect extends LitElement {
 			cursor: pointer;
 		}
 
+		/* The transparent outline paints nothing here; forced colors, which drop
+		   the border colour and the shadow, give it a system colour. */
 		select:focus {
 			border-color: var(--accent-color, #005A9E);
 			box-shadow: 0 0 0 2px rgba(0, 90, 158, 0.2);
+			outline: 2px solid transparent;
 		}
 
 		select:disabled {

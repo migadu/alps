@@ -74,8 +74,11 @@ export class AlpsFolderSelectorPopup extends LitElement {
       outline: none;
     }
 
+    /* Forced colors drop the border colour and give the transparent outline
+       a system colour. */
     .search-input:focus {
       border-color: var(--accent-color, #005A9E);
+      outline: 2px solid transparent;
     }
 
     .folder-list {

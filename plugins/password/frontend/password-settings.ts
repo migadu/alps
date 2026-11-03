@@ -28,9 +28,12 @@ export class PasswordSettings extends LitElement {
 			font-family: var(--font-base);
 		}
 
+		/* The transparent outline paints nothing here; forced colors, which drop
+		   the border colour and the shadow, give it a system colour. */
 		input:focus {
 			border-color: var(--accent-color, #2563eb);
 			box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+			outline: 2px solid transparent;
 		}
 	`;
 

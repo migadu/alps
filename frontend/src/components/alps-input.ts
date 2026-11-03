@@ -96,9 +96,12 @@ export class AlpsInput extends LitElement {
       text-align: right;
     }
 
+    /* The transparent outline paints nothing here; forced colors, which drop
+       the border colour and the shadow, give it a system colour. */
     input:focus {
       border-color: var(--accent-color, #005A9E);
       box-shadow: 0 0 0 2px rgba(0, 90, 158, 0.2);
+      outline: 2px solid transparent;
     }
 
     input::placeholder {
@@ -139,6 +142,11 @@ export class AlpsInput extends LitElement {
       border-radius: 4px;
       transition: color 0.2s ease, background 0.2s ease;
       outline: none;
+    }
+
+    .action-btn:focus-visible {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: 2px;
     }
 
     .action-btn:hover {

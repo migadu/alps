@@ -78,6 +78,13 @@ export class AlpsButton extends LitElement {
       outline: none;
     }
 
+    /* Keyboard focus, in the accent the list rows' cursor is drawn in. Not on
+       a pointer press, which :focus would ring too. */
+    button:focus-visible {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: 2px;
+    }
+
     button:disabled {
       opacity: 0.5;
       cursor: not-allowed;

@@ -266,6 +266,26 @@ export class AlpsContactView extends LitElement {
       outline: none;
       cursor: pointer;
     }
+    /* Focus as alps-select shows it. The transparent outline paints nothing
+       here; forced colors, which drop the border colour and the shadow, give
+       it a system colour. */
+    .multi-field-type:focus,
+    .new-category-input:focus {
+      border-color: var(--accent-color, #005A9E);
+      box-shadow: 0 0 0 2px rgba(0, 90, 158, 0.2);
+      outline: 2px solid transparent;
+    }
+    .new-category-input {
+      flex: 1;
+      min-width: 0;
+      padding: 4px 8px;
+      background: var(--bg-primary, #ffffff);
+      border: 1px solid var(--border-color, #e5e7eb);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-size: 13px;
+      outline: none;
+    }
     .add-field-btn {
       align-self: flex-start;
       background: none;
@@ -646,8 +666,9 @@ export class AlpsContactView extends LitElement {
           <alps-icon-btn slot="trigger" title="${this.i18nStore?.t('contacts.addToCategory')}" icon="folderOpen" ?disabled=${this.contact?.isTemporary}></alps-icon-btn>
           
           <div style="padding: 8px; display: flex; gap: 8px; cursor: default; min-width: 200px;" @click=${(e: Event) => e.stopPropagation()}>
-            <input 
-              type="text" 
+            <input
+              type="text"
+              class="new-category-input"
               placeholder="${this.i18nStore?.t('contacts.newCategory') || 'New Category'}" 
               .value=${this.newCategoryName} 
               @input=${(e: any) => this.newCategoryName = e.target.value}
@@ -656,8 +677,7 @@ export class AlpsContactView extends LitElement {
                   e.preventDefault();
                   this.handleAddCategory();
                 }
-              }}
-              style="flex: 1; padding: 4px 8px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 4px; font-size: 13px; outline: none; min-width: 0; background: var(--bg-primary, #ffffff); color: var(--text-primary);">
+              }}>
             <alps-button variant="normal" @click=${this.handleAddCategory} style="--btn-padding: 4px 12px; --btn-font-size: 13px;">${this.i18nStore?.t('contacts.add') || 'Add'}</alps-button>
           </div>
           
