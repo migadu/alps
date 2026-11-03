@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-message"
@@ -4357,6 +4358,9 @@ type Settings struct {
 	// Identity
 	ReplyTo   string `json:"reply_to,omitempty"`
 	BccMyself bool   `json:"bcc_myself"`
+	// Identities are the other addresses the user sends from, beside the
+	// account's own, in the order the composer offers them.
+	Identities []Identity `json:"identities,omitempty"`
 
 	// Reading & Composing
 	MarkReadTimeout   int    `json:"mark_read_timeout,omitempty"`
@@ -4369,6 +4373,55 @@ type Settings struct {
 	HourFormat string `json:"hour_format,omitempty"`
 	DateFormat string `json:"date_format,omitempty"`
 	WeekStart  *int   `json:"week_start,omitempty"`
+}
+
+// Identity is another address the user sends from: an alias, or an address
+// of their own elsewhere that their mail server lets them send as. alps does
+// not decide that; the mail server does, when the message is submitted.
+type Identity struct {
+	// Name is the display name a message from Address goes out under. Empty
+	// is the account's own display name.
+	Name    string `json:"name,omitempty"`
+	Address string `json:"address"`
+}
+
+// The most identities the settings hold, and the longest name and address
+// each may have, in characters. The record is one METADATA entry, which
+// servers cap, and the composer lists every identity in its From menu.
+const (
+	maxIdentities           = 20
+	maxIdentityNameRunes    = 256
+	maxIdentityAddressRunes = 254
+)
+
+// checkIdentities holds the identities to their caps, and to one bare address
+// each, none of them twice. `own` is the account's address, which is never an
+// identity of its own; empty where it is not known, as when a record is read.
+func checkIdentities(identities []Identity, own string) error {
+	if len(identities) > maxIdentities {
+		return fmt.Errorf("identities: at most %d, not %d", maxIdentities, len(identities))
+	}
+	seen := make(map[string]bool, len(identities))
+	for _, id := range identities {
+		if utf8.RuneCountInString(id.Name) > maxIdentityNameRunes {
+			return fmt.Errorf("identities: a name must be %d characters or fewer", maxIdentityNameRunes)
+		}
+		// The address alone, as the composer names it: not a name and an
+		// address, nor one in angle brackets, which would read as another.
+		addr, err := mail.ParseAddress(id.Address)
+		if err != nil || addr.Name != "" || addr.Address != id.Address || utf8.RuneCountInString(id.Address) > maxIdentityAddressRunes {
+			return fmt.Errorf("identities: %q is not an email address", id.Address)
+		}
+		key := strings.ToLower(id.Address)
+		if own != "" && key == strings.ToLower(own) {
+			return fmt.Errorf("identities: %q is the account's own address", id.Address)
+		}
+		if seen[key] {
+			return fmt.Errorf("identities: %q twice", id.Address)
+		}
+		seen[key] = true
+	}
+	return nil
 }
 
 // errUnreadableSettings marks a saved settings record that does not decode.
@@ -4496,6 +4549,9 @@ func (s *Settings) check() error {
 	if err := checkUnsubscribedFolders(s.UI.UnsubscribedFolders); err != nil {
 		return err
 	}
+	if err := checkIdentities(s.Identities, ""); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -4583,8 +4639,9 @@ func handleSettings(ctx *alps.Context) error {
 				DesktopNotifications *bool `json:"desktop_notifications"`
 				SoundNotifications   *bool `json:"sound_notifications"`
 
-				ReplyTo   *string `json:"reply_to"`
-				BccMyself *bool   `json:"bcc_myself"`
+				ReplyTo    *string     `json:"reply_to"`
+				BccMyself  *bool       `json:"bcc_myself"`
+				Identities *[]Identity `json:"identities"`
 
 				MarkReadTimeout   *int    `json:"mark_read_timeout"`
 				ShowRemoteContent *string `json:"show_remote_content"`
@@ -4666,6 +4723,17 @@ func handleSettings(ctx *alps.Context) error {
 			}
 			if req.BccMyself != nil {
 				settings.BccMyself = *req.BccMyself
+			}
+			// An empty list is a list: the last identity removed. The
+			// account's own address is not one: the composer always offers
+			// it. Held to that only when the list is written, so that a
+			// record from before the account's address was known still takes
+			// a change to any other setting.
+			if req.Identities != nil {
+				settings.Identities = *req.Identities
+				if err := checkIdentities(settings.Identities, ctx.Session.Address()); err != nil {
+					return alps.NewHTTPError(http.StatusBadRequest, err)
+				}
 			}
 			if req.MarkReadTimeout != nil {
 				settings.MarkReadTimeout = *req.MarkReadTimeout
