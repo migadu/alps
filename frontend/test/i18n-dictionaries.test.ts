@@ -18,10 +18,18 @@ import { rs } from '../src/i18n/rs';
 import { sr } from '../src/i18n/sr';
 import { da } from '../src/i18n/da';
 import { ar } from '../src/i18n/ar';
+import { ptBR } from '../src/i18n/pt-BR';
+import { ru } from '../src/i18n/ru';
+import { tr } from '../src/i18n/tr';
+import { id as idLocale } from '../src/i18n/id';
+import { hi } from '../src/i18n/hi';
+import { ja } from '../src/i18n/ja';
+import { ko } from '../src/i18n/ko';
+import { zhHant } from '../src/i18n/zh-Hant';
 
 type Dict = Record<string, unknown>;
 
-const CORE: [string, Dict][] = [['ar', ar], ['da', da], ['de', de], ['es', es], ['fr', fr], ['it', itLocale], ['pt', pt], ['rs', rs], ['sr', sr]] as [string, Dict][];
+const CORE: [string, Dict][] = [['ar', ar], ['da', da], ['de', de], ['es', es], ['fr', fr], ['it', itLocale], ['pt', pt], ['rs', rs], ['sr', sr], ['pt-BR', ptBR], ['ru', ru], ['tr', tr], ['id', idLocale], ['hi', hi], ['ja', ja], ['ko', ko], ['zh-Hant', zhHant]] as [string, Dict][];
 const intlTag = (code: string) => (code === 'rs' ? 'sr-Cyrl' : code === 'sr' ? 'sr-Latn' : code);
 
 const PLUGIN_LOCALES = import.meta.glob('../../plugins/*/frontend/i18n/*.ts', { eager: true }) as Record<string, Dict>;
@@ -133,7 +141,7 @@ function checkFamily(name: string, source: Dict, locales: [string, Dict][]) {
 describe('locales', () => {
   it('found the plugin dictionaries', () => {
     expect(byPlugin.size).toBeGreaterThanOrEqual(5);
-    for (const [plugin, locales] of byPlugin) expect([...locales.keys()].sort(), plugin).toEqual(['ar', 'da', 'de', 'en', 'es', 'fr', 'it', 'pt', 'rs', 'sr']);
+    for (const [plugin, locales] of byPlugin) expect([...locales.keys()].sort(), plugin).toEqual(['ar', 'da', 'de', 'en', 'es', 'fr', 'hi', 'id', 'it', 'ja', 'ko', 'pt', 'pt-BR', 'rs', 'ru', 'sr', 'tr', 'zh-Hant']);
   });
 
   it('core: every locale has en\'s keys, its language\'s plural forms, and en\'s placeholders', () => {
@@ -266,8 +274,8 @@ describe('Serbian scripts', () => {
     expect(cyrillic / values.length).toBeGreaterThan(0.85);
   });
 
-  it('sr is the Latin dictionary, apart from the language picker naming Cyrillic Serbian', () => {
-    const stray = leaves(sr).filter(([key, v]) => key !== 'settings.localization.serbian' && CYRILLIC.test(v as string));
+  it('sr is the Latin dictionary, apart from the language picker naming Cyrillic Serbian and Russian', () => {
+    const stray = leaves(sr).filter(([key, v]) => !isLanguageName(key) && CYRILLIC.test(v as string));
     expect(stray).toEqual([]);
     expect(leaves(sr).filter(([, v]) => LATIN.test(v as string)).length).toBeGreaterThan(300);
   });
@@ -295,8 +303,18 @@ function dictionariesOf(code: string): [file: string, dict: Dict][] {
 /** Every string of one locale, plural forms included, as `file:key` and text. */
 function stringsOf(code: string): [where: string, text: string][] {
   return dictionariesOf(code).flatMap(([file, dict]) =>
-    leaves(dict).filter(([, v]) => typeof v === 'string').map(([key, v]) => [`${file}:${key}`, v as string] as [string, string]));
+    leaves(dict).filter(([key, v]) => typeof v === 'string' && !isLanguageName(key)).map(([key, v]) => [`${file}:${key}`, v as string] as [string, string]));
 }
+
+/**
+ * The language picker's names are each written in their own language and
+ * script, not the dictionary's: Russian in Cyrillic in the Latin Serbian
+ * dictionary, "Bahasa Indonesia" capitalised in Italian. The endonym test
+ * holds them to exactly that, so the rules for a dictionary's own writing
+ * leave them out.
+ */
+const isLanguageName = (key: string) =>
+  key.startsWith('settings.localization.') && key.slice('settings.localization.'.length) in ENDONYMS;
 
 /**
  * Example domains are reserved ones. A placeholder is text a user copies, into
@@ -369,11 +387,19 @@ const ENDONYMS: Record<string, string> = {
   italian: 'Italiano',
   spanish: 'Español',
   french: 'Français',
-  portuguese: 'Português',
+  portuguese: 'Português (Portugal)',
   danish: 'Dansk',
   serbian: 'Српски (ћирилица)',
   serbianLatin: 'Srpski (latinica)',
   arabic: 'العربية',
+  portugueseBrazil: 'Português (Brasil)',
+  russian: 'Русский',
+  turkish: 'Türkçe',
+  indonesian: 'Bahasa Indonesia',
+  hindi: 'हिन्दी',
+  japanese: '日本語',
+  korean: '한국어',
+  chineseTraditional: '繁體中文',
 };
 
 describe('the language picker', () => {
@@ -408,8 +434,6 @@ const LATIN_IN_CYRILLIC = new Set([
   'AM/PM',
   // A product, by its own name.
   'YubiKey',
-  // The language picker names each language in its own words.
-  ...Object.values(ENDONYMS).filter((name) => /\p{Script=Latin}/u.test(name)),
 ]);
 const LATIN_RUN = /[\p{Script=Latin}\d@._:/+-]+/gu;
 
@@ -455,6 +479,7 @@ describe('Serbian Cyrillic in its own script', () => {
   it.each(RS_FILES)('%s writes every string in Cyrillic', (file) => {
     const dict = dictionariesOf('rs').find(([f]) => f === file)![1];
     const latin = leaves(dict)
+      .filter(([key]) => !isLanguageName(key))
       .map(([key, text]) => [key, strayLatin(text as string)] as const)
       .filter(([, stray]) => stray.length > 0)
       .map(([key, stray]) => `${key}: ${stray.join(' ')}`);
@@ -844,7 +869,7 @@ describe('Serbian terms, titles and twins', () => {
     const apart = dictionariesOf('rs').flatMap(([file, dict]) => {
       const name = file.replace(/\/rs$/, '');
       return leaves(dict)
-        .filter(([key]) => !SCRIPT_OWN.includes(`${name}:${key}`))
+        .filter(([key]) => !SCRIPT_OWN.includes(`${name}:${key}`) && !isLanguageName(key))
         .filter(([key, text]) => transliterate(String(text)) !== lookup(latin.get(name), key))
         .map(([key, text]) => `${name}:${key}: "${text}" / "${lookup(latin.get(name), key)}"`);
     });

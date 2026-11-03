@@ -57,8 +57,16 @@ describe('the language picker', () => {
       ['rs', 'sr-Cyrl', 'Српски (ћирилица)'],
       ['sr', 'sr-Latn', 'Srpski (latinica)'],
       ['fr', 'fr', 'Français'],
-      ['pt', 'pt', 'Português'],
+      ['pt', 'pt', 'Português (Portugal)'],
+      ['pt-BR', 'pt-BR', 'Português (Brasil)'],
       ['da', 'da', 'Dansk'],
+      ['ru', 'ru', 'Русский'],
+      ['tr', 'tr', 'Türkçe'],
+      ['id', 'id', 'Bahasa Indonesia'],
+      ['hi', 'hi', 'हिन्दी'],
+      ['ja', 'ja', '日本語'],
+      ['ko', 'ko', '한국어'],
+      ['zh-Hant', 'zh-Hant', '繁體中文'],
       ['ar', 'ar', 'العربية'],
     ]);
   });

@@ -1,0 +1,18 @@
+export default {
+  settings: {
+    categories: {
+      password: 'पासवर्ड'
+    },
+    password: {
+      title: 'पासवर्ड',
+      changePassword: 'पासवर्ड बदलें',
+      changePasswordDesc: 'अपने खाते का पासवर्ड बदलें।',
+      oldPassword: 'मौजूदा पासवर्ड',
+      newPassword: 'नया पासवर्ड',
+      confirmPassword: 'नए पासवर्ड की पुष्टि करें',
+      updatePassword: 'पासवर्ड अपडेट करें',
+      fillAllFields: 'सभी फ़ील्ड भरें।',
+      passwordMismatch: 'नए पासवर्ड मेल नहीं खाते।'
+    }
+  }
+};
