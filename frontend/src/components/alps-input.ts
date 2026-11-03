@@ -5,6 +5,13 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
 import { focusOnLabelClick } from '../utils/label-focus';
 
+/** Values written left to right whatever the interface language: addresses,
+ * passwords, numbers, dates. */
+const LTR_INPUT_TYPES = new Set([
+  'password', 'email', 'url', 'number', 'tel',
+  'date', 'datetime-local', 'time', 'month', 'week',
+]);
+
 @customElement('alps-input')
 export class AlpsInput extends LitElement {
   // Consumed rather than passed in, as alps-pagination does: this primitive is
@@ -15,6 +22,10 @@ export class AlpsInput extends LitElement {
   private _handleI18nChange = () => this.requestUpdate();
 
   @property({ type: String }) type = 'text';
+  /** The direction of the VALUE; the icon and the action button follow the
+   * interface. Empty means left to right for the types above and the text's
+   * own direction otherwise. */
+  @property({ type: String, attribute: 'input-dir' }) inputDir: 'auto' | 'ltr' | 'rtl' | '' = '';
   @property({ type: String }) value = '';
   @property({ type: String }) placeholder = '';
   @property({ type: Boolean }) required = false;
@@ -46,12 +57,16 @@ export class AlpsInput extends LitElement {
       display: flex;
       align-items: center;
       width: 100%;
+      --input-leading-space: 12px;
+      --input-trailing-space: 12px;
     }
 
     input {
       width: 100%;
       height: 36px;
-      padding: 0 12px;
+      padding-block: 0;
+      padding-inline-start: var(--input-leading-space);
+      padding-inline-end: var(--input-trailing-space);
       background: var(--alps-input-bg, var(--bg-primary, #ffffff));
       border: 1px solid var(--border-color, #e5e7eb);
       border-radius: var(--input-radius, 6px);
@@ -63,13 +78,22 @@ export class AlpsInput extends LitElement {
       outline: none;
     }
 
-    /* Padding adjustments for icons */
-    .has-left-icon input {
-      padding-left: 36px;
+    /* Room for the icon and the action button, on the sides the INTERFACE
+       puts them. Taken from the host's direction, not the input's: the input
+       carries its value's direction, and logical padding there would put an
+       address's room on the wrong side of a right-to-left field. */
+    :host(:dir(rtl)) input {
+      padding-inline-start: var(--input-trailing-space);
+      padding-inline-end: var(--input-leading-space);
     }
 
-    .has-right-icon input {
-      padding-right: 36px;
+    .has-left-icon { --input-leading-space: 36px; }
+    .has-right-icon { --input-trailing-space: 36px; }
+
+    /* An empty left-to-right field still shows the interface's placeholder,
+       on the interface's side. */
+    :host(:dir(rtl)) input[dir='ltr']:placeholder-shown {
+      text-align: right;
     }
 
     input:focus {
@@ -83,7 +107,7 @@ export class AlpsInput extends LitElement {
 
     .icon-left {
       position: absolute;
-      left: 10px;
+      inset-inline-start: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -101,7 +125,7 @@ export class AlpsInput extends LitElement {
 
     .action-btn {
       position: absolute;
-      right: 6px;
+      inset-inline-end: 6px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -193,6 +217,7 @@ export class AlpsInput extends LitElement {
     const isPasswordType = this.type === 'password';
     const currentType = isPasswordType && this.showPassword ? 'text' : this.type;
     const effectiveIcon = this.icon || (this.type === 'email' ? 'at' : '');
+    const inputDir = this.inputDir || (LTR_INPUT_TYPES.has(this.type) ? 'ltr' : 'auto');
 
     return html`
       <div class="input-wrapper ${effectiveIcon ? 'has-left-icon' : ''} ${(isPasswordType || this.clearable) && this.value ? 'has-right-icon' : ''}">
@@ -205,6 +230,7 @@ export class AlpsInput extends LitElement {
         <input 
           id=${this.inputId || ''}
           type=${currentType} 
+          dir=${inputDir}
           .value=${this.value}
           placeholder=${this.placeholder}
           aria-label=${this.label || nothing}

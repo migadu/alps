@@ -76,7 +76,7 @@ export class AlpsGpgSettings extends LitElement {
             color: var(--text-muted);
             font-style: italic;
             padding: 16px 0;
-            text-align: left;
+            text-align: start;
         }
     `;
 
@@ -322,11 +322,11 @@ export class AlpsGpgSettings extends LitElement {
                     <alps-setting-group label="${this.i18nStore?.t('gpg.publicKeyBlock')}" style="margin-bottom: 24px;">
                         <!-- Each box named by the label above it, which is in
                              alps-setting-group's shadow root and cannot reach it. -->
-                        <textarea aria-label=${this.i18nStore?.t('gpg.publicKeyBlock') ?? ''} .value=${this.pubKeyInput} @input=${(e: any) => this.pubKeyInput = e.target.value}></textarea>
+                        <textarea dir="ltr" aria-label=${this.i18nStore?.t('gpg.publicKeyBlock') ?? ''} .value=${this.pubKeyInput} @input=${(e: any) => this.pubKeyInput = e.target.value}></textarea>
                     </alps-setting-group>
 
                     <alps-setting-group label="${this.i18nStore?.t('gpg.privateKeyBlock')}" style="margin-bottom: 24px;">
-                        <textarea aria-label=${this.i18nStore?.t('gpg.privateKeyBlock') ?? ''} .value=${this.privKeyInput} @input=${(e: any) => this.privKeyInput = e.target.value}></textarea>
+                        <textarea dir="ltr" aria-label=${this.i18nStore?.t('gpg.privateKeyBlock') ?? ''} .value=${this.privKeyInput} @input=${(e: any) => this.privKeyInput = e.target.value}></textarea>
                     </alps-setting-group>
 
                     <div class="actions">

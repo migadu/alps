@@ -55,7 +55,7 @@ export class AlpsCreateButton extends LitElement {
     :host([collapsed]) .create-text {
       max-width: 0;
       opacity: 0;
-      margin-left: 0;
+      margin-inline-start: 0;
     }
   `;
 

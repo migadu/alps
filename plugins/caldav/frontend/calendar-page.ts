@@ -127,9 +127,9 @@ export class CalendarPage extends LitElement {
         }
 
         .app-container.collapsed .main-content {
-            box-shadow: rgba(95, 95, 95, 0.1) -4px 0 4px -2px;
+            box-shadow: rgba(95, 95, 95, 0.1) calc(-4px * var(--ui-inline-direction, 1)) 0 4px -2px;
             z-index: 25;
-            border-left: 1px solid var(--border-color, #e5e7eb);
+            border-inline-start: 1px solid var(--border-color, #e5e7eb);
             position: relative;
         }
 
@@ -210,7 +210,7 @@ export class CalendarPage extends LitElement {
             justify-content: center;
             box-sizing: border-box;
             background-color: transparent;
-            margin-right: 8px;
+            margin-inline-end: 8px;
             flex-shrink: 0;
         }
 
@@ -253,8 +253,8 @@ export class CalendarPage extends LitElement {
         .calendar-actions {
             display: none;
             align-items: center;
-            margin-left: auto;
-            margin-right: -4px;
+            margin-inline-start: auto;
+            margin-inline-end: -4px;
         }
 
         @media (hover: hover) {
@@ -1071,12 +1071,12 @@ export class CalendarPage extends LitElement {
                                                 <div class="calendar-checkbox ${this.activeCalendars.has(c.path) ? 'checked' : ''}" style="--cal-color: ${c.color}">
                                                     ${this.activeCalendars.has(c.path) ? renderIcon('check') : ''}
                                                 </div>
-                                                <span>${c.name}</span>
+                                                <span><bdi>${c.name}</bdi></span>
                                             </div>
 
                                             <div class="calendar-actions ${this.activeKebabMenu === c.path ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
                                                 <alps-popup 
-                                                    align="right" 
+                                                    align="end" 
                                                     position="bottom"
                                                     @popup-open=${() => { this.activeKebabMenu = c.path; }}
                                                     @popup-close=${() => { if (this.activeKebabMenu === c.path) this.activeKebabMenu = null; }}

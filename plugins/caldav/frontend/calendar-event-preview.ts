@@ -61,7 +61,7 @@ export class CalendarEventPreview extends LitElement {
 
         .edit-btn {
             color: var(--text-secondary, #6b7280);
-            margin-left: 12px;
+            margin-inline-start: 12px;
             flex-shrink: 0;
         }
 
@@ -98,7 +98,7 @@ export class CalendarEventPreview extends LitElement {
         .card-text {
             font-size: 13px;
             color: var(--text-secondary, #4b5563);
-            margin-left: 22px;
+            margin-inline-start: 22px;
             line-height: 1.4;
         }
 
@@ -302,7 +302,7 @@ export class CalendarEventPreview extends LitElement {
             <div class="header">
                 <div class="title-container">
                     <div class="color-dot" style="background-color: ${e.color || 'var(--accent-color, #2563eb)'}"></div>
-                    <h3 class="title">${task.title || (this.i18nStore?.t('tasks.untitled'))}</h3>
+                    <h3 class="title"><bdi>${task.title || (this.i18nStore?.t('tasks.untitled'))}</bdi></h3>
                 </div>
                 <div style="display: flex; gap: 4px;">
                     <alps-icon-btn class="complete-btn" icon="checkCircle" title=${this.i18nStore?.t('tasks.markDone')} @click=${this.handleComplete}></alps-icon-btn>
@@ -320,7 +320,7 @@ export class CalendarEventPreview extends LitElement {
             ${task.description ? html`
             <div class="card">
                 <div class="card-label">${this.i18nStore?.t('tasks.notes')}</div>
-                <div class="description-text">${task.description}</div>
+                <div class="description-text" dir="auto">${task.description}</div>
             </div>` : ''}
         `;
     }
@@ -334,7 +334,7 @@ export class CalendarEventPreview extends LitElement {
             <div class="header">
                 <div class="title-container">
                     <div class="color-dot" style="background-color: ${e.color || 'var(--accent-color, #2563eb)'}"></div>
-                    <h3 class="title">${e.summary || (this.i18nStore?.t('calendar.noTitle'))}</h3>
+                    <h3 class="title"><bdi>${e.summary || (this.i18nStore?.t('calendar.noTitle'))}</bdi></h3>
                 </div>
                 <div style="display: flex; gap: 4px;">
                     <alps-icon-btn class="edit-btn" icon="pen" title=${this.i18nStore?.t('calendar.editEvent')} @click=${this.handleEdit}></alps-icon-btn>
@@ -352,13 +352,13 @@ export class CalendarEventPreview extends LitElement {
             ${e.location ? html`
             <div class="card">
                 <div class="card-label">${this.i18nStore?.t('calendar.location')}</div>
-                <div class="description-text">${e.location}</div>
+                <div class="description-text" dir="auto">${e.location}</div>
             </div>` : ''}
 
             ${e.description ? html`
             <div class="card">
                 <div class="card-label">${this.i18nStore?.t('calendar.notes')}</div>
-                <div class="description-text">${e.description}</div>
+                <div class="description-text" dir="auto">${e.description}</div>
             </div>` : ''}
         `;
     }

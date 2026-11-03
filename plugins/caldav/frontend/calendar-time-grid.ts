@@ -74,7 +74,7 @@ export class CalendarTimeGrid extends LitElement {
             width: 60px;
             flex-shrink: 0;
             box-sizing: border-box;
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
         }
 
         .time-grid-days {
@@ -88,13 +88,13 @@ export class CalendarTimeGrid extends LitElement {
             padding: 8px;
             text-align: center;
             box-sizing: border-box;
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 4px;
         }
-        .time-grid-day-header:last-child { border-right: none; }
+        .time-grid-day-header:last-child { border-inline-end: none; }
 
         .time-grid-day-name {
             font-size: 11px;
@@ -132,8 +132,8 @@ export class CalendarTimeGrid extends LitElement {
             color: var(--text-muted, #6b7280);
             padding: 4px 8px;
             box-sizing: border-box;
-            text-align: right;
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            text-align: end;
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
         }
 
         .all-day-content {
@@ -143,14 +143,14 @@ export class CalendarTimeGrid extends LitElement {
             grid-auto-columns: minmax(0, 1fr);
         }
         .all-day-cell {
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
             padding: 2px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             gap: 2px;
         }
-        .all-day-cell:last-child { border-right: none; }
+        .all-day-cell:last-child { border-inline-end: none; }
 
         .time-grid-scroll {
             flex: 1;
@@ -171,13 +171,13 @@ export class CalendarTimeGrid extends LitElement {
             width: 60px;
             flex-shrink: 0;
             box-sizing: border-box;
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
             position: relative;
         }
 
         .time-label {
             position: absolute;
-            right: 8px;
+            inset-inline-end: 8px;
             font-size: 11px;
             color: var(--text-muted, #6b7280);
             transform: translateY(-50%);
@@ -194,10 +194,10 @@ export class CalendarTimeGrid extends LitElement {
         }
 
         .time-column {
-            border-right: 1px solid var(--border-color, #e5e7eb);
+            border-inline-end: 1px solid var(--border-color, #e5e7eb);
             position: relative;
         }
-        .time-column:last-child { border-right: none; }
+        .time-column:last-child { border-inline-end: none; }
 
         alps-popup.time-event-popup {
             position: absolute;
@@ -261,7 +261,7 @@ export class CalendarTimeGrid extends LitElement {
             background-color: var(--bg-primary, #ffffff);
             color: var(--text-primary, #111827);
             border: 1px solid;
-            border-left-width: 3px;
+            border-inline-start-width: 3px;
             box-shadow: none;
         }
         .event-chip.task svg {
@@ -283,7 +283,7 @@ export class CalendarTimeGrid extends LitElement {
         .now-line::before {
             content: '';
             position: absolute;
-            left: 0;
+            inset-inline-start: 0;
             /* The padding box starts below the 2px border, so -5px centers the
                8px dot on the line. */
             top: -5px;
@@ -393,12 +393,12 @@ export class CalendarTimeGrid extends LitElement {
                                     return html`
                                         <div class="all-day-cell" @click=${() => this.handleAllDayCellClick(d)} style="cursor: pointer;">
                                             ${allDayEvents.map(e => html`
-                                                <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
+                                                <alps-popup align="start" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
                                                     <div slot="trigger"
                                                         class="event-chip ${e.task ? 'task' : ''} ${e.status === 'declined' ? 'declined' : ''}" 
                                                         style=${e.task ? `border-color: ${e.color}` : e.color ? `background-color: ${e.color}` : ''}
                                                         title="${e.summary || (this.i18nStore?.t('calendar.noTitle'))}">
-                                                        ${e.task ? renderIcon('checkCircle') : ''}${e.summary || (this.i18nStore?.t('calendar.noTitle'))}
+                                                        ${e.task ? renderIcon('checkCircle') : ''}<bdi>${e.summary || (this.i18nStore?.t('calendar.noTitle'))}</bdi>
                                                     </div>
                                                     <calendar-event-preview .event=${e}></calendar-event-preview>
                                                 </alps-popup>
@@ -460,14 +460,14 @@ export class CalendarTimeGrid extends LitElement {
                                             return html`
                                                 <alps-popup 
                                                     class="time-event-popup"
-                                                    align="left" position="bottom" 
+                                                    align="start" position="bottom" 
                                                     style="top: ${top}px; height: ${height}px;"
                                                     @click=${(ev: Event) => ev.stopPropagation()}>
                                                     <div slot="trigger"
                                                         class="time-event ${e.status === 'declined' ? 'declined' : ''}" 
                                                         style="${e.color ? `background-color: ${e.color}; border-color: ${e.color};` : ''}" 
                                                         title="${e.summary || (this.i18nStore?.t('calendar.noTitle'))}">
-                                                        <div class="time-event-title">${e.summary || (this.i18nStore?.t('calendar.noTitle'))}</div>
+                                                        <div class="time-event-title"><bdi>${e.summary || (this.i18nStore?.t('calendar.noTitle'))}</bdi></div>
                                                     </div>
                                                     <calendar-event-preview .event=${e}></calendar-event-preview>
                                                 </alps-popup>

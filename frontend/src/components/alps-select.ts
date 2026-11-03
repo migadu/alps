@@ -39,7 +39,8 @@ export class AlpsSelect extends LitElement {
 		select {
 			width: 100%;
 			height: 36px;
-			padding: 0 36px 0 12px; /* Extra padding right for the custom caret */
+			padding-block: 0;
+			padding-inline: 12px 36px; /* Room at the inline end for the custom caret */
 			background: var(--alps-input-bg, var(--bg-primary, #ffffff));
 			border: 1px solid var(--border-color, #e5e7eb);
 			border-radius: var(--input-radius, 6px);
@@ -68,7 +69,7 @@ export class AlpsSelect extends LitElement {
 
 		.caret {
 			position: absolute;
-			right: 12px;
+			inset-inline-end: 12px;
 			display: flex;
 			align-items: center;
 			justify-content: center;

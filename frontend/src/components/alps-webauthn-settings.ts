@@ -76,7 +76,7 @@ export class AlpsWebauthnSettings extends LitElement {
             color: var(--text-muted);
             font-style: italic;
             padding: 16px 0;
-            text-align: left;
+            text-align: start;
         }
     `;
 

@@ -25,7 +25,7 @@ export const popupStyles = css`
     background: none;
     border: none;
     cursor: pointer;
-    text-align: left;
+    text-align: start;
     transition: background-color 0.2s;
     white-space: nowrap;
     position: relative;
@@ -46,13 +46,13 @@ export const popupStyles = css`
   }
 
   .dropdown-item:first-of-type {
-    border-top-left-radius: 4px;
-    border-top-right-radius: 4px;
+    border-start-start-radius: 4px;
+    border-start-end-radius: 4px;
   }
 
   .dropdown-item:last-of-type {
-    border-bottom-left-radius: 4px;
-    border-bottom-right-radius: 4px;
+    border-end-start-radius: 4px;
+    border-end-end-radius: 4px;
   }
 
   .dropdown-item.active {
@@ -89,8 +89,12 @@ export const popupStyles = css`
 
 @customElement('alps-popup')
 export class AlpsPopup extends LitElement {
-  @property({ type: String }) align: 'left' | 'right' | 'top' | 'bottom' = 'right';
-  @property({ type: String }) position: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
+  /** `start`/`end` and `inline-start`/`inline-end` follow the page's
+   * direction, so a menu opens on the mirrored side in a right-to-left
+   * language. `left`/`right` stay physical, for callers that mean the
+   * screen's sides. */
+  @property({ type: String }) align: 'start' | 'end' | 'left' | 'right' | 'top' | 'bottom' = 'end';
+  @property({ type: String }) position: 'top' | 'bottom' | 'inline-start' | 'inline-end' | 'left' | 'right' = 'bottom';
   @property({ type: String, reflect: true }) triggerOn: 'click' | 'hover' = 'click';
   @property({ type: Boolean, reflect: true, attribute: 'open' }) openState = false;
 
@@ -150,69 +154,69 @@ export class AlpsPopup extends LitElement {
 
     .popup-content.position-bottom.align-right::before {
       top: -6px;
-      right: var(--arrow-right, 10px);
+      inset-inline-end: var(--arrow-right, 10px);
       border-width: 0 6px 6px 6px;
       border-color: transparent transparent var(--border-color, #e5e7eb) transparent;
     }
 
     .popup-content.position-bottom.align-right::after {
       top: -5px;
-      right: calc(var(--arrow-right, 10px) + 1px);
+      inset-inline-end: calc(var(--arrow-right, 10px) + 1px);
       border-width: 0 5px 5px 5px;
       border-color: transparent transparent var(--bg-primary, #ffffff) transparent;
     }
 
     .popup-content.position-bottom.align-left::before {
       top: -6px;
-      left: var(--arrow-left, 10px);
+      inset-inline-start: var(--arrow-left, 10px);
       border-width: 0 6px 6px 6px;
       border-color: transparent transparent var(--border-color, #e5e7eb) transparent;
     }
 
     .popup-content.position-bottom.align-left::after {
       top: -5px;
-      left: calc(var(--arrow-left, 10px) + 1px);
+      inset-inline-start: calc(var(--arrow-left, 10px) + 1px);
       border-width: 0 5px 5px 5px;
       border-color: transparent transparent var(--bg-primary, #ffffff) transparent;
     }
 
     .popup-content.position-top.align-right::before {
       bottom: -6px;
-      right: var(--arrow-right, 10px);
+      inset-inline-end: var(--arrow-right, 10px);
       border-width: 6px 6px 0 6px;
       border-color: var(--border-color, #e5e7eb) transparent transparent transparent;
     }
 
     .popup-content.position-top.align-right::after {
       bottom: -5px;
-      right: calc(var(--arrow-right, 10px) + 1px);
+      inset-inline-end: calc(var(--arrow-right, 10px) + 1px);
       border-width: 5px 5px 0 5px;
       border-color: var(--bg-primary, #ffffff) transparent transparent transparent;
     }
 
     .popup-content.position-top.align-left::before {
       bottom: -6px;
-      left: var(--arrow-left, 10px);
+      inset-inline-start: var(--arrow-left, 10px);
       border-width: 6px 6px 0 6px;
       border-color: var(--border-color, #e5e7eb) transparent transparent transparent;
     }
 
     .popup-content.position-top.align-left::after {
       bottom: -5px;
-      left: calc(var(--arrow-left, 10px) + 1px);
+      inset-inline-start: calc(var(--arrow-left, 10px) + 1px);
       border-width: 5px 5px 0 5px;
       border-color: var(--bg-primary, #ffffff) transparent transparent transparent;
     }
 
     /* Horizontal Left Position Arrow (points right, on the right border of popup) */
     .popup-content.position-left::before {
-      right: -6px;
+      inset-inline-end: -6px;
       top: var(--arrow-top, 10px);
       border-width: 6px 0 6px 6px;
       border-color: transparent transparent transparent var(--border-color, #e5e7eb);
     }
     .popup-content.position-left::after {
-      right: -5px;
+      inset-inline-end: -5px;
       top: calc(var(--arrow-top, 10px) + 1px);
       border-width: 5px 0 5px 5px;
       border-color: transparent transparent transparent var(--bg-primary, #ffffff);
@@ -220,13 +224,13 @@ export class AlpsPopup extends LitElement {
 
     /* Horizontal Right Position Arrow (points left, on the left border of popup) */
     .popup-content.position-right::before {
-      left: -6px;
+      inset-inline-start: -6px;
       top: var(--arrow-top, 10px);
       border-width: 6px 6px 6px 0;
       border-color: transparent var(--border-color, #e5e7eb) transparent transparent;
     }
     .popup-content.position-right::after {
-      left: -5px;
+      inset-inline-start: -5px;
       top: calc(var(--arrow-top, 10px) + 1px);
       border-width: 5px 5px 5px 0;
       border-color: transparent var(--bg-primary, #ffffff) transparent transparent;
@@ -374,8 +378,15 @@ export class AlpsPopup extends LitElement {
     const rect = trigger.getBoundingClientRect();
     const contentRect = content.getBoundingClientRect();
 
-    let effectivePosition = this.position;
-    let effectiveAlign = this.align;
+    // The arithmetic below is in the viewport's physical coordinates, so the
+    // logical anchors are resolved to a side once, here.
+    const rtl = getComputedStyle(this).direction === 'rtl';
+    const position = this.position === 'inline-start' ? (rtl ? 'right' : 'left')
+      : this.position === 'inline-end' ? (rtl ? 'left' : 'right') : this.position;
+    const align = this.align === 'start' ? (rtl ? 'right' : 'left')
+      : this.align === 'end' ? (rtl ? 'left' : 'right') : this.align;
+    let effectivePosition = position;
+    let effectiveAlign = align;
 
     // Reset styles
     content.style.top = '';
@@ -387,11 +398,11 @@ export class AlpsPopup extends LitElement {
     content.style.removeProperty('--arrow-top');
     content.style.removeProperty('--arrow-bottom');
 
-    const isHorizontal = this.position === 'left' || this.position === 'right';
+    const isHorizontal = position === 'left' || position === 'right';
 
     if (isHorizontal) {
       // 1. Horizontal Position check & fallback
-      if (this.position === 'right') {
+      if (position === 'right') {
         if (rect.right + 6 + contentRect.width > window.innerWidth && rect.left - 6 - contentRect.width >= 0) {
           effectivePosition = 'left';
         }
@@ -402,7 +413,7 @@ export class AlpsPopup extends LitElement {
       }
 
       // 2. Vertical Alignment fallback
-      if (this.align === 'top') {
+      if (align === 'top') {
         if (rect.top + contentRect.height > window.innerHeight && rect.bottom - contentRect.height >= 0) {
           effectiveAlign = 'bottom';
         }
@@ -450,7 +461,7 @@ export class AlpsPopup extends LitElement {
 
     } else {
       // Standard vertical positions (top / bottom)
-      if (this.position === 'bottom') {
+      if (position === 'bottom') {
         if (rect.bottom + 8 + contentRect.height > window.innerHeight && rect.top - 8 - contentRect.height >= 0) {
           effectivePosition = 'top';
         }
@@ -460,7 +471,7 @@ export class AlpsPopup extends LitElement {
         }
       }
 
-      if (this.align === 'right') {
+      if (align === 'right') {
         if (rect.right - contentRect.width < 0 && rect.left + contentRect.width <= window.innerWidth) {
           effectiveAlign = 'left';
         }
@@ -511,10 +522,16 @@ export class AlpsPopup extends LitElement {
   }
 
   private _closeTimeout: any = null;
+  // An open menu moves with a language switch to or from a right-to-left
+  // one, though none of its own properties changed.
+  private _directionObserver = new MutationObserver(() => {
+    if (this.openState) this._updatePosition();
+  });
 
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('resize', this._handleResize, { passive: true });
+    this._directionObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['dir'] });
     this.addEventListener('mouseenter', this._handleMouseEnter);
     this.addEventListener('mouseleave', this._handleMouseLeave);
   }
@@ -522,6 +539,7 @@ export class AlpsPopup extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener('resize', this._handleResize);
+    this._directionObserver.disconnect();
     this.removeEventListener('mouseenter', this._handleMouseEnter);
     this.removeEventListener('mouseleave', this._handleMouseLeave);
     if (this._closeTimeout) {

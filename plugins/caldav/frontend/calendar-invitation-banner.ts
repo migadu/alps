@@ -383,7 +383,7 @@ export class CalendarInvitationBanner extends LitElement {
                 <div class="icon">${renderIcon(v.kind === 'task' ? 'checkCircle' : 'calendar')}</div>
                 <div class="body">
                     <div class="eyebrow">${kind}</div>
-                    <div class="title ${cancelled ? 'struck' : ''}">${v.summary || this.t('calendar.noTitle')}</div>
+                    <div class="title ${cancelled ? 'struck' : ''}"><bdi>${v.summary || this.t('calendar.noTitle')}</bdi></div>
                     ${when ? html`<div class="when">${when}${v.rrule ? html`, ${this.t('invitations.repeats')}` : nothing}</div>` : nothing}
                     ${v.location ? html`<div class="muted where">${v.location}</div>` : nothing}
                     ${v.method === 'reply' && v.replier

@@ -196,7 +196,7 @@ export class MessageList extends LitElement {
       font-weight: 600;
       font-size: 14px;
       color: var(--text-color);
-      margin-left: 4px;
+      margin-inline-start: 4px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -212,7 +212,7 @@ export class MessageList extends LitElement {
       padding: 1px 6px;
       border-radius: 4px;
       border: 1px solid var(--border-color, #e5e7eb);
-      margin-right: 6px;
+      margin-inline-end: 6px;
       flex-shrink: 0;
       text-transform: capitalize;
     }
@@ -242,7 +242,8 @@ export class MessageList extends LitElement {
 
     /* Density: Loose */
     :host(.density-loose) .message-item {
-      padding: 16px 12px 16px 0;
+      padding-block: 16px;
+      padding-inline: 0 12px;
       gap: 16px;
     }
     :host(.density-loose) .message-preview {
@@ -255,7 +256,8 @@ export class MessageList extends LitElement {
 
     /* Density: Compact */
     :host(.density-compact) .message-item {
-      padding: 8px 12px 8px 0;
+      padding-block: 8px;
+      padding-inline: 0 12px;
       gap: 12px;
     }
     :host(.density-compact) .message-header-row {
@@ -276,7 +278,8 @@ export class MessageList extends LitElement {
 
     /* Density: Ultra-compact */
     :host(.density-ultra-compact) .message-item {
-      padding: 4px 12px 4px 0;
+      padding-block: 4px;
+      padding-inline: 0 12px;
       gap: 12px;
     }
     :host(.density-ultra-compact) .message-subject {
@@ -389,8 +392,8 @@ export class MessageList extends LitElement {
       font-size: 12px;
       color: var(--text-muted);
       white-space: nowrap;
-      margin-left: 8px;
-      text-align: right;
+      margin-inline-start: 8px;
+      text-align: end;
       flex-shrink: 0;
     }
 
@@ -399,8 +402,8 @@ export class MessageList extends LitElement {
       font-size: 11px;
       color: var(--text-muted);
       white-space: nowrap;
-      margin-left: 8px;
-      text-align: right;
+      margin-inline-start: 8px;
+      text-align: end;
       flex-shrink: 0;
     }
 
@@ -443,7 +446,7 @@ export class MessageList extends LitElement {
     }
 
     .avatar-wrapper:not(:first-child) {
-      margin-left: -8px;
+      margin-inline-start: -8px;
     }
 
     .extra-count {
@@ -521,7 +524,7 @@ export class MessageList extends LitElement {
     .spinner {
       animation: spin 3s linear infinite;
       display: flex;
-      margin-right: 8px;
+      margin-inline-end: 8px;
     }
     
     .spinner .icon {
@@ -546,8 +549,8 @@ export class MessageList extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding-left: 12px;
-      padding-right: 6px;
+      padding-inline-start: 12px;
+      padding-inline-end: 6px;
       align-self: stretch;
       cursor: pointer;
     }
@@ -596,14 +599,14 @@ export class MessageList extends LitElement {
     }
 
     .star-btn-wrapper-ultra {
-      margin-right: 8px;
+      margin-inline-end: 8px;
     }
 
     .indicators-wrapper-ultra {
       display: flex;
       align-items: center;
       gap: 4px;
-      margin-right: 4px;
+      margin-inline-end: 4px;
     }
 
     .message-header-inner {
@@ -612,7 +615,7 @@ export class MessageList extends LitElement {
       gap: 8px;
       min-width: 0;
       flex: 1;
-      margin-right: 12px;
+      margin-inline-end: 12px;
     }
 
     .message-header-inner .star-btn {
@@ -635,7 +638,7 @@ export class MessageList extends LitElement {
       display: flex;
       align-items: center;
       gap: 4px;
-      margin-right: 6px;
+      margin-inline-end: 6px;
       flex-shrink: 0;
     }
 
@@ -643,7 +646,7 @@ export class MessageList extends LitElement {
       display: flex;
       flex-wrap: nowrap;
       gap: 4px;
-      margin-right: 6px;
+      margin-inline-end: 6px;
       overflow: hidden;
       flex-shrink: 0;
       align-items: center;
@@ -1692,7 +1695,7 @@ export class MessageList extends LitElement {
           <div class="attachment-col">
             ${msg.HasAttachments ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.hasAttachments')}>${renderIcon('paperclipHorizontal')}</div>` : ''}
           </div>
-          <div class="message-date">${dateStr}</div>
+          <div class="message-date"><bdi>${dateStr}</bdi></div>
         </div>
       </div>
       `;
@@ -1754,7 +1757,7 @@ export class MessageList extends LitElement {
             <div class="attachment-col">
               ${msg.HasAttachments ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.hasAttachments')}>${renderIcon('paperclipHorizontal')}</div>` : ''}
             </div>
-            <div class="message-date">${dateStr}</div>
+            <div class="message-date"><bdi>${dateStr}</bdi></div>
           </div>
         </div>
         <div class="message-subject-row">
@@ -1777,7 +1780,7 @@ export class MessageList extends LitElement {
           <div class="message-subject" dir="auto">
             ${subject}
           </div>
-          ${sizeStr ? html`<div class="message-size">${sizeStr}</div>` : ''}
+          ${sizeStr ? html`<div class="message-size"><bdi>${sizeStr}</bdi></div>` : ''}
         </div>
       </div>
     </div>

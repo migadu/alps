@@ -121,7 +121,8 @@ export class SettingsWindow extends LitElement {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 6px 6px 6px 10px;
+      padding-block: 6px;
+      padding-inline: 10px 6px;
       background: var(--bg-secondary);
       border-bottom: 1px solid var(--border-color);
       color: var(--text-color);
@@ -150,7 +151,7 @@ export class SettingsWindow extends LitElement {
       overflow-y: auto;
       overflow-x: hidden;
       padding: 8px 0;
-      border-right: 1px solid var(--border-color);
+      border-inline-end: 1px solid var(--border-color);
     }
 
     .main-view {
@@ -179,7 +180,8 @@ export class SettingsWindow extends LitElement {
       align-items: center;
       gap: 6px;
       margin: 0 0 12px;
-      padding: 4px 8px 4px 4px;
+      padding-block: 4px;
+      padding-inline: 4px 8px;
       border: none;
       border-radius: 6px;
       background: none;
@@ -209,7 +211,7 @@ export class SettingsWindow extends LitElement {
       }
       .sections {
         flex: 1;
-        border-right: none;
+        border-inline-end: none;
       }
       .main-view {
         padding: 16px;
@@ -610,7 +612,7 @@ export class SettingsWindow extends LitElement {
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.signature')}" description="${this.i18nStore?.t('settings.identity.signatureDesc')}">
           <!-- Named by its setting: the label above is in alps-setting-group's
                shadow root, which no label can reach out of. -->
-          <textarea aria-label=${this.i18nStore?.t('settings.identity.signature') ?? ''} @change=${(e: Event) => this.handleUpdate(e, 'signature')} .value=${this.settingsState.signature || ''}></textarea>
+          <textarea dir="auto" aria-label=${this.i18nStore?.t('settings.identity.signature') ?? ''} @change=${(e: Event) => this.handleUpdate(e, 'signature')} .value=${this.settingsState.signature || ''}></textarea>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.replyTo')}" description="${this.i18nStore?.t('settings.identity.replyToDesc')}">
           <alps-input label="${this.i18nStore?.t('settings.identity.replyTo')}" type="email" .value=${this.settingsState.replyTo || ''} @change=${(e: Event) => this.handleUpdate(e, 'replyTo')} placeholder="${this.i18nStore?.t('settings.placeholderReplyTo')}"></alps-input>
@@ -645,7 +647,7 @@ export class SettingsWindow extends LitElement {
                    @change=${(e: Event) => this.handleUpdate(e, 'enableThreading')}>
             ${this.i18nStore?.t('settings.reading.enableThreading')}
             ${this.settingsState.hasThreadCapability === false ? html`
-              <span style="font-size: 12px; color: var(--text-muted); font-weight: normal; margin-left: 4px;">
+              <span style="font-size: 12px; color: var(--text-muted); font-weight: normal; margin-inline-start: 4px;">
                 (${this.i18nStore?.t('settings.reading.threadingNotSupported')})
               </span>
             ` : ''}

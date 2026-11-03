@@ -49,7 +49,7 @@ export class PrintPage extends LitElement {
     }
     .print-header {
       margin-bottom: 24px;
-      text-align: left;
+      text-align: start;
     }
     .print-header h2 {
       font-size: 20px;
@@ -69,8 +69,8 @@ export class PrintPage extends LitElement {
     }
     .print-date {
       color: #666;
-      margin-left: 16px;
-      text-align: right;
+      margin-inline-start: 16px;
+      text-align: end;
       min-width: 150px;
     }
     .print-to-row {

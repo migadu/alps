@@ -30,8 +30,8 @@ export class AlpsBanner extends LitElement {
     }
 
     .banner.warning {
-      border-left: 3px solid var(--warning, #f59e0b);
-      padding-left: 13px;
+      border-inline-start: 3px solid var(--warning, #f59e0b);
+      padding-inline-start: 13px;
     }
 
     .content {
@@ -42,7 +42,7 @@ export class AlpsBanner extends LitElement {
     }
 
     .actions {
-      margin-left: 16px;
+      margin-inline-start: 16px;
       flex-shrink: 0;
       display: flex;
       gap: 8px;
@@ -65,7 +65,7 @@ export class AlpsBanner extends LitElement {
         text-overflow: ellipsis;
       }
       .actions {
-        margin-left: 8px;
+        margin-inline-start: 8px;
       }
     }
   `;

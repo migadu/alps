@@ -77,7 +77,7 @@ export const sidebarLayoutStyles = css`
      until it has slid --strip-slide. */
   .sidebar-scroll-content {
     width: calc(max(100%, 215px));
-    margin-left: max(0px - var(--strip-slide, 16px), min(0px, 100% - 120px));
+    margin-inline-start: max(0px - var(--strip-slide, 16px), min(0px, 100% - 120px));
   }
 `;
 
@@ -148,6 +148,19 @@ export class AlpsSidebar extends LitElement {
       transition: z-index 0s 0s;
     }
 
+    :host {
+      /* The shadow falls past the sidebar's inline end, and a closed mobile
+         sidebar waits beyond its inline start: both mirror in a
+         right-to-left interface. */
+      --sidebar-edge-offset: 4px;
+      --sidebar-closed-offset: -100%;
+    }
+
+    :host(:dir(rtl)) {
+      --sidebar-edge-offset: -4px;
+      --sidebar-closed-offset: 100%;
+    }
+
     .sidebar {
       background-color: var(--bg-secondary, #f3f4f6);
       display: flex;
@@ -157,8 +170,8 @@ export class AlpsSidebar extends LitElement {
       position: relative;
       z-index: 10;
       box-sizing: border-box;
-      border-right: 1px solid var(--border-color, #e5e7eb);
-      box-shadow: rgba(95, 95, 95, 0) 4px 0 4px -2px;
+      border-inline-end: 1px solid var(--border-color, #e5e7eb);
+      box-shadow: rgba(95, 95, 95, 0) var(--sidebar-edge-offset) 0 4px -2px;
       transition: width 0.2s, box-shadow 0.2s, z-index 0s 0.2s;
     }
 
@@ -171,23 +184,23 @@ export class AlpsSidebar extends LitElement {
     }
 
     :host([collapsed]:not([peeking])) .sidebar {
-      border-right: none;
+      border-inline-end: none;
       width: 100%;
       position: absolute;
       top: 0;
-      left: 0;
+      inset-inline-start: 0;
       bottom: 0;
-      box-shadow: rgba(95, 95, 95, 0) 4px 0 4px -2px;
+      box-shadow: rgba(95, 95, 95, 0) var(--sidebar-edge-offset) 0 4px -2px;
     }
 
     :host([collapsed][peeking]) .sidebar {
       width: var(--sidebar-width-expanded, 250px);
-      box-shadow: rgba(95, 95, 95, 0.1) 4px 0 4px -2px;
+      box-shadow: rgba(95, 95, 95, 0.1) var(--sidebar-edge-offset) 0 4px -2px;
       z-index: 30;
       transition: width 0.2s, box-shadow 0.2s, z-index 0s 0s;
       position: absolute;
       top: 0;
-      left: 0;
+      inset-inline-start: 0;
       bottom: 0;
     }
 
@@ -213,14 +226,14 @@ export class AlpsSidebar extends LitElement {
     :host(.mobile-sidebar) .sidebar {
       position: absolute;
       top: 0;
-      left: 0;
+      inset-inline-start: 0;
       bottom: 0;
       width: 280px;
       z-index: 100;
       pointer-events: auto;
-      transform: translateX(-100%);
+      transform: translateX(var(--sidebar-closed-offset));
       transition: transform 0.25s cubic-bezier(0, 0, 0.2, 1);
-      box-shadow: rgba(95, 95, 95, 0.1) 4px 0 4px -2px;
+      box-shadow: rgba(95, 95, 95, 0.1) var(--sidebar-edge-offset) 0 4px -2px;
     }
 
     :host(.mobile-sidebar.open) .sidebar {
@@ -245,7 +258,7 @@ export class AlpsSidebar extends LitElement {
     .sidebar-resizer {
       position: absolute;
       top: 0;
-      right: -3px;
+      inset-inline-end: -3px;
       bottom: 0;
       width: 6px;
       cursor: col-resize;
@@ -259,7 +272,7 @@ export class AlpsSidebar extends LitElement {
       width: 3px;
       top: 0;
       bottom: 0;
-      left: 1px;
+      inset-inline-start: 1px;
     }
     .sidebar-resizer:hover::after, .sidebar-resizer.dragging::after {
       background: var(--accent-color, #005A9E);
@@ -397,9 +410,12 @@ export class AlpsSidebar extends LitElement {
 
     const startX = e.clientX;
     const startWidth = this.width;
+    // The handle is on the inline end: in a right-to-left interface that is
+    // the left edge, and dragging it left widens the sidebar.
+    const inlineDirection = getComputedStyle(this).direction === 'rtl' ? -1 : 1;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
-      const delta = moveEvent.clientX - startX;
+      const delta = (moveEvent.clientX - startX) * inlineDirection;
       let newWidth = startWidth + delta;
 
       this.dispatchEvent(new CustomEvent('sidebar-resize', {

@@ -62,7 +62,7 @@ export class SettingsAccounts extends LitElement {
             color: var(--text-muted);
             font-style: italic;
             padding: 16px 0;
-            text-align: left;
+            text-align: start;
         }
     `;
 
@@ -139,8 +139,8 @@ export class SettingsAccounts extends LitElement {
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <alps-avatar .name=${account.display_name || account.username} .size=${24}></alps-avatar>
                                 <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <strong>${account.display_name || account.username}</strong>
-                                    ${account.display_name ? html`<div style="font-size: 13px; color: var(--text-secondary);">${account.username}</div>` : ''}
+                                    <strong><bdi>${account.display_name || account.username}</bdi></strong>
+                                    ${account.display_name ? html`<div style="font-size: 13px; color: var(--text-secondary);"><bdi dir="ltr">${account.username}</bdi></div>` : ''}
                                 </div>
                             </div>
                             <div style="display: flex; align-items: center; gap: 16px;">

@@ -61,7 +61,7 @@ export class AlpsEmojiSelectorPopup extends LitElement {
 
   render() {
     return html`
-      <alps-popup align="left" position="${this.position}" @click=${this._handlePopupToggle}>
+      <alps-popup align="start" position="${this.position}" @click=${this._handlePopupToggle}>
         <slot name="trigger" slot="trigger"></slot>
         <div class="selector-container" @click=${(e: Event) => e.stopPropagation()}>
           <unicode-emoji-picker
