@@ -336,7 +336,8 @@ export const zhHant = {
     sending: '正在傳送郵件…',
     undo: '復原',
     sendError: '傳送郵件失敗：{error}',
-    presendFailed: '安全性外掛程式無法處理此郵件，因此未傳送。'
+    presendFailed: '安全性外掛程式無法處理此郵件，因此未傳送。',
+    senderNotAllowed: '您無法從這個地址寄信。請選擇其他寄件者地址。'
   },
   messageComposer: {
     fontSize: '字型大小',
@@ -385,6 +386,7 @@ export const zhHant = {
     to: '收件者',
     cc: '副本',
     bcc: '密件副本',
+    from: '寄件者',
     subject: '主旨',
     toggleFormatting: '顯示或隱藏格式選項',
     attachFiles: '新增附件',

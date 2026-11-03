@@ -349,7 +349,8 @@ export const da: TranslationDictionary = {
     sending: 'Beskeden sendes...',
     undo: 'Fortryd',
     sendError: 'Kunne ikke sende besked: {error}',
-    presendFailed: 'Et sikkerhedsplugin kunne ikke behandle beskeden, så den blev ikke sendt.'
+    presendFailed: 'Et sikkerhedsplugin kunne ikke behandle beskeden, så den blev ikke sendt.',
+    senderNotAllowed: 'Du kan ikke sende fra denne adresse. Vælg en anden afsenderadresse.'
   },
   messageComposer: {
     fontSize: 'Skriftstørrelse',
@@ -398,6 +399,7 @@ export const da: TranslationDictionary = {
     to: 'Til',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'Fra',
     subject: 'Emne',
     toggleFormatting: 'Vis/skjul formateringsmuligheder',
     attachFiles: 'Vedhæft filer',

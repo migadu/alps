@@ -347,7 +347,8 @@ export const tr = {
     sending: 'İleti gönderiliyor...',
     undo: 'Geri al',
     sendError: 'İleti gönderilemedi: {error}',
-    presendFailed: 'Bir güvenlik eklentisi bu iletiyi işleyemedi, bu yüzden ileti gönderilmedi.'
+    presendFailed: 'Bir güvenlik eklentisi bu iletiyi işleyemedi, bu yüzden ileti gönderilmedi.',
+    senderNotAllowed: 'Bu adresten gönderemezsiniz. Başka bir gönderen adresi seçin.'
   },
   messageComposer: {
     fontSize: 'Yazı Tipi Boyutu',
@@ -396,6 +397,7 @@ export const tr = {
     to: 'Kime',
     cc: 'Bilgi',
     bcc: 'Gizli',
+    from: 'Kimden',
     subject: 'Konu',
     toggleFormatting: 'Biçimlendirme Seçeneklerini Aç/Kapat',
     attachFiles: 'Dosya Ekle',

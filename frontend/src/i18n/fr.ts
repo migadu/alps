@@ -293,7 +293,8 @@ export const fr = {
     sending: 'Envoi du message en cours...',
     undo: 'Annuler',
     sendError: 'Échec de l\'envoi du message : {error}',
-    presendFailed: 'Une extension de sécurité n\'a pas pu traiter ce message, il n\'a donc pas été envoyé.'
+    presendFailed: 'Une extension de sécurité n\'a pas pu traiter ce message, il n\'a donc pas été envoyé.',
+    senderNotAllowed: "Vous ne pouvez pas envoyer depuis cette adresse. Choisissez une autre adresse d'expéditeur."
   },
   messageComposer: {
     fontSize: 'Taille de la police',
@@ -349,6 +350,7 @@ export const fr = {
     to: 'À',
     cc: 'Cc',
     bcc: 'Cci',
+    from: 'De',
     subject: 'Objet',
     toggleFormatting: 'Basculer les options de formatage',
     attachFiles: 'Joindre des fichiers',

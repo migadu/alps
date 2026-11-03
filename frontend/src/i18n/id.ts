@@ -336,7 +336,8 @@ export const id = {
     sending: 'Pesan sedang dikirim...',
     undo: 'Urungkan',
     sendError: 'Gagal mengirim pesan: {error}',
-    presendFailed: 'Plugin keamanan tidak dapat memproses pesan ini, sehingga pesan tidak dikirim.'
+    presendFailed: 'Plugin keamanan tidak dapat memproses pesan ini, sehingga pesan tidak dikirim.',
+    senderNotAllowed: 'Anda tidak dapat mengirim dari alamat ini. Pilih alamat pengirim lain.'
   },
   messageComposer: {
     fontSize: 'Ukuran Font',
@@ -385,6 +386,7 @@ export const id = {
     to: 'Kepada',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'Dari',
     subject: 'Subjek',
     toggleFormatting: 'Tampilkan/Sembunyikan Opsi Pemformatan',
     attachFiles: 'Lampirkan File',

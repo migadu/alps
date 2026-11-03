@@ -340,7 +340,8 @@ export const pt = {
     sending: 'A mensagem está a ser enviada...',
     undo: 'Desfazer',
     sendError: 'Falha ao enviar mensagem: {error}',
-    presendFailed: 'Um plugin de segurança não conseguiu processar esta mensagem, por isso não foi enviada.'
+    presendFailed: 'Um plugin de segurança não conseguiu processar esta mensagem, por isso não foi enviada.',
+    senderNotAllowed: 'Não pode enviar a partir deste endereço. Escolha outro endereço de remetente.'
   },
   messageComposer: {
     fontSize: 'Tamanho do tipo de letra',
@@ -396,6 +397,7 @@ export const pt = {
     to: 'Para',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'De',
     subject: 'Assunto',
     toggleFormatting: 'Alternar opções de formatação',
     attachFiles: 'Anexar ficheiros',

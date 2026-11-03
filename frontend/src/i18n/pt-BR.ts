@@ -357,7 +357,8 @@ export const ptBR = {
     sending: 'A mensagem está sendo enviada...',
     undo: 'Desfazer',
     sendError: 'Falha ao enviar mensagem: {error}',
-    presendFailed: 'Um plugin de segurança não conseguiu processar esta mensagem, por isso ela não foi enviada.'
+    presendFailed: 'Um plugin de segurança não conseguiu processar esta mensagem, por isso ela não foi enviada.',
+    senderNotAllowed: 'Você não pode enviar deste endereço. Escolha outro endereço de remetente.'
   },
   messageComposer: {
     fontSize: 'Tamanho da fonte',
@@ -406,6 +407,7 @@ export const ptBR = {
     to: 'Para',
     cc: 'Cc',
     bcc: 'Cco',
+    from: 'De',
     subject: 'Assunto',
     toggleFormatting: 'Alternar opções de formatação',
     attachFiles: 'Anexar arquivos',

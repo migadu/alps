@@ -56,6 +56,18 @@ export class MissingUploadsError extends Error {
   }
 }
 
+/**
+ * A send refused for its From: an address that is not one of the user's (see
+ * utils/identities), or one the mail server will not let them send as.
+ * Nothing was sent, and the message can go from another address.
+ */
+export class SenderNotAllowedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SenderNotAllowedError';
+  }
+}
+
 /** The refusal of a request that named uploads the server does not hold, if
  * this answer is one. */
 function missingUploads(res: Response, body: Record<string, any>): MissingUploadsError | null {
@@ -440,6 +452,7 @@ export class MessageOperationsService {
       // that the catch below rethrew, so the user was shown "Unexpected token
       // '<'" in place of whatever actually went wrong.
       const body = await readErrorBody(res);
+      if (res.status === 403 && body.code === 'sender_not_allowed') throw new SenderNotAllowedError(body.error || 'sender not allowed');
       throw missingUploads(res, body) || new Error(body.error || `Failed to send message (${res.status})`);
     } catch (err: any) {
       Logger.error('Failed to send message:', err);

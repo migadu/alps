@@ -293,7 +293,8 @@ export const es = {
     sending: 'Enviando mensaje...',
     undo: 'Deshacer',
     sendError: 'Error al enviar el mensaje: {error}',
-    presendFailed: 'Un complemento de seguridad no pudo procesar este mensaje, por lo que no se envió.'
+    presendFailed: 'Un complemento de seguridad no pudo procesar este mensaje, por lo que no se envió.',
+    senderNotAllowed: 'No puedes enviar desde esta dirección. Elige otra dirección de remitente.'
   },
   messageComposer: {
     fontSize: 'Tamaño de fuente',
@@ -349,6 +350,7 @@ export const es = {
     to: 'Para',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'De',
     subject: 'Asunto',
     toggleFormatting: 'Alternar opciones de formato',
     attachFiles: 'Adjuntar archivos',

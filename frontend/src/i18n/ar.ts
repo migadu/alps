@@ -391,7 +391,8 @@ export const ar = {
     sending: 'جارٍ إرسال الرسالة...',
     undo: 'تراجع',
     sendError: 'تعذر إرسال الرسالة: {error}',
-    presendFailed: 'تعذر على إضافة أمان معالجة هذه الرسالة، لذا لم تُرسَل.'
+    presendFailed: 'تعذر على إضافة أمان معالجة هذه الرسالة، لذا لم تُرسَل.',
+    senderNotAllowed: 'لا يمكنك الإرسال من هذا العنوان. اختر عنوان مرسل آخر.'
   },
   messageComposer: {
     fontSize: 'حجم الخط',
@@ -440,6 +441,7 @@ export const ar = {
     to: 'إلى',
     cc: 'نسخة',
     bcc: 'نسخة مخفية',
+    from: 'من',
     subject: 'الموضوع',
     toggleFormatting: 'إظهار خيارات التنسيق أو إخفاؤها',
     attachFiles: 'إرفاق ملفات',

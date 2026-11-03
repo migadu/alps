@@ -336,7 +336,8 @@ export const ko = {
     sending: '메일을 보내는 중…',
     undo: '실행 취소',
     sendError: '메일을 보내지 못했습니다: {error}',
-    presendFailed: '보안 플러그인이 이 메일을 처리하지 못해 메일을 보내지 않았습니다.'
+    presendFailed: '보안 플러그인이 이 메일을 처리하지 못해 메일을 보내지 않았습니다.',
+    senderNotAllowed: '이 주소로는 보낼 수 없습니다. 다른 보낸사람 주소를 선택하세요.'
   },
   messageComposer: {
     fontSize: '글자 크기',
@@ -385,6 +386,7 @@ export const ko = {
     to: '받는사람',
     cc: '참조',
     bcc: '숨은참조',
+    from: '보낸사람',
     subject: '제목',
     toggleFormatting: '서식 옵션 표시 전환',
     attachFiles: '파일 첨부',

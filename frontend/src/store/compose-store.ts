@@ -1,12 +1,13 @@
 import { createContext } from '@lit/context';
 import { messageOperations, MissingUploadsError } from '../services/message-operations';
-import { activeUsername, ownAddress, readUserSettings } from './settings-store';
+import { activeUsername, ownAddress, readUserSettings, type SettingsState } from './settings-store';
 import { abortUploads, inlinePartsOf } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
 import { cidReferencesOf, escapeHtml, withoutCidReferences } from '../utils/html-sanitizer';
 import { DraftFlushError } from '../utils/draft-flush-error';
 import { canonicalRecipient } from '../utils/address-display';
+import { findIdentity } from '../utils/identities';
 
 /**
  * Where a user's unsent drafts are kept, scoped to WHOSE they are.
@@ -49,9 +50,26 @@ export const recipientField = (addrs?: string[]): string => (addrs || []).map(ca
  * save the same draft.
  */
 export const draftContentKey = (c: ComposerInstance): string => JSON.stringify([
-  c.subject, c.to, c.cc, c.bcc, c.text, c.format, c.html,
+  c.from, c.subject, c.to, c.cc, c.bcc, c.text, c.format, c.html,
   (c.attachments || []).map(a => [a._tempId, a.uuid, a.partPath, a.filename]),
 ]);
+
+/**
+ * Who a send or a draft save says the message is from: `from`, the address of
+ * the identity the composer sends from while it is still one of them, and
+ * nothing for the account's own address, which the server writes itself.
+ * One removed from the settings since it was chosen is the account too, as
+ * the From row then shows: posted, it would be refused.
+ *
+ * The account's Reply-To goes only with the account's address. It is that
+ * address's setting: an identity is another address, often one with a
+ * mailbox of its own, and its replies are to come back to it.
+ */
+export function appendSenderFields(formData: FormData, composer: ComposerInstance, settings: Partial<SettingsState>): void {
+  const identity = findIdentity(settings.identities, composer.from);
+  if (identity) formData.append('from', identity.address);
+  else if (settings.replyTo) formData.append('reply_to', settings.replyTo);
+}
 
 /**
  * An attachment whose upload the server no longer holds, as one the user has
@@ -218,6 +236,9 @@ export interface QuoteSource {
 
 export interface ComposerInstance {
   id: string;
+  /** The address of the identity the message is sent from; none for the
+   * account's own (see appendSenderFields). */
+  from?: string;
   to?: string[];
   cc?: string[];
   bcc?: string[];
@@ -595,6 +616,7 @@ export class ComposeStore extends EventTarget {
       if (c.id !== id) return c;
       
       let isDirtyUpdate = false;
+      if ('from' in updates && (updates.from || '') !== (c.from || '')) isDirtyUpdate = true;
       if ('subject' in updates && updates.subject !== c.subject) isDirtyUpdate = true;
       if ('to' in updates && JSON.stringify(updates.to || []) !== JSON.stringify(c.to || [])) isDirtyUpdate = true;
       if ('cc' in updates && JSON.stringify(updates.cc || []) !== JSON.stringify(c.cc || [])) isDirtyUpdate = true;
@@ -811,29 +833,21 @@ export class ComposeStore extends EventTarget {
   private draftForm(composer: ComposerInstance): FormData {
     const formData = new FormData();
     let bcc = [...(composer.bcc || [])];
-    let replyToSetting = '';
-    {
-      // Same correction as the composer defaults above: `bccMyself`,
-      // `loginUsername` and `replyTo` all live in the per-user record, never
-      // in `alps_settings`, so "BCC myself" and a custom Reply-To silently
-      // did nothing on every message sent.
-      const sendSettings = readUserSettings();
-      // The address, not the login: see ownAddress.
-      const self = ownAddress(sendSettings);
-      if (sendSettings.bccMyself && self && !bcc.some(addr => bareAddress(addr) === bareAddress(self))) {
-        bcc.push(self);
-      }
-      if (sendSettings.replyTo) {
-        replyToSetting = sendSettings.replyTo;
-      }
+    // Same correction as the composer defaults above: `bccMyself`,
+    // `loginUsername` and `replyTo` all live in the per-user record, never
+    // in `alps_settings`, so "BCC myself" and a custom Reply-To silently
+    // did nothing on every message sent.
+    const sendSettings = readUserSettings();
+    // The address, not the login: see ownAddress.
+    const self = ownAddress(sendSettings);
+    if (sendSettings.bccMyself && self && !bcc.some(addr => bareAddress(addr) === bareAddress(self))) {
+      bcc.push(self);
     }
 
+    appendSenderFields(formData, composer, sendSettings);
     formData.append('to', recipientField(composer.to));
     formData.append('cc', recipientField(composer.cc));
     formData.append('bcc', recipientField(bcc));
-    if (replyToSetting) {
-      formData.append('reply_to', replyToSetting);
-    }
     formData.append('subject', (composer.subject || '').trim());
     formData.append('text', composer.text || '');
     if (composer.html && composer.format === 'html') {

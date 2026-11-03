@@ -295,7 +295,8 @@ export const de: TranslationDictionary = {
     sending: 'Nachricht wird gesendet...',
     undo: 'Rückgängig',
     sendError: 'Nachricht konnte nicht gesendet werden: {error}',
-    presendFailed: 'Ein Sicherheits-Plugin konnte diese Nachricht nicht verarbeiten, daher wurde sie nicht gesendet.'
+    presendFailed: 'Ein Sicherheits-Plugin konnte diese Nachricht nicht verarbeiten, daher wurde sie nicht gesendet.',
+    senderNotAllowed: 'Von dieser Adresse können Sie nicht senden. Wählen Sie eine andere Absenderadresse.'
   },
   messageComposer: {
     fontSize: 'Schriftgröße',
@@ -351,6 +352,7 @@ export const de: TranslationDictionary = {
     to: 'An',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'Von',
     subject: 'Betreff',
     toggleFormatting: 'Formatierungsoptionen umschalten',
     attachFiles: 'Dateien anhängen',

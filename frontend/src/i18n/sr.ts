@@ -304,7 +304,8 @@ export const sr = {
     sending: 'Slanje poruke...',
     undo: 'Opozovi',
     sendError: 'Greška pri slanju poruke: {error}',
-    presendFailed: 'Bezbednosni dodatak nije mogao da obradi ovu poruku, pa ona nije poslata.'
+    presendFailed: 'Bezbednosni dodatak nije mogao da obradi ovu poruku, pa ona nije poslata.',
+    senderNotAllowed: 'Sa ove adrese ne možete da šaljete. Izaberite drugu adresu pošiljaoca.'
   },
   messageComposer: {
     fontSize: 'Veličina fonta',
@@ -360,6 +361,7 @@ export const sr = {
     to: 'Za',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'Od',
     subject: 'Naslov',
     toggleFormatting: 'Uključi/isključi opcije formatiranja',
     attachFiles: 'Priloži datoteke',

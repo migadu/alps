@@ -336,7 +336,8 @@ export const ja = {
     sending: 'メールを送信しています...',
     undo: '元に戻す',
     sendError: 'メールを送信できませんでした：{error}',
-    presendFailed: 'セキュリティプラグインがこのメールを処理できなかったため、送信されませんでした。'
+    presendFailed: 'セキュリティプラグインがこのメールを処理できなかったため、送信されませんでした。',
+    senderNotAllowed: 'このアドレスからは送信できません。別の差出人アドレスを選択してください。'
   },
   messageComposer: {
     fontSize: '文字サイズ',
@@ -385,6 +386,7 @@ export const ja = {
     to: '宛先',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: '差出人',
     subject: '件名',
     toggleFormatting: '書式オプションの表示切り替え',
     attachFiles: 'ファイルを添付',

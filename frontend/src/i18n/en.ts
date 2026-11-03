@@ -347,7 +347,8 @@ export const en = {
     sending: 'Message is being sent...',
     undo: 'Undo',
     sendError: 'Failed to send message: {error}',
-    presendFailed: 'A security plugin could not process this message, so it was not sent.'
+    presendFailed: 'A security plugin could not process this message, so it was not sent.',
+    senderNotAllowed: 'You cannot send from this address. Choose another From address.'
   },
   messageComposer: {
     fontSize: 'Font Size',
@@ -396,6 +397,7 @@ export const en = {
     to: 'To',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'From',
     subject: 'Subject',
     toggleFormatting: 'Toggle Formatting Options',
     attachFiles: 'Attach Files',
