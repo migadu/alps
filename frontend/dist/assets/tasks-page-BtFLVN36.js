@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,h as r,m as i,p as a,s as o,v as s}from"./lit-Br1cDwGJ.js";import{Y as c,_t as l,at as u,d,dt as f,f as p,i as m,n as h,ot as g,p as _,r as v,vt as y}from"./index-CMdaXNq5.js";import{S as b,_ as x,b as S,c as C,d as w,f as T,g as E,h as D,n as O,p as k,r as A,v as j,x as M,y as N}from"./task-modal-uL37giAc.js";var P={overdue:`tasks.groups.overdue`,today:`tasks.groups.today`,week:`tasks.groups.week`,undated:`tasks.groups.undated`,later:`tasks.groups.later`,completed:`tasks.groups.completed`},F={high:`tasks.priorities.high`,medium:`tasks.priorities.medium`,low:`tasks.priorities.low`},I={high:`!!!`,medium:`!!`,low:`!`},L=class extends r{constructor(...e){super(...e),this.tasks=[],this.pendingPaths=new Set,this.settling=new Set,this.searching=!1,this.loading=!1,this.focusedIndex=-1}static{this.styles=e`
+import{b as e,c as t,f as n,h as r,m as i,p as a,s as o,v as s}from"./lit-Br1cDwGJ.js";import{Y as c,_t as l,at as u,d,dt as f,f as p,i as m,n as h,ot as g,p as _,r as v,vt as y}from"./index-DDhfGhSJ.js";import{S as b,_ as x,b as S,c as C,d as w,f as T,g as E,h as D,n as O,p as k,r as A,v as j,x as M,y as N}from"./task-modal-BtpmEqqq.js";var P={overdue:`tasks.groups.overdue`,today:`tasks.groups.today`,week:`tasks.groups.week`,undated:`tasks.groups.undated`,later:`tasks.groups.later`,completed:`tasks.groups.completed`},F={high:`tasks.priorities.high`,medium:`tasks.priorities.medium`,low:`tasks.priorities.low`},I={high:`!!!`,medium:`!!`,low:`!`},L=class extends r{constructor(...e){super(...e),this.tasks=[],this.pendingPaths=new Set,this.settling=new Set,this.searching=!1,this.loading=!1,this.focusedIndex=-1}static{this.styles=e`
         :host {
             display: flex;
             flex-direction: column;
@@ -152,7 +152,7 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,s as o,v as s}from"./lit-Br1cDw
                     ${i?l(`check`):``}
                 </button>
                 <div class="body">
-                    <div class="title">${e.title||r(`tasks.untitled`)}</div>
+                    <div class="title"><bdi>${e.title||r(`tasks.untitled`)}</bdi></div>
                     <div class="meta">
                         ${e.color?s`<span class="dot" style="background: ${e.color}"></span>`:``}
                         ${a?s`<span class="chip">${r(`tasks.statuses.cancelled`)}</span>`:``}
@@ -180,8 +180,8 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,s as o,v as s}from"./lit-Br1cDw
             .app-container.collapsed .main-content {
                 position: relative;
                 z-index: 25;
-                border-left: 1px solid var(--border-color, #e5e7eb);
-                box-shadow: rgba(95, 95, 95, 0.1) -4px 0 4px -2px;
+                border-inline-start: 1px solid var(--border-color, #e5e7eb);
+                box-shadow: rgba(95, 95, 95, 0.1) calc(-4px * var(--ui-inline-direction, 1)) 0 4px -2px;
             }
             .layout {
                 display: flex;
@@ -220,7 +220,7 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,s as o,v as s}from"./lit-Br1cDw
                 color: var(--text-primary, #111827);
                 font-family: inherit;
                 font-size: 14px;
-                text-align: left;
+                text-align: start;
                 cursor: pointer;
                 user-select: none;
             }
@@ -357,7 +357,7 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,s as o,v as s}from"./lit-Br1cDw
                                                     @click=${()=>this.selectCalendar(e.path)}
                                                 >
                                                     <span class="list-dot" style="background: ${e.color}"></span>
-                                                    <span class="label">${e.name}</span>
+                                                    <span class="label"><bdi>${e.name}</bdi></span>
                                                 </button>
                                             `)}
                                         </div>
@@ -377,7 +377,7 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,s as o,v as s}from"./lit-Br1cDw
                         <div class="toolbar">
                             <h2>
                                 ${this.searchQuery?e(`tasks.searchResults`):e(t.label)}
-                                ${n?s`<span class="sub-title">${n}</span>`:``}
+                                ${n?s`<span class="sub-title"><bdi>${n}</bdi></span>`:``}
                             </h2>
                             <alps-icon-btn
                                 icon="arrowsClockwise"

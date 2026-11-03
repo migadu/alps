@@ -1,4 +1,4 @@
-import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v as u}from"./lit-Br1cDwGJ.js";import{A as d,B as f,C as p,D as m,E as ee,F as te,H as h,I as ne,J as g,L as re,M as ie,N as _,O as v,P as y,R as b,S as ae,T as oe,U as x,V as se,Y as S,_ as ce,_t as C,a as le,at as w,b as ue,bt as T,c as E,g as de,h as D,j as fe,k as pe,l as O,m as me,o as k,q as he,s as ge,v as A,vt as j,w as _e,x as ve,xt as M,y as N,z as P}from"./index-CMdaXNq5.js";import"./alps-address-input-D56QF5UX.js";import{_ as F,a as ye,c as be,d as xe,f as Se,g as Ce,h as I,i as we,l as Te,m as L,n as Ee,o as De,p as R,r as Oe,s as z,t as B,u as ke,v as V}from"./editor-lPhyAooS.js";import"./emoji-C1rmM34F.js";var H=`data-alps-quote-slot`,U=`<div ${H}=""></div>`,W=new WeakMap,G=be.create({name:`quotedMessage`,group:`block`,atom:!0,draggable:!1,priority:1e3,addOptions(){return{themed:()=>!0,inlineImages:()=>({mailbox:``,messageUid:``})}},addAttributes(){return{html:{default:``,rendered:!1,parseHTML:()=>null}}},parseHTML(){return[{tag:`div[${E}]`,getAttrs:e=>{let t=_(e.outerHTML);return t?{html:t}:!1}}]},renderHTML(){return[`div`,{[H]:``}]},renderText({node:e}){let t=W.get(e);return t===void 0&&(t=k(e.attrs.html),W.set(e,t)),t},addKeyboardShortcuts(){let e=e=>()=>{let{state:t}=this.editor,{selection:n}=t;if(!(n instanceof Ce)||!n.$cursor)return!1;let r=n.$cursor;if(e===`after`){if(r.parentOffset<r.parent.content.size)return!1;let e=r.after();return t.doc.nodeAt(e)?.type===this.type?this.editor.commands.setNodeSelection(e):!1}if(r.parentOffset>0)return!1;let i=t.doc.resolve(r.before()).nodeBefore;return i?.type===this.type?this.editor.commands.setNodeSelection(r.before()-i.nodeSize):!1};return{Backspace:e(`before`),"Mod-Backspace":e(`before`),"Shift-Backspace":e(`before`),Delete:e(`after`),"Mod-Delete":e(`after`)}},addProseMirrorPlugins(){let e=V.fromSchema(this.editor.schema),t=new V({...e.nodes,[this.name]:e=>je(e.attrs.html)},e.marks);return[new L({key:new I(this.name),props:{clipboardSerializer:t,transformPastedHTML:Me}})]},addNodeView(){let{themed:t,inlineImages:n}=this.options;return({node:r})=>{let i=document.createElement(`div`);i.className=`quoted-message`,i.contentEditable=`false`;let a=ie(r.attrs.html,{...n(),allowRemoteResources:!1}),o=t();return e(u`<iframe
+import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v as u}from"./lit-Br1cDwGJ.js";import{A as d,B as f,C as p,D as m,E as ee,F as te,H as h,I as ne,J as g,L as re,M as ie,N as _,O as v,P as y,R as b,S as ae,T as oe,U as x,V as se,Y as S,_ as ce,_t as C,a as le,at as w,b as ue,bt as T,c as E,g as de,h as D,j as fe,k as pe,l as O,m as me,o as k,q as he,s as ge,v as A,vt as j,w as _e,x as ve,xt as M,y as N,z as P}from"./index-DDhfGhSJ.js";import"./alps-address-input-Bo47APKV.js";import{_ as F,a as ye,c as be,d as xe,f as Se,g as Ce,h as I,i as we,l as Te,m as L,n as Ee,o as De,p as R,r as Oe,s as z,t as B,u as ke,v as V}from"./editor-lPhyAooS.js";import"./emoji-C1rmM34F.js";var H=`data-alps-quote-slot`,U=`<div ${H}=""></div>`,W=new WeakMap,G=be.create({name:`quotedMessage`,group:`block`,atom:!0,draggable:!1,priority:1e3,addOptions(){return{themed:()=>!0,inlineImages:()=>({mailbox:``,messageUid:``})}},addAttributes(){return{html:{default:``,rendered:!1,parseHTML:()=>null}}},parseHTML(){return[{tag:`div[${E}]`,getAttrs:e=>{let t=_(e.outerHTML);return t?{html:t}:!1}}]},renderHTML(){return[`div`,{[H]:``}]},renderText({node:e}){let t=W.get(e);return t===void 0&&(t=k(e.attrs.html),W.set(e,t)),t},addKeyboardShortcuts(){let e=e=>()=>{let{state:t}=this.editor,{selection:n}=t;if(!(n instanceof Ce)||!n.$cursor)return!1;let r=n.$cursor;if(e===`after`){if(r.parentOffset<r.parent.content.size)return!1;let e=r.after();return t.doc.nodeAt(e)?.type===this.type?this.editor.commands.setNodeSelection(e):!1}if(r.parentOffset>0)return!1;let i=t.doc.resolve(r.before()).nodeBefore;return i?.type===this.type?this.editor.commands.setNodeSelection(r.before()-i.nodeSize):!1};return{Backspace:e(`before`),"Mod-Backspace":e(`before`),"Shift-Backspace":e(`before`),Delete:e(`after`),"Mod-Delete":e(`after`)}},addProseMirrorPlugins(){let e=V.fromSchema(this.editor.schema),t=new V({...e.nodes,[this.name]:e=>je(e.attrs.html)},e.marks);return[new L({key:new I(this.name),props:{clipboardSerializer:t,transformPastedHTML:Me}})]},addNodeView(){let{themed:t,inlineImages:n}=this.options;return({node:r})=>{let i=document.createElement(`div`);i.className=`quoted-message`,i.contentEditable=`false`;let a=ie(r.attrs.html,{...n(),allowRemoteResources:!1}),o=t();return e(u`<iframe
         sandbox="allow-same-origin"
         tabindex="-1"
         .srcdoc=${a}
@@ -276,7 +276,7 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v a
     }
   `]}renderFormattingToolbar(){if(!this.editor||this.format!==`html`)return``;let e=this.editor.getAttributes(`textStyle`).fontSize||`14px`,t=`textAlignLeft`,n=this.editor.isActive({textAlign:`center`}),r=this.editor.isActive({textAlign:`right`}),i=!n&&!r;return n&&(t=`textAlignCenter`),r&&(t=`textAlignRight`),u`
       <div class="formatting-toolbar">
-        <alps-popup align="left" class="size-popup">
+        <alps-popup align="start" class="size-popup">
           <alps-icon-btn slot="trigger" title=${this.i18nStore?.t(`messageComposer.fontSize`)} icon="textSize"></alps-icon-btn>
           <button class="dropdown-item ${e===`10px`?`active`:``}" @click=${()=>this.editor?.chain().focus().setFontSize(`10px`).run()}>${this.i18nStore?.t(`messageComposer.small`)}</button>
           <button class="dropdown-item ${e===`14px`?`active`:``}" @click=${()=>this.editor?.chain().focus().setFontSize(`14px`).run()}>${this.i18nStore?.t(`messageComposer.normal`)}</button>
@@ -301,7 +301,7 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v a
 
         <div class="divider"></div>
 
-        <alps-popup align="left" class="align-popup">
+        <alps-popup align="start" class="align-popup">
           <alps-icon-btn slot="trigger" title=${this.i18nStore?.t(`messageComposer.align`)} icon="${t}"></alps-icon-btn>
           <button class="dropdown-item ${i?`active`:``}" @click=${()=>this.editor?.chain().focus().setTextAlign(`left`).run()}>
             ${C(`textAlignLeft`)} <span class="item-text">${this.i18nStore?.t(`messageComposer.left`)}</span>
@@ -322,7 +322,7 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v a
         <alps-icon-btn class="desktop-only" @click=${()=>this.editor?.chain().focus().outdent().run()} title=${this.i18nStore?.t(`messageComposer.indentLess`)} icon="textOutdent"></alps-icon-btn>
         
         <div class="divider"></div>
-        <alps-popup align="right" class="more-formatting-popup">
+        <alps-popup align="end" class="more-formatting-popup">
           <alps-icon-btn slot="trigger" title=${this.i18nStore?.t(`messageComposer.moreFormatting`)} icon="dotsThreeVertical"></alps-icon-btn>
           <button class="dropdown-item" @click=${()=>this.editor?.chain().focus().undo().run()}>
             ${C(`arrowUUpLeft`)} ${this.i18nStore?.t(`messageComposer.undo`)}
@@ -437,7 +437,7 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v a
 
     /* Target specific parts of the picker to hide the top/bottom borders that popup might have */
   `}_handleEmojiPick(e){let t=e.detail.emoji;this.popup&&this.popup.close(),this.dispatchEvent(new CustomEvent(`emoji-selected`,{detail:{emoji:t},bubbles:!0,composed:!0}))}_handlePopupToggle(){}render(){return u`
-      <alps-popup align="left" position="${this.position}" @click=${this._handlePopupToggle}>
+      <alps-popup align="start" position="${this.position}" @click=${this._handlePopupToggle}>
         <slot name="trigger" slot="trigger"></slot>
         <div class="selector-container" @click=${e=>e.stopPropagation()}>
           <unicode-emoji-picker
@@ -465,7 +465,7 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v a
       flex-direction: column;
       gap: 12px;
       min-width: 240px;
-      text-align: left;
+      text-align: start;
     }
     .popup-form .field-group {
       display: flex;
@@ -604,7 +604,8 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v a
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 6px 6px 6px 10px;
+      padding-block: 6px;
+      padding-inline: 10px 6px;
       background: var(--bg-secondary);
       border-bottom: 1px solid var(--border-color);
       color: var(--text-color);
@@ -713,7 +714,7 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v a
     .saving-indicator {
       font-size: 12px;
       color: var(--text-muted, #666);
-      margin-right: 8px;
+      margin-inline-end: 8px;
       align-self: center;
     }
 
@@ -745,8 +746,8 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v a
         display: none;
       }
     }
-  `}render(){if(this.instance.closing)return u`<style>:host { display: none !important; }</style>`;let e=((this.instance.to?.length||0)>0||(this.instance.cc?.length||0)>0||(this.instance.bcc?.length||0)>0||this.typedRecipient)&&(this.instance.text?.trim().length||0)>0,t,n;if(this.instance.minimized)t=24,n=24+this.minimizedIndex*40;else{let e=this.totalMinimized>0?276:0;if(t=24+e+this.openIndex*486,n=0,24+e+this.totalOpen*470>this.windowWidth&&this.totalOpen>1){let n=this.windowWidth-470-48-e,r=n>0?n/(this.totalOpen-1):32;t=24+e+this.openIndex*Math.min(r,470)}}let r=Math.min(500+this.trayHeight,Math.max(500,this.windowHeight-n-160)),i=this.windowHeight*.8,a=Math.min(i+this.trayHeight,Math.max(i,this.windowHeight-48)),o,s,c,l,d=this.windowWidth<=768,f=this._isExpanded;return this.showDiscardConfirm?(this.style.zIndex=`30000`,d?(c=this.windowWidth,l=this.windowHeight,s=0,o=0,this.removeAttribute(`expanded`)):f?(c=Math.min(this.windowWidth*.85,800),l=a,s=(this.windowWidth-c)/2,o=(this.windowHeight-l)/2,this.setAttribute(`expanded`,``)):(c=this.instance.minimized?260:470,l=this.instance.minimized?40:r,s=this.windowWidth-t-c,o=this.windowHeight-n-l,this.removeAttribute(`expanded`))):d?(c=this.windowWidth,l=this.windowHeight,s=0,o=0,this.style.zIndex=`30000`,this.removeAttribute(`expanded`)):f?(c=Math.min(this.windowWidth*.85,800),l=a,s=(this.windowWidth-c)/2,o=(this.windowHeight-l)/2,this.style.zIndex=`30000`,this.setAttribute(`expanded`,``)):(c=this.instance.minimized?260:470,l=this.instance.minimized?40:r,s=this.windowWidth-t-c,o=this.windowHeight-n-l,this.style.zIndex=`${this.instance.zIndex||1e3}`,this.removeAttribute(`expanded`)),d?(this.style.width=`100%`,this.style.height=`100dvh`,this.style.left=`0`,this.style.top=`0`):(this.style.width=`${c}px`,this.style.height=`${l}px`,this.style.left=`${s}px`,this.style.top=`${o}px`),this.instance.minimized?this.setAttribute(`minimized`,``):this.removeAttribute(`minimized`),u`
-      ${f?u`<div class="backdrop"></div>`:``}
+  `}render(){if(this.instance.closing)return u`<style>:host { display: none !important; }</style>`;let e=((this.instance.to?.length||0)>0||(this.instance.cc?.length||0)>0||(this.instance.bcc?.length||0)>0||this.typedRecipient)&&(this.instance.text?.trim().length||0)>0,t,n;if(this.instance.minimized)t=24,n=24+this.minimizedIndex*40;else{let e=this.totalMinimized>0?276:0;if(t=24+e+this.openIndex*486,n=0,24+e+this.totalOpen*470>this.windowWidth&&this.totalOpen>1){let n=this.windowWidth-470-48-e,r=n>0?n/(this.totalOpen-1):32;t=24+e+this.openIndex*Math.min(r,470)}}let r=Math.min(500+this.trayHeight,Math.max(500,this.windowHeight-n-160)),i=this.windowHeight*.8,a=Math.min(i+this.trayHeight,Math.max(i,this.windowHeight-48)),o,s,c,l,d=this.windowWidth<=768,f=getComputedStyle(this).direction===`rtl`,p=e=>f?t:this.windowWidth-t-e,m=this._isExpanded;return this.showDiscardConfirm?(this.style.zIndex=`30000`,d?(c=this.windowWidth,l=this.windowHeight,s=0,o=0,this.removeAttribute(`expanded`)):m?(c=Math.min(this.windowWidth*.85,800),l=a,s=(this.windowWidth-c)/2,o=(this.windowHeight-l)/2,this.setAttribute(`expanded`,``)):(c=this.instance.minimized?260:470,l=this.instance.minimized?40:r,s=p(c),o=this.windowHeight-n-l,this.removeAttribute(`expanded`))):d?(c=this.windowWidth,l=this.windowHeight,s=0,o=0,this.style.zIndex=`30000`,this.removeAttribute(`expanded`)):m?(c=Math.min(this.windowWidth*.85,800),l=a,s=(this.windowWidth-c)/2,o=(this.windowHeight-l)/2,this.style.zIndex=`30000`,this.setAttribute(`expanded`,``)):(c=this.instance.minimized?260:470,l=this.instance.minimized?40:r,s=p(c),o=this.windowHeight-n-l,this.style.zIndex=`${this.instance.zIndex||1e3}`,this.removeAttribute(`expanded`)),d?(this.style.width=`100%`,this.style.height=`100dvh`,this.style.left=`0`,this.style.top=`0`):(this.style.width=`${c}px`,this.style.height=`${l}px`,this.style.left=`${s}px`,this.style.top=`${o}px`),this.instance.minimized?this.setAttribute(`minimized`,``):this.removeAttribute(`minimized`),u`
+      ${m?u`<div class="backdrop"></div>`:``}
       
       ${this.showDiscardConfirm?u`
         <ui-confirm
@@ -783,7 +784,7 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v a
         `:``}
         
         <div class="header" @click=${this._handleHeaderClick}>
-          <div class="header-title">${this.instance.subject||this.i18nStore?.t(`floatingComposer.newMessage`)}</div>
+          <div class="header-title" dir="auto">${this.instance.subject||this.i18nStore?.t(`floatingComposer.newMessage`)}</div>
           <div class="header-actions">
             ${this.isSaving?u`<span class="saving-indicator">${this.i18nStore?.t(`floatingComposer.saving`)}</span>`:this.instance.draftUid&&!this.instance.dirty?u`<span class="saving-indicator">${this.i18nStore?.t(`floatingComposer.autosaved`)}</span>`:``}
             <alps-icon-btn 
@@ -794,8 +795,8 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v a
             </alps-icon-btn>
             <alps-icon-btn 
               class="expand-btn"
-              title="${f?this.i18nStore?.t(`floatingComposer.restore`):this.i18nStore?.t(`floatingComposer.expand`)}" 
-              icon="${f?`arrowsInSimple`:`arrowsOutSimple`}"
+              title="${m?this.i18nStore?.t(`floatingComposer.restore`):this.i18nStore?.t(`floatingComposer.expand`)}" 
+              icon="${m?`arrowsInSimple`:`arrowsOutSimple`}"
               @click=${e=>{e.stopPropagation(),this._toggleExpand()}}>
             </alps-icon-btn>
             <alps-icon-btn 
@@ -902,7 +903,7 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,r as l,v a
                 @click=${this._handleAttachClick}>
               </alps-icon-btn>
               ${(this.instance.format||`html`)===`html`?u`
-                <alps-popup id="linkPopup" align="left" position="top">
+                <alps-popup id="linkPopup" align="start" position="top">
                   <alps-icon-btn slot="trigger" title=${this.i18nStore?.t(`floatingComposer.insertLink`)} icon="linkSimple" @mousedown=${e=>e.preventDefault()} @click=${this._handleLinkClick}></alps-icon-btn>
                   <div class="popup-form" @keydown=${e=>{e.key===`Enter`&&this._handleLinkSubmit()}}>
                     ${this.linkPromptFields.map(e=>u`
