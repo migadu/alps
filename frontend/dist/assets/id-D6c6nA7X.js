@@ -1,0 +1,1 @@
+var e={settings:{categories:{password:`Sandi`},password:{title:`Sandi`,changePassword:`Ubah Sandi`,changePasswordDesc:`Perbarui sandi akun Anda.`,oldPassword:`Sandi saat ini`,newPassword:`Sandi baru`,confirmPassword:`Konfirmasi sandi baru`,updatePassword:`Perbarui Sandi`,fillAllFields:`Isi semua kolom.`,passwordMismatch:`Sandi baru tidak cocok.`}}};export{e as default};
