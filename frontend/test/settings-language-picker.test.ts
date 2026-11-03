@@ -68,6 +68,7 @@ describe('the language picker', () => {
       ['hi', 'hi', 'हिन्दी'],
       ['ja', 'ja', '日本語'],
       ['ko', 'ko', '한국어'],
+      ['zh-Hans', 'zh-Hans', '简体中文'],
       ['zh-Hant', 'zh-Hant', '繁體中文'],
       ['ar', 'ar', 'العربية'],
     ]);

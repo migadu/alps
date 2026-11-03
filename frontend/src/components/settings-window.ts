@@ -817,6 +817,7 @@ export class SettingsWindow extends LitElement {
             {value: "hi", lang: intlTag("hi"), label: this.i18nStore?.t('settings.localization.hindi') || "hi"},
             {value: "ja", lang: intlTag("ja"), label: this.i18nStore?.t('settings.localization.japanese') || "ja"},
             {value: "ko", lang: intlTag("ko"), label: this.i18nStore?.t('settings.localization.korean') || "ko"},
+            {value: "zh-Hans", lang: intlTag("zh-Hans"), label: this.i18nStore?.t('settings.localization.chineseSimplified') || "zh-Hans"},
             {value: "zh-Hant", lang: intlTag("zh-Hant"), label: this.i18nStore?.t('settings.localization.chineseTraditional') || "zh-Hant"},
             {value: "ar", lang: intlTag("ar"), label: this.i18nStore?.t('settings.localization.arabic') || "ar"}
           ]}>

@@ -25,11 +25,12 @@ import { id as idLocale } from '../src/i18n/id';
 import { hi } from '../src/i18n/hi';
 import { ja } from '../src/i18n/ja';
 import { ko } from '../src/i18n/ko';
+import { zhHans } from '../src/i18n/zh-Hans';
 import { zhHant } from '../src/i18n/zh-Hant';
 
 type Dict = Record<string, unknown>;
 
-const CORE: [string, Dict][] = [['ar', ar], ['da', da], ['de', de], ['es', es], ['fr', fr], ['it', itLocale], ['pt', pt], ['rs', rs], ['sr', sr], ['pt-BR', ptBR], ['ru', ru], ['tr', tr], ['id', idLocale], ['hi', hi], ['ja', ja], ['ko', ko], ['zh-Hant', zhHant]] as [string, Dict][];
+const CORE: [string, Dict][] = [['ar', ar], ['da', da], ['de', de], ['es', es], ['fr', fr], ['it', itLocale], ['pt', pt], ['rs', rs], ['sr', sr], ['pt-BR', ptBR], ['ru', ru], ['tr', tr], ['id', idLocale], ['hi', hi], ['ja', ja], ['ko', ko], ['zh-Hans', zhHans], ['zh-Hant', zhHant]] as [string, Dict][];
 const intlTag = (code: string) => (code === 'rs' ? 'sr-Cyrl' : code === 'sr' ? 'sr-Latn' : code === 'pt' ? 'pt-PT' : code);
 
 const PLUGIN_LOCALES = import.meta.glob('../../plugins/*/frontend/i18n/*.ts', { eager: true }) as Record<string, Dict>;
@@ -141,7 +142,7 @@ function checkFamily(name: string, source: Dict, locales: [string, Dict][]) {
 describe('locales', () => {
   it('found the plugin dictionaries', () => {
     expect(byPlugin.size).toBeGreaterThanOrEqual(5);
-    for (const [plugin, locales] of byPlugin) expect([...locales.keys()].sort(), plugin).toEqual(['ar', 'da', 'de', 'en', 'es', 'fr', 'hi', 'id', 'it', 'ja', 'ko', 'pt', 'pt-BR', 'rs', 'ru', 'sr', 'tr', 'zh-Hant']);
+    for (const [plugin, locales] of byPlugin) expect([...locales.keys()].sort(), plugin).toEqual(['ar', 'da', 'de', 'en', 'es', 'fr', 'hi', 'id', 'it', 'ja', 'ko', 'pt', 'pt-BR', 'rs', 'ru', 'sr', 'tr', 'zh-Hans', 'zh-Hant']);
   });
 
   it('core: every locale has en\'s keys, its language\'s plural forms, and en\'s placeholders', () => {
@@ -399,6 +400,7 @@ const ENDONYMS: Record<string, string> = {
   hindi: 'हिन्दी',
   japanese: '日本語',
   korean: '한국어',
+  chineseSimplified: '简体中文',
   chineseTraditional: '繁體中文',
 };
 
@@ -787,7 +789,8 @@ const SERBIAN_TERMS: { term: string; not: string; marker: RegExp; caught: string
  * verdict names the folder, "Prijavi kao nepoželjno" beside "Nepoželjno".
  * `folderList.spam` is a different folder, one literally named Spam, which the
  * sidebar keeps apart from Junk as English does; it keeps its own word,
- * spelled as Serbian spells the loanword.
+ * spelled as Serbian spells the loanword. Simplified Chinese names the verdict
+ * with the folder too: "举报垃圾邮件" beside "垃圾邮件".
  */
 const SPAM_VERDICTS = ['messageReader.reportSpam', 'messageReader.notSpam'];
 
@@ -884,7 +887,7 @@ describe('Serbian terms, titles and twins', () => {
   });
 
   it('names the spam verdict with the folder it files into, where English does not', () => {
-    for (const [code, dict] of [['rs', rs], ['sr', sr]] as const) {
+    for (const [code, dict] of [['rs', rs], ['sr', sr], ['zh-Hans', zhHans]] as const) {
       const folder = transliterate(String(lookup(dict, 'folderList.junk'))).toLowerCase();
       for (const key of SPAM_VERDICTS) expect(transliterate(String(lookup(dict, key))).toLowerCase(), `${code}:${key}`).toContain(folder);
     }

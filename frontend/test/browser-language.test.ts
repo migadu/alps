@@ -15,6 +15,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { I18nStore, SUPPORTED_LANGUAGES, detectBrowserLanguage, resolveLanguage } from '../src/store/i18n-store';
 import { de } from '../src/i18n/de';
 import { fr } from '../src/i18n/fr';
+import { zhHans } from '../src/i18n/zh-Hans';
+import { zhHant } from '../src/i18n/zh-Hant';
 
 function withLanguages(languages: string[], language = languages[0] ?? '') {
   vi.stubGlobal('navigator', { ...navigator, languages, language });
@@ -86,6 +88,8 @@ describe('detectBrowserLanguage', () => {
   });
 
   it.each([
+    ['zh-CN', 'zh-Hans'], ['zh-SG', 'zh-Hans'], ['zh', 'zh-Hans'],
+    ['zh-Hans', 'zh-Hans'], ['zh-Hans-TW', 'zh-Hans'], ['ZH-hANS-cN', 'zh-Hans'],
     ['zh-TW', 'zh-Hant'], ['zh-HK', 'zh-Hant'], ['zh-MO', 'zh-Hant'],
     ['zh-Hant', 'zh-Hant'], ['zh-Hant-CN', 'zh-Hant'], ['ZH-hANT-hK', 'zh-Hant'],
     ['pt-BR', 'pt-BR'], ['PT-br', 'pt-BR'], ['pt-Latn-BR', 'pt-BR'], ['pt-BR-u-nu-latn', 'pt-BR'],
@@ -97,22 +101,26 @@ describe('detectBrowserLanguage', () => {
   });
 
   it('reads Chinese by its script first, then by its region', () => {
-    const withSimplified = [...SUPPORTED_LANGUAGES, 'zh-Hans'];
     for (const [tag, code] of [
       ['zh', 'zh-Hans'], ['zh-CN', 'zh-Hans'], ['zh-SG', 'zh-Hans'], ['zh-CN-u-nu-hanidec', 'zh-Hans'],
       ['zh-Hans-TW', 'zh-Hans'], ['zh-TW', 'zh-Hant'], ['zh-Hant-CN', 'zh-Hant'],
     ]) {
       withLanguages([tag]);
-      expect(detectBrowserLanguage(withSimplified), tag).toBe(code);
+      expect(detectBrowserLanguage(), tag).toBe(code);
     }
   });
 
-  it('passes over simplified Chinese while alps has no dictionary for it', () => {
+  it('passes over a Chinese alps has no dictionary for, rather than read it in the other script', () => {
     const traditionalOnly = SUPPORTED_LANGUAGES.filter((code) => code !== 'zh-Hans');
     withLanguages(['zh-CN', 'ja-JP']);
     expect(detectBrowserLanguage(traditionalOnly)).toBe('ja');
     withLanguages(['zh-Hans-TW']);
     expect(detectBrowserLanguage(traditionalOnly)).toBe('en');
+    const simplifiedOnly = SUPPORTED_LANGUAGES.filter((code) => code !== 'zh-Hant');
+    withLanguages(['zh-TW', 'ko-KR']);
+    expect(detectBrowserLanguage(simplifiedOnly)).toBe('ko');
+    withLanguages(['zh-Hant-CN']);
+    expect(detectBrowserLanguage(simplifiedOnly)).toBe('en');
   });
 
   it('keeps the first preference it can serve ahead of later ones', () => {
@@ -183,6 +191,18 @@ describe('the store under auto', () => {
     withLanguages(['ar-SA']);
     await store.setLanguage('auto');
     expect([store.getLanguage(), document.documentElement.dir]).toEqual(['ar', 'rtl']);
+  });
+
+  it('shows a mainland browser Simplified Chinese, and a Taiwanese one Traditional', async () => {
+    const store = new I18nStore();
+    withLanguages(['zh-CN']);
+    await store.setLanguage('auto');
+    expect([store.getLanguage(), document.documentElement.lang]).toEqual(['zh-Hans', 'zh-Hans']);
+    expect(store.t('general.save')).toBe(zhHans.general.save);
+    withLanguages(['zh-TW']);
+    await store.setLanguage('auto');
+    expect([store.getLanguage(), document.documentElement.lang]).toEqual(['zh-Hant', 'zh-Hant']);
+    expect(store.t('general.save')).toBe(zhHant.general.save);
   });
 
   it('picks the plural forms of the language shown', async () => {

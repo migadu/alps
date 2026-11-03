@@ -146,6 +146,7 @@ export const ar = {
       indonesian: 'Bahasa Indonesia',
       japanese: '日本語',
       korean: '한국어',
+      chineseSimplified: '简体中文',
       chineseTraditional: '繁體中文'
     }
   },
