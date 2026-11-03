@@ -11,7 +11,7 @@
  * reset an account and read what was sent, and the DAV server to seed events
  * and contacts — the way mail and data really arrive, never through alps.
  */
-import { test as base, expect, type BrowserContext, type Page } from "@playwright/test";
+import { test as base, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { keepSession } from "./session-probe";
 
 const CONTROL_URL = process.env.CONTROL_URL ?? "http://127.0.0.1:8907";
@@ -429,4 +429,45 @@ export async function deleteAccount(address: string): Promise<void> {
 /** The visible toast carrying `text`. */
 export function toast(page: Page, text: string | RegExp) {
   return page.locator("alps-toast").filter({ hasText: text });
+}
+
+/**
+ * Docks or collapses the desktop sidebar with its footer button, and waits
+ * for the width to settle. The state is a saved preference, so a spec cannot
+ * assume the one it starts in.
+ */
+export async function setDocked(page: Page, docked: boolean): Promise<void> {
+  const sidebar = page.locator("alps-sidebar.desktop-sidebar").first();
+  await expect(sidebar).toBeVisible();
+  const isDocked = async () => !(await sidebar.evaluate((el) => el.hasAttribute("collapsed")));
+  if ((await isDocked()) !== docked) await sidebar.locator(".collapse-btn").click();
+  // Off the sidebar: resting on the strip opens the peek overlay, which is
+  // full width while the sidebar is still collapsed.
+  await page.mouse.move(900, 400);
+  await expect.poll(isDocked).toBe(docked);
+  await expect.poll(async () => {
+    const width = (await sidebar.boundingBox())?.width ?? 0;
+    return docked ? width > 100 : width === 64;
+  }).toBe(true);
+}
+
+/**
+ * Whether `target` has the focus, looking into shadow roots as the browser
+ * does. False, without waiting, where there is no such element.
+ */
+export function hasFocus(target: Locator): Promise<boolean> {
+  return target.evaluateAll((els) => {
+    let active = document.activeElement;
+    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+    return els.some((el) => el === active);
+  });
+}
+
+/** Presses Tab (or Shift+Tab) until `target` has the focus, as a keyboard user would. */
+export async function tabTo(page: Page, target: Locator, what: string, presses = 60, key = "Tab"): Promise<void> {
+  for (let i = 0; i < presses; i++) {
+    if (await hasFocus(target)) return;
+    await page.keyboard.press(key);
+  }
+  expect(await hasFocus(target), `${key} never reached ${what}`).toBe(true);
 }

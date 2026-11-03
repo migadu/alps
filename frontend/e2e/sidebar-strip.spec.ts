@@ -14,7 +14,7 @@
 // first row's icon on every page sits wholly inside the strip, at the same x.
 
 import type { Page } from "@playwright/test";
-import { allowConsoleErrors, expect, login, test } from "./fixtures";
+import { allowConsoleErrors, expect, login, setDocked, test } from "./fixtures";
 
 const PAGES: { name: string; route: string; icon: string }[] = [
   { name: "Mail", route: "/#/mailbox/INBOX", icon: "alps-folder-list .folder-item .folder-icon" },
@@ -22,24 +22,6 @@ const PAGES: { name: string; route: string; icon: string }[] = [
   { name: "Calendar", route: "/#/calendar", icon: "calendar-page .calendar-item .calendar-checkbox" },
   { name: "Tasks", route: "/#/tasks", icon: "tasks-page .smart-list svg" },
 ];
-
-/** Docks or collapses the desktop sidebar with its footer button, and waits
- * for the width to settle. The state is a saved preference, so a spec cannot
- * assume the one it starts in. */
-async function setDocked(page: Page, docked: boolean) {
-  const sidebar = page.locator("alps-sidebar.desktop-sidebar").first();
-  await expect(sidebar).toBeVisible();
-  const isDocked = async () => !(await sidebar.evaluate((el) => el.hasAttribute("collapsed")));
-  if ((await isDocked()) !== docked) await sidebar.locator(".collapse-btn").click();
-  // Off the sidebar: resting on the strip opens the peek overlay, which is
-  // full width while the sidebar is still collapsed.
-  await page.mouse.move(900, 400);
-  await expect.poll(isDocked).toBe(docked);
-  await expect.poll(async () => {
-    const width = (await sidebar.boundingBox())?.width ?? 0;
-    return docked ? width > 100 : width === 64;
-  }).toBe(true);
-}
 
 /** The first row icon's box and the strip's width, once the slide has settled. */
 async function iconInStrip(page: Page, entry: (typeof PAGES)[number]) {

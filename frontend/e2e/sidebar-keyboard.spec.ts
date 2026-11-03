@@ -7,7 +7,7 @@
 // cover the roles, the keys and the names.
 
 import type { Locator, Page } from "@playwright/test";
-import { deliver, expect, login, test } from "./fixtures";
+import { allowConsoleErrors, deliver, expect, hasFocus, login, setDocked, tabTo, test } from "./fixtures";
 
 /** Every folder created here carries it, so its litter is recognisable. */
 const PREFIX = "e2e-keys-";
@@ -21,27 +21,6 @@ test.afterEach(async ({ page }) => {
     await page.request.delete(`/mailboxes/${encodeURIComponent(encodeURIComponent(name))}`).catch(() => null);
   }
 });
-
-/**
- * Whether `target` has the focus, looking into shadow roots as the browser
- * does. False, without waiting, where there is no such element.
- */
-function hasFocus(target: Locator): Promise<boolean> {
-  return target.evaluateAll((els) => {
-    let active = document.activeElement;
-    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
-    return els.some((el) => el === active);
-  });
-}
-
-/** Presses Tab until `target` has the focus, as a keyboard user would. */
-async function tabTo(page: Page, target: Locator, what: string, presses = 60): Promise<void> {
-  for (let i = 0; i < presses; i++) {
-    if (await hasFocus(target)) return;
-    await page.keyboard.press("Tab");
-  }
-  expect(await hasFocus(target), `Tab never reached ${what}`).toBe(true);
-}
 
 /** Creates a folder of the user's own, which has a menu, and returns its name. */
 async function createFolder(page: Page): Promise<string> {
@@ -200,4 +179,164 @@ test("a settings category is opened from the keyboard", async ({ page }) => {
   expect(await hasFocus(localization), "Tab from Appearance reaches Localization").toBe(true);
   await page.keyboard.press("Space");
   await expect(page).toHaveURL(/#\/settings\/localization$/);
+});
+
+/**
+ * The collapsed strip, from the keyboard. Its content is inert, so Tab went
+ * from Create to the expand button and on, and a folder, a contacts
+ * category, a day or a task list was out of reach until the sidebar was
+ * expanded for good. Keyboard focus coming into the strip opens the overlay
+ * the pointer opens, with every row live.
+ */
+const STRIP: { name: string; route: string; row: (page: Page) => Locator; opens: RegExp }[] = [
+  {
+    name: "Mail",
+    route: "/#/mailbox/INBOX",
+    row: (page) => page.locator("alps-folder-list").getByRole("button", { name: "Sent", exact: true }),
+    opens: /#\/mailbox\/Sent/,
+  },
+  {
+    name: "Contacts",
+    route: "/#/contacts",
+    row: (page) => page.locator("alps-contacts-categories").getByRole("button", { name: "Favorites", exact: true }),
+    opens: /#\/contacts\/Favorites/,
+  },
+  {
+    name: "Calendar",
+    route: "/#/calendar/month/2026-06",
+    row: (page) => page.locator("alps-sidebar-calendar calendar-mini-month").getByRole("button", { name: "Monday, June 1, 2026" }),
+    opens: /#\/calendar\/day\/2026-06-01/,
+  },
+  {
+    name: "Tasks",
+    route: "/#/tasks/all",
+    row: (page) => page.locator('tasks-page .smart-list[data-list="today"]'),
+    opens: /#\/tasks\/today/,
+  },
+];
+
+/** The page's desktop sidebar, and the strip's two live controls. */
+function stripOf(page: Page) {
+  const sidebar = page.locator("alps-sidebar.desktop-sidebar").first();
+  return { sidebar, create: sidebar.locator("alps-create-button button"), expand: sidebar.locator(".collapse-btn button") };
+}
+
+/** Whether the focus is anywhere in `sidebar`, its own controls or the page's content in it. */
+function focusIn(sidebar: Locator): Promise<boolean> {
+  return sidebar.evaluate((el) => {
+    let node: Node | null = document.activeElement;
+    while ((node as Element | null)?.shadowRoot?.activeElement) node = (node as Element).shadowRoot!.activeElement;
+    for (; node; node = node.parentNode ?? (node instanceof ShadowRoot ? node.host : null)) if (node === el) return true;
+    return false;
+  });
+}
+
+/** Tabs from the search field above into the sidebar, as a keyboard user comes to it. */
+async function tabIntoStrip(page: Page): Promise<void> {
+  await page.locator("app-header alps-input input").focus();
+  await tabTo(page, stripOf(page).create, "Create");
+}
+
+test("the collapsed sidebar is reached from the keyboard on every page, and a choice there closes it", async ({ page }) => {
+  // Moving between four pages in a few seconds aborts the previous page's fetches.
+  allowConsoleErrors(page, /Failed to fetch|aborted/i);
+  await login(page);
+  await setDocked(page, false);
+  try {
+    for (const entry of STRIP) {
+      await page.goto(entry.route);
+      const { sidebar, expand } = stripOf(page);
+      const row = entry.row(page);
+      await expect(row).toBeAttached();
+      await expect(sidebar).not.toHaveAttribute("peeking");
+
+      await tabIntoStrip(page);
+      await expect(sidebar, `${entry.name}: the keyboard opens the overlay`).toHaveAttribute("peeking", "");
+      await tabTo(page, row, `${entry.name}'s row`);
+      await expect(row).toBeVisible();
+
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(entry.opens);
+      await expect(sidebar, `${entry.name}: the choice closes the overlay`).not.toHaveAttribute("peeking");
+      // Not dropped on the page: the next Tab goes on from the sidebar.
+      expect(await hasFocus(expand), `${entry.name}: the focus waits on the expand button`).toBe(true);
+    }
+  } finally {
+    // Collapsed is a saved preference: leave it docked, as every other spec
+    // expects, whether or not the assertions above held.
+    await page.goto("/#/mailbox/INBOX");
+    await setDocked(page, true);
+  }
+});
+
+test("the overlay opened from the keyboard closes on Escape and when the focus leaves it, either way", async ({ page }) => {
+  await login(page);
+  await setDocked(page, false);
+  try {
+    const { sidebar, create, expand } = stripOf(page);
+    const inbox = page.locator("alps-folder-list").getByRole("button", { name: "Inbox", exact: true });
+
+    await tabIntoStrip(page);
+    await tabTo(page, inbox, "the Inbox");
+    await page.keyboard.press("Escape");
+    await expect(sidebar).not.toHaveAttribute("peeking");
+    // The Inbox went inert under the focus; it moved to the expand button.
+    expect(await hasFocus(expand), "Escape leaves the focus on the expand button").toBe(true);
+
+    // Back to Compose, the strip's other live control, past the inert rows.
+    // That is no entry: the overlay stays shut.
+    await page.keyboard.press("Shift+Tab");
+    expect(await hasFocus(create), "Shift+Tab from the expand button reaches Compose").toBe(true);
+    await expect(sidebar).not.toHaveAttribute("peeking");
+
+    // Out and in again opens it; out backwards closes it.
+    await page.keyboard.press("Shift+Tab");
+    expect(await focusIn(sidebar)).toBe(false);
+    await page.keyboard.press("Tab");
+    await expect(sidebar).toHaveAttribute("peeking", "");
+    await page.keyboard.press("Shift+Tab");
+    await expect(sidebar).not.toHaveAttribute("peeking");
+
+    // Out forwards, past the footer's last button, closes it too.
+    await page.keyboard.press("Tab");
+    await expect(sidebar).toHaveAttribute("peeking", "");
+    await tabTo(page, page.locator('mailbox-page alps-icon-btn[title="Create Folder"] button'), "Create Folder");
+    await page.keyboard.press("Tab");
+    expect(await focusIn(sidebar), "Tab leaves the sidebar").toBe(false);
+    await expect(sidebar).not.toHaveAttribute("peeking");
+  } finally {
+    await setDocked(page, true);
+  }
+});
+
+test("a click on the strip's Create button opens no overlay of its own", async ({ page }) => {
+  await login(page);
+  await setDocked(page, false);
+  try {
+    await page.goto("/#/calendar/month/2026-06");
+    const { sidebar, create } = stripOf(page);
+    await expect(create).toBeVisible();
+    // How long after the pointer came onto the sidebar the overlay opened.
+    // The pointer's own overlay opens once it has rested there 300ms; the
+    // focus the click leaves on the button must not open one sooner.
+    await sidebar.evaluate((el) => {
+      const w = window as unknown as { entered: number; peekedAfter: number | null };
+      w.entered = 0;
+      w.peekedAfter = null;
+      el.addEventListener("mouseenter", () => { w.entered = performance.now(); });
+      new MutationObserver(() => {
+        if (el.hasAttribute("peeking") && w.peekedAfter === null) w.peekedAfter = performance.now() - w.entered;
+      }).observe(el, { attributeFilter: ["peeking"] });
+    });
+    await create.click();
+    const modal = page.locator("calendar-page calendar-event-modal");
+    await expect(modal.getByLabel("Summary", { exact: true })).toBeVisible();
+    const peekedAfter = await page.evaluate(() => (window as unknown as { peekedAfter: number | null }).peekedAfter);
+    expect(peekedAfter === null || peekedAfter >= 250, `the overlay opened ${peekedAfter}ms after the pointer came`).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(modal.getByLabel("Summary", { exact: true })).toBeHidden();
+  } finally {
+    await page.goto("/#/mailbox/INBOX");
+    await setDocked(page, true);
+  }
 });

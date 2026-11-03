@@ -1269,7 +1269,8 @@ export class FolderList extends LitElement {
            sidebarLayoutStyles gives it pointer-events: none, which keeps the
            mouse out; inert keeps the keyboard out too, so Tab cannot walk
            into folder carets clipped past the strip's edge. Compose, above,
-           stays live. -->
+           stays live, and the keyboard reaching it (or the expand button)
+           opens the overlay, where the folders are live. -->
       <alps-sidebar-frame class="sidebar-wrapper">
         <alps-toolbar class="sidebar-header" ?scrolled=${this.isScrolled}>
           <alps-create-button 

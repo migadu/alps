@@ -4,8 +4,9 @@ import { consume, provide } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
 import './alps-icon-btn';
-import { sidebarStripContext } from './alps-sidebar-strip';
+import { AlpsSidebarContent, sidebarStripContext } from './alps-sidebar-strip';
 import { motionStyles } from '../utils/motion';
+import { deepActiveElement } from '../utils/active-element';
 
 export const sidebarLayoutStyles = css`
   .app-container {
@@ -97,7 +98,7 @@ export function closeSidebarPeek(root: ParentNode | null | undefined): void {
 
 /**
  * The sidebar: a docked column, or, collapsed, a narrow strip that opens as an
- * overlay ("peeks") while the pointer rests on it.
+ * overlay ("peeks") while the pointer rests on it or the keyboard is in it.
  *
  * The peek is decided here and nowhere else. Each page used to keep its own
  * copy of the hover handling, and the copies had drifted: some opened the
@@ -109,6 +110,17 @@ export function closeSidebarPeek(root: ParentNode | null | undefined): void {
  * Pages pass `collapsed` in and call closePeek() when a choice made in the
  * overlay should shut it. What the content needs to know about the strip it
  * reads from `sidebarStripContext`, so no page tracks the peek.
+ *
+ * The keyboard has its own entry. The strip's content is inert (see
+ * alps-sidebar-strip.ts), so Tab passed from Create to the expand button and
+ * on, and a folder, a contacts category, a calendar or a task list could only
+ * be reached by expanding the sidebar for good. Now keyboard focus coming into
+ * the collapsed sidebar opens the overlay at once, the content goes live, and
+ * Tab walks its rows; the focus leaving it, or Escape, closes it. A click
+ * that focuses Create or the expand button is no keyboard focus
+ * (:focus-visible says which it is) and opens nothing. The rows are never
+ * live in the strip itself, so a screen reader meets them once, in the
+ * overlay.
  */
 @customElement('alps-sidebar')
 export class AlpsSidebar extends LitElement {
@@ -338,11 +350,20 @@ export class AlpsSidebar extends LitElement {
   private closeTimer: ReturnType<typeof setTimeout> | null = null;
   /** Ends the resize drag in progress, if any; null when there is none. */
   private stopResize: (() => void) | null = null;
+  /** Whether the pointer is over the sidebar, the overlay included. */
+  private pointerInside = false;
+  /** Whether keyboard focus opened the overlay, or came into it, and is still
+   *  in it. It holds the overlay open: the pointer leaving does not close it,
+   *  which would make the row that has the focus inert under it. */
+  private focusHeld = false;
 
   constructor() {
     super();
     this.addEventListener('mouseenter', this.onPointerEnter);
     this.addEventListener('mouseleave', this.onPointerLeave);
+    this.addEventListener('focusin', this.onFocusIn);
+    this.addEventListener('focusout', this.onFocusOut);
+    this.addEventListener('keydown', this.onKeyDown);
   }
 
   disconnectedCallback() {
@@ -355,23 +376,42 @@ export class AlpsSidebar extends LitElement {
   }
 
   /** Shuts the overlay, because a choice was made in it, and keeps it shut
-   *  until the pointer leaves and enters again. */
+   *  until the pointer leaves and enters again, or the focus does. */
   closePeek() {
+    this.shutPeek(this.focusHeld);
+  }
+
+  /**
+   * Shuts the overlay. With `keepFocus`, a focus on something the strip takes
+   * away moves to the expand button first: left on a row, it would be on an
+   * inert element, which the browser takes the focus from, and the keyboard
+   * would start again from the top of the page. The expand button is where
+   * Tab from the rows went next, so the next Tab goes on as it would have.
+   * A pointer choice leaves the focus alone: the arrow keys reach the message
+   * list from where a click left it.
+   */
+  private shutPeek(keepFocus: boolean) {
     this.clearPeekTimers();
+    if (keepFocus && this.peeking && this.focusPlace() === 'hidden') {
+      this.renderRoot.querySelector('.collapse-btn')?.shadowRoot?.querySelector('button')?.focus();
+    }
+    this.focusHeld = false;
     this.peeking = false;
   }
 
   protected willUpdate(changed: PropertyValues<this>) {
-    // Collapsing or expanding is never a peek, wherever the pointer is: the
-    // overlay takes a fresh entry.
+    // Collapsing or expanding is never a peek, wherever the pointer or the
+    // focus is: the overlay takes a fresh entry.
     if (changed.has('collapsed') || changed.has('isMobile')) {
       this.clearPeekTimers();
+      this.focusHeld = false;
       this.peeking = false;
     }
     this.strip = this.collapsed && !this.peeking && !this.isMobile;
   }
 
   private onPointerEnter = () => {
+    this.pointerInside = true;
     if (this.closeTimer !== null) {
       clearTimeout(this.closeTimer);
       this.closeTimer = null;
@@ -384,16 +424,75 @@ export class AlpsSidebar extends LitElement {
   };
 
   private onPointerLeave = () => {
+    this.pointerInside = false;
     if (this.openTimer !== null) {
       clearTimeout(this.openTimer);
       this.openTimer = null;
     }
-    if (!this.peeking) return;
+    if (!this.peeking || this.focusHeld) return;
     this.closeTimer ??= setTimeout(() => {
       this.closeTimer = null;
       this.peeking = false;
     }, PEEK_CLOSE_DELAY_MS);
   };
+
+  /**
+   * Keyboard focus coming into the collapsed sidebar opens the overlay, with
+   * no delay: Tab is a choice to go there, not a pointer passing by. Only an
+   * entry opens it, from outside the sidebar; the focus moving between its
+   * own controls does not, so after Escape, a choice or a collapse made from
+   * the keyboard it takes a fresh entry, as the pointer's peek does.
+   */
+  private onFocusIn = (e: FocusEvent) => {
+    if (!this.collapsed || this.isMobile) return;
+    const from = e.relatedTarget;
+    if (from instanceof Node && this.contains(from)) return;
+    const target = e.composedPath()[0];
+    if (!(target instanceof Element) || !target.matches(':focus-visible')) return;
+    this.clearPeekTimers();
+    this.focusHeld = true;
+    this.peeking = true;
+  };
+
+  /** The focus leaving the sidebar lets go of the overlay. It closes, unless
+   *  the pointer rests on it; then the pointer leaving closes it. */
+  private onFocusOut = (e: FocusEvent) => {
+    if (!this.focusHeld) return;
+    // A related target is where the focus is going, seen from here. With
+    // none, the focus went to the page itself (a menu that blurs its button
+    // on closing), or the window lost it and keeps it where it was.
+    const to = e.relatedTarget;
+    if (to instanceof Node ? this.contains(to) : this.focusPlace() !== 'outside') return;
+    this.focusHeld = false;
+    if (this.pointerInside) return;
+    this.clearPeekTimers();
+    this.peeking = false;
+  };
+
+  /** Escape shuts the overlay, unless it was meant for a menu or a dialog
+   *  opened from it, which close on their own Escape. */
+  private onKeyDown = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || !this.peeking) return;
+    if (e.composedPath().some((node) => node instanceof HTMLDialogElement)) return;
+    e.preventDefault();
+    this.shutPeek(true);
+  };
+
+  /**
+   * Where the focus is: outside this sidebar; on a control the strip keeps
+   * (Create, the expand button); or on one it takes away, in the content,
+   * which is inert in the strip, or a footer action, which it hides.
+   */
+  private focusPlace(): 'outside' | 'kept' | 'hidden' {
+    let hidden = false;
+    for (let node: Node | null = deepActiveElement(); node; node = node.parentNode ?? (node instanceof ShadowRoot ? node.host : null)) {
+      if (node === this) return hidden ? 'hidden' : 'kept';
+      if (node instanceof AlpsSidebarContent || (node instanceof Element && node.parentNode === this && node.slot === 'footer-actions')) {
+        hidden = true;
+      }
+    }
+    return 'outside';
+  }
 
   private clearPeekTimers() {
     if (this.openTimer !== null) clearTimeout(this.openTimer);
