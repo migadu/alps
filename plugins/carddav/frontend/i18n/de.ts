@@ -28,6 +28,16 @@ export default {
       other: '{count} von {total} Kontakten konnten nicht aktualisiert werden.'
     },
     starOneFailed: 'Der Kontakt konnte nicht aktualisiert werden.',
+    deleteUnconfirmed: {
+      one: 'Für {count} von {total} Kontakten wurde das Löschen nicht bestätigt. Aktualisieren Sie die Liste vor einem erneuten Versuch.',
+      other: 'Für {count} von {total} Kontakten wurde das Löschen nicht bestätigt. Aktualisieren Sie die Liste vor einem erneuten Versuch.'
+    },
+    deleteOneUnconfirmed: 'Das Löschen des Kontakts wurde nicht bestätigt. Aktualisieren Sie die Liste vor einem erneuten Versuch.',
+    updateUnconfirmed: {
+      one: 'Für {count} von {total} Kontakten wurde die Aktualisierung nicht bestätigt. Aktualisieren Sie die Liste vor einem erneuten Versuch.',
+      other: 'Für {count} von {total} Kontakten wurde die Aktualisierung nicht bestätigt. Aktualisieren Sie die Liste vor einem erneuten Versuch.'
+    },
+    updateOneUnconfirmed: 'Die Aktualisierung des Kontakts wurde nicht bestätigt. Aktualisieren Sie die Liste vor einem erneuten Versuch.',
     unnamedContact: 'Unbenannter Kontakt',
     title: 'Kontakte',
     allContacts: 'Alle Kontakte',

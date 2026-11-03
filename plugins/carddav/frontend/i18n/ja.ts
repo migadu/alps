@@ -23,6 +23,14 @@ export default {
       other: '{total}件中{count}件の連絡先を更新できませんでした。'
     },
     starOneFailed: '連絡先を更新できませんでした。',
+    deleteUnconfirmed: {
+      other: '{total}件中{count}件の連絡先の削除を確認できませんでした。再試行する前に一覧を更新してください。'
+    },
+    deleteOneUnconfirmed: '連絡先の削除を確認できませんでした。再試行する前に一覧を更新してください。',
+    updateUnconfirmed: {
+      other: '{total}件中{count}件の連絡先の更新を確認できませんでした。再試行する前に一覧を更新してください。'
+    },
+    updateOneUnconfirmed: '連絡先の更新を確認できませんでした。再試行する前に一覧を更新してください。',
     unnamedContact: '名前のない連絡先',
     title: '連絡先',
     allContacts: 'すべての連絡先',
