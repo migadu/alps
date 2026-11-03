@@ -237,7 +237,7 @@ export const ptBR = {
     sent: 'Enviados',
     archive: 'Arquivo',
     spam: 'Spam',
-    junk: 'Spam',
+    junk: 'Lixo eletrônico',
     trash: 'Lixeira',
     allFolders: 'Todas as pastas',
     title: 'Pastas',

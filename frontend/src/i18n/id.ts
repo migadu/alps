@@ -236,7 +236,7 @@ export const id = {
     sent: 'Terkirim',
     archive: 'Arsip',
     spam: 'Spam',
-    junk: 'Spam',
+    junk: 'Tidak diinginkan',
     trash: 'Sampah',
     allFolders: 'Semua Folder',
     title: 'Folder',

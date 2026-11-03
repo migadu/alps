@@ -235,7 +235,7 @@ export const zhHant = {
     drafts: '草稿',
     sent: '已傳送',
     archive: '封存',
-    spam: '垃圾郵件',
+    spam: '濫發郵件',
     junk: '垃圾郵件',
     trash: '垃圾桶',
     allFolders: '所有資料夾',

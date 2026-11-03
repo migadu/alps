@@ -235,7 +235,7 @@ export const ja = {
     drafts: '下書き',
     sent: '送信済み',
     archive: 'アーカイブ',
-    spam: '迷惑メール',
+    spam: 'スパム',
     junk: '迷惑メール',
     trash: 'ゴミ箱',
     allFolders: 'すべてのフォルダー',

@@ -237,7 +237,7 @@ export const zhHans: TranslationDictionary = {
     drafts: '草稿',
     sent: '已发送',
     archive: '归档',
-    spam: '垃圾邮件',
+    spam: '滥发邮件',
     junk: '垃圾邮件',
     trash: '废纸篓',
     allFolders: '所有文件夹',

@@ -404,6 +404,16 @@ const ENDONYMS: Record<string, string> = {
   chineseTraditional: '繁體中文',
 };
 
+describe('folder names', () => {
+  // An account can have both a Spam and a Junk folder, and a translation that
+  // calls them the same showed two folders of one name in the sidebar.
+  it.each(ALL_CORE.map(([code]) => code))('%s names Spam, Junk and Trash apart', (code) => {
+    const dict = ALL_CORE.find(([c]) => c === code)![1];
+    const names = ['spam', 'junk', 'trash'].map((key) => lookup(dict, `folderList.${key}`));
+    expect(new Set(names).size, names.join(' / ')).toBe(3);
+  });
+});
+
 describe('the language picker', () => {
   it.each(ALL_CORE.map(([code]) => code))('%s names every language in its own words', (code) => {
     const dict = ALL_CORE.find(([c]) => c === code)![1];
