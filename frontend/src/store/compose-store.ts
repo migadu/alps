@@ -142,7 +142,8 @@ export const discardedInlineAfterSave = (
   // Only inline parts are ever left out, and in HTML only by their Content-ID.
   const omitted = leftOutBy(saved);
   if (!omitted.length) return {};
-  const lost = new Set<string>(omitted.map(a => a.contentId).filter(Boolean));
+  const normalizeId = (id: string) => id.replace(/^<|>$/g, '');
+  const lost = new Set<string>(omitted.map(a => a.contentId).filter(Boolean).map(normalizeId));
   if (omitted.some(a => !a.contentId)) {
     // Older local drafts predate stable Content-ID metadata. The new draft's
     // structure says which references still have a part, including a normal
@@ -162,7 +163,7 @@ export const discardedInlineAfterSave = (
   if (!lost.size) return {};
   return {
     html: withoutCidReferences(latest.html || '', lost),
-    discardedInlineIds: [...new Set([...(latest.discardedInlineIds || []), ...lost])],
+    discardedInlineIds: [...new Set([...(latest.discardedInlineIds || []).map(normalizeId), ...lost])],
   };
 };
 

@@ -123,7 +123,7 @@ describe('the composer', () => {
   async function discardFrom(instance: ComposerInstance) {
     const composeStore = storeFor(instance);
     const el = await mount<El>('alps-floating-composer', { instance, composeStore, i18nStore });
-    await el._performDiscard('delete');
+    await el._performDiscard();
     return composeStore;
   }
 
@@ -287,7 +287,7 @@ describe('the composer', () => {
     const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
 
     const saving = el._saveDraft();
-    const discarding = el._performDiscard('delete');
+    const discarding = el._performDiscard();
     expect(store.closeComposer).toHaveBeenCalledWith('c1');
     await flush();
     expect(del).not.toHaveBeenCalled();
@@ -314,7 +314,7 @@ describe('the composer', () => {
     const el = await mount<El>('alps-floating-composer', { instance, composeStore: liveStoreFor(instance), i18nStore });
 
     const saving = el._saveDraft();
-    const discarding = el._performDiscard('delete');
+    const discarding = el._performDiscard();
     land({ uid: '8', mailbox: 'Drafts' });
     await saving;
     await discarding;
@@ -332,7 +332,7 @@ describe('the composer', () => {
     const el = await mount<El>('alps-floating-composer', { instance, composeStore: liveStoreFor(instance), i18nStore });
 
     const saving = el._saveDraft();
-    const discarding = el._performDiscard('delete');
+    const discarding = el._performDiscard();
     land({ uid: '8', mailbox: 'Drafts' });
     await saving;
     await discarding;
@@ -349,7 +349,7 @@ describe('the composer', () => {
     const el = await mount<El>('alps-floating-composer', { instance, composeStore: liveStoreFor(instance), i18nStore });
 
     const saving = el._saveDraft();
-    const discarding = el._performDiscard('delete');
+    const discarding = el._performDiscard();
     MessageCache.clear();
     land({ uid: '8', mailbox: 'Drafts' });
     await saving;

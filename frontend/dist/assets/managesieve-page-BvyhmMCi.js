@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,h as r,m as i,p as a,r as o,v as s}from"./lit-CXIqsLEv.js";import{Tt as c,f as l,ut as u,wt as d}from"./index-CgAScSQJ.js";import{n as f,o as p,r as m,t as h}from"./unsaved-prUsjE-h.js";var g=class extends r{constructor(...e){super(...e),this.isDirty=!1,this.script=``,this.stored=``,this.isValidating=!1,this.isSaving=!1}get hasUnsavedChanges(){return this.script!==this.stored||this.isSaving}static{this.styles=e`
+import{b as e,c as t,f as n,h as r,m as i,p as a,r as o,v as s}from"./lit-CXIqsLEv.js";import{Tt as c,f as l,ut as u,wt as d}from"./index-DCA4klVP.js";import{n as f,o as p,r as m,t as h}from"./unsaved-DYp5yUha.js";var g=class extends r{constructor(...e){super(...e),this.isDirty=!1,this.script=``,this.stored=``,this.isValidating=!1,this.isSaving=!1}get hasUnsavedChanges(){return this.script!==this.stored||this.isSaving}static{this.styles=e`
 		.editor-container {
 			display: flex;
 			flex-direction: column;
