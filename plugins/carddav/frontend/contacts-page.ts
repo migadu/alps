@@ -12,6 +12,7 @@ import { closeSidebarPeek } from '../../../frontend/src/components/alps-sidebar'
 import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/alps-initial-loader';
+import { endBoot, isBooting } from '../../../frontend/src/utils/boot-splash';
 import '../../../frontend/src/components/alps-popup';
 import '../../../frontend/src/components/alps-create-button';
 import './contacts-categories';
@@ -59,7 +60,7 @@ export class ContactsPage extends LitElement {
   @state() private showOnlyStarred = false;
   @state() private loading = true;
   @state() private isSpinning = false;
-  @state() private showInitialLoader = !(window as any).alpsAppLoaded;
+  @state() private showInitialLoader = isBooting();
   @state() private selectedContact: any = null;
   @state() private filterQuery = '';
 
@@ -311,7 +312,7 @@ export class ContactsPage extends LitElement {
     super.connectedCallback();
     this.restoringHash = true;
     this.saveActive = true;
-    this.showInitialLoader = !(window as any).alpsAppLoaded;
+    this.showInitialLoader = isBooting();
     this.classList.add('density-compact');
     this.loadAddedCategories();
     window.addEventListener('alps-active-user-changed', this.handleSaveOwnerChange);
@@ -573,7 +574,7 @@ export class ContactsPage extends LitElement {
       if (this.showInitialLoader) {
         setTimeout(() => {
           this.showInitialLoader = false;
-          (window as any).alpsAppLoaded = true;
+          endBoot();
         }, 100);
       }
     }

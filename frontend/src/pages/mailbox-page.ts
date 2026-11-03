@@ -20,6 +20,7 @@ import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
 import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxPath, mailboxRoleByName, findMailboxNameByRole, acceptsDroppedMessages } from '../utils/folders';
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
+import { endBoot, isBooting } from '../utils/boot-splash';
 import { Logger } from '../utils/logger';
 import { MessageCache } from '../utils/message-cache';
 import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
@@ -325,7 +326,7 @@ export class MailboxPage extends LitElement {
   @state() private messages: any[] = [];
   @state() private currentMailbox = FOLDER_INBOX;
   @state() private loadingMessages = true;
-  @state() private showInitialLoader = !(window as any).alpsAppLoaded;
+  @state() private showInitialLoader = isBooting();
   @state() private selectedMessage: any = null;
   /** The checked messages, by {@link messageKey}: a search across every folder
    * lists several folders' messages, and a UID means nothing outside its own.
@@ -1207,7 +1208,7 @@ export class MailboxPage extends LitElement {
       if (this.showInitialLoader) {
         setTimeout(() => {
           this.showInitialLoader = false;
-          (window as any).alpsAppLoaded = true;
+          endBoot();
         }, 100);
       }
     }

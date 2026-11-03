@@ -36,6 +36,7 @@ import { applyUpdate, registerBusyProbe, reloadForMissingPage, reloadMissingPage
 import { Logger } from '../utils/logger';
 import { isSettingsHash, settingsCategoryOf, settingsHash } from '../utils/routes';
 import { BACKGROUND_CHANGED_EVENT, ensurePageEntry, nextSettingsEntry, pageEntryId, settingsEntry, stampSettingsEntry, type SettingsEntry } from '../utils/settings-history';
+import { endBoot } from '../utils/boot-splash';
 
 const DEFAULT_TOAST_TIMEOUT_MS = 3000;
 /** Long enough to be read and acted on; the automatic paths catch a missed one. */
@@ -680,10 +681,31 @@ export class AppRoot extends LitElement {
         this.loadFailurePath = path;
         resetComponentLoadFailures();
       }
+      this.endBootOnNavigation(event);
       this.trackSettingsEntry(event);
       this.requestUpdate();
     }
   );
+
+  /**
+   * Ends the boot on a move from one page of the signed-in app to another, so
+   * the page it lands on draws no splash (`utils/boot-splash`). Here rather
+   * than in each page, because a page that never ended it was the defect: a
+   * session loaded on the calendar booted until the first tab click, and that
+   * click drew the mailbox's splash.
+   *
+   * Every `hashchange` counts, a folder or a message opened on the boot page
+   * included: what is on screen keeps its own splash, and only pages drawn
+   * from now on ask. Not the first route, which is the boot itself, and not a
+   * move to or from the login screens: the page a sign-in lands on is the boot
+   * of the signed-in app, and its splash is the one the sign-in waits behind.
+   */
+  private endBootOnNavigation(event?: HashChangeEvent) {
+    if (!event?.oldURL) return;
+    const signingIn = (hash: string) => routePath(hash).startsWith('/login');
+    if (signingIn(new URL(event.oldURL).hash) || signingIn(window.location.hash)) return;
+    endBoot();
+  }
 
   /**
    * The page beneath the Settings window: the one its history entry says it
