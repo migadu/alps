@@ -1563,17 +1563,30 @@ export class AlpsFloatingComposer extends LitElement {
       display: none;
     }
 
+    .fields {
+      display: grid;
+      grid-template-columns: minmax(40px, max-content) minmax(0, 1fr) max-content;
+      column-gap: 8px;
+    }
+
     .field-row {
-      display: flex;
+      display: grid;
+      grid-template-columns: subgrid;
+      grid-column: 1 / -1;
       align-items: center;
       padding: 4px 16px;
       border-bottom: 1px solid var(--border-color);
     }
 
+    .field-row:focus-within {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: -2px;
+    }
+
     .field-label {
       color: var(--text-muted);
       font-size: 14px;
-      width: 40px;
+      white-space: nowrap;
     }
 
     .cc-bcc-toggles {
@@ -1603,6 +1616,20 @@ export class AlpsFloatingComposer extends LitElement {
 
     .address-input {
       flex: 1;
+      min-width: 0;
+    }
+
+    .field-row > .address-input,
+    .field-row > .field-input {
+      grid-column: 2 / -1;
+    }
+
+    .field-row:has(.cc-bcc-toggles) > .address-input {
+      grid-column: 2;
+    }
+
+    .subject-row > .field-input {
+      grid-column: 1 / -1;
     }
 
     /* A long name or address is cut by the menu, not the row. */
@@ -1853,6 +1880,7 @@ export class AlpsFloatingComposer extends LitElement {
         </div>
 
         <div class="content">
+          <div class="fields">
           ${this._renderSenderRow()}
           <div class="field-row">
             <span class="field-label">${this.i18nStore?.t('floatingComposer.to')}</span>
@@ -1900,7 +1928,7 @@ export class AlpsFloatingComposer extends LitElement {
             </div>
           ` : ''}
 
-          <div class="field-row">
+          <div class="field-row subject-row">
             <input 
               dir="auto"
               class="field-input" 
@@ -1910,6 +1938,7 @@ export class AlpsFloatingComposer extends LitElement {
               @keydown=${this._handleSubjectKeydown}
               ?disabled=${this.instance.isSending}
             />
+          </div>
           </div>
 
           <div class="composer-wrapper">

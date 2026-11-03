@@ -269,6 +269,9 @@ export class CalendarPage extends LitElement {
                 display: flex;
             }
         }
+        @media (hover: none) {
+            .calendar-actions { display: flex; }
+        }
         /* Shown while the keyboard is in its row, so that Tab reaches the
            menu from the calendar's checkbox: a button inside display: none is
            no Tab stop, and so it could never take the focus that shows it.

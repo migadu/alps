@@ -229,6 +229,11 @@ export class TasksList extends LitElement {
         this.dispatchEvent(new CustomEvent('open-task', { detail: { task } }));
     }
 
+    private handleFocus() {
+        const count = this.groups().reduce((total, [, rows]) => total + rows.length, 0);
+        if (count) this.focusedIndex = Math.min(Math.max(this.focusedIndex, 0), count - 1);
+    }
+
     /**
      * Arrow keys walk the rows, Enter opens one and Space ticks it.
      *
@@ -342,7 +347,7 @@ export class TasksList extends LitElement {
         // The draw order, so a row's index is the one the keyboard walks.
         let index = -1;
         return html`
-            <div class="scroll" tabindex="0" @keydown=${this.handleKeyDown}>
+            <div class="scroll" tabindex="0" @focus=${this.handleFocus} @keydown=${this.handleKeyDown}>
                 ${groups.map(
                     ([group, rows]) => html`
                         <div class="group ${group}">${this.i18nStore?.t(GROUP_LABELS[group])}</div>
