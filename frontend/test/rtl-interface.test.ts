@@ -224,6 +224,12 @@ describe('stylesheets', () => {
       decls: ['padding-left: var(--input-leading-space)', 'padding-right: var(--input-trailing-space)', 'padding-left: var(--input-trailing-space)', 'padding-right: var(--input-leading-space)', 'text-align: right'],
       why: 'the same, for any field whose value is left to right',
     },
+    'src/components/alps-popup.ts': {
+      decls: ['right: var(--arrow-right, 10px)', 'right: calc(var(--arrow-right, 10px) + 1px)',
+        'left: var(--arrow-left, 10px)', 'left: calc(var(--arrow-left, 10px) + 1px)',
+        'right: -6px', 'right: -5px', 'left: -6px', 'left: -5px'],
+      why: 'the popup classes and offsets already name physical viewport sides',
+    },
     'plugins/caldav/frontend/calendar-mini-month.ts': {
       decls: ['left: 50%'],
       why: 'centred with translateX(-50%), the same either way',
