@@ -545,7 +545,14 @@ export const en = {
     unsavedDraftsTitle: 'Sign out with unsaved drafts?',
     unsavedDraftsMessage: 'A draft could not be saved to the server. If you sign out now, it stays on this device and reopens the next time you sign in to this account.',
     signOutAnyway: 'Sign out anyway',
-    profileOptions: 'Profile options'
+    profileOptions: 'Profile options',
+    profileOptionsNotice: 'Profile options ({notice})'
+  },
+  storage: {
+    used: '{used} of {quota} used',
+    percent: '{percent}%',
+    warning: 'Mailbox {percent}% full',
+    critical: 'Mailbox {percent}% full: new mail may be refused'
   },
   pagination: {
     previousPage: 'Previous page',

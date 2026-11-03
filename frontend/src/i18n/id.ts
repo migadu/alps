@@ -531,7 +531,14 @@ export const id = {
     unsavedDraftsTitle: 'Keluar dengan draf yang belum disimpan?',
     unsavedDraftsMessage: 'Draf tidak dapat disimpan ke server. Jika Anda keluar sekarang, draf tetap di perangkat ini dan dibuka kembali saat Anda masuk lagi ke akun ini.',
     signOutAnyway: 'Tetap keluar',
-    profileOptions: 'Opsi profil'
+    profileOptions: 'Opsi profil',
+    profileOptionsNotice: 'Opsi profil ({notice})'
+  },
+  storage: {
+    used: '{used} dari {quota} digunakan',
+    percent: '{percent}%',
+    warning: 'Kotak surat {percent}% penuh',
+    critical: 'Kotak surat {percent}% penuh: email baru mungkin ditolak'
   },
   pagination: {
     previousPage: 'Halaman sebelumnya',

@@ -531,7 +531,14 @@ export const zhHant = {
     unsavedDraftsTitle: '草稿未儲存，仍要登出？',
     unsavedDraftsMessage: '草稿無法儲存到伺服器。若現在登出，草稿將保留在此裝置上，並在您下次登入此帳號時重新開啟。',
     signOutAnyway: '仍然登出',
-    profileOptions: '個人資料選項'
+    profileOptions: '個人資料選項',
+    profileOptionsNotice: '個人資料選項（{notice}）'
+  },
+  storage: {
+    used: '已使用 {used}，共 {quota}',
+    percent: '{percent}%',
+    warning: '信箱空間已使用 {percent}%',
+    critical: '信箱空間已使用 {percent}%：新郵件可能會被拒收'
   },
   pagination: {
     previousPage: '上一頁',

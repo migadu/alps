@@ -498,7 +498,14 @@ export const es = {
     unsavedDraftsTitle: '¿Cerrar sesión con borradores sin guardar?',
     unsavedDraftsMessage: 'No se pudo guardar un borrador en el servidor. Si cierras sesión ahora, se queda en este dispositivo y se vuelve a abrir la próxima vez que inicies sesión en esta cuenta.',
     signOutAnyway: 'Cerrar sesión de todos modos',
-    profileOptions: 'Opciones de perfil'
+    profileOptions: 'Opciones de perfil',
+    profileOptionsNotice: 'Opciones de perfil ({notice})'
+  },
+  storage: {
+    used: '{used} de {quota} en uso',
+    percent: '{percent}\u00a0%',
+    warning: 'Buzón lleno al {percent}\u00a0%',
+    critical: 'Buzón lleno al {percent}\u00a0%: es posible que se rechace el correo nuevo'
   },
   pagination: {
     previousPage: 'Página anterior',

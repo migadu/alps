@@ -531,7 +531,14 @@ export const ja = {
     unsavedDraftsTitle: '未保存の下書きを残してログアウトしますか？',
     unsavedDraftsMessage: '下書きをサーバーに保存できませんでした。今ログアウトすると、この端末に残り、次にこのアカウントでログインしたときに開きます。',
     signOutAnyway: 'このままログアウト',
-    profileOptions: 'プロフィールのオプション'
+    profileOptions: 'プロフィールのオプション',
+    profileOptionsNotice: 'プロフィールのオプション（{notice}）'
+  },
+  storage: {
+    used: '{quota}中{used}を使用',
+    percent: '{percent}%',
+    warning: 'メールボックスの容量の{percent}%を使用中',
+    critical: 'メールボックスの容量の{percent}%を使用中：新しいメールを受信できない可能性があります'
   },
   pagination: {
     previousPage: '前のページ',

@@ -500,7 +500,14 @@ export const de: TranslationDictionary = {
     unsavedDraftsTitle: 'Mit ungespeicherten Entwürfen abmelden?',
     unsavedDraftsMessage: 'Ein Entwurf konnte nicht auf dem Server gespeichert werden. Wenn Sie sich jetzt abmelden, bleibt er auf diesem Gerät und wird bei der nächsten Anmeldung bei diesem Konto wieder geöffnet.',
     signOutAnyway: 'Trotzdem abmelden',
-    profileOptions: 'Profiloptionen'
+    profileOptions: 'Profiloptionen',
+    profileOptionsNotice: 'Profiloptionen ({notice})'
+  },
+  storage: {
+    used: '{used} von {quota} belegt',
+    percent: '{percent}\u00a0%',
+    warning: 'Postfach zu {percent}\u00a0% voll',
+    critical: 'Postfach zu {percent}\u00a0% voll: Neue E-Mails werden möglicherweise abgelehnt'
   },
   pagination: {
     previousPage: 'Vorherige Seite',

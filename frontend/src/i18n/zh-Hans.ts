@@ -535,7 +535,14 @@ export const zhHans: TranslationDictionary = {
     unsavedDraftsTitle: '有未保存的草稿，仍要退出登录吗？',
     unsavedDraftsMessage: '有一封草稿无法保存到服务器。如果现在退出登录，它会保留在此设备上，并在您下次登录此账户时重新打开。',
     signOutAnyway: '仍然退出登录',
-    profileOptions: '个人资料选项'
+    profileOptions: '个人资料选项',
+    profileOptionsNotice: '个人资料选项（{notice}）'
+  },
+  storage: {
+    used: '已使用 {used}，共 {quota}',
+    percent: '{percent}%',
+    warning: '邮箱空间已用 {percent}%',
+    critical: '邮箱空间已用 {percent}%：新邮件可能会被拒收'
   },
   pagination: {
     previousPage: '上一页',

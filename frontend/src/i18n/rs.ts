@@ -510,7 +510,14 @@ export const rs = {
     unsavedDraftsTitle: 'Одјавити се са несачуваним нацртима?',
     unsavedDraftsMessage: 'Нацрт није могао да се сачува на серверу. Ако се сада одјавите, остаје на овом уређају и отвориће се поново када се следећи пут пријавите на овај налог.',
     signOutAnyway: 'Ипак се одјави',
-    profileOptions: 'Опције профила'
+    profileOptions: 'Опције профила',
+    profileOptionsNotice: 'Опције профила ({notice})'
+  },
+  storage: {
+    used: 'Искоришћено {used} од {quota}',
+    percent: '{percent}%',
+    warning: 'Сандуче је {percent}% пуно',
+    critical: 'Сандуче је {percent}% пуно: нова пошта може бити одбијена'
   },
   pagination: {
     previousPage: 'Претходна страница',

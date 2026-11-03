@@ -591,7 +591,14 @@ export const ar = {
     unsavedDraftsTitle: 'هل تريد تسجيل الخروج مع وجود مسودات غير محفوظة؟',
     unsavedDraftsMessage: 'تعذر حفظ مسودة على الخادم. إذا سجّلت الخروج الآن، فستبقى على هذا الجهاز وتُفتح مجددًا في المرة القادمة التي تسجّل فيها الدخول إلى هذا الحساب.',
     signOutAnyway: 'تسجيل الخروج على أي حال',
-    profileOptions: 'خيارات الملف الشخصي'
+    profileOptions: 'خيارات الملف الشخصي',
+    profileOptionsNotice: 'خيارات الملف الشخصي ({notice})'
+  },
+  storage: {
+    used: 'تم استخدام {used} من {quota}',
+    percent: '{percent}%',
+    warning: 'صندوق البريد ممتلئ بنسبة {percent}%',
+    critical: 'صندوق البريد ممتلئ بنسبة {percent}%: قد يُرفض البريد الجديد'
   },
   pagination: {
     previousPage: 'الصفحة السابقة',

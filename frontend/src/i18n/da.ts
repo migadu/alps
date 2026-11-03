@@ -547,7 +547,14 @@ export const da: TranslationDictionary = {
     unsavedDraftsTitle: 'Log ud med kladder, der ikke er gemt?',
     unsavedDraftsMessage: 'En kladde kunne ikke gemmes på serveren. Hvis du logger ud nu, bliver den på denne enhed og åbnes igen, næste gang du logger ind på denne konto.',
     signOutAnyway: 'Log ud alligevel',
-    profileOptions: 'Profilindstillinger'
+    profileOptions: 'Profilindstillinger',
+    profileOptionsNotice: 'Profilindstillinger ({notice})'
+  },
+  storage: {
+    used: '{used} af {quota} brugt',
+    percent: '{percent}\u00a0%',
+    warning: 'Postkassen er {percent}\u00a0% fuld',
+    critical: 'Postkassen er {percent}\u00a0% fuld: ny post kan blive afvist'
   },
   pagination: {
     previousPage: 'Forrige side',

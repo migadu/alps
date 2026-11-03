@@ -498,7 +498,14 @@ export const it = {
     unsavedDraftsTitle: 'Uscire con bozze non salvate?',
     unsavedDraftsMessage: 'Non è stato possibile salvare una bozza sul server. Se esci ora, resta su questo dispositivo e si riapre al prossimo accesso a questo account.',
     signOutAnyway: 'Esci comunque',
-    profileOptions: 'Opzioni profilo'
+    profileOptions: 'Opzioni profilo',
+    profileOptionsNotice: 'Opzioni profilo ({notice})'
+  },
+  storage: {
+    used: '{used} di {quota} utilizzati',
+    percent: '{percent}%',
+    warning: 'Casella di posta piena al {percent}%',
+    critical: 'Casella di posta piena al {percent}%: i nuovi messaggi potrebbero essere rifiutati'
   },
   pagination: {
     previousPage: 'Pagina precedente',

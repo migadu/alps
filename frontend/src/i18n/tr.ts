@@ -543,7 +543,14 @@ export const tr = {
     unsavedDraftsTitle: 'Kaydedilmemiş taslaklarla oturum kapatılsın mı?',
     unsavedDraftsMessage: 'Bir taslak sunucuya kaydedilemedi. Şimdi çıkarsanız bu cihazda kalır ve bu hesapta yeniden oturum açtığınızda açılır.',
     signOutAnyway: 'Yine de çık',
-    profileOptions: 'Profil seçenekleri'
+    profileOptions: 'Profil seçenekleri',
+    profileOptionsNotice: 'Profil seçenekleri ({notice})'
+  },
+  storage: {
+    used: 'Kullanılan: {used} / {quota}',
+    percent: '%{percent}',
+    warning: 'Posta kutusu %{percent} dolu',
+    critical: 'Posta kutusu %{percent} dolu: yeni postalar reddedilebilir'
   },
   pagination: {
     previousPage: 'Önceki sayfa',

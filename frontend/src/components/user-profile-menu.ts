@@ -1,5 +1,5 @@
 import { LitElement, html, css, render } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { settingsContext, SettingsStore, clearSessionSettings } from '../store/settings-store';
@@ -8,6 +8,8 @@ import './alps-avatar';
 import { popupStyles, type AlpsPopup } from './alps-popup';
 import './alps-popup';
 import './alps-icon-btn';
+import './alps-storage-usage';
+import type { AlpsStorageUsage, StorageChange } from './alps-storage-usage';
 import { renderIcon } from '../utils/ui';
 import { MessageCache } from '../utils/message-cache';
 import { registry } from '../plugin-registry';
@@ -77,6 +79,51 @@ export class UserProfileMenu extends LitElement {
       text-overflow: ellipsis;
     }
 
+    /* A mailbox close to its storage limit, shown while the menu is closed:
+       the figures are inside it. The two states differ in size and in the
+       mark, not in colour alone. */
+    .avatar-wrap {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .storage-badge {
+      position: absolute;
+      inset-block-start: -2px;
+      inset-inline-end: -2px;
+      box-sizing: border-box;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      box-shadow: 0 0 0 2px var(--bg-primary, #ffffff);
+      background: var(--warning, #f59e0b);
+    }
+
+    .storage-badge.critical {
+      inset-block-start: -4px;
+      inset-inline-end: -4px;
+      width: 14px;
+      height: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--error, #ef4444);
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    /* Drawn by its background, which forced colors repaint as the page. */
+    @media (forced-colors: active) {
+      .storage-badge {
+        forced-color-adjust: none;
+        background: CanvasText;
+        color: Canvas;
+        box-shadow: 0 0 0 2px Canvas;
+      }
+    }
+
     @media (max-width: 768px) {
       .user-text-container {
         display: none;
@@ -99,9 +146,29 @@ export class UserProfileMenu extends LitElement {
   @consume({ context: linkedAccountsContext })
   linkedAccountsStore!: LinkedAccountsStore;
 
+  /** The storage section's urgency, carried by the avatar and the button while the menu is closed. */
+  @state() private storage: StorageChange = { severity: '', percent: 0, shown: false };
+
   private _handleStoreChange = () => {
     this.requestUpdate();
   };
+
+  private _handleStorageChange = (e: CustomEvent<StorageChange>) => {
+    this.storage = e.detail;
+  };
+
+  /** Opening the menu is when its figures are looked at, and must be current. */
+  private _handleMenuOpen = () => {
+    void this.shadowRoot?.querySelector<AlpsStorageUsage>('alps-storage-usage')?.refresh(true);
+  };
+
+  /** What the storage section's urgency says, in words, or '' when it says nothing. */
+  private _storageNotice(): string {
+    const { severity, percent } = this.storage;
+    if (severity === 'critical') return this.i18nStore?.t('storage.critical', { percent }) ?? '';
+    if (severity === 'warn') return this.i18nStore?.t('storage.warning', { percent }) ?? '';
+    return '';
+  }
 
   connectedCallback() {
     super.connectedCallback();
@@ -247,21 +314,32 @@ export class UserProfileMenu extends LitElement {
 
   render() {
     const displayName = this.settingsStore?.getState().name || this.username;
+    const notice = this._storageNotice();
     
     return html`
       <div class="user-profile">
         <div class="user-info">
-          <alps-avatar .name=${displayName} .size=${28}></alps-avatar>
+          <span class="avatar-wrap">
+            <alps-avatar .name=${displayName} .size=${28}></alps-avatar>
+            <!-- Hidden from assistive technology: the menu's button says the
+                 same in its name, where focus lands, and the badge is not
+                 focusable. -->
+            ${notice ? html`
+              <span class="storage-badge ${this.storage.severity}" aria-hidden="true" title=${notice}>${this.storage.severity === 'critical' ? '!' : ''}</span>
+            ` : ''}
+          </span>
           <div class="user-text-container">
             <span class="user-name-text"><bdi>${displayName}</bdi></span>
             <span class="user-address-text"><bdi dir="ltr">${this.username}</bdi></span>
           </div>
         </div>
-        <alps-popup align="end">
+        <alps-popup align="end" @popup-open=${this._handleMenuOpen}>
           <alps-icon-btn
             slot="trigger"
             .icon=${'dotsThreeVertical'}
-            title=${this.i18nStore?.t('userMenu.profileOptions')}
+            title=${notice
+              ? this.i18nStore?.t('userMenu.profileOptionsNotice', { notice })
+              : this.i18nStore?.t('userMenu.profileOptions')}
           ></alps-icon-btn>
           
           ${(() => {
@@ -299,6 +377,11 @@ export class UserProfileMenu extends LitElement {
             ${renderIcon('gear')} <span class="item-text">${this.i18nStore?.t('userMenu.settings')}</span>
           </button>
           <div class="dropdown-divider"></div>
+          <!-- Storage, above Sign out: it is the account's, and this menu is
+               on every page. The section draws nothing for a mailbox without
+               a storage limit, and its divider goes with it. -->
+          <alps-storage-usage @storage-change=${this._handleStorageChange}></alps-storage-usage>
+          ${this.storage.shown ? html`<div class="dropdown-divider"></div>` : ''}
           <button class="dropdown-item" @click="${this._handleSignOut}">
             ${renderIcon('signOut')} <span class="item-text">${this.i18nStore?.t('userMenu.signOut')}</span>
           </button>
