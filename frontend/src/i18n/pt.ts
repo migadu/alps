@@ -45,6 +45,20 @@ export const pt = {
       replyTo: 'Endereço de resposta',
       replyToDesc: 'Opcional: especifique um endereço diferente para respostas.',
       bccMyself: 'Incluir-me sempre em Bcc nos e-mails enviados',
+      identities: 'Endereços de envio',
+      identitiesDesc: 'Outros endereços a partir dos quais envia, como um alias. Cada um é enviado com o seu próprio nome ou, se não tiver nenhum, com o seu nome a apresentar. O seu servidor de correio tem de lhe permitir enviar a partir de cada um deles.',
+      addIdentity: 'Adicionar endereço',
+      identityName: 'Nome',
+      identityAddress: 'Endereço de e-mail',
+      editIdentity: 'Editar {address}',
+      removeIdentity: 'Remover {address}',
+      identityInvalid: 'Introduza um endereço de e-mail, como nome@example.com.',
+      identityOwn: 'Este é o seu próprio endereço. Pode sempre enviar a partir dele.',
+      identityDuplicate: 'Este endereço já está na lista.',
+      identitiesFull: {
+        one: 'Pode adicionar até {count} endereço.',
+        other: 'Pode adicionar até {count} endereços.'
+      }
     },
     reading: {
       messagesPerPage: 'Mensagens por página',

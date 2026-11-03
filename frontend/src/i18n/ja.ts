@@ -51,7 +51,20 @@ export const ja = {
       signatureDesc: '送信メールの末尾に追加されます。',
       replyTo: '返信先アドレス',
       replyToDesc: '必要に応じて、別の返信先アドレスを指定できます。',
-      bccMyself: '送信メールのBCCに常に自分を追加する'
+      bccMyself: '送信メールのBCCに常に自分を追加する',
+      identities: '送信元アドレス',
+      identitiesDesc: 'エイリアスなど、メールの送信に使う別のアドレスです。それぞれのアドレスに設定した名前で送信され、名前がない場合は表示名が使われます。各アドレスからの送信をメールサーバーが許可している必要があります。',
+      addIdentity: 'アドレスを追加',
+      identityName: '名前',
+      identityAddress: 'メールアドレス',
+      editIdentity: '{address} を編集',
+      removeIdentity: '{address} を削除',
+      identityInvalid: 'name@example.com のようなメールアドレスを入力してください。',
+      identityOwn: 'これはご自身のアドレスです。このアドレスからはいつでも送信できます。',
+      identityDuplicate: 'このアドレスはすでにリストにあります。',
+      identitiesFull: {
+        other: 'アドレスは最大{count}件まで追加できます。'
+      }
     },
     reading: {
       messagesPerPage: '1ページあたりのメール数',

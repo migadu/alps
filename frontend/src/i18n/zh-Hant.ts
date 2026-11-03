@@ -51,7 +51,20 @@ export const zhHant = {
       signatureDesc: '附加到已傳送郵件的末尾。',
       replyTo: '回覆位址',
       replyToDesc: '可選：指定其他位址接收回覆。',
-      bccMyself: '傳送郵件時一律密件副本給自己'
+      bccMyself: '傳送郵件時一律密件副本給自己',
+      identities: '寄件地址',
+      identitiesDesc: '您用來寄信的其他地址，例如別名。每個地址會以其自己的名稱寄出；若未設定名稱，則使用您的顯示名稱。您的郵件伺服器必須允許您從這些地址寄信。',
+      addIdentity: '新增地址',
+      identityName: '名稱',
+      identityAddress: '電子郵件地址',
+      editIdentity: '編輯 {address}',
+      removeIdentity: '移除 {address}',
+      identityInvalid: '請輸入電子郵件地址，例如 name@example.com。',
+      identityOwn: '這是您自己的地址，您隨時都能從這個地址寄信。',
+      identityDuplicate: '這個地址已在清單中。',
+      identitiesFull: {
+        other: '最多可新增 {count} 個地址。'
+      }
     },
     reading: {
       messagesPerPage: '每頁郵件數',

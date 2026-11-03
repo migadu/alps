@@ -46,6 +46,20 @@ export const es = {
       replyTo: 'Dirección de respuesta (Reply-To)',
       replyToDesc: 'Opcional: especifica una dirección diferente para las respuestas.',
       bccMyself: 'Añadirme siempre en CCO en el correo saliente',
+      identities: 'Direcciones de envío',
+      identitiesDesc: 'Otras direcciones desde las que envías, como un alias. Cada una se envía con su propio nombre o, si no tiene, con tu nombre para mostrar. Tu servidor de correo debe permitirte enviar desde cada una.',
+      addIdentity: 'Añadir dirección',
+      identityName: 'Nombre',
+      identityAddress: 'Dirección de correo electrónico',
+      editIdentity: 'Editar {address}',
+      removeIdentity: 'Quitar {address}',
+      identityInvalid: 'Escribe una dirección de correo electrónico, como nombre@example.com.',
+      identityOwn: 'Esta es tu propia dirección. Siempre puedes enviar desde ella.',
+      identityDuplicate: 'Esta dirección ya está en la lista.',
+      identitiesFull: {
+        one: 'Puedes añadir hasta {count} dirección.',
+        other: 'Puedes añadir hasta {count} direcciones.'
+      }
     },
     reading: {
       messagesPerPage: 'Mensajes por página',

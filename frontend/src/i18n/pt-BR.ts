@@ -51,7 +51,21 @@ export const ptBR = {
       signatureDesc: 'Adicionada ao final das mensagens enviadas.',
       replyTo: 'Endereço de Resposta',
       replyToDesc: 'Opcional: especifique um endereço diferente para respostas.',
-      bccMyself: 'Sempre me enviar uma cópia em Cco dos e-mails que envio'
+      bccMyself: 'Sempre me enviar uma cópia em Cco dos e-mails que envio',
+      identities: 'Endereços de envio',
+      identitiesDesc: 'Outros endereços dos quais você envia, como um alias. Cada um sai com o próprio nome ou, se não tiver, com o seu nome de exibição. Seu servidor de e-mail precisa permitir que você envie de cada um deles.',
+      addIdentity: 'Adicionar endereço',
+      identityName: 'Nome',
+      identityAddress: 'Endereço de e-mail',
+      editIdentity: 'Editar {address}',
+      removeIdentity: 'Remover {address}',
+      identityInvalid: 'Digite um endereço de e-mail, como nome@example.com.',
+      identityOwn: 'Este é o seu próprio endereço. Você sempre pode enviar a partir dele.',
+      identityDuplicate: 'Este endereço já está na lista.',
+      identitiesFull: {
+        one: 'Você pode adicionar até {count} endereço.',
+        other: 'Você pode adicionar até {count} endereços.'
+      }
     },
     reading: {
       messagesPerPage: 'Mensagens por página',

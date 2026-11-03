@@ -51,7 +51,21 @@ export const tr = {
       signatureDesc: 'Gönderdiğiniz iletilerin sonuna eklenir.',
       replyTo: 'Yanıt Adresi',
       replyToDesc: 'İsteğe bağlı: yanıtlar için farklı bir adres belirtin.',
-      bccMyself: 'Giden postalarda kendimi her zaman gizli alıcıya ekle'
+      bccMyself: 'Giden postalarda kendimi her zaman gizli alıcıya ekle',
+      identities: 'Gönderim adresleri',
+      identitiesDesc: 'Gönderim yaptığınız diğer adresler, örneğin bir takma ad. Her biri kendi adıyla, adı yoksa görünen adınızla gönderilir. Posta sunucunuzun her birinden gönderim yapmanıza izin vermesi gerekir.',
+      addIdentity: 'Adres ekle',
+      identityName: 'Ad',
+      identityAddress: 'E-posta adresi',
+      editIdentity: '{address} adresini düzenle',
+      removeIdentity: '{address} adresini kaldır',
+      identityInvalid: 'name@example.com gibi bir e-posta adresi girin.',
+      identityOwn: 'Bu sizin kendi adresiniz. Bu adresten her zaman gönderebilirsiniz.',
+      identityDuplicate: 'Bu adres zaten listede.',
+      identitiesFull: {
+        one: 'En fazla {count} adres ekleyebilirsiniz.',
+        other: 'En fazla {count} adres ekleyebilirsiniz.'
+      }
     },
     reading: {
       messagesPerPage: 'Sayfa başına ileti',

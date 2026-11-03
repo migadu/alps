@@ -153,6 +153,38 @@ describe('signing in', () => {
     expect(store.getState().unsubscribedFolders).toEqual([]);
   });
 
+  it('applies the account\'s other identities, and saves a change to them', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', identities: [{ name: 'Ada at work', address: 'ada@work.example' }, { address: 'ada@lists.example' }] } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    expect(store.getState().identities).toEqual([]);
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    // A name the server left out, as it does an empty one, is no name.
+    expect(store.getState().identities).toEqual([{ name: 'Ada at work', address: 'ada@work.example' }, { name: '', address: 'ada@lists.example' }]);
+    // And the composer, which reads the browser's copy, has them too.
+    expect(readUserSettings().identities).toEqual(store.getState().identities);
+
+    await store.updateSettings({ identities: [{ name: '', address: 'ada@lists.example' }] });
+    const put = calls.find((c) => c.key === 'PUT /settings')!.body;
+    expect(put).toEqual({ identities: [{ name: '', address: 'ada@lists.example' }] });
+  });
+
+  it('reads a record without identities as having none', async () => {
+    localStorage.setItem(`alps_settings_${USER}`, JSON.stringify({ loginUsername: USER, identities: [{ name: '', address: 'old@work.example' }] }));
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en' } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    expect(store.getState().identities).toEqual([]);
+  });
+
   it('applies the account\'s choice about weekStart, and saves a change to it', async () => {
     signedIn();
     const calls = serve({

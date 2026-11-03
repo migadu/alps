@@ -51,7 +51,20 @@ export const ko = {
       signatureDesc: '보낸 메일 끝에 추가됩니다.',
       replyTo: '회신 주소',
       replyToDesc: '선택 사항: 회신을 받을 다른 주소를 지정합니다.',
-      bccMyself: '보내는 메일을 항상 나에게 숨은 참조로 보내기'
+      bccMyself: '보내는 메일을 항상 나에게 숨은 참조로 보내기',
+      identities: '보내는 주소',
+      identitiesDesc: '별칭처럼 메일을 보낼 때 사용하는 다른 주소입니다. 각 주소에 지정한 이름으로 보내며, 이름이 없으면 표시 이름을 사용합니다. 메일 서버에서 각 주소로 보내는 것을 허용해야 합니다.',
+      addIdentity: '주소 추가',
+      identityName: '이름',
+      identityAddress: '이메일 주소',
+      editIdentity: '{address} 편집',
+      removeIdentity: '{address} 삭제',
+      identityInvalid: '이메일 주소를 입력하세요(예: name@example.com).',
+      identityOwn: '내 계정의 주소입니다. 이 주소로는 언제든지 보낼 수 있습니다.',
+      identityDuplicate: '이미 목록에 있는 주소입니다.',
+      identitiesFull: {
+        other: '주소는 최대 {count}개까지 추가할 수 있습니다.'
+      }
     },
     reading: {
       messagesPerPage: '페이지당 메일 수',

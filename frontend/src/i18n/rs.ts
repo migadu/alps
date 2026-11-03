@@ -46,6 +46,21 @@ export const rs = {
       replyTo: 'Адреса за одговор',
       replyToDesc: 'Опционо: наведите другу адресу за одговоре.',
       bccMyself: 'Увек додај мене у Бцц за одлазну пошту',
+      identities: 'Адресе за слање',
+      identitiesDesc: 'Друге адресе са којих шаљете, на пример алијас. Свака се шаље под својим именом или, ако га нема, под вашим именом за приказ. Ваш сервер поште мора да вам дозволи слање са сваке од њих.',
+      addIdentity: 'Додај адресу',
+      identityName: 'Име',
+      identityAddress: 'Адреса е-поште',
+      editIdentity: 'Измени {address}',
+      removeIdentity: 'Уклони {address}',
+      identityInvalid: 'Унесите адресу е-поште, на пример ime@primer.example.',
+      identityOwn: 'Ово је ваша сопствена адреса. Са ње увек можете да шаљете.',
+      identityDuplicate: 'Ова адреса је већ на списку.',
+      identitiesFull: {
+        one: 'Можете да додате највише {count} адресу.',
+        few: 'Можете да додате највише {count} адресе.',
+        other: 'Можете да додате највише {count} адреса.'
+      }
     },
     reading: {
       messagesPerPage: 'Порука по страници',

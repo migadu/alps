@@ -46,6 +46,20 @@ export const fr = {
       replyTo: 'Adresse de réponse (Reply-To)',
       replyToDesc: 'Facultatif : spécifiez une adresse différente pour les réponses.',
       bccMyself: 'Toujours m\'ajouter en Cci sur le courrier sortant',
+      identities: "Adresses d'envoi",
+      identitiesDesc: "Autres adresses depuis lesquelles vous envoyez, comme un alias. Chacune part sous son propre nom ou, à défaut, sous votre nom d'affichage. Votre serveur de messagerie doit vous autoriser à envoyer depuis chacune d'elles.",
+      addIdentity: 'Ajouter une adresse',
+      identityName: 'Nom',
+      identityAddress: 'Adresse e-mail',
+      editIdentity: 'Modifier {address}',
+      removeIdentity: 'Supprimer {address}',
+      identityInvalid: 'Saisissez une adresse e-mail, comme nom@example.com.',
+      identityOwn: "C'est votre propre adresse. Vous pouvez toujours envoyer depuis celle-ci.",
+      identityDuplicate: 'Cette adresse figure déjà dans la liste.',
+      identitiesFull: {
+        one: "Vous pouvez ajouter jusqu'à {count} adresse.",
+        other: "Vous pouvez ajouter jusqu'à {count} adresses."
+      }
     },
     reading: {
       messagesPerPage: 'Messages par page',
