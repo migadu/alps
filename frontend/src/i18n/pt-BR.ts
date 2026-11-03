@@ -554,7 +554,14 @@ export const ptBR = {
     unsavedDraftsTitle: 'Sair com rascunhos não salvos?',
     unsavedDraftsMessage: 'Não foi possível salvar um rascunho no servidor. Se você sair agora, ele ficará neste dispositivo e será reaberto na próxima vez que entrar nesta conta.',
     signOutAnyway: 'Sair mesmo assim',
-    profileOptions: 'Opções de Perfil'
+    profileOptions: 'Opções de Perfil',
+    profileOptionsNotice: 'Opções de Perfil ({notice})'
+  },
+  storage: {
+    used: '{used} de {quota} usados',
+    percent: '{percent}%',
+    warning: 'Caixa de e-mail {percent}% cheia',
+    critical: 'Caixa de e-mail {percent}% cheia: novas mensagens podem ser recusadas'
   },
   pagination: {
     previousPage: 'Página anterior',

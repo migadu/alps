@@ -498,7 +498,14 @@ export const fr = {
     unsavedDraftsTitle: 'Se déconnecter avec des brouillons non enregistrés ?',
     unsavedDraftsMessage: 'Un brouillon n’a pas pu être enregistré sur le serveur. Si vous vous déconnectez maintenant, il reste sur cet appareil et se rouvre à votre prochaine connexion à ce compte.',
     signOutAnyway: 'Se déconnecter quand même',
-    profileOptions: 'Options du profil'
+    profileOptions: 'Options du profil',
+    profileOptionsNotice: 'Options du profil ({notice})'
+  },
+  storage: {
+    used: '{used} utilisés sur {quota}',
+    percent: '{percent}\u00a0%',
+    warning: 'Boîte aux lettres pleine à {percent}\u00a0%',
+    critical: 'Boîte aux lettres pleine à {percent}\u00a0% : les nouveaux messages risquent d’être refusés'
   },
   pagination: {
     previousPage: 'Page précédente',

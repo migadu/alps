@@ -545,7 +545,14 @@ export const pt = {
     unsavedDraftsTitle: 'Terminar sessão com rascunhos por guardar?',
     unsavedDraftsMessage: 'Não foi possível guardar um rascunho no servidor. Se terminar sessão agora, o rascunho fica neste dispositivo e volta a abrir na próxima vez que iniciar sessão nesta conta.',
     signOutAnyway: 'Terminar sessão mesmo assim',
-    profileOptions: 'Opções de perfil'
+    profileOptions: 'Opções de perfil',
+    profileOptionsNotice: 'Opções de perfil ({notice})'
+  },
+  storage: {
+    used: '{used} de {quota} utilizados',
+    percent: '{percent}%',
+    warning: 'Caixa de correio {percent}% cheia',
+    critical: 'Caixa de correio {percent}% cheia: as novas mensagens podem ser recusadas'
   },
   pagination: {
     previousPage: 'Página anterior',

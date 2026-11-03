@@ -543,7 +543,14 @@ export const hi = {
     unsavedDraftsTitle: 'बिना सहेजे ड्राफ़्ट के साथ साइन आउट करें?',
     unsavedDraftsMessage: 'ड्राफ़्ट सर्वर में नहीं सहेजा जा सका। अभी साइन आउट करने पर यह इसी डिवाइस पर रहेगा और अगली बार इस खाते में साइन इन करने पर खुलेगा।',
     signOutAnyway: 'फिर भी साइन आउट करें',
-    profileOptions: 'प्रोफ़ाइल विकल्प'
+    profileOptions: 'प्रोफ़ाइल विकल्प',
+    profileOptionsNotice: 'प्रोफ़ाइल विकल्प ({notice})'
+  },
+  storage: {
+    used: '{quota} में से {used} का उपयोग किया गया',
+    percent: '{percent}%',
+    warning: 'मेलबॉक्स {percent}% भर गया है',
+    critical: 'मेलबॉक्स {percent}% भर गया है: नए ईमेल अस्वीकार किए जा सकते हैं'
   },
   pagination: {
     previousPage: 'पिछला पेज',

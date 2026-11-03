@@ -567,7 +567,14 @@ export const ru = {
     unsavedDraftsTitle: 'Выйти с несохранёнными черновиками?',
     unsavedDraftsMessage: 'Не удалось сохранить черновик на сервере. Если выйти сейчас, он останется на устройстве и откроется при следующем входе в этот аккаунт.',
     signOutAnyway: 'Всё равно выйти',
-    profileOptions: 'Параметры профиля'
+    profileOptions: 'Параметры профиля',
+    profileOptionsNotice: 'Параметры профиля ({notice})'
+  },
+  storage: {
+    used: 'Использовано {used} из {quota}',
+    percent: '{percent}%',
+    warning: 'Почтовый ящик заполнен на {percent}%',
+    critical: 'Почтовый ящик заполнен на {percent}%: новые письма могут быть отклонены'
   },
   pagination: {
     previousPage: 'Предыдущая страница',

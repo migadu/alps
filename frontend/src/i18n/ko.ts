@@ -531,7 +531,14 @@ export const ko = {
     unsavedDraftsTitle: '저장되지 않은 초안을 두고 로그아웃할까요?',
     unsavedDraftsMessage: '초안을 서버에 저장하지 못했습니다. 지금 로그아웃하면 이 기기에 보관되며 다음에 이 계정으로 로그인할 때 다시 열립니다.',
     signOutAnyway: '그래도 로그아웃',
-    profileOptions: '프로필 옵션'
+    profileOptions: '프로필 옵션',
+    profileOptionsNotice: '프로필 옵션({notice})'
+  },
+  storage: {
+    used: '{quota} 중 {used} 사용',
+    percent: '{percent}%',
+    warning: '사서함 용량 {percent}% 사용 중',
+    critical: '사서함 용량 {percent}% 사용 중: 새 메일이 거부될 수 있습니다'
   },
   pagination: {
     previousPage: '이전 페이지',
