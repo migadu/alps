@@ -156,6 +156,26 @@ type FolderWatcher interface {
 	WatchFolders() (watched, begun bool, err error)
 }
 
+// QuotaReader is a MailProvider whose mail server can say how much storage
+// the account's mail takes, and how much it may take (IMAP QUOTA, RFC 9208).
+type QuotaReader interface {
+	// HasQuotas reports whether the mail server keeps quotas at all. An
+	// error says that it could not be asked, which is no answer either way.
+	HasQuotas() (bool, error)
+	// StorageQuota answers how much storage the account's mail takes and the
+	// most it may take, or nil when no quota limits it.
+	StorageQuota() (*StorageQuota, error)
+}
+
+// StorageQuota is how much storage an account's mail takes, and the most it
+// may take, in bytes. Used may be above Limit: a server refuses what would
+// take an account past its limit, but a limit lowered under what is stored
+// leaves the account over it.
+type StorageQuota struct {
+	Used  int64
+	Limit int64
+}
+
 // OutgoingMessageWriter is an interface for messages being sent
 type OutgoingMessageWriter interface {
 	WriteTo(w io.Writer) (int64, error)

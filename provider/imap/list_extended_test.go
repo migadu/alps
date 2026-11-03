@@ -34,10 +34,15 @@ type scriptedIMAP struct {
 	list, lsub []string
 	// refuseLsub answers LSUB with NO.
 	refuseLsub bool
+	// quota is its answer to GETQUOTAROOT, line by line, which refuseQuota
+	// makes a NO instead.
+	quota       []string
+	refuseQuota bool
 
 	mu       sync.Mutex
 	lists    []string // the arguments of each LIST, in the order received
 	lsubs    []string // and of each LSUB
+	quotas   []string // and of each GETQUOTAROOT
 	conns    int      // the connections it took
 	commands []string // the name of every command, in upper case
 }
@@ -132,6 +137,15 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 			reply(append(lines, tag+" OK LSUB completed")...)
 		case "SUBSCRIBE", "UNSUBSCRIBE":
 			reply(tag + " OK " + name + " completed")
+		case "GETQUOTAROOT":
+			s.mu.Lock()
+			s.quotas = append(s.quotas, args)
+			s.mu.Unlock()
+			if s.refuseQuota {
+				reply(tag + " NO [NOPERM] no quota to read here")
+				continue
+			}
+			reply(append(s.quota, tag+" OK GETQUOTAROOT completed")...)
 		case "LOGOUT":
 			reply("* BYE logging out", tag+" OK LOGOUT completed")
 			return

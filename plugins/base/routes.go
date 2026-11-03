@@ -38,6 +38,7 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.PUT("/mailboxes/{mbox}/rename", handleRenameMailbox)
 	p.PUT("/mailboxes/{mbox}/subscribe", handleSubscribeMailbox)
 	p.PUT("/mailboxes/{mbox}/unsubscribe", handleUnsubscribeMailbox)
+	p.GET("/quota", handleQuota)
 
 	// Messages
 	p.GET("/mailboxes/{mbox}/messages/{uid}", func(ctx *alps.Context) error {
