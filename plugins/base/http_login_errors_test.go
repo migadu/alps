@@ -199,3 +199,47 @@ func TestHTTP_ConnectionLimitIsNoWrongPassword(t *testing.T) {
 
 	s.expect(s.do("POST", "/session", creds), http.StatusOK)
 }
+
+// The global limit refuses everyone at once, whoever they are and however
+// few their attempts. Its refusal carries a code of its own, so that the
+// sign-in page says the service is busy, not that the user tried too often.
+func TestHTTP_GlobalLimitSaysTheServerIsBusy(t *testing.T) {
+	config := alps.DefaultRateLimitConfig()
+	config.GlobalRequestsPerSecond = 1
+	s := newTestServerWithOptions(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(o *alps.Options) {
+		o.RateLimitEnabled = true
+		o.RateLimitConfig = &config
+	})
+
+	s.expect(s.do("POST", "/session", map[string]string{"username": testUser, "password": "wrong"}), http.StatusUnauthorized)
+
+	r := s.do("POST", "/session", map[string]string{"username": testUser, "password": testPassword})
+	s.expect(r, http.StatusTooManyRequests)
+	var body struct{ Error, Code string }
+	r.json(t, &body)
+	if body.Code != "server_busy" || body.Error != alps.ReasonServerBusy {
+		t.Errorf("refused with code %q and %q, want server_busy and the global limit's refusal", body.Code, body.Error)
+	}
+}
+
+// Every other refusal of the limiter is about this user's attempts, and has
+// no such code.
+func TestHTTP_AttemptLimitIsNotABusyServer(t *testing.T) {
+	config := alps.DefaultRateLimitConfig()
+	config.IPRequestsPerMinute = 100
+	s := newTestServerWithOptions(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(o *alps.Options) {
+		o.RateLimitEnabled = true
+		o.RateLimitConfig = &config
+	})
+
+	for i := 0; i < config.UsernameFailsPerQuarter; i++ {
+		s.expect(s.do("POST", "/session", map[string]string{"username": testUser, "password": "wrong"}), http.StatusUnauthorized)
+	}
+	r := s.do("POST", "/session", map[string]string{"username": testUser, "password": testPassword})
+	s.expect(r, http.StatusTooManyRequests)
+	var body struct{ Error, Code string }
+	r.json(t, &body)
+	if body.Code != "" {
+		t.Errorf("an account's run of failures refused with code %q, want none", body.Code)
+	}
+}

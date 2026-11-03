@@ -145,7 +145,7 @@ test("signing in to a deleted account is refused as bad credentials, not a netwo
 
   // It refuses, and stays on the form, saying so in the error slot.
   const error = page.locator("login-page .error-text");
-  await expect(error).toContainText("Failed to login", { timeout: 15_000 });
+  await expect(error).toContainText("Login failed. Please check your credentials.", { timeout: 15_000 });
   await expect(error).not.toContainText(/network error/i);
   await expect(page).toHaveURL(/#\/login/);
   await expect(page.locator("login-page #username")).toBeVisible();

@@ -216,6 +216,11 @@ func (rl *RateLimiter) cleanup() {
 	}
 }
 
+// ReasonServerBusy is the reason CheckLoginAllowed gives when the global
+// limit refused the attempt. That limit refuses everyone at once: it says the
+// server is busy, not that this client tried too often.
+const ReasonServerBusy = "Server is experiencing high load, please try again later"
+
 // CheckLoginAllowed checks if a login attempt is allowed based on all rate limits
 // Returns (allowed bool, reason string, retryAfter duration)
 func (rl *RateLimiter) CheckLoginAllowed(r *http.Request, username string) (bool, string, time.Duration) {
@@ -233,7 +238,7 @@ func (rl *RateLimiter) CheckLoginAllowed(r *http.Request, username string) (bool
 	if rl.config.GlobalRequestsPerSecond > 0 {
 		rl.globalTS = filterTimestamps(rl.globalTS, now.Add(-1*time.Second))
 		if len(rl.globalTS) >= rl.config.GlobalRequestsPerSecond {
-			return false, "Server is experiencing high load, please try again later", 1 * time.Second
+			return false, ReasonServerBusy, 1 * time.Second
 		}
 	}
 

@@ -7,7 +7,8 @@
  * that was right.
  *
  * Nor is a server that could not answer. It showed the server's own English
- * words, or for a proxy's HTML error page "check your credentials".
+ * words, or for a proxy's HTML error page "check your credentials". And a
+ * refusal is said in the page's language, not in the server's English.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, mount, text } from './helpers/dom';
@@ -47,8 +48,28 @@ describe('a sign-in refused', () => {
     expect(await signIn(503, { error: 'connection_limit' })).toBe('login.tooManyConnections');
   });
 
-  it('for the password still says what the server said', async () => {
-    expect(await signIn(401, { error: 'Failed to login' })).toBe('Failed to login');
+  it("for the password says so in the page's language, not the server's English", async () => {
+    expect(await signIn(401, { error: 'Failed to login' })).toBe('login.loginFailed');
+  });
+});
+
+describe('a sign-in held back by the rate limit', () => {
+  it("says there were too many attempts, not the server's English, and holds Sign in", async () => {
+    const page = await signInAnswered(() => Response.json(
+      { error: 'Too many failed login attempts for this account', retry_after: 900 },
+      { status: 429, headers: { 'Retry-After': '900' } },
+    ));
+    expect(text(page, '.error-text')).toBe('login.tooManyAttempts login.pleaseWait 15 minutes');
+    expect(page.isRateLimited).toBe(true);
+  });
+
+  it("says the service is busy when the limit is the whole server's", async () => {
+    const page = await signInAnswered(() => Response.json(
+      { error: 'Server is experiencing high load, please try again later', retry_after: 1, code: 'server_busy' },
+      { status: 429, headers: { 'Retry-After': '1' } },
+    ));
+    expect(text(page, '.error-text')).toBe('login.serviceUnavailable login.pleaseWait 1 second');
+    expect(page.isRateLimited).toBe(true);
   });
 });
 

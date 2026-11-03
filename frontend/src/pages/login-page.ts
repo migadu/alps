@@ -350,7 +350,12 @@ export class LoginPage extends LitElement {
       } else {
         // Check if this is a rate limiting error (HTTP 429)
         if (response.status === 429) {
-          this.error = data.error || this.i18nStore?.t('login.tooManyAttempts');
+          // The server's reason is English. The global limit refuses
+          // everyone at once, so it is the service being busy, not too many
+          // attempts from this user.
+          this.error = data.code === 'server_busy'
+            ? this.i18nStore?.t('login.serviceUnavailable')
+            : this.i18nStore?.t('login.tooManyAttempts');
           // A 429 without a parsable `retry_after` is still a 429. Falling
           // through to the generic branch showed "login failed", which reads as
           // "wrong password" and invites the retry the server just refused.
@@ -379,7 +384,9 @@ export class LoginPage extends LitElement {
             this.isRateLimited = false;
           }
         } else {
-          this.error = data.error || this.i18nStore?.t('login.loginFailed');
+          // Not the server's "Failed to login": that is English whatever
+          // language the page is in.
+          this.error = this.i18nStore?.t('login.loginFailed');
           this.isRateLimited = false;
         }
         this.isSubmitting = false;
