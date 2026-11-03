@@ -23,6 +23,14 @@ export default {
       other: '연락처 {total}개 중 {count}개를 업데이트하지 못했습니다.'
     },
     starOneFailed: '연락처를 업데이트하지 못했습니다.',
+    deleteUnconfirmed: {
+      other: '연락처 {total}개 중 {count}개의 삭제를 확인하지 못했습니다. 다시 시도하기 전에 목록을 새로고침하세요.'
+    },
+    deleteOneUnconfirmed: '연락처 삭제를 확인하지 못했습니다. 다시 시도하기 전에 목록을 새로고침하세요.',
+    updateUnconfirmed: {
+      other: '연락처 {total}개 중 {count}개의 업데이트를 확인하지 못했습니다. 다시 시도하기 전에 목록을 새로고침하세요.'
+    },
+    updateOneUnconfirmed: '연락처 업데이트를 확인하지 못했습니다. 다시 시도하기 전에 목록을 새로고침하세요.',
     unnamedContact: '이름 없는 연락처',
     title: '연락처',
     allContacts: '모든 연락처',

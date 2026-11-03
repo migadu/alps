@@ -28,6 +28,16 @@ export default {
       other: 'Impossible de mettre à jour {count} contacts sur {total}.'
     },
     starOneFailed: 'Le contact n\'a pas pu être mis à jour.',
+    deleteUnconfirmed: {
+      one: 'Impossible de confirmer la suppression de {count} contact sur {total}. Actualisez la liste avant de réessayer.',
+      other: 'Impossible de confirmer la suppression de {count} contacts sur {total}. Actualisez la liste avant de réessayer.'
+    },
+    deleteOneUnconfirmed: 'Impossible de confirmer la suppression du contact. Actualisez la liste avant de réessayer.',
+    updateUnconfirmed: {
+      one: 'Impossible de confirmer la mise à jour de {count} contact sur {total}. Actualisez la liste avant de réessayer.',
+      other: 'Impossible de confirmer la mise à jour de {count} contacts sur {total}. Actualisez la liste avant de réessayer.'
+    },
+    updateOneUnconfirmed: 'Impossible de confirmer la mise à jour du contact. Actualisez la liste avant de réessayer.',
     unnamedContact: 'Contact sans nom',
     title: 'Contacts',
     allContacts: 'Tous les contacts',

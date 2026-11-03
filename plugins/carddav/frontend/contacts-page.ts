@@ -38,6 +38,13 @@ const CONTACTS_ROUTE = /^#\/contacts\/?([^\/]*)\/?(.*)$/;
 /** How an address write lands in the session history; see writeHash. */
 type HashEntry = 'push' | 'replace';
 
+/** The counted and the one-card sentence for cards a write's answer never
+ * came back from, by what the write was; see reportRefusals. */
+const UNCONFIRMED = {
+  delete: ['contacts.deleteUnconfirmed', 'contacts.deleteOneUnconfirmed'],
+  update: ['contacts.updateUnconfirmed', 'contacts.updateOneUnconfirmed'],
+} as const;
+
 type ContactSaveTarget = {
   contact: any;
   original: any;
@@ -725,7 +732,8 @@ export class ContactsPage extends LitElement {
       }
     } catch (err) {
       console.error('Failed to toggle star:', err);
-      this.reportFailure('contacts.starOneFailed');
+      // Told apart as across a selection: see reportRefusals.
+      this.reportFailure(outcomeUnknown(err) ? UNCONFIRMED.update[1] : 'contacts.starOneFailed');
       // Revert by putting the card's own categories back into the list. This
       // used to edit `contact`, the object the optimistic update had already
       // replaced in `this.contacts`, so the refused star stayed painted; and for
@@ -902,11 +910,11 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.map((c: string) => c === oldName ? newName : c);
           return { ...contact, categories };
         });
-        const { total, done, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+        const { total, done, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.showWrittenCategories(contactsToModify, etags);
         this.fetchContacts();
-        if (failed > 0) this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: failed, total });
+        if (failed > 0) this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: failed - uncertain, total, uncertain });
         if (done === 0) return;
       } catch (e) {
         console.error('Error renaming category', e);
@@ -959,11 +967,11 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.filter((c: string) => c !== oldName);
           return { ...contact, categories };
         });
-        const { total, done, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+        const { total, done, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.showWrittenCategories(contactsToModify, etags);
         this.fetchContacts();
-        if (failed > 0) this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: failed, total });
+        if (failed > 0) this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: failed - uncertain, total, uncertain });
         if (done === 0) return;
       } catch (e) {
         console.error('Error deleting category', e);
@@ -1298,7 +1306,7 @@ export class ContactsPage extends LitElement {
 
       this.contacts = [...this.contacts]; // Trigger re-render immediately
 
-      const { total, done, failed, uncertain, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+      const { total, done, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
       this.applyETags(etags);
       if (failed > 0) {
         if (done === 0) {
@@ -1314,7 +1322,7 @@ export class ContactsPage extends LitElement {
           // Some cards took the change, and the snapshot would un-star them.
           this.fetchContacts();
         }
-        this.reportRefusals('contacts.starFailed', 'contacts.starOneFailed', { count: failed, total });
+        this.reportRefusals('contacts.starFailed', 'contacts.starOneFailed', { count: failed - uncertain, total, uncertain });
       }
     } catch (e) {
       console.error('Error toggling star', e);
@@ -1332,23 +1340,43 @@ export class ContactsPage extends LitElement {
    * that did not happen — so the UI simply showed the state it had hoped for.
    */
   private reportFailure(key: string, params?: Record<string, any>) {
+    this.showFailure(this.i18nStore?.t(key, params));
+  }
+
+  private showFailure(message: string | undefined) {
     window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: { message: this.i18nStore?.t(key, params), type: 'error', duration: 5000 }
+      detail: { message, type: 'error', duration: 5000 }
     }));
   }
 
   /**
-   * Says that `count` of the `total` cards a write was aimed at refused it.
+   * Says that `count` of the `total` cards a write was aimed at refused it,
+   * and that `uncertain` more of them never answered.
    *
-   * The counted sentence agrees with `count`, since the cards that failed are
+   * Each counted sentence agrees with its own number, since those cards are
    * its subject. Picked by the total, the German toast for one card of five
    * put its verb in the plural ("konnten"). A write aimed at a single card is
    * told in a sentence of its own, where the counted one read "1 of 1 contact
    * could not be deleted."
+   *
+   * A bulk outcome's `failed` holds both kinds. A timeout or a lost
+   * connection says nothing of what the server did (see outcomeUnknown), but
+   * the toast called those cards refused as well: a delete that had been made
+   * behind a lost answer was reported as not made, and trying again was the
+   * wrong answer to it. So they are counted apart, and the user is told to
+   * refresh before trying again: the page reads the list again itself, but
+   * that read can fail as the write did. One toast holds both, as a screen
+   * reader reads out only the newest.
    */
-  private reportRefusals(counted: string, single: string, params: { count: number; total: number }) {
-    if (params.total === 1) this.reportFailure(single);
-    else this.reportFailure(counted, params);
+  private reportRefusals(counted: string, single: string, params: { count: number; total: number; uncertain?: number }, write: keyof typeof UNCONFIRMED = 'update') {
+    const { count, total, uncertain = 0 } = params;
+    const sentence = ([countedKey, singleKey]: readonly [string, string], n: number) =>
+      (total === 1 ? this.i18nStore?.t(singleKey) : this.i18nStore?.t(countedKey, { count: n, total })) ?? '';
+    const said: string[] = [];
+    if (count > 0) said.push(sentence([counted, single], count));
+    if (uncertain > 0) said.push(sentence(UNCONFIRMED[write], uncertain));
+    // A Japanese or Chinese sentence ends in a full-width stop, with no space after it.
+    this.showFailure(said.reduce((text, next) => text + (text && !/[。！？]$/.test(text) ? ' ' : '') + next, ''));
   }
 
   private handleDelete() {
@@ -1366,7 +1394,7 @@ export class ContactsPage extends LitElement {
     const selection = this.selectedContacts;
     const pathsToDelete = this.gestureTargets;
     try {
-      const { total, done, failed, uncertain, deletedPaths = [] } = await contactsService.bulkDeleteContacts(pathsToDelete);
+      const { total, done, failed, uncertain = 0, deletedPaths = [] } = await contactsService.bulkDeleteContacts(pathsToDelete);
 
       // Only when something went, and the list is re-read. A delete that
       // removed nothing (offline, say) leaves every card there, and the
@@ -1405,7 +1433,7 @@ export class ContactsPage extends LitElement {
         }
       }
       if (failed > 0) {
-        this.reportRefusals('contacts.deleteFailed', 'contacts.deleteOneFailed', { count: failed, total });
+        this.reportRefusals('contacts.deleteFailed', 'contacts.deleteOneFailed', { count: failed - uncertain, total, uncertain }, 'delete');
       }
     } catch (e) {
       console.error('Error deleting contacts', e);
@@ -1457,12 +1485,12 @@ export class ContactsPage extends LitElement {
         return payload;
       }).filter(Boolean);
 
-      const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+      const { total, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
       this.contacts = [...this.contacts]; // Trigger re-render
       this.applyETags(etags);
       if (failed > 0) {
         this.fetchContacts();
-        this.reportRefusals('contacts.categoryUpdateFailed', 'contacts.categoryUpdateOneFailed', { count: failed, total });
+        this.reportRefusals('contacts.categoryUpdateFailed', 'contacts.categoryUpdateOneFailed', { count: failed - uncertain, total, uncertain });
       }
 
       if (this.selectedContact && this.selectedContacts.size <= 1 && this.selectedCategory !== '') {
