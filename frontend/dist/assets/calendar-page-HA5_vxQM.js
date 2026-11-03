@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-CXIqsLEv.js";import{t as c}from"./vendor-Bey7gDeL.js";import{At as l,Ct as u,X as d,_ as f,_t as p,a as m,et as h,g,gt as _,h as v,ht as y,kt as b,m as x,o as S,pt as C,s as ee,vt as w}from"./index-BrUcBc4y.js";import"./alps-address-input-DUPa5N72.js";import{S as T,a as E,c as D,i as O,l as k,m as A,n as j,o as M,r as N,s as P,t as F,u as I}from"./task-modal-Ctwxv8ZH.js";var L=class extends i{constructor(...e){super(...e),this.options=[],this.value=``}static{this.styles=[_,e`
+import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-CXIqsLEv.js";import{t as c}from"./vendor-Bey7gDeL.js";import{At as l,Ct as u,X as d,_ as f,_t as p,a as m,et as h,g,gt as _,h as v,ht as y,kt as b,m as x,o as S,pt as C,s as ee,vt as w}from"./index-8MyGH5PP.js";import"./alps-address-input-mj8Jknbv.js";import{S as T,a as E,c as D,i as O,l as k,m as A,n as j,o as M,r as N,s as P,t as F,u as I}from"./task-modal-Dp7HBHQ_.js";var L=class extends i{constructor(...e){super(...e),this.options=[],this.value=``}static{this.styles=[_,e`
     :host {
       display: inline-flex;
       background-color: var(--bg-secondary, #f3f4f6);
@@ -320,14 +320,14 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-CXIqsL
            which forced colors repaint as the page: there it takes the text's
            system colour. */
         @media (forced-colors: active) {
-            .mini-day.today {
-                outline: 2px solid CanvasText;
-                outline-offset: -2px;
-            }
             .mini-day.has-event .day-num::after,
             .mini-day.today.has-event .day-num::after {
                 forced-color-adjust: none;
                 background-color: CanvasText;
+            }
+            .mini-day.today {
+                outline: 2px solid CanvasText;
+                outline-offset: -2px;
             }
         }
     `}getMonthGrid(){let e=this.getFirstDayOfWeek(),t=(new Date(this.year,this.month,1).getDay()-e+7)%7,n=1-t,r=new Date(this.year,this.month+1,0).getDate(),i=Math.ceil((r+t)/7)*7,a=[];for(let e=0;e<i;e++)a.push(new Date(this.year,this.month,n+e));return a}hasEventsForDate(e){if(!this.events||this.events.length===0)return!1;let t=new Date(e);t.setHours(0,0,0,0);let n=new Date(e);return n.setHours(23,59,59,999),this.events.some(e=>{if(E(e)){let n=e.start.split(`T`)[0],r=e.end.split(`T`)[0],i=new Date(n+`T00:00:00`),a=new Date(r+`T00:00:00`);return i<=t&&a>t}else{let r=new Date(e.start),i=new Date(e.end);return i.getTime()===t.getTime()&&r.getTime()<i.getTime()?!1:r<=n&&i>=t}})}handleDateClick(e){this.focusDay=e,this.dispatchEvent(new CustomEvent(`date-selected`,{detail:{date:e},bubbles:!0,composed:!0}))}tabStop(e){if((t=>!!t&&e.some(e=>e.getTime()===t.getTime()))(this.focusDay))return this.focusDay;let t=new Date;t.setHours(0,0,0,0);for(let e of[this.currentDate,t])if(e&&e.getFullYear()===this.year&&e.getMonth()===this.month)return new Date(this.year,this.month,e.getDate());return new Date(this.year,this.month,1)}handleDayKeyDown(e,t,n){if(e.key===`Enter`||e.key===` `){if(e.preventDefault(),e.key===` `&&e.repeat)return;this.handleDateClick(t);return}let r=getComputedStyle(this).direction===`rtl`?`ArrowLeft`:`ArrowRight`,i=r===`ArrowLeft`?`ArrowRight`:`ArrowLeft`,a=e.key===i?-1:e.key===r?1:e.key===`ArrowUp`?-7:e.key===`ArrowDown`?7:0;if(!a)return;e.preventDefault();let o=new Date(t.getFullYear(),t.getMonth(),t.getDate()+a);n.some(e=>e.getTime()===o.getTime())&&(this.focusDay=o,this.updateComplete.then(()=>this.renderRoot.querySelector(`.mini-day[tabindex="0"]`)?.focus()))}willUpdate(e){let t=e.get(`currentDate`);(e.has(`year`)||e.has(`month`)||e.has(`currentDate`)&&t?.getTime()!==this.currentDate?.getTime())&&(this.focusDay=null),this.dayHadFocus=!!this.renderRoot?.activeElement?.classList.contains(`mini-day`)}updated(e){this.dayHadFocus&&(e.has(`year`)||e.has(`month`))&&this.renderRoot.querySelector(`.mini-day[tabindex="0"]`)?.focus()}render(){let e=this.getMonthGrid(),t=this.getFirstDayOfWeek(),n=Array.from({length:7},(e,n)=>{let r=(t+n)%7;return this.i18nStore?.t(`calendar.daysNarrow.${r}`)}),i=new Date;i.setHours(0,0,0,0);let a=this.tabStop(e).getTime(),o=new Intl.DateTimeFormat(this.i18nStore?.getIntlLanguage?.(),{dateStyle:`full`}),c=this.i18nStore?.t(`calendar.months.${this.month}`);return s`

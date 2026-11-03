@@ -28,7 +28,7 @@ test.describe('touch calendar controls', () => {
 });
 
 test('entering the task list shows its first keyboard row immediately', async ({ page }) => {
-  await seedCalendarObject('focus-task', 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:focus-task\r\nDTSTAMP:20260101T000000Z\r\nSUMMARY:Visible keyboard task\r\nEND:VTODO\r\nEND:VCALENDAR\r\n');
+  await seedCalendarObject('focus-task', 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//alps//e2e//EN\r\nBEGIN:VTODO\r\nUID:focus-task\r\nDTSTAMP:20260101T000000Z\r\nSUMMARY:Visible keyboard task\r\nEND:VTODO\r\nEND:VCALENDAR\r\n');
   await login(page);
   await page.goto('/#/tasks');
   const scroll = page.locator('tasks-list .scroll');
@@ -103,13 +103,20 @@ test('the sidebar month caption remains one line at a narrow docked width', asyn
   await login(page);
   await page.goto('/#/calendar/month/2026-09');
   const sidebar = page.locator('calendar-page alps-sidebar');
-  await sidebar.evaluate(el => { (el as HTMLElement & { width: number }).width = 190; });
+  const handle = await sidebar.locator('.sidebar-resizer').boundingBox();
+  expect(handle).not.toBeNull();
+  const x = handle!.x + handle!.width / 2;
+  await page.mouse.move(x, handle!.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(x - 60, handle!.y + 100, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.round((await sidebar.locator('.sidebar').boundingBox())!.width)).toBe(190);
   const caption = sidebar.locator('alps-sidebar-calendar .mini-header span');
   await expect(caption).toContainText('September');
   expect(await caption.evaluate(el => {
     const range = document.createRange();
     range.selectNodeContents(el);
-    return range.getClientRects().length;
+    return new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size;
   })).toBe(1);
   for (const button of await sidebar.locator('alps-sidebar-calendar .mini-header alps-icon-btn').all()) await expect(button).toBeVisible();
 });
