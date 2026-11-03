@@ -117,6 +117,17 @@ describe('the strip is dimmed in one place', () => {
   it('no longer keys the dimming on the wrapper class', () => {
     expect(rules.map((r) => r.selectorText)).not.toContain('.sidebar-wrapper.collapsed .sidebar-content');
   });
+
+  // The geometry is the browser's (e2e/sidebar-strip.spec.ts); here, where
+  // the floor is. Kept docked too, it cut a narrow sidebar's counts and menus
+  // off at its edge.
+  it('keeps the content 215px wide in the strip only: docked, it is the sidebar\'s width', () => {
+    const docked = rules.filter((r) => r.selectorText === '.sidebar-scroll-content');
+    expect(docked.map((r) => r.style.getPropertyValue('width')).filter(Boolean)).toEqual(['100%']);
+    expect(docked.map((r) => r.style.getPropertyValue('min-width')).filter(Boolean).map(parseFloat)).toEqual([0]);
+    const strip = rules.find((r) => r.selectorText === 'alps-sidebar-content[strip] .sidebar-scroll-content');
+    expect(strip?.style.getPropertyValue('min-width')).toBe('215px');
+  });
 });
 
 describe('no sidebar works the strip out for itself (source pin)', () => {

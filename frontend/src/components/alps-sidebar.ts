@@ -61,25 +61,47 @@ export const sidebarLayoutStyles = css`
     padding: 0 14px !important;
     justify-content: flex-start;
   }
-  /* The content keeps at least 215px of width, so a narrow sidebar clips it
-     rather than reflowing it. Collapsed into the strip, it also slides behind
-     the main view, and what the 64px strip should then show is each row's
-     ICON: every sidebar sets --strip-slide, how far its content moves to
-     bring its icons 8px inside the strip, the same place on every page. The
-     default suits rows padded 8px inside 16px of content padding (Calendar,
-     Tasks). Mail's rows lead with the expander column and slide 38px,
-     Contacts' 14px, Settings' 20px. One slide for all of them put mail's
-     icons half out of the strip and everyone else's under the main view.
+  /* Docked, the content is as wide as the sidebar, however narrow it is
+     dragged: names shorten, and each row's count and menu stay in view at
+     its inline end. It used to keep 215px there too, so a sidebar dragged to
+     150px cut them off instead.
+
+     In the strip the content keeps at least 215px, so that it is clipped
+     rather than reflowed, and slides behind the main view: what the 64px
+     strip should show is each row's ICON. Every sidebar sets --strip-slide,
+     how far its content moves to bring its icons 8px inside the strip, the
+     same place on every page. The default suits rows padded 8px inside 16px
+     of content padding (Calendar, Tasks). Mail's rows lead with the expander
+     column and slide 38px, Contacts' 14px, Settings' 20px. One slide for all
+     of them put mail's icons half out of the strip and everyone else's under
+     the main view.
 
      The slide starts only below 120px of content, narrower than any docked
      sidebar's (a drag below 120px snaps to the strip, and the narrowest
      docked sidebar, 150px, keeps 133px inside its border and padding), so a
      sidebar dragged narrow keeps every column in view, the expander carets
      included. On the way into the strip the content moves with the edge
-     until it has slid --strip-slide. */
+     until it has slid --strip-slide.
+
+     Out of the strip, expanding or opening as the overlay, the 215px stay
+     while the sidebar widens (its 0.2s) and go once it has: let go at once,
+     the rows reflowed through every width from the strip's up, and each
+     count set off from beside its icon. Into the strip they come at once. */
   .sidebar-scroll-content {
-    width: calc(max(100%, 215px));
+    width: 100%;
+    min-width: 0;
     margin-inline-start: max(0px - var(--strip-slide, 16px), min(0px, 100% - 120px));
+    transition: min-width 0s 0.2s;
+  }
+  alps-sidebar-content[strip] .sidebar-scroll-content {
+    min-width: 215px;
+    transition: none;
+  }
+  /* The sidebar jumps to its width instead of widening: so does the content. */
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar-scroll-content {
+      transition-delay: 0s;
+    }
   }
 `;
 
