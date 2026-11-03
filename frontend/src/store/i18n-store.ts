@@ -54,6 +54,85 @@ export function intlTag(code: string): string {
   return code;
 }
 
+/**
+ * The core dictionaries, each loaded when its language is first shown. A file
+ * name is one of alps's language codes, so the files present are also the
+ * languages alps can be set to: a dictionary added here is offered to the
+ * browsers that prefer it without anything else changing.
+ */
+const coreLocales = import.meta.glob(['../i18n/*.ts', '!../i18n/en.ts']);
+
+/** Every language alps has a dictionary for, by alps's code. */
+export const SUPPORTED_LANGUAGES: readonly string[] = [
+  'en',
+  ...Object.keys(coreLocales).map((path) => path.slice(path.lastIndexOf('/') + 1, -'.ts'.length)),
+];
+
+/** The countries whose Chinese is written in traditional characters. */
+const TRADITIONAL_CHINESE_REGIONS = ['TW', 'HK', 'MO'];
+
+/**
+ * The dictionary one of the browser's language tags is best read in, or null
+ * when alps has none for it.
+ *
+ * Serbian is one language in two scripts, and alps's codes for it are its own
+ * (see intlTag): a tag that names the Latin script, or the old Serbo-Croatian
+ * `sh`, is read in `sr`; Cyrillic, a bare `sr` and a region alone (`sr-RS`)
+ * in `rs`, Cyrillic being the script a Serbian tag without one stands for.
+ * Croatian and Bosnian are not handed the Serbian dictionary: close is not the
+ * same language. For Chinese a script in the tag decides, then the region,
+ * and a Chinese alps has no dictionary for leaves the choice to the next tag
+ * rather than to a script the reader may not read. Any other regional
+ * variant (`de-AT`, `pt-PT`, `fr-CA`) is read in its language's dictionary,
+ * Brazilian Portuguese in its own.
+ */
+function dictionaryFor(tag: string, supported: readonly string[]): string | null {
+  let locale: Intl.Locale;
+  try {
+    locale = new Intl.Locale(tag.trim());
+  } catch {
+    return null;
+  }
+  const has = (code: string) => (supported.includes(code) ? code : null);
+  const { language, script, region } = locale;
+  if (language === 'sh') return has('sr');
+  if (language === 'sr') return has(script === 'Latn' ? 'sr' : 'rs');
+  if (language === 'zh') {
+    const traditional = script ? script === 'Hant' : TRADITIONAL_CHINESE_REGIONS.includes(region ?? '');
+    return has(traditional ? 'zh-Hant' : 'zh-Hans');
+  }
+  if (language === 'pt' && region === 'BR') return has('pt-BR') ?? has('pt');
+  // By the tag, so that alps's own Serbian codes, which are no language's
+  // tags, are only ever reached above.
+  return supported.find((code) => intlTag(code) === language) ?? null;
+}
+
+/**
+ * The language alps reads best in this browser: the first of the browser's
+ * languages, in the reader's own order of preference, that alps has a
+ * dictionary for, and English when there is none.
+ */
+export function detectBrowserLanguage(supported: readonly string[] = SUPPORTED_LANGUAGES): string {
+  const tags: string[] = [];
+  if (typeof navigator !== 'undefined') {
+    if (Array.isArray(navigator.languages)) tags.push(...navigator.languages);
+    if (navigator.language) tags.push(navigator.language);
+  }
+  for (const tag of tags) {
+    const code = tag ? dictionaryFor(tag, supported) : null;
+    if (code) return code;
+  }
+  return 'en';
+}
+
+/**
+ * The language a setting stands for. `auto`, and no setting at all, is the
+ * browser's (detectBrowserLanguage); a language chosen in Settings is itself.
+ */
+export function resolveLanguage(setting: string | undefined): string {
+  return !setting || setting === 'auto' ? detectBrowserLanguage() : setting;
+}
+
 /** Scripts written right to left, as `Intl.Locale` names them. */
 const RTL_SCRIPTS = ['Arab', 'Hebr', 'Syrc', 'Thaa', 'Nkoo', 'Adlm', 'Rohg'];
 
@@ -72,6 +151,11 @@ export function textDirection(code: string): 'ltr' | 'rtl' {
 }
 
 export class I18nStore extends EventTarget {
+  /**
+   * The language shown: always one of alps's codes, never `auto`, which is
+   * resolved before it gets here. English to begin with, as the dictionary
+   * is: the store detects nothing until it is given a setting.
+   */
   private language: string = 'en';
   private dictionary: TranslationDictionary = en;
 
@@ -95,7 +179,15 @@ export class I18nStore extends EventTarget {
     return textDirection(this.language);
   }
 
-  async setLanguage(lang: string) {
+  /**
+   * Shows the language `setting` stands for: a language chosen in Settings,
+   * or for `auto` the browser's (resolveLanguage). Everything the store
+   * reports, getLanguage, the document's language and the plural rules, is
+   * the language shown, so nothing that asks the store meets `auto`: the
+   * calendar's invitation emails are written in the language it reports.
+   */
+  async setLanguage(setting: string) {
+    const lang = resolveLanguage(setting);
     if (this.language === lang) {
       return;
     }
@@ -116,8 +208,7 @@ export class I18nStore extends EventTarget {
     try {
       if (lang !== 'en') {
         let newDict: any = {};
-        const locales = import.meta.glob(['../i18n/*.ts', '!../i18n/en.ts']);
-        const importFn = locales[`../i18n/${lang}.ts`];
+        const importFn = coreLocales[`../i18n/${lang}.ts`];
         if (importFn) {
           const module: any = await importFn();
           newDict = module.default || module[lang];
