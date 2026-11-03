@@ -38,7 +38,7 @@ export interface ContactPayload {
   emails?: ContactProperty[];
   phone?: string;
   phones?: ContactProperty[];
-  /** The preferred address on one line, its post office box left out. */
+  /** The preferred address on one line, including its post office box. */
   address?: string;
   /** The same address part by part, which the editor edits. */
   address_parts?: AddressParts;

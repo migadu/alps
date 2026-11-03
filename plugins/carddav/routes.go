@@ -463,9 +463,8 @@ func sameSet(a, b []string) bool {
 
 // addressShown is the order the page shows an address's parts in, as
 // indexes into an ADR value's seven: the street, the extended address, the
-// locality, the region, the postal code and the country. The post office
-// box, the first, is not shown.
-var addressShown = []int{2, 1, 3, 4, 5, 6}
+// post office box, locality, region, postal code and country.
+var addressShown = []int{2, 1, 0, 3, 4, 5, 6}
 
 // addressComponents is an ADR value's seven components, as written: an ADR
 // is held with its escapes in place (see structuredProperties).
@@ -523,10 +522,9 @@ func addShown(card vcard.Card, field string, f *vcard.Field) {
 // The line is split back into the parts it was made of while it still has
 // one part per part of f and none of those parts holds a comma, which the
 // line's own commas could not be told from: an edit of the city is an edit
-// of the city. A line of another shape cannot be split reliably, so it is
-// the street, as the page gives no other way to say which part is which.
-// The address keeps its parameters, its type among them, but for a label
-// and a position, which describe the address it was.
+// of the city. An ambiguous line is a separate unstructured address, kept
+// beside the original components and their metadata. Later line edits of
+// that street-only copy replace it without adding another address.
 func setAddress(card vcard.Card, f *vcard.Field, line string) {
 	line = strings.TrimSpace(line)
 	if f == nil {
@@ -539,6 +537,9 @@ func setAddress(card vcard.Card, f *vcard.Field, line string) {
 		removeField(card, vcard.FieldAddress, f)
 		return
 	}
+	if line == strings.TrimSpace(addressLine(f)) {
+		return
+	}
 
 	old := addressComponents(f.Value)
 	var shown []int
@@ -549,12 +550,19 @@ func setAddress(card vcard.Card, f *vcard.Field, line string) {
 			splittable = splittable && !strings.Contains(old[i], ",")
 		}
 	}
-	components := []string{"", "", componentValue(line), "", "", "", ""}
-	if parts := strings.Split(line, ","); splittable && len(parts) == len(shown) {
-		components = append([]string(nil), old[:7]...)
+	components := append([]string(nil), old...)
+	if len(shown) == 1 && shown[0] == 2 {
+		// An unstructured line is already wholly in the street component.
+		components[2] = componentValue(line)
+	} else if parts := strings.Split(line, ","); splittable && len(parts) == len(shown) {
 		for k, i := range shown {
-			components[i] = componentValue(strings.TrimSpace(parts[k]))
+			if part := strings.TrimSpace(parts[k]); part != strings.TrimSpace(unescapeText(old[i])) {
+				components[i] = componentValue(part)
+			}
 		}
+	} else {
+		setAddress(card, nil, line)
+		return
 	}
 	f.Value = strings.Join(components, ";")
 	delete(f.Params, "LABEL")
