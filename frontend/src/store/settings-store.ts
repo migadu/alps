@@ -959,6 +959,7 @@ export class SettingsStore extends EventTarget {
     window.dispatchEvent(new CustomEvent('show-toast', {
       detail: {
         message: this.translate('settings.saveFailed', 'Could not save that setting — it may not survive signing out'),
+        type: 'error',
         duration: 6000
       }
     }));

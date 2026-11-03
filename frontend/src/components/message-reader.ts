@@ -1396,7 +1396,7 @@ export class MessageReader extends LitElement {
       this.readRefusalSaid = true;
     }
     window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: { message: this.i18nStore?.t('toast.flagChangeFailed') || 'Could not update the messages', duration: 4000 },
+      detail: { message: this.i18nStore?.t('toast.flagChangeFailed') || 'Could not update the messages', type: 'error', duration: 4000 },
     }));
   }
 
@@ -2497,7 +2497,7 @@ export class MessageReader extends LitElement {
    */
   private _sayBodyUnread() {
     window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: { message: this.i18nStore?.t('messageReader.loadError') },
+      detail: { message: this.i18nStore?.t('messageReader.loadError'), type: 'error' },
     }));
   }
 
@@ -2563,7 +2563,7 @@ export class MessageReader extends LitElement {
           || (card && !this.threadItems.some(item => this.itemKey(item) === key))) return;
       if (read === null) {
         window.dispatchEvent(new CustomEvent('show-toast', {
-          detail: { message: this.i18nStore?.t('messageReader.loadError') },
+          detail: { message: this.i18nStore?.t('messageReader.loadError'), type: 'error' },
         }));
         return;
       }

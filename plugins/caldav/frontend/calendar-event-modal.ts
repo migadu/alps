@@ -243,7 +243,7 @@ export class CalendarEventModal extends LitElement {
         // quietly makes an all-day one a single day.
         if (this.endsBeforeStart()) {
             window.dispatchEvent(new CustomEvent('show-toast', {
-                detail: { message: this.i18nStore?.t('calendar.endBeforeStart'), duration: 8000 }
+                detail: { message: this.i18nStore?.t('calendar.endBeforeStart'), type: 'error', duration: 8000 }
             }));
             return;
         }
@@ -299,7 +299,7 @@ export class CalendarEventModal extends LitElement {
 
             if (saved?.sendFailed) {
                 window.dispatchEvent(new CustomEvent('show-toast', {
-                    detail: { message: this.i18nStore?.t('invitations.notTold'), duration: 8000 }
+                    detail: { message: this.i18nStore?.t('invitations.notTold'), type: 'error', duration: 8000 }
                 }));
             }
             this.open = false;
@@ -313,7 +313,7 @@ export class CalendarEventModal extends LitElement {
             const conflict = isVersionConflict(e);
             if (conflict) this.dispatchEvent(new CustomEvent('conflict'));
             window.dispatchEvent(new CustomEvent('show-toast', {
-                detail: { message: this.i18nStore?.t(conflict ? 'calendar.saveConflict' : 'calendar.saveEventFailed'), duration: 8000 }
+                detail: { message: this.i18nStore?.t(conflict ? 'calendar.saveConflict' : 'calendar.saveEventFailed'), type: 'error', duration: 8000 }
             }));
         } finally {
             this.isSaving = false;

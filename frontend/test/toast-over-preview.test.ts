@@ -62,11 +62,15 @@ describe('the shell, while the attachment preview is open', () => {
     await preview.updateComplete;
     const slot = preview.shadowRoot!.querySelector<HTMLSlotElement>('dialog slot[name="notifications"]')!;
     expect(slot).not.toBeNull();
-    const stack = slot.assignedElements();
-    expect(stack.map((el) => el.className)).toEqual(['toast-stack']);
-    expect(messages(stack[0])).toEqual(['Raised before', 'Raised during']);
-    // One stack: none left in the shell beneath the dialog.
+    const assigned = slot.assignedElements();
+    // The live regions go with the toasts: outside the dialog they would be
+    // inert, and nothing raised over the preview would be read out.
+    expect(assigned.map((el) => el.className)).toEqual(['toast-announce', 'toast-announce', 'toast-stack']);
+    const stack = assigned[2];
+    expect(messages(stack)).toEqual(['Raised before', 'Raised during']);
+    // One stack and one pair of regions: none left in the shell beneath the dialog.
     expect(root.shadowRoot!.querySelectorAll('.toast-stack')).toHaveLength(1);
+    expect(root.shadowRoot!.querySelectorAll('.toast-announce')).toHaveLength(2);
 
     preview.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }));
     await root.updateComplete;

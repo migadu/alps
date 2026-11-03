@@ -44,11 +44,11 @@ export class PasswordSettings extends LitElement {
 
 	private async submitPasswordChange() {
 		if (!this.passwordForm.old || !this.passwordForm.new || !this.passwordForm.confirm) {
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t('settings.password.fillAllFields'), timeout: 3000 } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t('settings.password.fillAllFields'), type: 'error', timeout: 3000 } }));
 			return;
 		}
 		if (this.passwordForm.new !== this.passwordForm.confirm) {
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t('settings.password.passwordMismatch'), timeout: 3000 } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t('settings.password.passwordMismatch'), type: 'error', timeout: 3000 } }));
 			return;
 		}
 
@@ -70,10 +70,10 @@ export class PasswordSettings extends LitElement {
 				window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: data.message || 'Password successfully changed.', timeout: 3000 } }));
 				this.passwordForm = { old: '', new: '', confirm: '' };
 			} else {
-				window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: data.error || 'Failed to change password.', timeout: 3000 } }));
+				window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: data.error || 'Failed to change password.', type: 'error', timeout: 3000 } }));
 			}
 		} catch (e) {
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t('login.networkError'), timeout: 3000 } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t('login.networkError'), type: 'error', timeout: 3000 } }));
 		} finally {
 			this.isSubmitting = false;
 		}

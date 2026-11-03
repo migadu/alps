@@ -419,16 +419,18 @@ export class MailboxPage extends LitElement {
     }
   }
 
-  private showGlobalToast(message: string, actionLabel = '', actionFn?: () => void, duration = 3000) {
+  /** `type` is 'error' for a toast that reports a failure, which the shell
+   * reads out at once rather than in turn. */
+  private showGlobalToast(message: string, actionLabel = '', actionFn?: () => void, duration = 3000, type?: string) {
     window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: { message, actionLabel, actionFn, duration }
+      detail: { message, actionLabel, actionFn, duration, type }
     }));
   }
 
   /** Shows a child's `toast` event. Both lists report through it; only the
    * folder list's were shown, so emptying Trash or Junk said nothing at all. */
   private _relayToast = (e: CustomEvent) => {
-    this.showGlobalToast(e.detail.message, e.detail.actionLabel, e.detail.actionFn, e.detail.duration);
+    this.showGlobalToast(e.detail.message, e.detail.actionLabel, e.detail.actionFn, e.detail.duration, e.detail.type);
   };
 
   /**
@@ -446,7 +448,7 @@ export class MailboxPage extends LitElement {
    * Callers stay quiet on `auth`, which the shell answers with the login screen.
    */
   private reportActionFailed(key: string, fallback: string) {
-    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000);
+    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000, 'error');
   }
 
   private reportFlagFailure(result: FlagResult) {
@@ -455,7 +457,7 @@ export class MailboxPage extends LitElement {
     const fallback = result.reason === 'unsupported'
       ? 'That tag is not supported by this mail server'
       : 'Could not update the messages';
-    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000);
+    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000, 'error');
   }
 
   /**
@@ -1286,7 +1288,7 @@ export class MailboxPage extends LitElement {
   };
 
   private handleMailboxNotFound = () => {
-    this.showGlobalToast(this.i18nStore.t('mailboxPage.mailboxNotFound'), '', undefined, 3000);
+    this.showGlobalToast(this.i18nStore.t('mailboxPage.mailboxNotFound'), '', undefined, 3000, 'error');
     this.updateUrl(FOLDER_INBOX, 0, null, null);
   };
 

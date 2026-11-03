@@ -238,6 +238,7 @@ export class UserProfileMenu extends LitElement {
       window.dispatchEvent(new CustomEvent('show-toast', {
         detail: {
           message: e.message || this.i18nStore?.t('linkedAccounts.switchError'),
+          type: 'error',
           duration: 5000
         }
       }));

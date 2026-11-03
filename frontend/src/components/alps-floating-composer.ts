@@ -281,6 +281,7 @@ export class AlpsFloatingComposer extends LitElement {
     window.dispatchEvent(new CustomEvent('show-toast', {
       detail: {
         message: this.i18nStore?.t('composer.attachmentsGone', { count }),
+        type: 'error',
         duration: 8000
       }
     }));
@@ -573,6 +574,7 @@ export class AlpsFloatingComposer extends LitElement {
       detail: {
         message: this.i18nStore?.t('composer.draftSaveFailedKeepOpen')
           || 'Could not save this draft — the window stays open so nothing is lost',
+        type: 'error',
         duration: 6000
       }
     }));
@@ -647,6 +649,7 @@ export class AlpsFloatingComposer extends LitElement {
           detail: {
             message: this.i18nStore?.t('composer.draftSaveFailedKeepOpen')
               || 'Could not save this draft — the window stays open so nothing is lost',
+            type: 'error',
             duration: 6000
           }
         }));
@@ -705,6 +708,7 @@ export class AlpsFloatingComposer extends LitElement {
       detail: {
         message: this.i18nStore?.t('composer.discardFailed')
           || 'The draft could not be deleted from the server and is still in Drafts.',
+        type: 'error',
         duration: 5000
       }
     }));
@@ -1061,7 +1065,7 @@ export class AlpsFloatingComposer extends LitElement {
         // send with no explanation reads as the button not working.
         if (presendFailed > 0) {
           window.dispatchEvent(new CustomEvent('show-toast', {
-            detail: { message: this.i18nStore?.t('composer.presendFailed'), duration: 5000 }
+            detail: { message: this.i18nStore?.t('composer.presendFailed'), type: 'error', duration: 5000 }
           }));
         }
         return;
@@ -1115,6 +1119,7 @@ export class AlpsFloatingComposer extends LitElement {
       window.dispatchEvent(new CustomEvent('show-toast', {
         detail: {
           message: this.i18nStore?.t('composer.sendError', { error: err.message }),
+          type: 'error',
           duration: 5000
         }
       }));
@@ -1269,6 +1274,7 @@ export class AlpsFloatingComposer extends LitElement {
           window.dispatchEvent(new CustomEvent('show-toast', {
             detail: {
               message: this.i18nStore?.t('floatingComposer.uploadFailed', { error: err.message || this.i18nStore?.t('floatingComposer.unknownError') }),
+              type: 'error',
               duration: 6000
             }
           }));

@@ -1140,8 +1140,8 @@ export class FolderList extends LitElement {
               void mailboxOperations.setSubscribed(node.fullName, subscribing).then(result => {
                 if (result.ok) this.subscriptionChanged(node.fullName, subscribing);
                 if (result.ok || result.reason === 'auth') return;
-                if (subscribing) this.toast(this.i18nStore?.t('toast.subscribeFailed'), 'Could not subscribe');
-                else this.toast(this.i18nStore?.t('toast.unsubscribeFailed'), 'Could not unsubscribe');
+                if (subscribing) this.toast(this.i18nStore?.t('toast.subscribeFailed'), 'Could not subscribe', { type: 'error' });
+                else this.toast(this.i18nStore?.t('toast.unsubscribeFailed'), 'Could not unsubscribe', { type: 'error' });
               });
             }}>
                     ${renderIcon(node.mb?.Subscribed ? 'eyeSlash' : 'eye')} <span class="item-text">${node.mb?.Subscribed ? this.i18nStore?.t('folderList.unsubscribe') : this.i18nStore?.t('folderList.subscribe')}</span>

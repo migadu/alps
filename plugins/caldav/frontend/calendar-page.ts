@@ -454,7 +454,7 @@ export class CalendarPage extends LitElement {
      * showing the state the user had asked for. */
     private reportFailure(key: string) {
         window.dispatchEvent(new CustomEvent('show-toast', {
-            detail: { message: this.i18nStore?.t(key), duration: 5000 }
+            detail: { message: this.i18nStore?.t(key), type: 'error', duration: 5000 }
         }));
     }
 

@@ -335,7 +335,7 @@ export class TasksPage extends LitElement {
             this.loadedScope = scope;
             this.scheduling = listing.scheduling === 'server' ? 'server' : 'email';
             this.settling = new Set();
-            if (listing.failedCalendars > 0) this.toast('tasks.someListsFailed');
+            if (listing.failedCalendars > 0) this.toast('tasks.someListsFailed', undefined, 'error');
         } catch (e) {
             if (epoch !== this.readEpoch) return;
             console.error('Failed to load tasks', e);
@@ -382,7 +382,7 @@ export class TasksPage extends LitElement {
             const saved = await tasksService.completeTask(task.path, done, this.i18nStore?.getLanguage?.());
             this.replaceTask(task.path, saved);
             // On a task assigned to the user the tick was their answer.
-            if (saved.sendFailed) this.toast('invitations.notTold');
+            if (saved.sendFailed) this.toast('invitations.notTold', undefined, 'error');
             if (done && !isClosed(saved)) {
                 // It repeats: ticked off, it moved to its next occurrence instead.
                 this.toast('tasks.movedToNext', { date: this.formatDue(saved) });
@@ -426,7 +426,7 @@ export class TasksPage extends LitElement {
         this.taskToDelete = null;
         try {
             const removed = await tasksService.deleteTask(task.path, { notify, lang: this.i18nStore?.getLanguage?.() });
-            if (removed?.sendFailed) this.toast('invitations.notTold');
+            if (removed?.sendFailed) this.toast('invitations.notTold', undefined, 'error');
             this.mutationEpoch++;
             this.tasks = this.tasks.filter(t => t.path !== task.path);
         } catch (e) {
@@ -483,12 +483,13 @@ export class TasksPage extends LitElement {
     /** Says an action failed, unless the session ending is why: that has its
      * own notice already. */
     private failed(key: string, error: unknown) {
-        if (!isSessionExpiry(error)) this.toast(key);
+        if (!isSessionExpiry(error)) this.toast(key, undefined, 'error');
     }
 
-    private toast(key: string, params?: Record<string, string | number>) {
+    /** `type` is 'error' for a failure, which the shell reads out at once. */
+    private toast(key: string, params?: Record<string, string | number>, type?: 'error') {
         window.dispatchEvent(new CustomEvent('show-toast', {
-            detail: { message: this.i18nStore?.t(key, params), duration: 5000 },
+            detail: { message: this.i18nStore?.t(key, params), type, duration: 5000 },
         }));
     }
 

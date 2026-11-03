@@ -2,6 +2,7 @@ import { html, css, LitElement, nothing } from 'lit';
 import { renderIcon } from '../utils/ui';
 import { customElement, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
+import { keyed } from 'lit/directives/keyed.js';
 import { Router } from '../router';
 import { loadComponent, PLUGIN_LOAD_FAILED_EVENT, registry, resetComponentLoadFailures } from '../plugin-registry';
 import './alps-page-load-error';
@@ -62,6 +63,9 @@ function routePath(hash: string): string {
 interface ToastItem {
   id: number;
   message: string;
+  /** 'error' for a toast that reports a failure; any other value, or none, is
+   * information. */
+  type?: string;
   actionLabel?: string;
   actionFn?: () => void;
   dismissFn?: () => void;
@@ -135,6 +139,21 @@ export class AppRoot extends LitElement {
       position: relative;
       z-index: 0;
       height: 100%;
+    }
+
+    /* Read out, never seen. Not display: none or visibility: hidden, either of
+       which takes the node out of the accessibility tree, where a live region
+       has to stay. */
+    .toast-announce {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+      border: 0;
     }
 
     .toast-stack {
@@ -416,6 +435,7 @@ export class AppRoot extends LitElement {
       message: e.detail.message
         ?? (e.detail.i18nKey ? this.i18nStore?.t(e.detail.i18nKey) : undefined)
         ?? '',
+      type: e.detail.type,
       actionLabel: e.detail.actionLabel || '',
       actionFn: e.detail.actionFn,
       dismissFn: e.detail.dismissFn,
@@ -431,6 +451,34 @@ export class AppRoot extends LitElement {
       this.toasts = this.toasts.map(t => t.id === id ? { ...t, show: true } : t);
     });
   };
+
+  /**
+   * The newest toast on screen of each kind, as the live regions read it out.
+   * Derived on render, so the regions cannot drift from the stack. A toast
+   * that is leaving (`show` false) is not read again.
+   */
+  private get politeAnnouncement() {
+    return this.announcement(this.newestToast((type) => type !== 'error'));
+  }
+
+  private get assertiveAnnouncement() {
+    return this.announcement(this.newestToast((type) => type === 'error'));
+  }
+
+  private newestToast(matches: (type: string | undefined) => boolean): ToastItem | null {
+    for (let i = this.toasts.length - 1; i >= 0; i--) {
+      const toast = this.toasts[i];
+      if (toast.show && matches(toast.type)) return toast;
+    }
+    return null;
+  }
+
+  /** A toast's text, drawn anew for each toast: a second toast that says
+   * what the first said replaces the text rather than leaving it as it was,
+   * and so is read out again. */
+  private announcement(toast: ToastItem | null) {
+    return toast ? keyed(toast.id, html`${toast.message}`) : '';
+  }
 
   private _handleDismissToast(id: number) {
     this.toasts = this.toasts.map(t => t.id === id ? { ...t, show: false } : t);
@@ -464,7 +512,7 @@ export class AppRoot extends LitElement {
         actionFn: () => {
           if (!this.composeStore.persistNow()) {
             this._handleShowToast(new CustomEvent('show-toast', {
-              detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', duration: 6000 },
+              detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', type: 'error', duration: 6000 },
             }));
             return false;
           }
@@ -498,6 +546,7 @@ export class AppRoot extends LitElement {
     this._handleShowToast(new CustomEvent('show-toast', {
       detail: {
         i18nKey: 'general.pageLoadFailed',
+        type: 'error',
         actionLabel: this.i18nStore.t('general.backToMail'),
         actionFn: () => { window.location.hash = '#/mailbox/INBOX'; },
         // Stay until dismissed: the failed page contains no navigation of its own.
@@ -571,12 +620,13 @@ export class AppRoot extends LitElement {
     this._handleShowToast(new CustomEvent('show-toast', {
       detail: {
         message: `${this.i18nStore.t('composer.windowLoadFailed')} ${this.i18nStore.t('general.pageLoadFailedHint')}`,
+        type: 'error',
         actionLabel: this.i18nStore.t('update.reload'),
         actionFn: () => {
           // Kept open rather than reloaded over composers it could not write.
           if (!this.composeStore.persistNow()) {
             this._handleShowToast(new CustomEvent('show-toast', {
-              detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', duration: 6000 },
+              detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', type: 'error', duration: 6000 },
             }));
             return false;
           }
@@ -856,7 +906,18 @@ export class AppRoot extends LitElement {
    * deadline (`expiresAt`) rather than starting its wait again.
    */
   private renderToasts(slot?: string) {
+    // Toasts are read out from the two regions, not from the toasts: a live
+    // region has to be in the page before its text changes, and a toast is
+    // created with its text; and its text sits in its own shadow root, where
+    // screen readers follow a live region less reliably. A failure
+    // interrupts, anything else waits its turn. They go where the toasts go:
+    // outside the route view, which is inert while Settings is open over it,
+    // and inside the attachment preview's dialog while it is open, the one
+    // part of the page a modal dialog leaves live. A region drawn anew with
+    // the text it already had says nothing again.
     return html`
+      <div class="toast-announce" role="status" aria-live="polite" slot=${slot ?? nothing}>${this.politeAnnouncement}</div>
+      <div class="toast-announce" role="alert" aria-live="assertive" slot=${slot ?? nothing}>${this.assertiveAnnouncement}</div>
       <div class="toast-stack" slot=${slot ?? nothing}>
         ${this.toasts.map(toast => html`
           <alps-toast

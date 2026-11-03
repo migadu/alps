@@ -260,7 +260,7 @@ export class TaskModal extends LitElement {
                 : await tasksService.createTask(input);
             if (saved?.sendFailed) {
                 window.dispatchEvent(new CustomEvent('show-toast', {
-                    detail: { message: this.i18nStore?.t('invitations.notTold'), duration: 8000 },
+                    detail: { message: this.i18nStore?.t('invitations.notTold'), type: 'error', duration: 8000 },
                 }));
             }
             this.open = false;
@@ -272,7 +272,7 @@ export class TaskModal extends LitElement {
             const conflict = isVersionConflict(e);
             if (conflict) this.dispatchEvent(new CustomEvent('conflict'));
             window.dispatchEvent(new CustomEvent('show-toast', {
-                detail: { message: this.i18nStore?.t(conflict ? 'tasks.saveConflict' : 'tasks.saveFailed'), duration: 8000 },
+                detail: { message: this.i18nStore?.t(conflict ? 'tasks.saveConflict' : 'tasks.saveFailed'), type: 'error', duration: 8000 },
             }));
         } finally {
             this.saving = false;

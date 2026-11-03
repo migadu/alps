@@ -1333,7 +1333,7 @@ export class ContactsPage extends LitElement {
    */
   private reportFailure(key: string, params?: Record<string, any>) {
     window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: { message: this.i18nStore?.t(key, params), duration: 5000 }
+      detail: { message: this.i18nStore?.t(key, params), type: 'error', duration: 5000 }
     }));
   }
 
