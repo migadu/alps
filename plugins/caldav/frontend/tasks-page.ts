@@ -480,7 +480,7 @@ export class TasksPage extends LitElement {
     }
 
     private formatDue(task: TaskData): string {
-        return formatDue(task, new Date(), this.i18nStore?.t('tasks.today') ?? 'Today', intlLocale(this.i18nStore?.getLanguage?.()));
+        return formatDue(task, new Date(), this.i18nStore?.t('tasks.today') ?? 'Today', intlLocale(this.i18nStore?.getLanguage?.()), this.settingsStore?.getState().hourFormat);
     }
 
     /** Says an action failed, unless the session ending is why: that has its

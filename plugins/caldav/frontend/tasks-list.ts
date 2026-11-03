@@ -1,3 +1,4 @@
+import { TimeFormatController } from '../../../frontend/src/utils/time-format-controller';
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
@@ -35,6 +36,8 @@ const PRIORITY_MARKS = { high: '!!!', medium: '!!', low: '!' } as const;
  */
 @customElement('tasks-list')
 export class TasksList extends LitElement {
+    private clock = new TimeFormatController(this);
+
     @consume({ context: i18nContext })
     i18nStore!: I18nStore;
 
@@ -317,6 +320,7 @@ export class TasksList extends LitElement {
                                   now,
                                   t('tasks.today'),
                                   intlLocale(this.i18nStore?.getLanguage?.()),
+                                  this.clock.hour12 ? '12' : '24',
                               )}</span>`
                             : ''}
                         ${task.rrule
