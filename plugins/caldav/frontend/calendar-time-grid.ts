@@ -118,6 +118,12 @@ export class CalendarTimeGrid extends LitElement {
             background-color: var(--error, #ef4444);
             color: #ffffff;
         }
+        @media (forced-colors: active) {
+            .time-grid-day-number.today {
+                outline: 2px solid CanvasText;
+                outline-offset: -2px;
+            }
+        }
 
         .all-day-row {
             display: flex;

@@ -73,7 +73,7 @@ export class AlpsButton extends LitElement {
       border-radius: var(--btn-radius, 4px);
       padding: var(--btn-padding, 8px 16px);
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
       box-sizing: border-box;
       line-height: normal;
       outline: none;

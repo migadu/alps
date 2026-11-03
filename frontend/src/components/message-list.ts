@@ -119,6 +119,7 @@ export class MessageList extends LitElement {
   /** How far the rows were scrolled, for when the list is put back in the
    * document (see connectedCallback). */
   private scrolledTo = 0;
+  private selectionScrollTimer: ReturnType<typeof setTimeout> | null = null;
   @state() private focusedIndex = -1;
   @state() private showEmptyConfirm = false;
   /**
@@ -1097,6 +1098,10 @@ export class MessageList extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    if (this.selectionScrollTimer !== null) {
+      clearTimeout(this.selectionScrollTimer);
+      this.selectionScrollTimer = null;
+    }
     // A list that leaves the page mid-drag would keep its window listeners
     // until some later drag ended.
     this.endDrag();
@@ -1260,7 +1265,10 @@ export class MessageList extends LitElement {
     // mail that a check had just brought in at the top was scrolled away from.
     const previous = changedProperties.get('selectedMessage');
     if (changedProperties.has('selectedMessage') && this.selectedMessage && !(previous && this.isOpen(previous))) {
-      setTimeout(() => {
+      if (this.selectionScrollTimer !== null) clearTimeout(this.selectionScrollTimer);
+      this.selectionScrollTimer = setTimeout(() => {
+        this.selectionScrollTimer = null;
+        if (!this.isConnected) return;
         const listContent = this.renderRoot.querySelector('.list-content');
         const activeItem = listContent?.querySelector('.message-item.active');
         if (activeItem) {

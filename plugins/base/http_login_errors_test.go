@@ -77,8 +77,12 @@ func TestHTTP_MailServerOutageDoesNotLockTheAccount(t *testing.T) {
 
 	down.Store(true)
 	for i := 0; i < config.UsernameFailsPerQuarter; i++ {
-		if r := s.do("POST", "/session", creds); r.status == http.StatusOK || r.status == http.StatusTooManyRequests {
-			t.Fatalf("sign-in %d during the outage: status %d: %s", i+1, r.status, r.body)
+		r := s.do("POST", "/session", creds)
+		s.expect(r, http.StatusServiceUnavailable)
+		var body struct{ Code string }
+		r.json(t, &body)
+		if body.Code != "service_unavailable" {
+			t.Fatalf("sign-in %d during the outage: missing service-unavailable code: %s", i+1, r.body)
 		}
 	}
 	down.Store(false)

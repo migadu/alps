@@ -1260,6 +1260,11 @@ export class AlpsMessageComposer extends LitElement {
       white-space: pre-wrap;
     }
 
+    .editor-container:focus-within {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: -2px;
+    }
+
     .editor-container .ProseMirror p {
       margin: 0 0 1em 0;
     }

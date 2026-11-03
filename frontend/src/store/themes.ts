@@ -73,7 +73,7 @@ export const THEME_BUNDLES: Record<string, ThemeBundle> = {
       'accent-hover': '#1d4ed8',
       'accent-light': '#dbeafe',
       'success': '#10b981',
-      'warning': '#f59e0b',
+      'warning': '#8f4f00',
       'error': '#ef4444',
       'hover-color': '#f3f4f6',
     }
@@ -121,7 +121,7 @@ export const THEME_BUNDLES: Record<string, ThemeBundle> = {
       'accent-hover': '#81a1c1',
       'accent-light': '#81a1c133',
       'success': '#a3be8c',
-      'warning': '#ebcb8b',
+      'warning': '#8f4f00',
       'error': '#bf616a',
       'hover-color': 'rgba(0, 0, 0, 0.05)',
     }
@@ -169,7 +169,7 @@ export const THEME_BUNDLES: Record<string, ThemeBundle> = {
       'accent-hover': '#0284c7',
       'accent-light': '#e0f2fe',
       'success': '#10b981',
-      'warning': '#f59e0b',
+      'warning': '#8f4f00',
       'error': '#ef4444',
       'hover-color': 'rgba(0, 0, 0, 0.05)',
     }

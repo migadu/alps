@@ -65,12 +65,21 @@ export class PasswordSettings extends LitElement {
 				})
 			});
 
-			const data = await response.json();
+			const data = await response.json().catch(() => ({}));
 			if (response.ok) {
-				window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: data.message || 'Password successfully changed.', timeout: 3000 } }));
+				const key = data.code === 'reauthenticate' || data.message === 'Password changed, but please log in again'
+					? 'changedSignInAgain'
+					: data.warning === 'linked_accounts_not_refreshed' ? 'changedLinkedWarning' : 'changed';
+				window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t(`settings.password.${key}`), duration: 6000 } }));
 				this.passwordForm = { old: '', new: '', confirm: '' };
 			} else {
-				window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: data.error || 'Failed to change password.', type: 'error', timeout: 3000 } }));
+				const key = data.code === 'current_password_incorrect' || data.error === 'Current password is incorrect'
+					? 'webauthn.errors.wrong_password'
+					: response.status === 429 ? 'settings.password.tooManyAttempts'
+					: data.code === 'password_required' ? 'settings.password.fillAllFields'
+					: data.code === 'password_change_disabled' || response.status >= 500 ? 'settings.password.serviceUnavailable'
+					: 'settings.password.changeFailed';
+				window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t(key), type: 'error', duration: 6000 } }));
 			}
 		} catch (e) {
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t('login.networkError'), type: 'error', timeout: 3000 } }));

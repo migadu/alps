@@ -11,6 +11,12 @@ export default {
       newPassword: 'Sandi baru',
       confirmPassword: 'Konfirmasi sandi baru',
       updatePassword: 'Perbarui Sandi',
+      changed: "Kata sandi Anda telah diubah.",
+      changedSignInAgain: "Kata sandi Anda telah diubah. Silakan masuk kembali.",
+      changedLinkedWarning: "Kata sandi Anda telah diubah. Beberapa akun tertaut tidak dapat diperbarui.",
+      changeFailed: "Kata sandi Anda tidak dapat diubah. Silakan coba lagi.",
+      serviceUnavailable: "Perubahan kata sandi untuk sementara tidak tersedia. Silakan coba lagi nanti.",
+      tooManyAttempts: "Terlalu banyak percobaan. Silakan coba lagi nanti.",
       fillAllFields: 'Isi semua kolom.',
       passwordMismatch: 'Sandi baru tidak cocok.'
     }

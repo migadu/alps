@@ -1950,7 +1950,10 @@ func handleLogin(ctx *alps.Context) error {
 				"ip", ctx.ClientIP(),
 				"reason", "error",
 				"error", err.Error())
-			return fmt.Errorf("failed to put connection in pool: %v", err)
+			return ctx.JSON(http.StatusServiceUnavailable, map[string]string{
+				"error": "Mail service temporarily unavailable",
+				"code":  "service_unavailable",
+			})
 		}
 
 		// The second factor is asked for when the account has one, unless the
