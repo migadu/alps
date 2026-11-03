@@ -109,12 +109,14 @@ afterEach(() => {
 
 describe('the composer', () => {
   function storeFor(instance: ComposerInstance) {
+    let closed = false;
     return {
-      getState: () => ({ activeComposers: [instance] }),
-      getComposer: (id: string) => (id === instance.id ? instance : undefined),
+      getState: () => ({ activeComposers: closed ? [] : [instance] }),
+      getComposer: (id: string) => (!closed && id === instance.id ? instance : undefined),
       updateComposer: vi.fn(),
       bringComposerToFront: vi.fn(),
-      closeComposer: vi.fn(),
+      // Gone from the store once closed, as with the real one.
+      closeComposer: vi.fn(() => { closed = true; }),
     };
   }
 
@@ -272,11 +274,12 @@ describe('the composer', () => {
     return (answer: unknown) => land(answer);
   }
 
-  it('waits for a save in flight, and discards the draft that save stored', async () => {
-    // The save stores draft 8 and deletes 7. Deleting 7 before it landed
-    // left 8 in Drafts, after the user had discarded it.
+  it('closes at once over a save in flight, then deletes the draft it stored and the one before', async () => {
+    // The save that follows the last upload writes every attached byte, and
+    // the window stayed up, unanswered, until it came back.
     const land = heldSave();
     const del = vi.spyOn(messageOperations, 'deleteMessagesResult').mockResolvedValue({ ok: true });
+    const seen = record<CustomEvent>(window, 'draft-discarded');
     const instance: ComposerInstance = {
       id: 'c1', draftUid: '7', draftMailbox: 'Drafts', subject: 'Engines', text: 'Notes', format: 'text', dirty: true,
     };
@@ -285,16 +288,74 @@ describe('the composer', () => {
 
     const saving = el._saveDraft();
     const discarding = el._performDiscard('delete');
+    expect(store.closeComposer).toHaveBeenCalledWith('c1');
     await flush();
     expect(del).not.toHaveBeenCalled();
-    expect(store.closeComposer).not.toHaveBeenCalled();
 
+    // The save stored 8 and deleted 7, which the server takes as deleted
+    // again. Deleting only 7 left 8 in Drafts after the user discarded it.
     land({ uid: '8', mailbox: 'Drafts' });
     await saving;
     await discarding;
 
-    expect(del.mock.calls).toEqual([['Drafts', ['8']]]);
-    expect(store.closeComposer).toHaveBeenCalledWith('c1');
+    expect(del.mock.calls).toEqual([['Drafts', ['7', '8']]]);
+    expect(seen.map(e => e.detail)).toEqual([{ mailbox: 'Drafts', uid: '7' }, { mailbox: 'Drafts', uid: '8' }]);
+    // Nothing of the closed window is renumbered by the late answer.
+    expect(store.updateComposer).not.toHaveBeenCalledWith('c1', expect.objectContaining({ draftUid: '8' }));
+  });
+
+  it('deletes each draft in its own mailbox', async () => {
+    // A draft filed outside Drafts is saved into Drafts.
+    const land = heldSave();
+    const del = vi.spyOn(messageOperations, 'deleteMessagesResult').mockResolvedValue({ ok: true });
+    const instance: ComposerInstance = {
+      id: 'c1', draftUid: '7', draftMailbox: 'Projects', subject: 'Engines', text: 'Notes', format: 'text', dirty: true,
+    };
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: liveStoreFor(instance), i18nStore });
+
+    const saving = el._saveDraft();
+    const discarding = el._performDiscard('delete');
+    land({ uid: '8', mailbox: 'Drafts' });
+    await saving;
+    await discarding;
+
+    expect(del.mock.calls).toEqual([['Projects', ['7']], ['Drafts', ['8']]]);
+  });
+
+  it('says so when a draft it deleted behind the closed window is still there', async () => {
+    const land = heldSave();
+    vi.spyOn(messageOperations, 'deleteMessagesResult').mockResolvedValue({ ok: false, reason: 'failed' });
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const instance: ComposerInstance = {
+      id: 'c1', draftUid: '7', draftMailbox: 'Drafts', subject: 'Engines', text: 'Notes', format: 'text', dirty: true,
+    };
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: liveStoreFor(instance), i18nStore });
+
+    const saving = el._saveDraft();
+    const discarding = el._performDiscard('delete');
+    land({ uid: '8', mailbox: 'Drafts' });
+    await saving;
+    await discarding;
+
+    expect(toasts.map(e => e.detail.message)).toEqual(['composer.discardFailed']);
+  });
+
+  it('deletes nothing once another account is signed in while the save was out', async () => {
+    const land = heldSave();
+    const del = vi.spyOn(messageOperations, 'deleteMessagesResult').mockResolvedValue({ ok: true });
+    const instance: ComposerInstance = {
+      id: 'c1', draftUid: '7', draftMailbox: 'Drafts', subject: 'Engines', text: 'Notes', format: 'text', dirty: true,
+    };
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: liveStoreFor(instance), i18nStore });
+
+    const saving = el._saveDraft();
+    const discarding = el._performDiscard('delete');
+    MessageCache.clear();
+    land({ uid: '8', mailbox: 'Drafts' });
+    await saving;
+    await discarding;
+
+    expect(del).not.toHaveBeenCalled();
   });
 
   it('keeps what was typed during a save unsaved, and saves it on close', async () => {

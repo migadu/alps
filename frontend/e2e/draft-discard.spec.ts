@@ -152,3 +152,43 @@ test("and when the draft was opened from a search of all mailboxes", async ({ pa
   await openFolder(page, "Drafts");
   await expect(row(page, subject)).toHaveCount(0);
 });
+
+test("closes at once while a save is out, and deletes the draft it stored", async ({ page }) => {
+  // A save writes the whole draft again, every attached byte of it, and the
+  // window stayed up until its answer came back. Here the answer is held: by
+  // then the server has stored the edited draft and deleted the one before.
+  const subject = `Discard during a save ${token()}`;
+  await login(page);
+  await saveDraft(page, subject);
+  await openFolder(page, "Drafts");
+  const composer = await editDraft(page, subject);
+
+  let release: (() => void) | undefined;
+  let held = false;
+  await page.route("**/messages", async (route) => {
+    const request = route.request();
+    if (!held && request.method() === "POST" && request.postData()?.includes('name="save_as_draft"')) {
+      held = true;
+      const response = await route.fetch();
+      await new Promise<void>((resolve) => { release = resolve; });
+      await route.fulfill({ response });
+    } else await route.continue();
+  });
+  await composer.getByPlaceholder("Subject").fill(`${subject} edited`);
+  await expect.poll(() => !!release).toBe(true);
+
+  const deleted = page.waitForResponse(
+    (response) => response.request().method() === "DELETE" && /^\/mailboxes\/[^/]+\/messages$/.test(new URL(response.url()).pathname),
+  );
+  try {
+    await discardButton(composer).click();
+    await confirmDiscardButton(composer).click();
+    await expect(composer).toHaveCount(0, { timeout: 2_000 });
+  } finally {
+    release?.();
+  }
+
+  expect((await deleted).ok()).toBe(true);
+  await expect(row(page, subject)).toHaveCount(0);
+  await expectReaderClosed(page, subject);
+});

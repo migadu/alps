@@ -29,6 +29,9 @@ import { registry } from '../plugin-registry';
 import { MessageCache } from '../utils/message-cache';
 const UNDO_TOAST_TIMEOUT_MS = 5000;
 
+/** A draft on the server: its mailbox, and its UID there. */
+type StoredDraft = { mailbox: string; uid: string };
+
 @customElement('alps-floating-composer')
 export class AlpsFloatingComposer extends LitElement {
   @consume({ context: composeContext })
@@ -64,7 +67,7 @@ export class AlpsFloatingComposer extends LitElement {
 
   private autoSaveTimer: number | null = null;
   /** The save on the wire, for a close or a discard to wait out. */
-  private savingPromise: Promise<boolean> | null = null;
+  private savingPromise: Promise<boolean | StoredDraft> | null = null;
   /**
    * The draft the last save stored, by its UID and its content key as the
    * composer holds it once the answer is applied. `null` when that is not
@@ -217,8 +220,12 @@ export class AlpsFloatingComposer extends LitElement {
    * stored and so empty there is nothing to store. `false` means a save was
    * attempted and did not land, which is the one case where closing the window
    * would destroy what the user wrote. See `_handleCloseClick`.
+   *
+   * A save that finds its window gone answers with the draft it stored, as
+   * safe as `true`: a discard closes the window without waiting for the save,
+   * and deletes that draft once it knows it (see `_performDiscard`).
    */
-  private _saveDraft(): Promise<boolean> {
+  private _saveDraft(): Promise<boolean | StoredDraft> {
     // A save is already in flight; a second one now would race it.
     if (this.savingPromise) return Promise.resolve(false);
     const running = this._saveDraftWithoutGoneUploads().finally(() => {
@@ -236,7 +243,7 @@ export class AlpsFloatingComposer extends LitElement {
    * server names every upload it lacks at once, so a second refusal is one
    * more let go between the two requests, left to the next autosave.
    */
-  private async _saveDraftWithoutGoneUploads(): Promise<boolean> {
+  private async _saveDraftWithoutGoneUploads(): Promise<boolean | StoredDraft> {
     const id = this.instance.id;
     for (let attempt = 1; ; attempt++) {
       try {
@@ -278,7 +285,7 @@ export class AlpsFloatingComposer extends LitElement {
     }));
   }
 
-  private async _doSaveDraft(): Promise<boolean> {
+  private async _doSaveDraft(): Promise<boolean | StoredDraft> {
     const id = this.instance.id;
     const generation = MessageCache.generation();
     const currentInstance = this.composeStore.getComposer(id) || this.instance;
@@ -329,7 +336,12 @@ export class AlpsFloatingComposer extends LitElement {
       // window left. Its old mailbox/UID must not renumber another account's
       // reader or rows. A remounted window still owned by this session can
       // accept its answer normally.
-      if (generation !== MessageCache.generation() || !this.isConnected || !this.composeStore.getComposer(id)) return !!result;
+      if (generation !== MessageCache.generation()) return !!result;
+      if (!this.isConnected || !this.composeStore.getComposer(id)) {
+        // Discarded while this was on the wire: the draft it stored is the
+        // discard's to delete, and only this answer says which one it is.
+        return result?.uid ? { mailbox: result.mailbox, uid: String(result.uid) } : !!result;
+      }
 
       if (result) {
         const oldUid = this.instance.draftUid;
@@ -697,48 +709,79 @@ export class AlpsFloatingComposer extends LitElement {
     }));
   }
 
+  /**
+   * Discards the message: the window goes at once, and the draft is deleted
+   * behind it.
+   *
+   * A save may be on the wire, as one is the moment the last upload lands,
+   * and it writes the whole draft again, every attached byte of it. The
+   * window used to stay up until that save came back, and then until the
+   * delete and its re-sync had, so a confirmed Discard sat unanswered for
+   * seconds on exactly the messages with the most in them. It stayed up only
+   * to learn which draft the save stored, and the save now answers with that
+   * itself (see `_doSaveDraft`).
+   *
+   * The returned promise settles once the draft is deleted. Only tests await it.
+   */
   private async _performDiscard(type: 'close' | 'delete' | null) {
     this.discarding = true;
     this._clearAutoSave();
+    const id = this.instance.id;
+    const generation = MessageCache.generation();
+    // The store, not the rendered property, which lags it.
+    const current = this.composeStore.getComposer(id) || this.instance;
+    // Uploads are stopped, and the server's copies of finished ones let go.
+    // A save on the wire has taken out the ones it carries, or, refused for
+    // their loss, stores nothing.
+    for (const att of current.attachments || []) {
+      if (att._tempId) abortUpload(att._tempId);
+      else if (att.uuid) deleteAttachment(att.uuid);
+    }
+    const saving = this.savingPromise;
+    this.composeStore.closeComposer(id);
+    if (type !== 'delete') return;
+
     // A save already on the wire stores a new draft and deletes the one this
-    // window knew. Deleting before it lands deleted the old draft and left the
-    // new one in Drafts, after the user had discarded it. So the save is
-    // waited out, and the draft to delete is read from the store, which that
-    // save updates, not from the rendered property, which lags.
-    await this.savingPromise?.catch(() => false);
-    const current = this.composeStore.getComposer(this.instance.id) || this.instance;
-    if (type === 'delete' && current.draftUid && current.draftMailbox) {
-      const mailbox = current.draftMailbox;
-      const uid = String(current.draftUid);
+    // window knew. Deleting only the one it knew left the save's in Drafts,
+    // after the user had discarded it, so both are deleted here: the server
+    // takes one already gone as deleted.
+    const stored = await saving?.catch(() => false);
+    // Signed out, or another account taken up, while the save was out: the
+    // UIDs below name another account's messages now.
+    if (generation !== MessageCache.generation()) return;
+    const uidsIn = new Map<string, string[]>();
+    const known = current.draftUid && current.draftMailbox
+      ? { mailbox: current.draftMailbox, uid: String(current.draftUid) }
+      : null;
+    for (const draft of [known, typeof stored === 'object' ? stored : null]) {
+      if (!draft) continue;
+      const uids = uidsIn.get(draft.mailbox) || [];
+      if (!uids.includes(draft.uid)) uids.push(draft.uid);
+      uidsIn.set(draft.mailbox, uids);
+    }
+    let failed = false;
+    for (const [mailbox, uids] of uidsIn) {
       try {
         // `deleteMessages` reports a refusal by RETURNING false; it only throws
         // on a network error, so the catch below was the smaller half of the
         // problem and the returned answer was discarded entirely. A draft the
         // server would not delete stays in Drafts while the user watches the
         // window close on it.
-        const deleted = await messageOperations.deleteMessagesResult(mailbox, [uid]);
+        const deleted = await messageOperations.deleteMessagesResult(mailbox, uids);
         // The re-sync the delete ends in takes the row off the list, but never
         // closes the reader, so a reader still showing this draft has to be told
         // (alps-message-reader's `_handleDraftDiscarded`).
         if (deleted.ok) {
-          window.dispatchEvent(new CustomEvent('draft-discarded', { detail: { mailbox, uid } }));
+          for (const uid of uids) window.dispatchEvent(new CustomEvent('draft-discarded', { detail: { mailbox, uid } }));
         }
         // Quiet on `auth`: the shell is already showing the login screen.
-        if (!deleted.ok && deleted.reason !== 'auth') this._toastDiscardFailed();
+        if (!deleted.ok && deleted.reason !== 'auth') failed = true;
       } catch (e) {
         Logger.error('Failed to delete draft', e);
-        this._toastDiscardFailed();
+        failed = true;
       }
     }
-
-    if (current.attachments) {
-      for (const att of current.attachments) {
-        if (att._tempId) abortUpload(att._tempId);
-        else if (att.uuid) deleteAttachment(att.uuid);
-      }
-    }
-
-    this.composeStore.closeComposer(this.instance.id);
+    if (failed) this._toastDiscardFailed();
   }
 
   private _cancelDiscard() {
