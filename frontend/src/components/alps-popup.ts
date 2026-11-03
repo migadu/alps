@@ -152,71 +152,73 @@ export class AlpsPopup extends LitElement {
       pointer-events: none;
     }
 
+    /* Position classes and arrow offsets have already been resolved to
+       physical viewport sides by _updatePosition. Do not mirror them again. */
     .popup-content.position-bottom.align-right::before {
       top: -6px;
-      inset-inline-end: var(--arrow-right, 10px);
+      right: var(--arrow-right, 10px);
       border-width: 0 6px 6px 6px;
       border-color: transparent transparent var(--border-color, #e5e7eb) transparent;
     }
 
     .popup-content.position-bottom.align-right::after {
       top: -5px;
-      inset-inline-end: calc(var(--arrow-right, 10px) + 1px);
+      right: calc(var(--arrow-right, 10px) + 1px);
       border-width: 0 5px 5px 5px;
       border-color: transparent transparent var(--bg-primary, #ffffff) transparent;
     }
 
     .popup-content.position-bottom.align-left::before {
       top: -6px;
-      inset-inline-start: var(--arrow-left, 10px);
+      left: var(--arrow-left, 10px);
       border-width: 0 6px 6px 6px;
       border-color: transparent transparent var(--border-color, #e5e7eb) transparent;
     }
 
     .popup-content.position-bottom.align-left::after {
       top: -5px;
-      inset-inline-start: calc(var(--arrow-left, 10px) + 1px);
+      left: calc(var(--arrow-left, 10px) + 1px);
       border-width: 0 5px 5px 5px;
       border-color: transparent transparent var(--bg-primary, #ffffff) transparent;
     }
 
     .popup-content.position-top.align-right::before {
       bottom: -6px;
-      inset-inline-end: var(--arrow-right, 10px);
+      right: var(--arrow-right, 10px);
       border-width: 6px 6px 0 6px;
       border-color: var(--border-color, #e5e7eb) transparent transparent transparent;
     }
 
     .popup-content.position-top.align-right::after {
       bottom: -5px;
-      inset-inline-end: calc(var(--arrow-right, 10px) + 1px);
+      right: calc(var(--arrow-right, 10px) + 1px);
       border-width: 5px 5px 0 5px;
       border-color: var(--bg-primary, #ffffff) transparent transparent transparent;
     }
 
     .popup-content.position-top.align-left::before {
       bottom: -6px;
-      inset-inline-start: var(--arrow-left, 10px);
+      left: var(--arrow-left, 10px);
       border-width: 6px 6px 0 6px;
       border-color: var(--border-color, #e5e7eb) transparent transparent transparent;
     }
 
     .popup-content.position-top.align-left::after {
       bottom: -5px;
-      inset-inline-start: calc(var(--arrow-left, 10px) + 1px);
+      left: calc(var(--arrow-left, 10px) + 1px);
       border-width: 5px 5px 0 5px;
       border-color: var(--bg-primary, #ffffff) transparent transparent transparent;
     }
 
     /* Horizontal Left Position Arrow (points right, on the right border of popup) */
     .popup-content.position-left::before {
-      inset-inline-end: -6px;
+      right: -6px;
       top: var(--arrow-top, 10px);
       border-width: 6px 0 6px 6px;
       border-color: transparent transparent transparent var(--border-color, #e5e7eb);
     }
     .popup-content.position-left::after {
-      inset-inline-end: -5px;
+      right: -5px;
       top: calc(var(--arrow-top, 10px) + 1px);
       border-width: 5px 0 5px 5px;
       border-color: transparent transparent transparent var(--bg-primary, #ffffff);
@@ -224,13 +226,13 @@ export class AlpsPopup extends LitElement {
 
     /* Horizontal Right Position Arrow (points left, on the left border of popup) */
     .popup-content.position-right::before {
-      inset-inline-start: -6px;
+      left: -6px;
       top: var(--arrow-top, 10px);
       border-width: 6px 6px 6px 0;
       border-color: transparent var(--border-color, #e5e7eb) transparent transparent;
     }
     .popup-content.position-right::after {
-      inset-inline-start: -5px;
+      left: -5px;
       top: calc(var(--arrow-top, 10px) + 1px);
       border-width: 5px 5px 5px 0;
       border-color: transparent var(--bg-primary, #ffffff) transparent transparent;

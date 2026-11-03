@@ -65,8 +65,8 @@ export class AlpsInput extends LitElement {
       width: 100%;
       height: 36px;
       padding-block: 0;
-      padding-inline-start: var(--input-leading-space);
-      padding-inline-end: var(--input-trailing-space);
+      padding-left: var(--input-leading-space);
+      padding-right: var(--input-trailing-space);
       background: var(--alps-input-bg, var(--bg-primary, #ffffff));
       border: 1px solid var(--border-color, #e5e7eb);
       border-radius: var(--input-radius, 6px);
@@ -83,8 +83,8 @@ export class AlpsInput extends LitElement {
        carries its value's direction, and logical padding there would put an
        address's room on the wrong side of a right-to-left field. */
     :host(:dir(rtl)) input {
-      padding-inline-start: var(--input-trailing-space);
-      padding-inline-end: var(--input-leading-space);
+      padding-left: var(--input-trailing-space);
+      padding-right: var(--input-leading-space);
     }
 
     .has-left-icon { --input-leading-space: 36px; }
