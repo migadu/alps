@@ -1,3 +1,4 @@
+import { modalOpened, modalClosed } from '../utils/modal-layers';
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { motionStyles } from '../utils/motion';
@@ -115,6 +116,7 @@ export class UIModal extends LitElement {
     const dialog = this.shadowRoot?.querySelector('.modal-dialog') as HTMLDialogElement | null;
     if (dialog && !dialog.open) {
       dialog.showModal();
+      modalOpened(dialog);
     }
   }
 
@@ -137,7 +139,13 @@ export class UIModal extends LitElement {
     if (!this.dismissible) e.preventDefault();
   };
 
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    modalClosed(this.shadowRoot?.querySelector('dialog'));
+  }
+
   private _handleDialogClose = () => {
+    modalClosed(this.shadowRoot?.querySelector('dialog'));
     this.dispatchEvent(new CustomEvent('cancel', { bubbles: true, composed: true }));
   };
 
