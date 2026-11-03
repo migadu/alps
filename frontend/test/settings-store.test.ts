@@ -1088,3 +1088,22 @@ describe('colour themes', () => {
     });
   });
 });
+
+it('reports an invalid Reply-To in the active language and keeps other pending settings', async () => {
+  signedIn();
+  const toasts = record('show-toast');
+  const calls = serve({
+    'GET /session': () => json(200, { Username: USER }),
+    'GET /settings': () => json(200, { Settings: { reply_to: 'old@example.com' } }),
+    'PUT /settings': init => JSON.parse(init!.body as string).reply_to === 'not an address'
+      ? json(400, { error: 'invalid_reply_to' }) : json(200, {}),
+  });
+  const store = new SettingsStore();
+  store.setI18n({ t: key => `translated:${key}` });
+  await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+  await store.updateSettings({ replyTo: 'not an address', bccMyself: true });
+  await vi.waitFor(() => expect(calls.filter(c => c.key === 'PUT /settings')).toHaveLength(2));
+  expect(calls.filter(c => c.key === 'PUT /settings')[1].body).toEqual({ bcc_myself: true });
+  expect(store.getState().replyTo).toBe('old@example.com');
+  expect(toasts[0].detail.message).toBe('translated:settings.identity.identityInvalid');
+});

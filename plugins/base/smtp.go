@@ -308,8 +308,12 @@ func (msg *OutgoingMessage) write(w io.Writer, withBcc bool) (int64, error) {
 		h.SetMsgIDList("In-Reply-To", []string{parent})
 		h.SetMsgIDList("References", refs)
 	}
-	if msg.ReplyTo != "" {
-		h.Set("Reply-To", msg.ReplyTo)
+	replyTo, err := replyToAddress(msg.ReplyTo)
+	if err != nil {
+		return 0, err
+	}
+	if replyTo != nil {
+		h.SetAddressList("Reply-To", []*mail.Address{replyTo})
 	}
 
 	h.Set("Message-Id", msg.MessageID)
