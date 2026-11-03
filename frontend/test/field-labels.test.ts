@@ -359,7 +359,7 @@ describe('the contact editor', () => {
       isEditing: true,
     });
     await el.updateComplete;
-    const group = shadow<HTMLElement>(el, '[role="group"]');
+    const group = shadow<HTMLElement>(el, '[role="group"][aria-labelledby="birthday-label"]');
     const caption = el.shadowRoot!.getElementById(group.getAttribute('aria-labelledby')!);
     expect(caption?.textContent?.trim()).toBe('contacts.birthday');
 
@@ -367,6 +367,26 @@ describe('the contact editor', () => {
     await Promise.all(fields.map(f => f.updateComplete));
     expect(fields.map(f => accessibleName(inner(f))).sort()).toEqual([
       'contacts.birthdayDay', 'contacts.birthdayMonth', 'contacts.birthdayYear',
+    ]);
+  });
+
+  it("names each part of the address, and the group they make", async () => {
+    const el = await mount<El>('alps-contact-view', {
+      i18nStore,
+      settingsStore: { getState: () => ({ dateFormat: 'YYYY-MM-DD' }) },
+      contact: { name: 'Ada Lovelace', email: 'ada@example.com', path: '/card/ada.vcf', address_parts: { locality: 'London' } },
+      isEditing: true,
+    });
+    await el.updateComplete;
+    const group = shadow<HTMLElement>(el, '[role="group"][aria-labelledby="address-label"]');
+    const caption = el.shadowRoot!.getElementById(group.getAttribute('aria-labelledby')!);
+    expect(caption?.textContent?.trim()).toBe('contacts.address');
+
+    const fields = Array.from(group.querySelectorAll<El>(FIELDS.join(', ')));
+    await Promise.all(fields.map(f => f.updateComplete));
+    expect(fields.map(f => accessibleName(inner(f)))).toEqual([
+      'contacts.addressStreet', 'contacts.addressExtended', 'contacts.addressPoBox', 'contacts.addressCity',
+      'contacts.addressRegion', 'contacts.addressPostcode', 'contacts.addressCountry',
     ]);
   });
 });

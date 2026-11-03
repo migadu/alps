@@ -49,6 +49,40 @@ type ContactData struct {
 	// The version this was read at. An edit sends it back, and is refused
 	// with 412 if the card has been saved elsewhere since.
 	ETag string `json:"etag,omitempty"`
+	// Address part by part, which the page edits: see setAddressParts.
+	// Absent for a card without one.
+	AddressParts *PostalAddress `json:"address_parts,omitempty"`
+}
+
+// PostalAddress is an ADR's seven components (RFC 6350, 6.3.1) as the page
+// shows and edits them: their escapes undone, and trimmed.
+type PostalAddress struct {
+	POBox      string `json:"po_box,omitempty"`
+	Extended   string `json:"extended,omitempty"`
+	Street     string `json:"street,omitempty"`
+	Locality   string `json:"locality,omitempty"`
+	Region     string `json:"region,omitempty"`
+	PostalCode string `json:"postal_code,omitempty"`
+	Country    string `json:"country,omitempty"`
+}
+
+// components are a's parts in the order of an ADR value's, each trimmed.
+func (a PostalAddress) components() [7]string {
+	parts := [7]string{a.POBox, a.Extended, a.Street, a.Locality, a.Region, a.PostalCode, a.Country}
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+// postalAddressOf is the address f holds, as the page is given it.
+func postalAddressOf(f *vcard.Field) PostalAddress {
+	c := addressComponents(f.Value)
+	part := func(i int) string { return strings.TrimSpace(unescapeText(c[i])) }
+	return PostalAddress{
+		POBox: part(0), Extended: part(1), Street: part(2), Locality: part(3),
+		Region: part(4), PostalCode: part(5), Country: part(6),
+	}
 }
 
 type ContactDetailData struct {
@@ -172,8 +206,11 @@ func extractContactData(card vcard.Card, path string) ContactData {
 	}
 
 	addrStr := ""
+	var addrParts *PostalAddress
 	if f := card.Preferred(vcard.FieldAddress); f != nil {
 		addrStr = addressLine(f)
+		parts := postalAddressOf(f)
+		addrParts = &parts
 	}
 
 	categories := cardCategories(card)
@@ -198,6 +235,7 @@ func extractContactData(card vcard.Card, path string) ContactData {
 		Organization: org,
 		Title:        title,
 		Address:      addrStr,
+		AddressParts: addrParts,
 		Birthday:     birthday,
 		Note:         note,
 		URL:          urlVal,
@@ -498,17 +536,7 @@ func setAddress(card vcard.Card, f *vcard.Field, line string) {
 		return
 	}
 	if line == "" {
-		var kept []*vcard.Field
-		for _, other := range card[vcard.FieldAddress] {
-			if other != f {
-				kept = append(kept, other)
-			}
-		}
-		if len(kept) == 0 {
-			delete(card, vcard.FieldAddress)
-		} else {
-			card[vcard.FieldAddress] = kept
-		}
+		removeField(card, vcard.FieldAddress, f)
 		return
 	}
 
@@ -531,6 +559,66 @@ func setAddress(card vcard.Card, f *vcard.Field, line string) {
 	f.Value = strings.Join(components, ";")
 	delete(f.Params, "LABEL")
 	delete(f.Params, "GEO")
+}
+
+// setAddressParts writes the parts the page sent in place of the address it
+// showed, f, or as the card's address when it had none; with every part
+// empty it removes f. The card's other addresses stay.
+//
+// Only the parts that changed are written, each as the one value typed. A
+// part sent back as the page was given it stays as written, a list among
+// them. The line setAddress reads could not say which part was which once
+// its shape changed, and an edit then made the whole line the street: the
+// city, region, postal code and country went into it, and the post office
+// box, which the line does not show, was lost. The address keeps its
+// parameters, its type among them, but for a label and a position once a
+// part changes, as they describe the address it was.
+func setAddressParts(card vcard.Card, f *vcard.Field, parts PostalAddress) {
+	given := parts.components()
+	if given == ([7]string{}) {
+		if f != nil {
+			removeField(card, vcard.FieldAddress, f)
+		}
+		return
+	}
+	if f == nil {
+		written := make([]string, len(given))
+		for i, part := range given {
+			written[i] = componentValue(part)
+		}
+		addShown(card, vcard.FieldAddress, &vcard.Field{Value: strings.Join(written, ";")})
+		return
+	}
+	components := addressComponents(f.Value)
+	changed := false
+	for i, part := range given {
+		if part != strings.TrimSpace(unescapeText(components[i])) {
+			components[i] = componentValue(part)
+			changed = true
+		}
+	}
+	if !changed {
+		return
+	}
+	f.Value = strings.Join(components, ";")
+	delete(f.Params, "LABEL")
+	delete(f.Params, "GEO")
+}
+
+// removeField takes f out of the card's copies of field, and the field out
+// of the card with its last copy.
+func removeField(card vcard.Card, field string, f *vcard.Field) {
+	var kept []*vcard.Field
+	for _, other := range card[field] {
+		if other != f {
+			kept = append(kept, other)
+		}
+	}
+	if len(kept) == 0 {
+		delete(card, field)
+	} else {
+		card[field] = kept
+	}
 }
 
 // A changed key can use a different representation from the old value. Keep
@@ -657,6 +745,11 @@ func registerRoutes(p *plugin) {
 			// its path, which suits the composer saving each recipient but not
 			// a contact the user is typing in.
 			AllowDuplicate bool `json:"allow_duplicate"`
+			// What the page last held of the address part by part, sent by a
+			// page that edits it so, with the parts in AddressParts. A page
+			// that does not sends the parts it was given back with the rest of
+			// the card, and its edit is the line, Address.
+			AddressPartsFrom *PostalAddress `json:"address_parts_from"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
@@ -1004,9 +1097,19 @@ func registerRoutes(p *plugin) {
 		// region, postal code and country became part of the street, and the
 		// address lost its type and the card its other addresses.
 		if changed("address") {
-			if f := card.Preferred(vcard.FieldAddress); f != nil && unseen("address", addressLine(f)) {
+			f := card.Preferred(vcard.FieldAddress)
+			switch {
+			case req.AddressParts != nil && req.AddressPartsFrom != nil:
+				// As for a line, a preferred address the page did not show, as
+				// after it cleared the one it did, is left alone, and what was
+				// typed is an address of its own.
+				if f != nil && postalAddressOf(f).components() != req.AddressPartsFrom.components() {
+					f = nil
+				}
+				setAddressParts(card, f, *req.AddressParts)
+			case f != nil && unseen("address", addressLine(f)):
 				setAddress(card, nil, req.Address)
-			} else if f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address) {
+			case f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address):
 				setAddress(card, f, req.Address)
 			}
 		}

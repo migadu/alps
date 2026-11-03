@@ -21,7 +21,7 @@ import './contact-view';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
-import { contactsService } from './contacts-service';
+import { contactsService, sameAddressParts } from './contacts-service';
 import { isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
@@ -1121,6 +1121,7 @@ export class ContactsPage extends LitElement {
     for (const field of ['emails', 'phones']) {
       if (Array.isArray(payload[field])) payload[field] = payload[field].map((p: any) => ({ ...p }));
     }
+    if (payload.address_parts) payload.address_parts = { ...payload.address_parts };
     const waiting = this.queuedSaves.find(job => job.target === target);
     if (waiting) waiting.payload = payload;
     else this.queuedSaves.push({ payload, target });
@@ -1173,13 +1174,20 @@ export class ContactsPage extends LitElement {
         // Clearing one displayed copy must not clear the next hidden copy on
         // every later autosave. Only fields changed since our last successful
         // form save express a new editing gesture.
+        // The address by its parts, once the editor has them: it edits them
+        // and not the line.
         const changed_fields = ['organization', 'title', 'note', 'url', 'nickname', 'public_key', 'address']
-          .filter(field => String(payload[field] || '').trim() !== String(before[field] || '').trim());
+          .filter(field => field === 'address' && payload.address_parts
+            ? !sameAddressParts(payload.address_parts, before.address_parts)
+            : String(payload[field] || '').trim() !== String(before[field] || '').trim());
         // And what the page held for each: after a clear, the server's next
         // copy is one the page never showed, and a value typed into the
         // emptied field is added beside it rather than put in its place.
         const changed_from = Object.fromEntries(changed_fields.map(field => [field, String(before[field] || '')]));
-        const request = { ...payload, changed_fields, changed_from, etag: before.etag };
+        const request = {
+          ...payload, changed_fields, changed_from, etag: before.etag,
+          ...(payload.address_parts && { address_parts_from: before.address_parts ?? {} }),
+        };
         for (const field of ['emails', 'phones']) {
           const props = payload[field];
           if (!Array.isArray(props) || props.some((p: any) => !p.id)) continue;
@@ -1196,7 +1204,10 @@ export class ContactsPage extends LitElement {
         // The contact the user is typing in, even when another card has
         // its address: answered with that card's path, the editor went on to
         // edit the other card, without its version or fields.
-        data = await contactsService.createContact({ ...payload, allow_duplicate: true });
+        data = await contactsService.createContact({
+          ...payload, allow_duplicate: true,
+          ...(payload.address_parts && { address_parts_from: {} }),
+        });
       }
 
       const savedContact = { ...before, ...payload, path: data.path || (editing ? before.path : ''), etag: data.etag };

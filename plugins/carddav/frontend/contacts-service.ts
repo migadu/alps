@@ -9,13 +9,42 @@ export interface ContactProperty {
   source_index?: number;
 }
 
+/**
+ * A postal address part by part, as a vCard ADR holds it (RFC 6350, 6.3.1),
+ * its escapes undone. A part left out is empty.
+ */
+export interface AddressParts {
+  po_box?: string;
+  /** The apartment, suite or floor. */
+  extended?: string;
+  street?: string;
+  locality?: string;
+  region?: string;
+  postal_code?: string;
+  country?: string;
+}
+
+/** The parts in the order the editor and the card show them. */
+export const ADDRESS_PARTS = ['street', 'extended', 'po_box', 'locality', 'region', 'postal_code', 'country'] as const;
+
+/** Whether two addresses have the same parts, as the server compares them: trimmed. */
+export function sameAddressParts(a: AddressParts | undefined, b: AddressParts | undefined): boolean {
+  return ADDRESS_PARTS.every(part => (a?.[part] || '').trim() === (b?.[part] || '').trim());
+}
+
 export interface ContactPayload {
   name?: string;
   email?: string;
   emails?: ContactProperty[];
   phone?: string;
   phones?: ContactProperty[];
+  /** The preferred address on one line, its post office box left out. */
   address?: string;
+  /** The same address part by part, which the editor edits. */
+  address_parts?: AddressParts;
+  /** What the page last held of address_parts, sent with them: the server
+   * leaves a preferred address the page did not show alone. */
+  address_parts_from?: AddressParts;
   birthday?: string;
   note?: string;
   title?: string;

@@ -16,6 +16,18 @@ import '../../../frontend/src/components/alps-popup';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { isolatedCaption } from '../../../frontend/src/utils/bidi';
 import { writtenAddress } from '../../../frontend/src/utils/address-display';
+import { ADDRESS_PARTS, type AddressParts } from './contacts-service';
+
+/** The label of each part of a postal address. */
+const ADDRESS_PART_LABELS: Record<keyof AddressParts, string> = {
+  street: 'contacts.addressStreet',
+  extended: 'contacts.addressExtended',
+  po_box: 'contacts.addressPoBox',
+  locality: 'contacts.addressCity',
+  region: 'contacts.addressRegion',
+  postal_code: 'contacts.addressPostcode',
+  country: 'contacts.addressCountry',
+};
 
 /** A birthday's day, month and year as its fields in the editor hold them. */
 type BirthdayFields = Record<'day' | 'month' | 'year', string>;
@@ -226,10 +238,15 @@ export class AlpsContactView extends LitElement {
     .multi-field-row alps-input {
       flex: 1;
     }
-    .birthday-label {
+    .birthday-label, .address-label {
       font-size: 13px;
       color: var(--text-secondary, #4b5563);
       margin-bottom: 6px;
+    }
+    .address-fields {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
     .birthday-fields > * {
       flex: 1;
@@ -420,10 +437,14 @@ export class AlpsContactView extends LitElement {
     this.saveTimeout = setTimeout(() => this.flushPendingSave(), 500);
   }
 
-  private handleInput(field: string, value: string) {
+  private handleInput(field: string, value: unknown) {
     this.editForm = { ...this.editForm, [field]: value };
     this.isDirty = true;
     this.debouncedSave();
+  }
+
+  private handleAddressInput(part: keyof AddressParts, value: string) {
+    this.handleInput('address_parts', { ...this.editForm.address_parts, [part]: value });
   }
 
   private handleBirthdayInput(field: keyof BirthdayFields, value: string) {
@@ -545,6 +566,40 @@ export class AlpsContactView extends LitElement {
     // That day where the reader is: read as UTC midnight, which west of UTC
     // is the evening before, the birthday showed a day early.
     return formatDateOnly(dateOf(parts.year, parts.month, parts.day)!, dateFormat);
+  }
+
+  /**
+   * The postal address as the card shows it: its parts one to a line, as on
+   * an envelope. On one line, as the server gives it too, a post office box
+   * was left out, and a street that holds a comma could not be told from the
+   * city after it.
+   */
+  private get shownAddress(): string {
+    const parts: AddressParts | undefined = this.contact?.address_parts;
+    if (!parts) return this.contact?.address || '';
+    return ADDRESS_PARTS.map(part => (parts[part] || '').trim()).filter(Boolean).join('\n');
+  }
+
+  /**
+   * The postal address part by part. Edited as one line, the server could
+   * tell the parts apart again only while the line kept its shape: a part
+   * added or emptied made the whole line the street, and the post office
+   * box, which the line leaves out, was lost.
+   */
+  private renderAddress() {
+    const t = (key: string) => this.i18nStore?.t(key) || '';
+    const parts: AddressParts = this.editForm.address_parts || {};
+    return html`
+      <div role="group" aria-labelledby="address-label">
+        <div class="address-label" id="address-label">${t('contacts.address')}</div>
+        <div class="address-fields">
+          ${ADDRESS_PARTS.map(part => html`
+            <alps-input class="address-${part.replace('_', '-')}" placeholder=${t(ADDRESS_PART_LABELS[part])} label=${t(ADDRESS_PART_LABELS[part])}
+              .value=${parts[part] || ''} @input=${(e: any) => this.handleAddressInput(part, e.target.value)}></alps-input>
+          `)}
+        </div>
+      </div>
+    `;
   }
 
   /** The birthday's day, month and year, in the order the date format puts them. */
@@ -740,7 +795,7 @@ export class AlpsContactView extends LitElement {
               + ${this.i18nStore?.t('contacts.addPhone') || 'Add Phone'}
             </button>
 
-            <alps-input placeholder="${this.i18nStore?.t('contacts.address')}" .value=${this.editForm.address || ''} @input=${(e: any) => this.handleInput('address', e.target.value)}></alps-input>
+            ${this.renderAddress()}
             <alps-input placeholder="${this.i18nStore?.t('contacts.url')}" type="url" .value=${this.editForm.url || ''} @input=${(e: any) => this.handleInput('url', e.target.value)}></alps-input>
             ${this.renderBirthday()}
             <textarea class="edit-textarea" dir="auto" placeholder="${this.i18nStore?.t('contacts.notes')}" .value=${this.editForm.note || ''} @input=${(e: any) => this.handleInput('note', e.target.value)}></textarea>
@@ -771,7 +826,7 @@ export class AlpsContactView extends LitElement {
               ? this.contact.phones.map((p: any) => this.renderDetailRow(this.formatTypeLabel(p.type, this.i18nStore?.t('contacts.phone') || 'Phone'), p.value, false, true))
               : this.renderDetailRow(this.i18nStore?.t('contacts.phone') || 'Phone', this.contact.phone, false, true)
             }
-            ${this.renderDetailRow(this.i18nStore?.t('contacts.address'), this.contact.address)}
+            ${this.renderDetailRow(this.i18nStore?.t('contacts.address'), this.shownAddress)}
             ${this.renderDetailRow(this.i18nStore?.t('contacts.birthday'), this.formattedBirthday)}
             ${this.renderDetailRow(this.i18nStore?.t('contacts.url'), this.contact.url)}
             ${this.renderDetailRow(this.i18nStore?.t('contacts.notes'), this.contact.note)}
