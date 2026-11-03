@@ -1000,7 +1000,7 @@ const NAMES_IN_SENTENCES: Record<string, string[]> = {
   fr: ['Paramètres', 'Réponse automatique', 'Filtres', 'Reply-To', 'Cci', 'Internet', 'Ko', 'A-Z', 'Z-A'],
   es: ['Bandeja de entrada', 'Borradores', 'Papelera', 'Configuración', 'Respuesta automática', 'Filtros', 'Reply-To', 'Internet', 'A-Z', 'Z-A'],
   // The Drafts folder only after "em": elsewhere "rascunhos" is the plural of a draft.
-  pt: ['Lixeira', 'em Rascunhos', 'Configurações', 'Resposta automática', 'Filtros', 'Cco', 'Internet', 'A-Z', 'Z-A'],
+  pt: ['Lixo', 'em Rascunhos', 'Definições', 'Resposta automática', 'Filtros', 'Bcc', 'Internet', 'A-Z', 'Z-A'],
 };
 
 const nameIn = (name: string) => new RegExp(`(?<![\\p{L}-])${name}(?![\\p{L}-])`, 'gu');
@@ -1065,10 +1065,10 @@ describe('capitals in Italian, French, Spanish and Portuguese', () => {
     expect(portuguese('Gerar Novo Par de Chaves')).toEqual(['Novo', 'Par', 'Chaves']);
     expect(portuguese('Endereço de E-mail')).toEqual(['E']);
     expect(portuguese('Descartar Rascunhos?')).toEqual(['Rascunhos']);
-    expect(portuguese('Não é possível criptografar: Chaves públicas ausentes para:\n{keys}')).toEqual(['Chaves']);
+    expect(portuguese('Não é possível encriptar: Faltam chaves públicas para:\n{keys}')).toEqual(['Faltam']);
     for (const text of [
-      'Tem certeza de que deseja mover "{folder}" para a Lixeira?', 'Sempre me enviar Cco em e-mails enviados',
-      'Não foi possível excluir o rascunho do servidor e ele ainda está em Rascunhos.', 'Classificar A-Z',
+      'Tem a certeza de que pretende mover "{folder}" para o Lixo?', 'Incluir-me sempre em Bcc nos e-mails enviados',
+      'Não foi possível eliminar o rascunho do servidor e este continua em Rascunhos.', 'Ordenar A-Z',
     ]) {
       expect(portuguese(text), text).toEqual([]);
     }
