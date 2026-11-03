@@ -257,6 +257,9 @@ export class SettingsWindow extends LitElement {
   /** Where focus was when the window opened, to give back when it closes. */
   private previouslyFocused: Element | null = null;
   private hadSectionFocus = false;
+  /** The last section shown, kept while a phone shows the list instead: Back
+   * to the list puts focus on its row (see `focusSection`). */
+  private lastSection = '';
 
   private _handleResize = () => {
     this.isMobile = window.innerWidth <= MOBILE_MAX_WIDTH;
@@ -339,14 +342,23 @@ export class SettingsWindow extends LitElement {
 
   protected updated() {
     if (this.hadSectionFocus && !this.shadowRoot?.activeElement) this.focusSection();
+    if (this.shownCategory) this.lastSection = this.shownCategory;
   }
 
+  /**
+   * Focus onto the section shown, or on a phone showing one, the way back to
+   * the list. On a phone showing the list, onto the row of the section just
+   * left: General, the first row, was where Back put the keyboard, whichever
+   * section the user had been in.
+   */
   private focusSection() {
     const root = this.shadowRoot!;
     if (root.activeElement) return;
+    const rows = [...root.querySelectorAll<HTMLElement>('alps-category-item')];
     const target = root.querySelector('alps-category-item[active]')
       ?? root.querySelector('.back-to-sections')
-      ?? root.querySelector('alps-category-item');
+      ?? rows.find((row) => row.dataset.category === this.lastSection)
+      ?? rows[0];
     (target as HTMLElement | null)?.focus();
   }
 
@@ -480,6 +492,7 @@ export class SettingsWindow extends LitElement {
     return html`
       <alps-category-item
         ?active=${category === id}
+        data-category=${id}
         @click=${() => this.selectCategory(id)}
         .icon=${icon}
       >${label}</alps-category-item>`;

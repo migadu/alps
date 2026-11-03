@@ -322,5 +322,6 @@ test('phone keyboard navigation moves focus between the section list and its bac
   await expect(back).toBeFocused();
   await back.press('Enter');
   await expect(sections(page)).toBeVisible();
-  await expect(section(page, 'General')).toBeFocused();
+  // Onto the section just left, not the first row.
+  await expect(section(page, 'Appearance')).toBeFocused();
 });
