@@ -2973,6 +2973,10 @@ func handleComposeNew(ctx *alps.Context) error {
 		MessageID:  ctx.FormValue("message_id"),
 	}
 
+	if _, err := replyToAddress(msg.ReplyTo); err != nil {
+		return alps.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
 	if msg.MessageID == "" {
 		var hdr mail.Header
 		hdr.GenerateMessageID()
@@ -4799,7 +4803,10 @@ func handleSettings(ctx *alps.Context) error {
 				settings.SoundNotifications = *req.SoundNotifications
 			}
 			if req.ReplyTo != nil {
-				settings.ReplyTo = *req.ReplyTo
+				if _, err := replyToAddress(*req.ReplyTo); err != nil {
+					return alps.NewHTTPError(http.StatusBadRequest, err.Error())
+				}
+				settings.ReplyTo = strings.TrimSpace(*req.ReplyTo)
 			}
 			if req.BccMyself != nil {
 				settings.BccMyself = *req.BccMyself

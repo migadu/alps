@@ -146,7 +146,8 @@ func TestOutgoingMessage_ReplyHeaders(t *testing.T) {
 	msg.ReplyTo = "team@example.com"
 	msg.InReplyTo = "<original@example.com>"
 	h, _, _ := render(t, msg)
-	if h.Get("Reply-To") != "team@example.com" || h.Get("In-Reply-To") != "<original@example.com>" {
+	replyTo, err := h.AddressList("Reply-To")
+	if err != nil || len(replyTo) != 1 || replyTo[0].Address != "team@example.com" || h.Get("In-Reply-To") != "<original@example.com>" {
 		t.Errorf("Reply-To = %q, In-Reply-To = %q", h.Get("Reply-To"), h.Get("In-Reply-To"))
 	}
 	if refs := h.Get("References"); refs != "<original@example.com>" {

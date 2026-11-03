@@ -220,7 +220,7 @@ const RETRY_DELAYS_MS = [5_000, 30_000, 120_000, 300_000];
 /** How a save ended: taken; refused, which the same request would be again;
  * worth another try, after the wait the server asked for if it named one; or
  * answered after its session ended, which is nobody's business now. */
-type SaveOutcome = 'saved' | 'refused' | 'ended' | { retryAfterMs: number | null };
+type SaveOutcome = 'saved' | 'refused' | 'invalid-reply-to' | 'ended' | { retryAfterMs: number | null };
 
 /** `Retry-After` in milliseconds: seconds, or a date. */
 function retryAfterMs(response: Response): number | null {
@@ -843,13 +843,18 @@ export class SettingsStore extends EventTarget {
         this.failures = 0;
         this.cancelRetry();
         this.noteSaved(body);
-      } else if (outcome !== 'refused') {
+      } else if (typeof outcome === 'object') {
         // Said once for a run of failures, not once for every retry of it.
         if (this.failures === 0) this.reportSaveFailure();
         this.retryLater(outcome.retryAfterMs);
         return;
       } else {
-        this.reportSaveFailure();
+        this.reportSaveFailure(outcome === 'invalid-reply-to' ? 'settings.identity.identityInvalid' : 'settings.saveFailed');
+        if (outcome === 'invalid-reply-to' && this.state.replyTo === sent.get('replyTo')) {
+          this.state = { ...this.state, replyTo: this.record?.reply_to ?? '' };
+          this.saveSettings();
+          this.notify();
+        }
       }
       // Taken, or refused outright, which the same values would be again.
       // A refused setting kept unsaved went with every later save and had it
@@ -859,6 +864,10 @@ export class SettingsStore extends EventTarget {
       for (const key of keys) {
         const entry = this.unsaved.get(key);
         if (!entry) continue;
+        if (outcome === 'invalid-reply-to') {
+          if (key !== 'replyTo') { this.savePending = true; continue; }
+          if (this.state.replyTo === (this.record?.reply_to ?? '')) { settled.push(key); continue; }
+        }
         if (sameValue(this.state[key], sent.get(key))) {
           settled.push(key);
         } else if (outcome === 'saved' && this.record) {
@@ -947,6 +956,10 @@ export class SettingsStore extends EventTarget {
       // was also the only one that could fail without saying so.
       if (!response.ok) {
         Logger.error('Failed to save backend settings', response.status);
+        if (response.status === 400 && Object.hasOwn(body, 'reply_to')) {
+          const error = await response.json().catch(() => ({}));
+          if (error.error === 'invalid_reply_to') return 'invalid-reply-to';
+        }
         // Worth another try: a server in trouble, a timeout, a rate limit. Not
         // worth one: a refusal of these values, too large or malformed, which
         // the same request would get again.
@@ -963,10 +976,10 @@ export class SettingsStore extends EventTarget {
 
   /** Announced on the window rather than returned, because `updateSettings` is
    * called from a dozen controls that do not await it. */
-  private reportSaveFailure() {
+  private reportSaveFailure(key = 'settings.saveFailed') {
     window.dispatchEvent(new CustomEvent('show-toast', {
       detail: {
-        message: this.translate('settings.saveFailed', 'Could not save that setting — it may not survive signing out'),
+        message: this.translate(key, key === 'settings.identity.identityInvalid' ? 'Enter an email address, like name@example.com.' : 'Could not save that setting — it may not survive signing out'),
         type: 'error',
         duration: 6000
       }
