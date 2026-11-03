@@ -768,6 +768,37 @@ describe('colour schemes', () => {
   });
 });
 
+describe("the body's padding", () => {
+  // The reader gives a plain-text body 24px, and 16px at its own
+  // `@media (max-width: 768px)`, which asks the app window. The frame's own
+  // sheet asked the same question of the FRAME, so a reader pane narrower
+  // than 768px on a desktop window took the phone's padding.
+  // e2e/reading.spec.ts measures what a browser paints.
+  function atWindowWidth<T>(width: number, run: () => T): T {
+    const was = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
+    try {
+      return run();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { value: was, configurable: true });
+    }
+  }
+  const sheets = (html: string) => [...parse(html).querySelectorAll('style')].map((sheet) => sheet.textContent ?? '').join('\n');
+
+  it('keeps 24px in a desktop window, with no query the frame answers by its own width', () => {
+    const css = atWindowWidth(1280, () => sheets(blocked('<p>hi</p>')));
+    expect(css).toMatch(/body\s*\{[^}]*padding:\s*24px/);
+    expect(css).not.toMatch(/padding:\s*16px/);
+    expect(css).not.toMatch(/max-width:\s*768px/);
+  });
+
+  it('takes 16px in a phone window, as the reader does', () => {
+    const css = atWindowWidth(390, () => sheets(blocked('<p>hi</p>')));
+    expect(css).toMatch(/body\s*\{\s*padding:\s*16px !important;?\s*\}/);
+    expect(css).not.toMatch(/max-width:\s*768px/);
+  });
+});
+
 describe('links', () => {
   it('hands the opened page no opener and no referrer, overriding the sender', () => {
     // The reader iframe allows popups to escape the sandbox; an opener handle

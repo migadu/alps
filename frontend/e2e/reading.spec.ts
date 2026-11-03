@@ -162,6 +162,43 @@ test("an HTML message renders as markup, not as source", async ({ page }) => {
   await expect(bodyText(page)).toHaveCount(0);
 });
 
+/** The padding the open message's HTML body is painted with. */
+function framePadding(frame: Locator): Promise<string> {
+  return frame.evaluate((el) => {
+    const body = (el as HTMLIFrameElement).contentDocument?.body;
+    return body ? getComputedStyle(body).paddingTop : "";
+  });
+}
+
+/** Delivers an HTML message and opens it. */
+async function openHtml(page: Page, subject: string): Promise<Locator> {
+  await deliver({
+    subject,
+    raw: rfc822(subject, ["Content-Type: text/html; charset=utf-8"], "<html><body><p>Notes on the engine.</p></body></html>"),
+  });
+  await login(page);
+  await openMessage(page, subject);
+  const frame = bodyFrame(page);
+  await expect(frame).toBeVisible();
+  return frame;
+}
+
+test("an HTML body keeps the reader's 24px in a reader pane narrower than a phone's window", async ({ page }) => {
+  // A plain-text body takes 24px at this window width, and 16px only in a
+  // phone's window. The frame's own sheet asked the frame instead, so a
+  // reader pane under 768px on a desktop window gave an HTML body 16px.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const frame = await openHtml(page, `Pane padding ${Date.now()}`);
+  expect((await frame.boundingBox())!.width).toBeLessThan(768);
+  await expect.poll(() => framePadding(frame)).toBe("24px");
+});
+
+test("an HTML body takes 16px in a phone's window, as a plain-text one does", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const frame = await openHtml(page, `Phone padding ${Date.now()}`);
+  await expect.poll(() => framePadding(frame)).toBe("16px");
+});
+
 test("a message with an attachment lists it and links at its MIME part", async ({ page }) => {
   const subject = `Attach ${Date.now()}`;
   await deliver({
