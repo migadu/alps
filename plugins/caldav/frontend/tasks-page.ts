@@ -1,4 +1,4 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
@@ -559,10 +559,15 @@ export class TasksPage extends LitElement {
                                     <nav class="smart-lists">
                                         ${SMART_LISTS.map(list => {
                                             const count = this.countFor(list.id);
+                                            // Two rows are current at once: the view open
+                                            // (the page) and, below, the list it is
+                                            // narrowed to.
+                                            const open = list.id === this.selectedList && !this.searchQuery;
                                             return html`
                                                 <button
-                                                    class="nav-item smart-list ${list.id === this.selectedList && !this.searchQuery ? 'active' : ''}"
+                                                    class="nav-item smart-list ${open ? 'active' : ''}"
                                                     data-list=${list.id}
+                                                    aria-current=${open ? 'page' : nothing}
                                                     title=${t(list.label)}
                                                     @click=${() => this.selectList(list.id)}
                                                 >
@@ -580,6 +585,7 @@ export class TasksPage extends LitElement {
                                                 <button
                                                     class="nav-item task-list ${list.path === this.selectedCalendar ? 'active' : ''}"
                                                     data-path=${list.path}
+                                                    aria-current=${list.path === this.selectedCalendar ? 'true' : nothing}
                                                     @click=${() => this.selectCalendar(list.path)}
                                                 >
                                                     <span class="list-dot" style="background: ${list.color}"></span>
