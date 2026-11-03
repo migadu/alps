@@ -111,31 +111,29 @@ func TestSaveWritesAnEditedAddressIntoItsParts(t *testing.T) {
 	moved.Value = ";;1 Main St;Shelbyville;IL;62701;USA"
 	expectAddresses(t, stored, moved, work())
 
-	// The post office box, which the line does not show, stays as well.
+	// The post office box has its own position in the displayed line.
 	box := work()
 	box.Value = "PO Box 7;Floor 3;20 Market Sq;Chicago;IL;60601;USA"
-	stored = saveAddress(t, withAddresses(box), address("20 Market Sq, Floor 4, Chicago, IL, 60601, USA"))
+	stored = saveAddress(t, withAddresses(box), address("20 Market Sq, Floor 4, PO Box 7, Chicago, IL, 60601, USA"))
 	box.Value = "PO Box 7;Floor 4;20 Market Sq;Chicago;IL;60601;USA"
 	expectAddresses(t, stored, box)
 }
 
 // A line of another shape cannot be told apart into parts, so it is the
-// street, as before, but of the same address: its type stays, and so do the
-// other addresses. Its label, which describes the old address, does not.
-func TestSaveWritesAReshapedAddressAsItsStreet(t *testing.T) {
+// street of a new address. The original components and metadata remain.
+func TestSaveKeepsAReshapedAddressBesideItsOriginal(t *testing.T) {
 	labelled := home()
 	labelled.Params["LABEL"] = []string{"1 Main St\nSpringfield IL 62701"}
 	stored := saveAddress(t, withAddresses(labelled, work()), address("742 Evergreen Terrace, Springfield"))
-	want := home()
-	want.Value = ";;742 Evergreen Terrace, Springfield;;;;"
-	expectAddresses(t, stored, want, work())
+	want := &vcard.Field{Value: ";;742 Evergreen Terrace, Springfield;;;;"}
+	expectAddresses(t, stored, want, labelled, work())
 
 	// A part that holds a comma makes the line's commas no guide to its parts.
 	comma := home()
 	comma.Value = ";;1 Main St, Apt 4;Springfield;IL;62701;USA"
 	stored = saveAddress(t, withAddresses(comma), address("1 Main St, Apt 4, Shelbyville, IL, 62701"))
 	want.Value = ";;1 Main St, Apt 4, Shelbyville, IL, 62701;;;;"
-	expectAddresses(t, stored, want)
+	expectAddresses(t, stored, want, comma)
 }
 
 // Clearing the address removes the one the page showed; a card without one

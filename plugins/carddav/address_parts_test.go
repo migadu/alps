@@ -49,7 +49,7 @@ func rawParts(t *testing.T, adr string, edit func(*PostalAddress)) string {
 }
 
 // The page is given the preferred address part by part, the post office box
-// among them, which its one line leaves out.
+// among them, as in the one-line view.
 func TestContactCarriesTheAddressParts(t *testing.T) {
 	card := rawGrace(`ADR;TYPE=WORK:PO Box 7;Floor 3;20 Market Sq\, Unit 2;Chicago;IL;60601;USA`, "ADR;TYPE=HOME:;;1 Main St;Springfield;IL;62701;USA")
 	got := newHarnessWrapping(t, card.wrap).opened(card.path).AddressParts
