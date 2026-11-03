@@ -604,10 +604,13 @@ func TestHTTP_AFailureDoesNotDescribeTheServer(t *testing.T) {
 	s.login()
 	r := s.do("DELETE", "/mailboxes/INBOX", nil)
 	s.expect(r, http.StatusInternalServerError)
-	var body map[string]string
+	var body struct {
+		Error string
+		Code  int
+	}
 	r.json(t, &body)
-	if body["error"] != "server_error" || len(body) != 1 {
-		t.Errorf("body = %s, want only the slug", r.body)
+	if body.Error != "An internal error occurred" || body.Code != http.StatusInternalServerError {
+		t.Errorf("body = %s, want the shared sanitized server error", r.body)
 	}
 }
 
