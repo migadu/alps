@@ -109,3 +109,24 @@ describe('a toast drawn again elsewhere', () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 });
+
+
+describe('independent toast deadlines', () => {
+  it('keeps a later toast until its own deadline when earlier toasts leave', async () => {
+    history.replaceState(null, '', '#/nowhere');
+    vi.useFakeTimers();
+    const root = await mount<El>('app-root');
+    const lastDismiss = vi.fn();
+    toast('First', { duration: 1000 });
+    toast('Second', { duration: 4000 });
+    toast('Third', { duration: 8000, dismissFn: lastDismiss });
+    await root.updateComplete;
+    await vi.advanceTimersByTimeAsync(1400);
+    await root.updateComplete;
+    expect(messages(root.shadowRoot!)).toEqual(['Second', 'Third']);
+    await vi.advanceTimersByTimeAsync(3000);
+    await root.updateComplete;
+    expect(lastDismiss).not.toHaveBeenCalled();
+    expect(messages(root.shadowRoot!)).toEqual(['Third']);
+  });
+});

@@ -46,6 +46,14 @@ describe('the identities of discarded inline parts', () => {
     });
   });
 
+  it.each(['text', 'html'] as const)('normalizes bracketed Content-IDs after a %s save', format => {
+    const sent = { ...saved, format, initialHtml: html, html: format === 'html' ? '<p>Edited</p>' : html,
+      attachments: [file, { ...image, contentId: '<image>' }] };
+    expect(discardedInlineAfterSave({ ...sent, html, discardedInlineIds: ['<earlier>'] }, sent)).toEqual({
+      html: '<img><a href="cid:file">Download report</a>', discardedInlineIds: ['earlier', 'image'],
+    });
+  });
+
   it('carries the stable Content-ID through draft part-path renumbering', () => {
     const mapped = reconcileSavedAttachments([image], [image], [{ name: 'chart.png', inline: true, partPath: '1.2', source: { partPath: '2' } }]);
     expect(mapped).toEqual([{ name: 'chart.png', inline: true, partPath: '1.2', contentId: 'image' }]);

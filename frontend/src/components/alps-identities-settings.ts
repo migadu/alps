@@ -267,12 +267,14 @@ export class AlpsIdentitiesSettings extends LitElement implements UnsavedChanges
                 <span class="sender">${isolatedMailbox({ name: identity.name || accountName, email: identity.address })}</span>
                 <alps-icon-btn
                   class="edit"
+                  ?disabled=${this.editing !== null}
                   icon="pen"
                   title=${this.t('settings.identity.editIdentity', { address: identity.address })}
                   @click=${() => this.openForm(index)}
                 ></alps-icon-btn>
                 <alps-icon-btn
                   class="remove"
+                  ?disabled=${this.editing !== null}
                   icon="trash"
                   title=${this.t('settings.identity.removeIdentity', { address: identity.address })}
                   @click=${() => this.removeAt(index)}
@@ -282,7 +284,7 @@ export class AlpsIdentitiesSettings extends LitElement implements UnsavedChanges
           </ul>
         ` : nothing}
         ${this.editing === 'new' ? this.renderForm() : html`
-          <alps-button class="add" variant="normal" icon="plusBold" ?disabled=${full} @click=${() => this.openForm('new')}>
+          <alps-button class="add" variant="normal" icon="plusBold" ?disabled=${full || this.editing !== null} @click=${() => this.openForm('new')}>
             ${this.t('settings.identity.addIdentity')}
           </alps-button>
         `}

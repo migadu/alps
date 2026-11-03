@@ -165,6 +165,26 @@ describe('editing and removing', () => {
 });
 
 describe('what is typed and not saved', () => {
+  it('keeps the open edit until Save or Cancel instead of offering conflicting list actions', async () => {
+    const el = await list([{ name: 'Engines', address: 'engines@work.example' }, { name: '', address: 'ada@lists.example' }]);
+    await click(shadowAll(el, 'alps-icon-btn.edit')[0], el);
+    type(el, 'name', 'Unsaved engines');
+    await el.updateComplete;
+    expect(el.hasUnsavedChanges).toBe(true);
+    for (const action of shadowAll(el, 'alps-icon-btn.edit, alps-icon-btn.remove, alps-button.add')) {
+      expect(button(action).disabled).toBe(true);
+      button(action).click();
+    }
+    await el.updateComplete;
+    expect(el.settingsStore.updates).toEqual([]);
+    expect(shadowAll<El>(el, '.identity-form alps-input')[0].value).toBe('Unsaved engines');
+    await save(el);
+    expect(el.settingsStore.updates.at(-1)).toEqual({ identities: [
+      { name: 'Unsaved engines', address: 'engines@work.example' }, { name: '', address: 'ada@lists.example' },
+    ] });
+    expect(button(shadow(el, 'alps-button.add')).disabled).toBe(false);
+  });
+
   it('is unsaved, so the window asks before it is dropped', async () => {
     const el = await list();
     expect(el.hasUnsavedChanges).toBe(false);
