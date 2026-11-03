@@ -89,6 +89,12 @@ export class CalendarMonthView extends LitElement {
             background-color: var(--error, #ef4444);
             color: #ffffff;
         }
+        @media (forced-colors: active) {
+            .date-number.today {
+                outline: 2px solid CanvasText;
+                outline-offset: -2px;
+            }
+        }
 
         .event-chip {
             background-color: var(--accent-fill, #2563eb);

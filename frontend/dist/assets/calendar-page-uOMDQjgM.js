@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-CXIqsLEv.js";import{t as c}from"./vendor-Bey7gDeL.js";import{At as l,Ct as u,X as d,_ as f,_t as p,a as m,et as h,g,gt as _,h as v,ht as y,kt as b,m as x,o as S,pt as C,s as ee,vt as w}from"./index-YFTOa1a-.js";import"./alps-address-input-Cn4ixgYF.js";import{S as T,a as E,c as D,i as O,l as k,m as A,n as j,o as M,r as N,s as P,t as F,u as I}from"./task-modal-BacDj1Vs.js";var L=class extends i{constructor(...e){super(...e),this.options=[],this.value=``}static{this.styles=[_,e`
+import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-CXIqsLEv.js";import{t as c}from"./vendor-Bey7gDeL.js";import{At as l,Ct as u,X as d,_ as f,_t as p,a as m,et as h,g,gt as _,h as v,ht as y,kt as b,m as x,o as S,pt as C,s as ee,vt as w}from"./index-BrUcBc4y.js";import"./alps-address-input-DUPa5N72.js";import{S as T,a as E,c as D,i as O,l as k,m as A,n as j,o as M,r as N,s as P,t as F,u as I}from"./task-modal-Ctwxv8ZH.js";var L=class extends i{constructor(...e){super(...e),this.options=[],this.value=``}static{this.styles=[_,e`
     :host {
       display: inline-flex;
       background-color: var(--bg-secondary, #f3f4f6);
@@ -320,6 +320,10 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-CXIqsL
            which forced colors repaint as the page: there it takes the text's
            system colour. */
         @media (forced-colors: active) {
+            .mini-day.today {
+                outline: 2px solid CanvasText;
+                outline-offset: -2px;
+            }
             .mini-day.has-event .day-num::after,
             .mini-day.today.has-event .day-num::after {
                 forced-color-adjust: none;
@@ -655,6 +659,12 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-CXIqsL
         .time-grid-day-number.today {
             background-color: var(--error, #ef4444);
             color: #ffffff;
+        }
+        @media (forced-colors: active) {
+            .time-grid-day-number.today {
+                outline: 2px solid CanvasText;
+                outline-offset: -2px;
+            }
         }
 
         .all-day-row {
@@ -992,6 +1002,12 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-CXIqsL
             background-color: var(--error, #ef4444);
             color: #ffffff;
         }
+        @media (forced-colors: active) {
+            .date-number.today {
+                outline: 2px solid CanvasText;
+                outline-offset: -2px;
+            }
+        }
 
         .event-chip {
             background-color: var(--accent-fill, #2563eb);
@@ -1277,12 +1293,23 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-CXIqsL
             margin-bottom: 12px;
             font-weight: 500;
             font-size: 14px;
+            gap: 4px;
+        }
+
+        .mini-header alps-icon-btn { flex-shrink: 0; }
+        .month-caption {
+            flex: 1;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
         }
     `}updated(e){e.has(`selectedDate`)&&this.selectedDate&&(this.viewDate=new Date(this.selectedDate))}changeMonth(e){this.viewDate=new Date(this.viewDate.getFullYear(),this.viewDate.getMonth()+e,1)}render(){let e=this.viewDate.getFullYear(),t=this.viewDate.getMonth(),n=this.i18nStore?.t(`calendar.months.${t}`);return s`
             <div class="mini-calendar-wrapper">
                 <div class="mini-header">
                     <alps-icon-btn icon="caretLeft" title=${this.i18nStore?.t(`calendar.previousMonth`)} @click=${()=>this.changeMonth(-1)}></alps-icon-btn>
-                    <span>${n} ${e}</span>
+                    <span class="month-caption" title=${`${n} ${e}`}>${n} ${e}</span>
                     <alps-icon-btn icon="caretRight" title=${this.i18nStore?.t(`calendar.nextMonth`)} @click=${()=>this.changeMonth(1)}></alps-icon-btn>
                 </div>
                 <!-- The month's date-selected bubbles out of this shadow root
@@ -1512,6 +1539,9 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-CXIqsL
             .calendar-item:hover .calendar-actions {
                 display: flex;
             }
+        }
+        @media (hover: none) {
+            .calendar-actions { display: flex; }
         }
         /* Shown while the keyboard is in its row, so that Tab reaches the
            menu from the calendar's checkbox: a button inside display: none is

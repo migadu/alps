@@ -1,4 +1,4 @@
-import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,t as l,v as u}from"./lit-CXIqsLEv.js";import{$ as d,A as f,At as p,B as m,C as ee,D as h,E as te,F as ne,G as re,H as g,I as ie,J as _,K as v,L as ae,M as y,Mt as b,N as oe,Nt as x,O as se,P as ce,Q as S,R as C,S as w,T as le,U as ue,V as de,W as fe,_ as pe,b as me,c as he,d as T,et as E,f as D,gt as O,ht as k,j as A,k as ge,kt as j,l as M,nt as _e,q as ve,rt as N,tt as ye,u as be,v as xe,w as Se,x as Ce,y as P,z as F}from"./index-YFTOa1a-.js";import"./alps-address-input-Cn4ixgYF.js";import{_ as we,a as Te,c as Ee,d as De,f as Oe,g as ke,h as I,i as Ae,l as je,m as L,n as Me,o as Ne,p as R,r as Pe,s as z,t as Fe,u as Ie,v as B}from"./editor-juOsy0gw.js";import"./emoji-mt3P5CZ8.js";var V=`data-alps-quote-slot`,H=`<div ${V}=""></div>`,U=new WeakMap,W=new WeakMap,G=Ee.create({name:`quotedMessage`,group:`block`,atom:!0,draggable:!1,priority:1e3,addOptions(){return{themed:()=>!0,inlineImages:()=>({mailbox:``,messageUid:``}),discarded:()=>[]}},addAttributes(){return{html:{default:``,rendered:!1,parseHTML:()=>null}}},parseHTML(){return[{tag:`div[${T}]`,getAttrs:e=>{let t=ae(e.outerHTML);return t?{html:t}:!1}}]},renderHTML(){return[`div`,{[V]:``}]},renderText({node:e}){let t=U.get(e);return t===void 0&&(t=M(e.attrs.html),U.set(e,t)),t},addKeyboardShortcuts(){let e=e=>()=>{let{state:t}=this.editor,{selection:n}=t;if(!(n instanceof ke)||!n.$cursor)return!1;let r=n.$cursor;if(e===`after`){if(r.parentOffset<r.parent.content.size)return!1;let e=r.after();return t.doc.nodeAt(e)?.type===this.type?this.editor.commands.setNodeSelection(e):!1}if(r.parentOffset>0)return!1;let i=t.doc.resolve(r.before()).nodeBefore;return i?.type===this.type?this.editor.commands.setNodeSelection(r.before()-i.nodeSize):!1};return{Backspace:e(`before`),"Mod-Backspace":e(`before`),"Shift-Backspace":e(`before`),Delete:e(`after`),"Mod-Delete":e(`after`)}},addProseMirrorPlugins(){let e=B.fromSchema(this.editor.schema),t=new B({...e.nodes,[this.name]:e=>Re(e.attrs.html)},e.marks);return[new L({key:new I(this.name),props:{clipboardSerializer:t,transformPastedHTML:ze},appendTransaction:(e,t,n)=>{let r=this.options.discarded();if(!r.length||!e.some(e=>e.docChanged))return null;let i=new Set(r),a=n.tr;return n.doc.descendants((e,t)=>{if(e.type!==this.type||W.get(e)===r)return;let n=F(e.attrs.html,i);n===e.attrs.html?W.set(e,r):a.setNodeMarkup(t,void 0,{...e.attrs,html:n})}),a.docChanged?a.setMeta(`addToHistory`,!1):null}})]},addNodeView(){let{themed:t,inlineImages:n}=this.options;return({node:r})=>{let i=document.createElement(`div`);i.className=`quoted-message`,i.contentEditable=`false`;let a=ie(r.attrs.html,{...n(),allowRemoteResources:!1}),o=t();return e(u`<iframe
+import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,t as l,v as u}from"./lit-CXIqsLEv.js";import{$ as d,A as f,At as p,B as m,C as ee,D as h,E as te,F as ne,G as re,H as g,I as ie,J as _,K as v,L as ae,M as y,Mt as b,N as oe,Nt as x,O as se,P as ce,Q as S,R as C,S as w,T as le,U as ue,V as de,W as fe,_ as pe,b as me,c as he,d as T,et as E,f as D,gt as O,ht as k,j as A,k as ge,kt as j,l as M,nt as _e,q as ve,rt as N,tt as ye,u as be,v as xe,w as Se,x as Ce,y as P,z as F}from"./index-BrUcBc4y.js";import"./alps-address-input-DUPa5N72.js";import{_ as we,a as Te,c as Ee,d as De,f as Oe,g as ke,h as I,i as Ae,l as je,m as L,n as Me,o as Ne,p as R,r as Pe,s as z,t as Fe,u as Ie,v as B}from"./editor-juOsy0gw.js";import"./emoji-mt3P5CZ8.js";var V=`data-alps-quote-slot`,H=`<div ${V}=""></div>`,U=new WeakMap,W=new WeakMap,G=Ee.create({name:`quotedMessage`,group:`block`,atom:!0,draggable:!1,priority:1e3,addOptions(){return{themed:()=>!0,inlineImages:()=>({mailbox:``,messageUid:``}),discarded:()=>[]}},addAttributes(){return{html:{default:``,rendered:!1,parseHTML:()=>null}}},parseHTML(){return[{tag:`div[${T}]`,getAttrs:e=>{let t=ae(e.outerHTML);return t?{html:t}:!1}}]},renderHTML(){return[`div`,{[V]:``}]},renderText({node:e}){let t=U.get(e);return t===void 0&&(t=M(e.attrs.html),U.set(e,t)),t},addKeyboardShortcuts(){let e=e=>()=>{let{state:t}=this.editor,{selection:n}=t;if(!(n instanceof ke)||!n.$cursor)return!1;let r=n.$cursor;if(e===`after`){if(r.parentOffset<r.parent.content.size)return!1;let e=r.after();return t.doc.nodeAt(e)?.type===this.type?this.editor.commands.setNodeSelection(e):!1}if(r.parentOffset>0)return!1;let i=t.doc.resolve(r.before()).nodeBefore;return i?.type===this.type?this.editor.commands.setNodeSelection(r.before()-i.nodeSize):!1};return{Backspace:e(`before`),"Mod-Backspace":e(`before`),"Shift-Backspace":e(`before`),Delete:e(`after`),"Mod-Delete":e(`after`)}},addProseMirrorPlugins(){let e=B.fromSchema(this.editor.schema),t=new B({...e.nodes,[this.name]:e=>Re(e.attrs.html)},e.marks);return[new L({key:new I(this.name),props:{clipboardSerializer:t,transformPastedHTML:ze},appendTransaction:(e,t,n)=>{let r=this.options.discarded();if(!r.length||!e.some(e=>e.docChanged))return null;let i=new Set(r),a=n.tr;return n.doc.descendants((e,t)=>{if(e.type!==this.type||W.get(e)===r)return;let n=F(e.attrs.html,i);n===e.attrs.html?W.set(e,r):a.setNodeMarkup(t,void 0,{...e.attrs,html:n})}),a.docChanged?a.setMeta(`addToHistory`,!1):null}})]},addNodeView(){let{themed:t,inlineImages:n}=this.options;return({node:r})=>{let i=document.createElement(`div`);i.className=`quoted-message`,i.contentEditable=`false`;let a=ie(r.attrs.html,{...n(),allowRemoteResources:!1}),o=t();return e(u`<iframe
         sandbox="allow-same-origin"
         tabindex="-1"
         .srcdoc=${a}
@@ -72,6 +72,11 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,t as l,v a
       flex: 1;
       outline: none;
       white-space: pre-wrap;
+    }
+
+    .editor-container:focus-within {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: -2px;
     }
 
     .editor-container .ProseMirror p {
@@ -655,17 +660,30 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,t as l,v a
       display: none;
     }
 
+    .fields {
+      display: grid;
+      grid-template-columns: minmax(40px, max-content) minmax(0, 1fr) max-content;
+      column-gap: 8px;
+    }
+
     .field-row {
-      display: flex;
+      display: grid;
+      grid-template-columns: subgrid;
+      grid-column: 1 / -1;
       align-items: center;
       padding: 4px 16px;
       border-bottom: 1px solid var(--border-color);
     }
 
+    .field-row:focus-within {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: -2px;
+    }
+
     .field-label {
       color: var(--text-muted);
       font-size: 14px;
-      width: 40px;
+      white-space: nowrap;
     }
 
     .cc-bcc-toggles {
@@ -695,6 +713,20 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,t as l,v a
 
     .address-input {
       flex: 1;
+      min-width: 0;
+    }
+
+    .field-row > .address-input,
+    .field-row > .field-input {
+      grid-column: 2 / -1;
+    }
+
+    .field-row:has(.cc-bcc-toggles) > .address-input {
+      grid-column: 2;
+    }
+
+    .subject-row > .field-input {
+      grid-column: 1 / -1;
     }
 
     /* A long name or address is cut by the menu, not the row. */
@@ -830,6 +862,7 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,t as l,v a
         </div>
 
         <div class="content">
+          <div class="fields">
           ${this._renderSenderRow()}
           <div class="field-row">
             <span class="field-label">${this.i18nStore?.t(`floatingComposer.to`)}</span>
@@ -877,7 +910,7 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,t as l,v a
             </div>
           `:``}
 
-          <div class="field-row">
+          <div class="field-row subject-row">
             <input 
               dir="auto"
               class="field-input" 
@@ -887,6 +920,7 @@ import{_ as e,b as t,c as n,d as r,f as i,h as a,m as o,n as s,p as c,t as l,v a
               @keydown=${this._handleSubjectKeydown}
               ?disabled=${this.instance.isSending}
             />
+          </div>
           </div>
 
           <div class="composer-wrapper">
