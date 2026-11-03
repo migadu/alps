@@ -11,6 +11,12 @@ export default {
       newPassword: 'Nova senha',
       confirmPassword: 'Confirmar nova senha',
       updatePassword: 'Atualizar senha',
+      changed: "Sua senha foi alterada.",
+      changedSignInAgain: "Sua senha foi alterada. Entre novamente.",
+      changedLinkedWarning: "Sua senha foi alterada. Não foi possível atualizar algumas contas vinculadas.",
+      changeFailed: "Não foi possível alterar sua senha. Tente novamente.",
+      serviceUnavailable: "A alteração de senhas está temporariamente indisponível. Tente novamente mais tarde.",
+      tooManyAttempts: "Muitas tentativas. Tente novamente mais tarde.",
       fillAllFields: 'Preencha todos os campos.',
       passwordMismatch: 'As novas senhas não coincidem.'
     }

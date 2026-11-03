@@ -38,7 +38,7 @@ func parseConfig(opts map[string]interface{}) *PasswordChangeConfig {
 func handlePasswordChange(ctx *alps.Context) error {
 	pluginCfg, ok := ctx.Server.Options.Plugins["password"]
 	if !ok || !pluginCfg.Enabled {
-		return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Password change is not enabled"})
+		return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Password change is not enabled", "code": "password_change_disabled"})
 	}
 	// A provider that routes per domain names its own admin API here: two
 	// backends mean two APIs with separate credentials, so the whole block is
@@ -60,7 +60,7 @@ func handlePasswordChange(ctx *alps.Context) error {
 	}
 
 	if req.OldPassword == "" || req.Password == "" {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Old and new password are required"})
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Old and new password are required", "code": "password_required"})
 	}
 
 	// Verify the supplied current password against the authenticated session
@@ -82,13 +82,14 @@ func handlePasswordChange(ctx *alps.Context) error {
 		}
 		return ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
 			"error":       reason,
+			"code":        "rate_limited",
 			"retry_after": seconds,
 		})
 	}
 	correct := ctx.Session.CheckPassword(req.OldPassword)
 	ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, correct)
 	if !correct {
-		return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Current password is incorrect"})
+		return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Current password is incorrect", "code": "current_password_incorrect"})
 	}
 
 	parts := strings.SplitN(username, "@", 2)
@@ -167,21 +168,21 @@ func handlePasswordChange(ctx *alps.Context) error {
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		ctx.Server.Logger().Errorf("Password change HTTP request failed: %v", err)
-		return ctx.JSON(http.StatusBadGateway, map[string]string{"error": "Failed to contact password change endpoint"})
+		return ctx.JSON(http.StatusBadGateway, map[string]string{"error": "Failed to contact password change endpoint", "code": "password_service_unavailable"})
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		ctx.Server.Logger().Errorf("Password change failed, status %d: %s", resp.StatusCode, string(bodyBytes))
-		return ctx.JSON(resp.StatusCode, map[string]string{"error": "Password change rejected by server"})
+		return ctx.JSON(resp.StatusCode, map[string]string{"error": "Password change rejected by server", "code": "password_change_rejected"})
 	}
 
 	// Update the session password
 	err = ctx.Server.Sessions.UpdatePasswordContext(ctx.Request.Context(), ctx.Session, req.Password)
 	if err != nil {
 		ctx.Server.Logger().Errorf("Failed to update session password: %v", err)
-		return ctx.JSON(http.StatusOK, map[string]string{"message": "Password changed, but please log in again"})
+		return ctx.JSON(http.StatusOK, map[string]string{"message": "Password changed, but please log in again", "code": "reauthenticate"})
 	}
 
 	// Also update login token if present, preserving the persistence setting
@@ -201,7 +202,7 @@ func handlePasswordChange(ctx *alps.Context) error {
 		})
 	}
 
-	return ctx.JSON(http.StatusOK, map[string]string{"message": "Password successfully changed"})
+	return ctx.JSON(http.StatusOK, map[string]string{"message": "Password successfully changed", "code": "password_changed"})
 }
 
 // PasswordChangeRequest represents a password change payload

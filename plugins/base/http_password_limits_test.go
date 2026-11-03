@@ -132,10 +132,21 @@ func TestHTTP_PasswordChangeCountsAgainstTheLoginLimits(t *testing.T) {
 		return s.do("POST", "/password/change", map[string]string{"old_password": old, "password": "new horse"})
 	}
 	for i := 0; i < config.UsernameFailsPerQuarter; i++ {
-		s.expect(change("wrong"), http.StatusForbidden)
+		r := change("wrong")
+		s.expect(r, http.StatusForbidden)
+		var body struct{ Code string }
+		r.json(t, &body)
+		if body.Code != "current_password_incorrect" {
+			t.Fatalf("current-password refusal has no stable code: %s", r.body)
+		}
 	}
 	r := change(testPassword)
 	s.expect(r, http.StatusTooManyRequests)
+	var body struct{ Code string }
+	r.json(t, &body)
+	if body.Code != "rate_limited" {
+		t.Fatalf("rate-limit refusal has no stable code: %s", r.body)
+	}
 	if r.header.Get("Retry-After") == "" {
 		t.Error("no Retry-After")
 	}
@@ -145,6 +156,37 @@ func TestHTTP_PasswordChangeCountsAgainstTheLoginLimits(t *testing.T) {
 
 	// The login form is held to the same count.
 	s.expect(s.do("POST", "/session", map[string]string{"username": testUser, "password": testPassword}), http.StatusTooManyRequests)
+}
+
+func TestHTTP_PasswordBackendErrorsHaveCodes(t *testing.T) {
+	for _, unavailable := range []bool{false, true} {
+		t.Run(map[bool]string{false: "refused", true: "unavailable"}[unavailable], func(t *testing.T) {
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+			}))
+			t.Cleanup(backend.Close)
+			if unavailable {
+				backend.Close()
+			}
+			s, _ := newLimitedServer(t, func(o *alps.Options) {
+				o.Plugins = map[string]alps.PluginConfig{
+					"password": {Enabled: true, Options: map[string]interface{}{"endpoint": backend.URL}},
+				}
+			})
+			s.login()
+			r := s.do("POST", "/password/change", map[string]string{"old_password": testPassword, "password": "new horse"})
+			status, code := http.StatusBadRequest, "password_change_rejected"
+			if unavailable {
+				status, code = http.StatusBadGateway, "password_service_unavailable"
+			}
+			s.expect(r, status)
+			var body struct{ Code string }
+			r.json(t, &body)
+			if body.Code != code {
+				t.Fatalf("code %q, want %q: %s", body.Code, code, r.body)
+			}
+		})
+	}
 }
 
 // Below the limits the right password still changes it, after a wrong one.
