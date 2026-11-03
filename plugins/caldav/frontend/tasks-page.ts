@@ -164,12 +164,16 @@ export class TasksPage extends LitElement {
                 font-size: 12px;
                 color: var(--text-muted, #6b7280);
             }
+            /* A list's colour, the one its tasks' dots wear. Drawn by its
+               background alone, which forced colors repaint as the page:
+               kept. */
             .list-dot {
                 flex-shrink: 0;
                 width: 10px;
                 height: 10px;
                 margin: 0 4px;
                 border-radius: 50%;
+                forced-color-adjust: none;
             }
             .main-content {
                 flex: 1;

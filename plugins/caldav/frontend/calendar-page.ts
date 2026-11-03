@@ -204,7 +204,11 @@ export class CalendarPage extends LitElement {
             white-space: nowrap;
         }
 
+        /* Drawn in the calendar's colour, the legend for its events.
+           Forced colors would paint the box and its fill in system colours
+           and lose the colour: kept. The check says whether it is on. */
         .calendar-checkbox {
+            forced-color-adjust: none;
             width: 16px;
             height: 16px;
             border-radius: 4px;

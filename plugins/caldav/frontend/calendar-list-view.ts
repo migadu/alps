@@ -101,11 +101,14 @@ export class CalendarListView extends LitElement {
             gap: 8px;
         }
 
+        /* The event's calendar, by its colour. Drawn by its background
+           alone, which forced colors repaint as the page: kept. */
         .color-dot {
             width: 10px;
             height: 10px;
             border-radius: 50%;
             flex-shrink: 0;
+            forced-color-adjust: none;
         }
 
         .event-location {

@@ -686,6 +686,18 @@ export class MessageReader extends LitElement {
       color: var(--text-secondary, #9ca3af);
     }
 
+    /* A tag's colour, as its pill in the list wears it. Drawn by its
+       background alone, which forced colors repaint as the page: kept. */
+    .tag-dot {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-inline-end: 12px;
+      opacity: 0.9;
+      forced-color-adjust: none;
+    }
+
     .toolbar {
       padding: 0 16px;
       gap: 12px;
@@ -2832,7 +2844,7 @@ export class MessageReader extends LitElement {
 
       return html`
               <button class="dropdown-item ${isActive ? 'active' : ''}" @click=${() => this._handleTag(tag)}>
-                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${getTagColor(tag)};margin-inline-end:12px;opacity:0.9;"></span>
+                <span class="tag-dot" style="background: ${getTagColor(tag)}"></span>
                 <span class="item-text">${getTagName(tag, this.i18nStore)}</span>
               </button>
             `;
@@ -2841,7 +2853,7 @@ export class MessageReader extends LitElement {
             <div class="dropdown-divider"></div>
             ${otherTags.map(tag => html`
               <button class="dropdown-item active" title=${this.i18nStore?.t('messageReader.removeTag')} @click=${() => this._handleTag(tag)}>
-                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${getTagColor(tag)};margin-inline-end:12px;opacity:0.9;"></span>
+                <span class="tag-dot" style="background: ${getTagColor(tag)}"></span>
                 <span class="item-text">${getTagName(tag, this.i18nStore)}</span>
                 ${renderIcon('x')}
               </button>
