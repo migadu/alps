@@ -51,7 +51,21 @@ export const tr = {
       signatureDesc: 'Gönderdiğiniz iletilerin sonuna eklenir.',
       replyTo: 'Yanıt Adresi',
       replyToDesc: 'İsteğe bağlı: yanıtlar için farklı bir adres belirtin.',
-      bccMyself: 'Giden postalarda kendimi her zaman gizli alıcıya ekle'
+      bccMyself: 'Giden postalarda kendimi her zaman gizli alıcıya ekle',
+      identities: 'Gönderim adresleri',
+      identitiesDesc: 'Gönderim yaptığınız diğer adresler, örneğin bir takma ad. Her biri kendi adıyla, adı yoksa görünen adınızla gönderilir. Posta sunucunuzun her birinden gönderim yapmanıza izin vermesi gerekir.',
+      addIdentity: 'Adres ekle',
+      identityName: 'Ad',
+      identityAddress: 'E-posta adresi',
+      editIdentity: '{address} adresini düzenle',
+      removeIdentity: '{address} adresini kaldır',
+      identityInvalid: 'name@example.com gibi bir e-posta adresi girin.',
+      identityOwn: 'Bu sizin kendi adresiniz. Bu adresten her zaman gönderebilirsiniz.',
+      identityDuplicate: 'Bu adres zaten listede.',
+      identitiesFull: {
+        one: 'En fazla {count} adres ekleyebilirsiniz.',
+        other: 'En fazla {count} adres ekleyebilirsiniz.'
+      }
     },
     reading: {
       messagesPerPage: 'Sayfa başına ileti',
@@ -333,7 +347,8 @@ export const tr = {
     sending: 'İleti gönderiliyor...',
     undo: 'Geri al',
     sendError: 'İleti gönderilemedi: {error}',
-    presendFailed: 'Bir güvenlik eklentisi bu iletiyi işleyemedi, bu yüzden ileti gönderilmedi.'
+    presendFailed: 'Bir güvenlik eklentisi bu iletiyi işleyemedi, bu yüzden ileti gönderilmedi.',
+    senderNotAllowed: 'Bu adresten gönderemezsiniz. Başka bir gönderen adresi seçin.'
   },
   messageComposer: {
     fontSize: 'Yazı Tipi Boyutu',
@@ -382,6 +397,7 @@ export const tr = {
     to: 'Kime',
     cc: 'Bilgi',
     bcc: 'Gizli',
+    from: 'Kimden',
     subject: 'Konu',
     toggleFormatting: 'Biçimlendirme Seçeneklerini Aç/Kapat',
     attachFiles: 'Dosya Ekle',

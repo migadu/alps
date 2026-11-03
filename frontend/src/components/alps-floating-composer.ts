@@ -2,12 +2,12 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import {
-  bareAddress, composeContext, discardedInlineAfterSave, draftContentKey, inlinePartPaths, keptAfterSave, postedAttachments, quoteSourceAfterSave,
+  appendSenderFields, bareAddress, composeContext, discardedInlineAfterSave, draftContentKey, inlinePartPaths, keptAfterSave, postedAttachments, quoteSourceAfterSave,
   recipientField, reconcileSavedAttachments, uploadGone,
 } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
-import { messageOperations, MissingUploadsError } from '../services/message-operations';
+import { messageOperations, MissingUploadsError, SenderNotAllowedError } from '../services/message-operations';
 import { ownAddress, readUserSettings } from '../store/settings-store';
 import './alps-address-input.js';
 import type { AlpsAddressInput } from './alps-address-input.js';
@@ -28,6 +28,7 @@ import { appendReplyFields } from '../utils/reply-context';
 import { registry } from '../plugin-registry';
 import { MessageCache } from '../utils/message-cache';
 import { motionStyles } from '../utils/motion';
+import { findIdentity, sameAddress, senderLabel } from '../utils/identities';
 const UNDO_TOAST_TIMEOUT_MS = 5000;
 
 /** A draft on the server: its mailbox, and its UID there. */
@@ -85,6 +86,12 @@ export class AlpsFloatingComposer extends LitElement {
     this.requestUpdate();
   };
 
+  /** The From row follows the identities, which Settings can change under an
+   * open window. */
+  private _handleSettingsChange = () => {
+    this.requestUpdate();
+  };
+
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('resize', this._handleResize);
@@ -95,6 +102,7 @@ export class AlpsFloatingComposer extends LitElement {
     this.updateComplete.then(() => {
       if (!this.isConnected) return;
       this.i18nStore?.addEventListener('change', this._handleI18nChange);
+      this.settingsStore?.addEventListener?.('change', this._handleSettingsChange);
     });
     if ((this.instance.cc && this.instance.cc.length > 0)) this.showCc = true;
     if ((this.instance.bcc && this.instance.bcc.length > 0)) this.showBcc = true;
@@ -108,6 +116,7 @@ export class AlpsFloatingComposer extends LitElement {
     window.removeEventListener('alps-composer-drop', this._handleGlobalDropHandled as EventListener);
     this.composeStore?.removeEventListener?.('change', this._handleStoreChange);
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
+    this.settingsStore?.removeEventListener?.('change', this._handleSettingsChange);
     this._clearAutoSave();
     // A send still in its undo window goes no further once the window is
     // gone. A sign-out takes it away, and the timer used to send the message
@@ -446,18 +455,14 @@ export class AlpsFloatingComposer extends LitElement {
     const formData = new FormData();
     const to = currentInstance.to || [];
     const cc = currentInstance.cc || [];
-    const replyToSetting = readUserSettings().replyTo;
 
     const text = currentInstance.text || '';
     const subject = (currentInstance.subject || '').trim();
 
+    appendSenderFields(formData, currentInstance, readUserSettings());
     formData.append('to', recipientField(to));
     formData.append('cc', recipientField(cc));
     formData.append('bcc', recipientField(bcc));
-    
-    if (replyToSetting) {
-      formData.append('reply_to', replyToSetting);
-    }
     formData.append('subject', subject);
     formData.append('text', text);
     if (currentInstance.format === 'html' && currentInstance.html) {
@@ -1105,14 +1110,70 @@ export class AlpsFloatingComposer extends LitElement {
       // Bring back the composer window if it was minimized or hidden
       this.composeStore.updateComposer(id, { isSending: false, minimized: false, expanded: false });
       this._bringToFront();
+      // A From the mail server will not take is the user's to change, in the
+      // row that holds it: said as such, with the focus there.
+      const senderRefused = err instanceof SenderNotAllowedError;
       window.dispatchEvent(new CustomEvent('show-toast', {
         detail: {
-          message: this.i18nStore?.t('composer.sendError', { error: err.message }),
+          message: senderRefused
+            ? this.i18nStore?.t('composer.senderNotAllowed')
+            : this.i18nStore?.t('composer.sendError', { error: err.message }),
           type: 'error',
-          duration: 5000
+          duration: senderRefused ? 8000 : 5000
         }
       }));
+      if (senderRefused) {
+        void this.updateComplete.then(() => this.shadowRoot?.querySelector<HTMLSelectElement>('select.sender-select')?.focus());
+      }
     }
+  }
+
+  /** What the From row offers: the account, then each identity. */
+  private _senderSettings() {
+    return this.settingsStore?.getState?.() ?? readUserSettings();
+  }
+
+  /** A pick from the From row. The account's own address is no identity, and
+   * is kept as none (see appendSenderFields). */
+  private _pickSender(address: string) {
+    const own = ownAddress(this._senderSettings());
+    this.composeStore.updateComposer(this.instance.id, { from: sameAddress(address, own) ? undefined : address });
+  }
+
+  /**
+   * The From row: a menu of the account and each of the other addresses the
+   * user sends from (Settings › Identity), when there are any, each as the
+   * name it goes out under and its address. Without them there is no row,
+   * which is how every composer looked before there was a choice.
+   *
+   * A pick that is no longer an identity, removed in Settings since, shows
+   * as the account, which is what the message is then sent from.
+   */
+  private _renderSenderRow() {
+    const settings = this._senderSettings();
+    const identities = settings.identities ?? [];
+    if (identities.length === 0) return '';
+    const own = ownAddress(settings);
+    const accountName = settings.name?.trim() ?? '';
+    const chosen = findIdentity(identities, this.instance.from);
+    const label = this.i18nStore?.t('floatingComposer.from');
+    return html`
+      <div class="field-row">
+        <span class="field-label">${label}</span>
+        <select
+          class="field-input sender-select"
+          aria-label=${label}
+          .value=${chosen?.address ?? own}
+          ?disabled=${this.instance.isSending}
+          @change=${(e: Event) => this._pickSender((e.target as HTMLSelectElement).value)}
+        >
+          <option value=${own} ?selected=${!chosen}>${senderLabel(accountName, own)}</option>
+          ${identities.map(identity => html`
+            <option value=${identity.address} ?selected=${identity === chosen}>${senderLabel(identity.name || accountName, identity.address)}</option>
+          `)}
+        </select>
+      </div>
+    `;
   }
 
   private _toggleFormat() {
@@ -1544,6 +1605,12 @@ export class AlpsFloatingComposer extends LitElement {
       flex: 1;
     }
 
+    /* A long name or address is cut by the menu, not the row. */
+    .sender-select {
+      min-width: 0;
+      cursor: pointer;
+    }
+
     .toolbar-actions {
       display: flex;
       gap: 4px;
@@ -1786,6 +1853,7 @@ export class AlpsFloatingComposer extends LitElement {
         </div>
 
         <div class="content">
+          ${this._renderSenderRow()}
           <div class="field-row">
             <span class="field-label">${this.i18nStore?.t('floatingComposer.to')}</span>
             <alps-address-input 

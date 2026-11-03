@@ -48,6 +48,20 @@ export const de: TranslationDictionary = {
       replyTo: 'Antwortadresse',
       replyToDesc: 'Optional: Geben Sie eine andere Adresse für Antworten an.',
       bccMyself: 'Mich selbst immer in BCC setzen (ausgehende E-Mails)',
+      identities: 'Absenderadressen',
+      identitiesDesc: 'Weitere Adressen, von denen Sie senden, etwa ein Alias. Jede wird unter ihrem eigenen Namen gesendet oder, wenn sie keinen hat, unter Ihrem Anzeigenamen. Ihr Mailserver muss Ihnen erlauben, von jeder dieser Adressen zu senden.',
+      addIdentity: 'Adresse hinzufügen',
+      identityName: 'Name',
+      identityAddress: 'E-Mail-Adresse',
+      editIdentity: '{address} bearbeiten',
+      removeIdentity: '{address} entfernen',
+      identityInvalid: 'Geben Sie eine E-Mail-Adresse ein, etwa name@example.com.',
+      identityOwn: 'Das ist Ihre eigene Adresse. Von ihr können Sie immer senden.',
+      identityDuplicate: 'Diese Adresse ist bereits in der Liste.',
+      identitiesFull: {
+        one: 'Sie können bis zu {count} Adresse hinzufügen.',
+        other: 'Sie können bis zu {count} Adressen hinzufügen.'
+      }
     },
     reading: {
       messagesPerPage: 'Nachrichten pro Seite',
@@ -281,7 +295,8 @@ export const de: TranslationDictionary = {
     sending: 'Nachricht wird gesendet...',
     undo: 'Rückgängig',
     sendError: 'Nachricht konnte nicht gesendet werden: {error}',
-    presendFailed: 'Ein Sicherheits-Plugin konnte diese Nachricht nicht verarbeiten, daher wurde sie nicht gesendet.'
+    presendFailed: 'Ein Sicherheits-Plugin konnte diese Nachricht nicht verarbeiten, daher wurde sie nicht gesendet.',
+    senderNotAllowed: 'Von dieser Adresse können Sie nicht senden. Wählen Sie eine andere Absenderadresse.'
   },
   messageComposer: {
     fontSize: 'Schriftgröße',
@@ -337,6 +352,7 @@ export const de: TranslationDictionary = {
     to: 'An',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'Von',
     subject: 'Betreff',
     toggleFormatting: 'Formatierungsoptionen umschalten',
     attachFiles: 'Dateien anhängen',

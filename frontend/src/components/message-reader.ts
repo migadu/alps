@@ -7,6 +7,7 @@ import { ALL_MAILBOXES, FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRol
 import { BACKGROUND_REQUEST, fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
 import { activeUsername, ownAddress, settingsContext, SettingsStore } from '../store/settings-store';
+import { senderForMessage } from '../utils/identities';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon, formatFullDate, formatSize, bimiAvatarUrlFor } from '../utils/ui';
 import './alps-recipient-pill';
@@ -115,11 +116,26 @@ export class MessageReader extends LitElement {
   @consume({ context: composeContext })
   composeStore!: ComposeStore;
 
-  /** The addresses a reply must not be sent back to: the account's, and the
-   * Reply-To it asks answers to go to. */
+  /** The addresses a reply must not be sent back to: the account's, the
+   * Reply-To it asks answers to go to, and the other addresses the user
+   * sends from. */
   private ownAddresses(): string[] {
     const state = this.settingsStore?.getState();
-    return [ownAddress(state) || activeUsername() || '', state?.replyTo || ''].filter(Boolean);
+    return [
+      ownAddress(state) || activeUsername() || '', state?.replyTo || '',
+      ...(state?.identities ?? []).map(identity => identity.address),
+    ].filter(Boolean);
+  }
+
+  /**
+   * Which of the user's addresses an answer to `envelope` is sent from: the
+   * identity the message was sent from, or the first it was addressed to,
+   * else the account (see senderForMessage). For a draft, the From it was
+   * saved with, while that is still one of them.
+   */
+  private senderFor(envelope: any): string | undefined {
+    const state = this.settingsStore?.getState();
+    return senderForMessage(envelope, ownAddress(state) || activeUsername() || '', state?.identities);
   }
 
   /**
@@ -212,6 +228,7 @@ export class MessageReader extends LitElement {
         // The quote keeps the original's inline images, and the composer
         // shows them from the original's own parts.
         quoteSource: { mailbox: this.message.Mailbox || this.mailbox, uid: String(this.message.UID), structure: this.message.BodyStructure },
+        from: this.senderFor(this.message.Envelope),
         ...reply
       });
       return;
@@ -2418,6 +2435,7 @@ export class MessageReader extends LitElement {
         // The quote keeps the original's inline images, and the composer
         // shows them from the original's own parts.
         quoteSource: { mailbox: item.mailbox, uid: String(item.message.UID), structure: item.message.BodyStructure },
+        from: this.senderFor(item.message.Envelope),
         ...reply
       });
       return;
@@ -2609,6 +2627,8 @@ export class MessageReader extends LitElement {
     this.composeStore.openComposer({
       draftUid: msg.UID.toString(),
       draftMailbox: mailbox,
+      // The address the draft was saved from, not the ones it is addressed to.
+      from: this.senderFor({ From: msg.Envelope?.From }),
       subject: msg.Envelope?.Subject || '',
       to: formatAddrs(msg.Envelope?.To),
       cc: formatAddrs(msg.Envelope?.Cc),

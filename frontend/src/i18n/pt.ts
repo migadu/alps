@@ -45,6 +45,20 @@ export const pt = {
       replyTo: 'Endereço de resposta',
       replyToDesc: 'Opcional: especifique um endereço diferente para respostas.',
       bccMyself: 'Incluir-me sempre em Bcc nos e-mails enviados',
+      identities: 'Endereços de envio',
+      identitiesDesc: 'Outros endereços a partir dos quais envia, como um alias. Cada um é enviado com o seu próprio nome ou, se não tiver nenhum, com o seu nome a apresentar. O seu servidor de correio tem de lhe permitir enviar a partir de cada um deles.',
+      addIdentity: 'Adicionar endereço',
+      identityName: 'Nome',
+      identityAddress: 'Endereço de e-mail',
+      editIdentity: 'Editar {address}',
+      removeIdentity: 'Remover {address}',
+      identityInvalid: 'Introduza um endereço de e-mail, como nome@example.com.',
+      identityOwn: 'Este é o seu próprio endereço. Pode sempre enviar a partir dele.',
+      identityDuplicate: 'Este endereço já está na lista.',
+      identitiesFull: {
+        one: 'Pode adicionar até {count} endereço.',
+        other: 'Pode adicionar até {count} endereços.'
+      }
     },
     reading: {
       messagesPerPage: 'Mensagens por página',
@@ -326,7 +340,8 @@ export const pt = {
     sending: 'A mensagem está a ser enviada...',
     undo: 'Desfazer',
     sendError: 'Falha ao enviar mensagem: {error}',
-    presendFailed: 'Um plugin de segurança não conseguiu processar esta mensagem, por isso não foi enviada.'
+    presendFailed: 'Um plugin de segurança não conseguiu processar esta mensagem, por isso não foi enviada.',
+    senderNotAllowed: 'Não pode enviar a partir deste endereço. Escolha outro endereço de remetente.'
   },
   messageComposer: {
     fontSize: 'Tamanho do tipo de letra',
@@ -382,6 +397,7 @@ export const pt = {
     to: 'Para',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'De',
     subject: 'Assunto',
     toggleFormatting: 'Alternar opções de formatação',
     attachFiles: 'Anexar ficheiros',

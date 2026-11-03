@@ -582,6 +582,35 @@ func writeBinaryPart(parent *message.Writer, att Attachment, disposition string)
 	return nil
 }
 
+// mailFromError is the server's answer to MAIL FROM, which names the sender
+// and nothing else.
+type mailFromError struct{ err error }
+
+func (e *mailFromError) Error() string { return "MAIL FROM failed: " + e.err.Error() }
+func (e *mailFromError) Unwrap() error { return e.err }
+
+// senderRefused reports whether err is the submission server refusing a
+// message for good because of its sender: a permanent answer to MAIL FROM, or
+// one to a later command that says it is about the sender, by its enhanced
+// status (RFC 3463's X.1.7 and X.1.8) or in Postfix's words. Postfix, which
+// many submission servers are, checks the sender against the login only once
+// it has a recipient, and refuses the recipient: "553 5.7.1 <alias@…>:
+// Sender address rejected: not owned by user".
+func senderRefused(err error) bool {
+	var smtpErr *smtp.SMTPError
+	if !errors.As(err, &smtpErr) || smtpErr.Temporary() {
+		return false
+	}
+	var mailFrom *mailFromError
+	if errors.As(err, &mailFrom) {
+		return true
+	}
+	if code := smtpErr.EnhancedCode; code[1] == 1 && (code[2] == 7 || code[2] == 8) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(smtpErr.Message), "sender address rejected")
+}
+
 // sendMessage submits msg over c. A message that cannot be written is not
 // sent, and c is closed.
 func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
@@ -593,7 +622,7 @@ func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 	// Until the message is written, the server's replies and a failed
 	// connection are wrapped: DoSMTP tries a send again when one may pass.
 	if err := c.Mail(mailboxAddress(addr), nil); err != nil {
-		return fmt.Errorf("MAIL FROM failed: %w", err)
+		return &mailFromError{err}
 	}
 
 	for _, to := range append(msg.To, append(msg.Bcc, msg.Cc...)...) {

@@ -428,7 +428,7 @@ const LATIN_IN_CYRILLIC = new Set([
   // The Message-ID header ("ID поруке").
   'ID',
   // What the user types or copies: example addresses, a URL, a command.
-  'odgovor@primer.example', 'https://example.com', 'gpg --armor --export-secret-keys',
+  'odgovor@primer.example', 'ime@primer.example', 'https://example.com', 'gpg --armor --export-secret-keys',
   // The 12-hour clock's markers, which the browser prints in Latin too. A size's
   // unit is not one of these: rs writes "КБ", as formatSize prints it.
   'AM/PM',

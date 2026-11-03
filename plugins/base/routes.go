@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-message"
@@ -2926,20 +2927,14 @@ func handleComposeNew(ctx *alps.Context) error {
 		doMail = ctx.Session.DoBackgroundMail
 	}
 
-	fromAddr := ctx.FormValue("from")
-	if fromAddr == "" {
-		// The user's address, not the login: a login can be a bare user
-		// name, which is no address to send from (see Session.Address).
-		fromAddr = ctx.Session.Address()
-		if settings, err := readSettings(ctx); err == nil {
-			// The display name is free text, so it is formatted as an address
-			// rather than pasted in front of one. Written bare, a comma in it
-			// ("Doe, Jane") read as two addresses, the first with none, and
-			// every send and draft save failed; quotes in it were lost.
-			if name := strings.TrimSpace(settings.From); name != "" {
-				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Address()}).String()
-			}
-		}
+	// The composer names the address it sends from, and the server writes the
+	// From itself: the account's, or one of the identities in the settings,
+	// with the name kept there. Any other address is refused.
+	fromAddr, fromIdentity, err := senderFor(ctx, ctx.FormValue("from"))
+	if errors.Is(err, errSenderNotAllowed) {
+		return refuseSender(ctx, err)
+	} else if err != nil {
+		return err
 	}
 
 	// A field that does not read as addresses is refused here, for what it
@@ -3360,7 +3355,7 @@ func handleComposeNew(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "message not sent: " + err.Error()})
 	}
 
-	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
+	err = ctx.Session.DoSMTP(func(c *smtp.Client) error {
 		// A temporary refusal may outlast the browser's wait. Each new
 		// attempt checks again before MAIL, while nothing has been sent.
 		if err := ctx.Request.Context().Err(); err != nil {
@@ -3372,6 +3367,13 @@ func handleComposeNew(ctx *alps.Context) error {
 		var authErr provider.AuthError
 		if errors.As(err, &authErr) {
 			return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Forbidden"})
+		}
+		// The mail server, not alps, decides which addresses a login may send
+		// as, and one that refuses an identity says so in a way the composer
+		// can put to the user: choose another From. A refusal of the account's
+		// own address is some other trouble, and is said as it was.
+		if fromIdentity && senderRefused(err) {
+			return refuseSender(ctx, fmt.Errorf("the mail server refused the sender: %v", err))
 		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send message: " + err.Error()})
 	}
@@ -3459,6 +3461,81 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// errSenderNotAllowed is a message from an address that is neither the
+// account's nor one of its identities.
+var errSenderNotAllowed = errors.New("not an address this account sends from")
+
+// senderFor is the From of a message sent from address, and whether that is
+// one of the identities rather than the account's own address. No address is
+// the account's.
+//
+// An identity's name is the one kept with it, or the account's display name
+// when it has none. An address that is not an identity in the session's copy
+// of the settings is looked for in the record as the server holds it now: it
+// may have been added in another browser since this session read it.
+func senderFor(ctx *alps.Context, address string) (from string, identity bool, err error) {
+	own := ctx.Session.Address()
+	if address == "" || strings.EqualFold(address, own) {
+		// The user's address, not the login: a login can be a bare user
+		// name, which is no address to send from (see Session.Address).
+		if settings, err := readSettings(ctx); err == nil {
+			return mailboxFrom(settings.From, own), false, nil
+		}
+		return own, false, nil
+	}
+	settings, err := readSettings(ctx)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to load settings: %v", err)
+	}
+	found, ok := findIdentity(settings.Identities, address)
+	if !ok {
+		if settings, err = readFreshSettings(ctx); err != nil {
+			return "", false, fmt.Errorf("failed to load settings: %v", err)
+		}
+		found, ok = findIdentity(settings.Identities, address)
+	}
+	if !ok {
+		return "", false, fmt.Errorf("%q: %w", address, errSenderNotAllowed)
+	}
+	name := found.Name
+	if strings.TrimSpace(name) == "" {
+		name = settings.From
+	}
+	return mailboxFrom(name, found.Address), true, nil
+}
+
+// mailboxFrom is a From of name and address, or of the address alone when
+// the name is blank. The display name is free text, so it is formatted as an
+// address rather than pasted in front of one. Written bare, a comma in it
+// ("Doe, Jane") read as two addresses, the first with none, and every send
+// and draft save failed; quotes in it were lost.
+func mailboxFrom(name, address string) string {
+	if name = strings.TrimSpace(name); name == "" {
+		return address
+	}
+	return (&mail.Address{Name: name, Address: address}).String()
+}
+
+// findIdentity is the identity whose address is address, in any case.
+func findIdentity(identities []Identity, address string) (Identity, bool) {
+	for _, id := range identities {
+		if strings.EqualFold(id.Address, address) {
+			return id, true
+		}
+	}
+	return Identity{}, false
+}
+
+// refuseSender answers a send or a draft save from an address the account
+// may not send from. The code is the composer's, to say so in the user's
+// language; the error is for the log and for other clients.
+func refuseSender(ctx *alps.Context, err error) error {
+	return ctx.JSON(http.StatusForbidden, map[string]string{
+		"error": err.Error(),
+		"code":  "sender_not_allowed",
+	})
 }
 
 func handleComposeAttachment(ctx *alps.Context) error {
@@ -4357,6 +4434,9 @@ type Settings struct {
 	// Identity
 	ReplyTo   string `json:"reply_to,omitempty"`
 	BccMyself bool   `json:"bcc_myself"`
+	// Identities are the other addresses the user sends from, beside the
+	// account's own, in the order the composer offers them.
+	Identities []Identity `json:"identities,omitempty"`
 
 	// Reading & Composing
 	MarkReadTimeout   int    `json:"mark_read_timeout,omitempty"`
@@ -4369,6 +4449,55 @@ type Settings struct {
 	HourFormat string `json:"hour_format,omitempty"`
 	DateFormat string `json:"date_format,omitempty"`
 	WeekStart  *int   `json:"week_start,omitempty"`
+}
+
+// Identity is another address the user sends from: an alias, or an address
+// of their own elsewhere that their mail server lets them send as. alps does
+// not decide that; the mail server does, when the message is submitted.
+type Identity struct {
+	// Name is the display name a message from Address goes out under. Empty
+	// is the account's own display name.
+	Name    string `json:"name,omitempty"`
+	Address string `json:"address"`
+}
+
+// The most identities the settings hold, and the longest name and address
+// each may have, in characters. The record is one METADATA entry, which
+// servers cap, and the composer lists every identity in its From menu.
+const (
+	maxIdentities           = 20
+	maxIdentityNameRunes    = 256
+	maxIdentityAddressRunes = 254
+)
+
+// checkIdentities holds the identities to their caps, and to one bare address
+// each, none of them twice. `own` is the account's address, which is never an
+// identity of its own; empty where it is not known, as when a record is read.
+func checkIdentities(identities []Identity, own string) error {
+	if len(identities) > maxIdentities {
+		return fmt.Errorf("identities: at most %d, not %d", maxIdentities, len(identities))
+	}
+	seen := make(map[string]bool, len(identities))
+	for _, id := range identities {
+		if utf8.RuneCountInString(id.Name) > maxIdentityNameRunes {
+			return fmt.Errorf("identities: a name must be %d characters or fewer", maxIdentityNameRunes)
+		}
+		// The address alone, as the composer names it: not a name and an
+		// address, nor one in angle brackets, which would read as another.
+		addr, err := mail.ParseAddress(id.Address)
+		if err != nil || addr.Name != "" || addr.Address != id.Address || utf8.RuneCountInString(id.Address) > maxIdentityAddressRunes {
+			return fmt.Errorf("identities: %q is not an email address", id.Address)
+		}
+		key := strings.ToLower(id.Address)
+		if own != "" && key == strings.ToLower(own) {
+			return fmt.Errorf("identities: %q is the account's own address", id.Address)
+		}
+		if seen[key] {
+			return fmt.Errorf("identities: %q twice", id.Address)
+		}
+		seen[key] = true
+	}
+	return nil
 }
 
 // errUnreadableSettings marks a saved settings record that does not decode.
@@ -4496,6 +4625,9 @@ func (s *Settings) check() error {
 	if err := checkUnsubscribedFolders(s.UI.UnsubscribedFolders); err != nil {
 		return err
 	}
+	if err := checkIdentities(s.Identities, ""); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -4583,8 +4715,9 @@ func handleSettings(ctx *alps.Context) error {
 				DesktopNotifications *bool `json:"desktop_notifications"`
 				SoundNotifications   *bool `json:"sound_notifications"`
 
-				ReplyTo   *string `json:"reply_to"`
-				BccMyself *bool   `json:"bcc_myself"`
+				ReplyTo    *string     `json:"reply_to"`
+				BccMyself  *bool       `json:"bcc_myself"`
+				Identities *[]Identity `json:"identities"`
 
 				MarkReadTimeout   *int    `json:"mark_read_timeout"`
 				ShowRemoteContent *string `json:"show_remote_content"`
@@ -4666,6 +4799,17 @@ func handleSettings(ctx *alps.Context) error {
 			}
 			if req.BccMyself != nil {
 				settings.BccMyself = *req.BccMyself
+			}
+			// An empty list is a list: the last identity removed. The
+			// account's own address is not one: the composer always offers
+			// it. Held to that only when the list is written, so that a
+			// record from before the account's address was known still takes
+			// a change to any other setting.
+			if req.Identities != nil {
+				settings.Identities = *req.Identities
+				if err := checkIdentities(settings.Identities, ctx.Session.Address()); err != nil {
+					return alps.NewHTTPError(http.StatusBadRequest, err)
+				}
 			}
 			if req.MarkReadTimeout != nil {
 				settings.MarkReadTimeout = *req.MarkReadTimeout

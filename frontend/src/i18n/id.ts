@@ -51,7 +51,20 @@ export const id = {
       signatureDesc: 'Ditambahkan di akhir pesan terkirim Anda.',
       replyTo: 'Alamat Balasan',
       replyToDesc: 'Opsional: tentukan alamat lain untuk balasan.',
-      bccMyself: 'Selalu kirim BCC ke diri sendiri untuk email keluar'
+      bccMyself: 'Selalu kirim BCC ke diri sendiri untuk email keluar',
+      identities: 'Alamat pengirim',
+      identitiesDesc: 'Alamat lain yang Anda gunakan untuk mengirim, seperti alias. Masing-masing dikirim dengan namanya sendiri, atau dengan nama tampilan Anda jika tidak punya nama. Server email Anda harus mengizinkan Anda mengirim dari setiap alamat tersebut.',
+      addIdentity: 'Tambah alamat',
+      identityName: 'Nama',
+      identityAddress: 'Alamat email',
+      editIdentity: 'Edit {address}',
+      removeIdentity: 'Hapus {address}',
+      identityInvalid: 'Masukkan alamat email, seperti nama@example.com.',
+      identityOwn: 'Ini alamat Anda sendiri. Anda selalu dapat mengirim dari alamat ini.',
+      identityDuplicate: 'Alamat ini sudah ada di daftar.',
+      identitiesFull: {
+        other: 'Anda dapat menambahkan hingga {count} alamat.'
+      }
     },
     reading: {
       messagesPerPage: 'Pesan per halaman',
@@ -323,7 +336,8 @@ export const id = {
     sending: 'Pesan sedang dikirim...',
     undo: 'Urungkan',
     sendError: 'Gagal mengirim pesan: {error}',
-    presendFailed: 'Plugin keamanan tidak dapat memproses pesan ini, sehingga pesan tidak dikirim.'
+    presendFailed: 'Plugin keamanan tidak dapat memproses pesan ini, sehingga pesan tidak dikirim.',
+    senderNotAllowed: 'Anda tidak dapat mengirim dari alamat ini. Pilih alamat pengirim lain.'
   },
   messageComposer: {
     fontSize: 'Ukuran Font',
@@ -372,6 +386,7 @@ export const id = {
     to: 'Kepada',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'Dari',
     subject: 'Subjek',
     toggleFormatting: 'Tampilkan/Sembunyikan Opsi Pemformatan',
     attachFiles: 'Lampirkan File',

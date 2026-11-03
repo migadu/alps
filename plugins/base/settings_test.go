@@ -95,3 +95,50 @@ func TestSettingsCheckUnsubscribedFolders(t *testing.T) {
 		}
 	}
 }
+
+// The identities are held to their caps and to one bare address each, none of
+// them twice, whatever the case it is written in; a list within them passes,
+// an empty one included.
+func TestSettingsCheckIdentities(t *testing.T) {
+	many := make([]Identity, maxIdentities+1)
+	for i := range many {
+		many[i] = Identity{Address: fmt.Sprintf("alias%d@example.com", i)}
+	}
+	cases := []struct {
+		what       string
+		identities []Identity
+		ok         bool
+	}{
+		{"none", nil, true},
+		{"an empty list", []Identity{}, true},
+		{"a few", []Identity{{Name: "Ada at work", Address: "ada@work.example"}, {Address: "a.lovelace+lists@example.com"}}, true},
+		{"as many as allowed", many[:maxIdentities], true},
+		{"one too many", many, false},
+		{"a name at its cap", []Identity{{Name: strings.Repeat("Ä", maxIdentityNameRunes), Address: "ada@work.example"}}, true},
+		{"a name over its cap", []Identity{{Name: strings.Repeat("Ä", maxIdentityNameRunes+1), Address: "ada@work.example"}}, false},
+		{"no address", []Identity{{Name: "Ada"}}, false},
+		{"not an address", []Identity{{Address: "ada at work"}}, false},
+		{"no domain", []Identity{{Address: "ada@"}}, false},
+		{"a name and an address", []Identity{{Address: "Ada <ada@work.example>"}}, false},
+		{"in angle brackets", []Identity{{Address: "<ada@work.example>"}}, false},
+		{"two addresses", []Identity{{Address: "ada@work.example, bob@work.example"}}, false},
+		{"space around it", []Identity{{Address: " ada@work.example"}}, false},
+		{"an address twice", []Identity{{Address: "ada@work.example"}, {Name: "Ada", Address: "ADA@Work.example"}}, false},
+		{"an address over its cap", []Identity{{Address: strings.Repeat("a", 64) + "@" + strings.Repeat("b", maxIdentityAddressRunes-65+1) + ".x"}}, false},
+	}
+	for _, tc := range cases {
+		s := &Settings{MessagesPerPage: 50, Identities: tc.identities}
+		if err := s.check(); (err == nil) != tc.ok {
+			t.Errorf("%s: check() = %v, want ok %v", tc.what, err, tc.ok)
+		}
+	}
+
+	// The account's own address is no other identity, in any case.
+	own := []Identity{{Address: "Ada@Example.com"}}
+	if err := checkIdentities(own, "ada@example.com"); err == nil {
+		t.Error("the account's own address was taken for another identity")
+	}
+	if err := checkIdentities(own, "bob@example.com"); err != nil {
+		t.Errorf("another account's: %v", err)
+	}
+}

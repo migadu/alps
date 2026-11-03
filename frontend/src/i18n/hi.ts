@@ -51,7 +51,21 @@ export const hi = {
       signatureDesc: 'आपके भेजे गए संदेशों के अंत में जोड़ा जाता है।',
       replyTo: 'उत्तर का पता',
       replyToDesc: 'वैकल्पिक: उत्तर के लिए अलग पता दें।',
-      bccMyself: 'भेजे गए मेल में हमेशा मुझे गुप्त प्रति भेजें'
+      bccMyself: 'भेजे गए मेल में हमेशा मुझे गुप्त प्रति भेजें',
+      identities: 'भेजने के पते',
+      identitiesDesc: 'दूसरे पते जिनसे आप मेल भेजते हैं, जैसे कोई उपनाम। हर पते से मेल उसके अपने नाम से जाता है, या नाम न हो तो आपके दिखने वाले नाम से। आपके मेल सर्वर को आपको इनमें से हर पते से भेजने की अनुमति देनी होगी।',
+      addIdentity: 'पता जोड़ें',
+      identityName: 'नाम',
+      identityAddress: 'ईमेल पता',
+      editIdentity: '{address} संपादित करें',
+      removeIdentity: '{address} हटाएँ',
+      identityInvalid: 'कोई ईमेल पता दर्ज करें, जैसे name@example.com।',
+      identityOwn: 'यह आपका अपना पता है। इससे आप हमेशा भेज सकते हैं।',
+      identityDuplicate: 'यह पता पहले से सूची में है।',
+      identitiesFull: {
+        one: 'आप अधिकतम {count} पता जोड़ सकते हैं।',
+        other: 'आप अधिकतम {count} पते जोड़ सकते हैं।'
+      }
     },
     reading: {
       messagesPerPage: 'प्रति पेज संदेश',
@@ -333,7 +347,8 @@ export const hi = {
     sending: 'संदेश भेजा जा रहा है...',
     undo: 'वापस करें',
     sendError: 'संदेश नहीं भेजा जा सका: {error}',
-    presendFailed: 'एक सुरक्षा प्लगइन इस संदेश को संसाधित नहीं कर सका, इसलिए यह नहीं भेजा गया।'
+    presendFailed: 'एक सुरक्षा प्लगइन इस संदेश को संसाधित नहीं कर सका, इसलिए यह नहीं भेजा गया।',
+    senderNotAllowed: 'आप इस पते से नहीं भेज सकते। कोई दूसरा प्रेषक पता चुनें।'
   },
   messageComposer: {
     fontSize: 'फ़ॉन्ट का आकार',
@@ -382,6 +397,7 @@ export const hi = {
     to: 'प्राप्तकर्ता',
     cc: 'प्रतिलिपि',
     bcc: 'गुप्त प्रतिलिपि',
+    from: 'प्रेषक',
     subject: 'विषय',
     toggleFormatting: 'स्वरूप विकल्प दिखाएँ या छिपाएँ',
     attachFiles: 'फ़ाइलें अटैच करें',

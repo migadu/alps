@@ -51,7 +51,20 @@ export const zhHant = {
       signatureDesc: '附加到已傳送郵件的末尾。',
       replyTo: '回覆位址',
       replyToDesc: '可選：指定其他位址接收回覆。',
-      bccMyself: '傳送郵件時一律密件副本給自己'
+      bccMyself: '傳送郵件時一律密件副本給自己',
+      identities: '寄件地址',
+      identitiesDesc: '您用來寄信的其他地址，例如別名。每個地址會以其自己的名稱寄出；若未設定名稱，則使用您的顯示名稱。您的郵件伺服器必須允許您從這些地址寄信。',
+      addIdentity: '新增地址',
+      identityName: '名稱',
+      identityAddress: '電子郵件地址',
+      editIdentity: '編輯 {address}',
+      removeIdentity: '移除 {address}',
+      identityInvalid: '請輸入電子郵件地址，例如 name@example.com。',
+      identityOwn: '這是您自己的地址，您隨時都能從這個地址寄信。',
+      identityDuplicate: '這個地址已在清單中。',
+      identitiesFull: {
+        other: '最多可新增 {count} 個地址。'
+      }
     },
     reading: {
       messagesPerPage: '每頁郵件數',
@@ -323,7 +336,8 @@ export const zhHant = {
     sending: '正在傳送郵件…',
     undo: '復原',
     sendError: '傳送郵件失敗：{error}',
-    presendFailed: '安全性外掛程式無法處理此郵件，因此未傳送。'
+    presendFailed: '安全性外掛程式無法處理此郵件，因此未傳送。',
+    senderNotAllowed: '您無法從這個地址寄信。請選擇其他寄件者地址。'
   },
   messageComposer: {
     fontSize: '字型大小',
@@ -372,6 +386,7 @@ export const zhHant = {
     to: '收件者',
     cc: '副本',
     bcc: '密件副本',
+    from: '寄件者',
     subject: '主旨',
     toggleFormatting: '顯示或隱藏格式選項',
     attachFiles: '新增附件',

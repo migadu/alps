@@ -52,6 +52,20 @@ export const en = {
       replyTo: 'Reply-To Address',
       replyToDesc: 'Optional: specify a different address for replies.',
       bccMyself: 'Always BCC myself on outgoing mail',
+      identities: 'Sending addresses',
+      identitiesDesc: 'Other addresses you send from, such as an alias. Each goes out under its own name, or under your display name when it has none. Your mail server must allow you to send from each one.',
+      addIdentity: 'Add address',
+      identityName: 'Name',
+      identityAddress: 'Email address',
+      editIdentity: 'Edit {address}',
+      removeIdentity: 'Remove {address}',
+      identityInvalid: 'Enter an email address, like name@example.com.',
+      identityOwn: 'This is your own address. You can always send from it.',
+      identityDuplicate: 'This address is already in the list.',
+      identitiesFull: {
+        one: 'You can add up to {count} address.',
+        other: 'You can add up to {count} addresses.'
+      }
     },
     reading: {
       messagesPerPage: 'Messages per page',
@@ -333,7 +347,8 @@ export const en = {
     sending: 'Message is being sent...',
     undo: 'Undo',
     sendError: 'Failed to send message: {error}',
-    presendFailed: 'A security plugin could not process this message, so it was not sent.'
+    presendFailed: 'A security plugin could not process this message, so it was not sent.',
+    senderNotAllowed: 'You cannot send from this address. Choose another From address.'
   },
   messageComposer: {
     fontSize: 'Font Size',
@@ -382,6 +397,7 @@ export const en = {
     to: 'To',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'From',
     subject: 'Subject',
     toggleFormatting: 'Toggle Formatting Options',
     attachFiles: 'Attach Files',

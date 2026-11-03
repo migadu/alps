@@ -374,3 +374,61 @@ func TestHTTP_SettingsKeepTheFoldersUnsubscribedHere(t *testing.T) {
 		t.Fatalf("an empty list kept %v", got)
 	}
 }
+
+// The other addresses the user sends from are kept with the account. A list
+// that is refused leaves the one kept as it was, the account's own address
+// among it too, and an empty list clears it.
+func TestHTTP_SettingsKeepTheOtherIdentities(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+
+	saved := func() []Identity {
+		t.Helper()
+		var got struct {
+			Settings struct {
+				Identities []Identity `json:"identities"`
+			}
+		}
+		r := s.do("GET", "/settings", nil)
+		s.expect(r, http.StatusOK)
+		r.json(t, &got)
+		return got.Settings.Identities
+	}
+	save := func(identities []Identity) response {
+		t.Helper()
+		return s.do("PUT", "/settings", map[string]any{"identities": identities})
+	}
+
+	if got := saved(); len(got) != 0 {
+		t.Fatalf("a new account already has identities: %v", got)
+	}
+	kept := []Identity{{Name: "Ada at work", Address: "ada@work.example"}, {Address: "lovelace@example.org"}}
+	s.expect(save(kept), http.StatusOK)
+	if got := saved(); !slices.Equal(got, kept) {
+		t.Fatalf("kept %v", got)
+	}
+
+	// A save that does not name the list leaves it as it is.
+	s.expect(s.do("PUT", "/settings", map[string]any{"signature": "Ada"}), http.StatusOK)
+	if got := saved(); !slices.Equal(got, kept) {
+		t.Fatalf("after another setting was saved: %v", got)
+	}
+
+	for what, refused := range map[string][]Identity{
+		"the account's own address": {{Address: strings.ToUpper(testUser)}},
+		"an address twice":          {{Address: "ada@work.example"}, {Address: "ADA@work.example"}},
+		"not an address":            {{Name: "Ada", Address: "Ada"}},
+	} {
+		if r := save(refused); r.status != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400: %s", what, r.status, r.body)
+		}
+	}
+	if got := saved(); !slices.Equal(got, kept) {
+		t.Fatalf("after refused saves: %v", got)
+	}
+
+	s.expect(save([]Identity{}), http.StatusOK)
+	if got := saved(); len(got) != 0 {
+		t.Fatalf("an empty list kept %v", got)
+	}
+}

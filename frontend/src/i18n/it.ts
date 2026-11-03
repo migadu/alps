@@ -46,6 +46,20 @@ export const it = {
       replyTo: 'Indirizzo Rispondi a',
       replyToDesc: 'Opzionale: specifica un indirizzo diverso per le risposte.',
       bccMyself: 'Aggiungimi sempre in Ccn nella posta in uscita',
+      identities: 'Indirizzi di invio',
+      identitiesDesc: 'Altri indirizzi da cui invii, come un alias. Ognuno parte con il proprio nome o, se non ne ha uno, con il tuo nome visualizzato. Il tuo server di posta deve consentirti di inviare da ciascuno di essi.',
+      addIdentity: 'Aggiungi indirizzo',
+      identityName: 'Nome',
+      identityAddress: 'Indirizzo email',
+      editIdentity: 'Modifica {address}',
+      removeIdentity: 'Rimuovi {address}',
+      identityInvalid: 'Inserisci un indirizzo email, ad esempio nome@example.com.',
+      identityOwn: 'Questo è il tuo indirizzo. Puoi sempre inviare da qui.',
+      identityDuplicate: "Questo indirizzo è già nell'elenco.",
+      identitiesFull: {
+        one: 'Puoi aggiungere fino a {count} indirizzo.',
+        other: 'Puoi aggiungere fino a {count} indirizzi.'
+      }
     },
     reading: {
       messagesPerPage: 'Messaggi per pagina',
@@ -279,7 +293,8 @@ export const it = {
     sending: 'Invio messaggio in corso...',
     undo: 'Annulla',
     sendError: 'Errore durante l\'invio del messaggio: {error}',
-    presendFailed: 'Un plugin di sicurezza non ha potuto elaborare questo messaggio, che non è stato inviato.'
+    presendFailed: 'Un plugin di sicurezza non ha potuto elaborare questo messaggio, che non è stato inviato.',
+    senderNotAllowed: 'Non puoi inviare da questo indirizzo. Scegli un altro indirizzo mittente.'
   },
   messageComposer: {
     fontSize: 'Dimensione carattere',
@@ -335,6 +350,7 @@ export const it = {
     to: 'A',
     cc: 'Cc',
     bcc: 'Ccn',
+    from: 'Da',
     subject: 'Oggetto',
     toggleFormatting: 'Attiva/disattiva opzioni di formattazione',
     attachFiles: 'Allega file',

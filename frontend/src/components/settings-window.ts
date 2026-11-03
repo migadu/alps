@@ -14,6 +14,7 @@ import './alps-select';
 import './alps-setting-group';
 import './settings-accounts';
 import './alps-webauthn-settings';
+import './alps-identities-settings';
 import './ui-confirm';
 
 import { loadComponent, registry } from '../plugin-registry';
@@ -419,7 +420,8 @@ export class SettingsWindow extends LitElement {
    * drop what it has not saved.
    *
    * Every setting applies as it changes, except where a section has a form
-   * with its own Save (the filters, the auto-reply). Such a section says so
+   * with its own Save (the filters, the auto-reply, a sending address being
+   * written). Such a section says so
    * with `hasUnsavedChanges` (see `UnsavedChanges`), and a Close, an Escape or
    * another section asks first. The browser's Back cannot be asked: it has
    * already gone when anything hears it.
@@ -649,6 +651,7 @@ export class SettingsWindow extends LitElement {
             ${this.i18nStore?.t('settings.identity.bccMyself')}
           </label>
         </alps-setting-group>
+        <alps-identities-settings></alps-identities-settings>
     `;
   }
 

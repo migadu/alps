@@ -54,6 +54,20 @@ export const da: TranslationDictionary = {
       replyTo: 'Svar-til-adresse',
       replyToDesc: 'Valgfrit: angiv en anden adresse til svar.',
       bccMyself: 'Sæt altid mig selv på BCC ved udgående mail',
+      identities: 'Afsenderadresser',
+      identitiesDesc: 'Andre adresser, du sender fra, f.eks. et alias. Hver sendes under sit eget navn eller, hvis den ikke har et, under dit visningsnavn. Din mailserver skal tillade, at du sender fra hver af dem.',
+      addIdentity: 'Tilføj adresse',
+      identityName: 'Navn',
+      identityAddress: 'E-mailadresse',
+      editIdentity: 'Rediger {address}',
+      removeIdentity: 'Fjern {address}',
+      identityInvalid: 'Indtast en e-mailadresse, f.eks. navn@example.com.',
+      identityOwn: 'Det er din egen adresse. Du kan altid sende fra den.',
+      identityDuplicate: 'Adressen er allerede på listen.',
+      identitiesFull: {
+        one: 'Du kan tilføje op til {count} adresse.',
+        other: 'Du kan tilføje op til {count} adresser.'
+      }
     },
     reading: {
       messagesPerPage: 'Beskeder pr. side',
@@ -335,7 +349,8 @@ export const da: TranslationDictionary = {
     sending: 'Beskeden sendes...',
     undo: 'Fortryd',
     sendError: 'Kunne ikke sende besked: {error}',
-    presendFailed: 'Et sikkerhedsplugin kunne ikke behandle beskeden, så den blev ikke sendt.'
+    presendFailed: 'Et sikkerhedsplugin kunne ikke behandle beskeden, så den blev ikke sendt.',
+    senderNotAllowed: 'Du kan ikke sende fra denne adresse. Vælg en anden afsenderadresse.'
   },
   messageComposer: {
     fontSize: 'Skriftstørrelse',
@@ -384,6 +399,7 @@ export const da: TranslationDictionary = {
     to: 'Til',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'Fra',
     subject: 'Emne',
     toggleFormatting: 'Vis/skjul formateringsmuligheder',
     attachFiles: 'Vedhæft filer',

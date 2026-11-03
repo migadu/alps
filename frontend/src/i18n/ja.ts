@@ -51,7 +51,20 @@ export const ja = {
       signatureDesc: '送信メールの末尾に追加されます。',
       replyTo: '返信先アドレス',
       replyToDesc: '必要に応じて、別の返信先アドレスを指定できます。',
-      bccMyself: '送信メールのBCCに常に自分を追加する'
+      bccMyself: '送信メールのBCCに常に自分を追加する',
+      identities: '送信元アドレス',
+      identitiesDesc: 'エイリアスなど、メールの送信に使う別のアドレスです。それぞれのアドレスに設定した名前で送信され、名前がない場合は表示名が使われます。各アドレスからの送信をメールサーバーが許可している必要があります。',
+      addIdentity: 'アドレスを追加',
+      identityName: '名前',
+      identityAddress: 'メールアドレス',
+      editIdentity: '{address} を編集',
+      removeIdentity: '{address} を削除',
+      identityInvalid: 'name@example.com のようなメールアドレスを入力してください。',
+      identityOwn: 'これはご自身のアドレスです。このアドレスからはいつでも送信できます。',
+      identityDuplicate: 'このアドレスはすでにリストにあります。',
+      identitiesFull: {
+        other: 'アドレスは最大{count}件まで追加できます。'
+      }
     },
     reading: {
       messagesPerPage: '1ページあたりのメール数',
@@ -323,7 +336,8 @@ export const ja = {
     sending: 'メールを送信しています...',
     undo: '元に戻す',
     sendError: 'メールを送信できませんでした：{error}',
-    presendFailed: 'セキュリティプラグインがこのメールを処理できなかったため、送信されませんでした。'
+    presendFailed: 'セキュリティプラグインがこのメールを処理できなかったため、送信されませんでした。',
+    senderNotAllowed: 'このアドレスからは送信できません。別の差出人アドレスを選択してください。'
   },
   messageComposer: {
     fontSize: '文字サイズ',
@@ -372,6 +386,7 @@ export const ja = {
     to: '宛先',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: '差出人',
     subject: '件名',
     toggleFormatting: '書式オプションの表示切り替え',
     attachFiles: 'ファイルを添付',

@@ -144,9 +144,17 @@ func (s *submissionSession) Auth(mech string) (sasl.Server, error) {
 	}), nil
 }
 
+// refusedSenderDomain is the domain the submission server will not take a
+// sender at, as a server refuses an address the login may not send as. The
+// browser tests send from it to see that refusal reach the user.
+const refusedSenderDomain = "@not-yours.test"
+
 func (s *submissionSession) Mail(_ context.Context, from string, _ *smtp.MailOptions) error {
 	if s.username == "" && !s.unauthenticated {
 		return smtp.ErrAuthRequired
+	}
+	if strings.HasSuffix(strings.ToLower(from), refusedSenderDomain) {
+		return &smtp.SMTPError{Code: 553, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "Sender address rejected: not owned by user " + s.username}
 	}
 	s.from = from
 	return nil

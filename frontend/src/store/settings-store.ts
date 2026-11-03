@@ -1,6 +1,7 @@
 import { createContext } from '@lit/context';
 import { THEME_BUNDLES, themeFamily } from './themes';
 import { Logger } from '../utils/logger';
+import { identitiesFrom, type Identity } from '../utils/identities';
 
 /**
  * Where the signed-in username is recorded for code that needs it before, or
@@ -34,6 +35,9 @@ export interface SettingsState {
   signature: string;
   replyTo: string;
   bccMyself: boolean;
+  /** The other addresses the user sends from, in the order the composer
+   * offers them; see utils/identities. */
+  identities: Identity[];
 
   messagesPerPage: number;
   preferredView: 'html' | 'text';
@@ -95,6 +99,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   signature: '',
   replyTo: '',
   bccMyself: false,
+  identities: [],
 
   messagesPerPage: 50,
   preferredView: 'html',
@@ -147,6 +152,7 @@ const SERVER_FIELDS: { [K in keyof SettingsState]?: ServerField } = {
   signature: { name: 'signature', value: s => s.signature },
   replyTo: { name: 'reply_to', value: s => s.replyTo },
   bccMyself: { name: 'bcc_myself', value: s => Boolean(s.bccMyself) },
+  identities: { name: 'identities', value: s => s.identities },
   messagesPerPage: { name: 'messages_per_page', value: s => Number(s.messagesPerPage) || 50 },
   preferredView: { name: 'preferred_view', value: s => s.preferredView },
   markReadTimeout: { name: 'mark_read_timeout', value: s => Number(s.markReadTimeout) || 0 },
@@ -711,6 +717,8 @@ export class SettingsStore extends EventTarget {
           if (s.signature !== undefined) updates.signature = s.signature;
           if (s.reply_to !== undefined) updates.replyTo = s.reply_to;
           if (s.bcc_myself !== undefined) updates.bccMyself = s.bcc_myself;
+          // Missing is empty, as the folders unsubscribed here are.
+          updates.identities = identitiesFrom(s.identities);
           if (s.messages_per_page !== undefined && s.messages_per_page !== 0) updates.messagesPerPage = s.messages_per_page;
           if (s.preferred_view !== undefined && s.preferred_view !== "") updates.preferredView = s.preferred_view;
           if (s.mark_read_timeout !== undefined) updates.markReadTimeout = s.mark_read_timeout;

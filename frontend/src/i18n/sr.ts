@@ -46,6 +46,21 @@ export const sr = {
       replyTo: 'Adresa za odgovor',
       replyToDesc: 'Opciono: navedite drugu adresu za odgovore.',
       bccMyself: 'Uvek dodaj mene u Bcc za odlaznu poštu',
+      identities: 'Adrese za slanje',
+      identitiesDesc: 'Druge adrese sa kojih šaljete, na primer alijas. Svaka se šalje pod svojim imenom ili, ako ga nema, pod vašim imenom za prikaz. Vaš server pošte mora da vam dozvoli slanje sa svake od njih.',
+      addIdentity: 'Dodaj adresu',
+      identityName: 'Ime',
+      identityAddress: 'Adresa e-pošte',
+      editIdentity: 'Izmeni {address}',
+      removeIdentity: 'Ukloni {address}',
+      identityInvalid: 'Unesite adresu e-pošte, na primer ime@primer.example.',
+      identityOwn: 'Ovo je vaša sopstvena adresa. Sa nje uvek možete da šaljete.',
+      identityDuplicate: 'Ova adresa je već na spisku.',
+      identitiesFull: {
+        one: 'Možete da dodate najviše {count} adresu.',
+        few: 'Možete da dodate najviše {count} adrese.',
+        other: 'Možete da dodate najviše {count} adresa.'
+      }
     },
     reading: {
       messagesPerPage: 'Poruka po stranici',
@@ -289,7 +304,8 @@ export const sr = {
     sending: 'Slanje poruke...',
     undo: 'Opozovi',
     sendError: 'Greška pri slanju poruke: {error}',
-    presendFailed: 'Bezbednosni dodatak nije mogao da obradi ovu poruku, pa ona nije poslata.'
+    presendFailed: 'Bezbednosni dodatak nije mogao da obradi ovu poruku, pa ona nije poslata.',
+    senderNotAllowed: 'Sa ove adrese ne možete da šaljete. Izaberite drugu adresu pošiljaoca.'
   },
   messageComposer: {
     fontSize: 'Veličina fonta',
@@ -345,6 +361,7 @@ export const sr = {
     to: 'Za',
     cc: 'Cc',
     bcc: 'Bcc',
+    from: 'Od',
     subject: 'Naslov',
     toggleFormatting: 'Uključi/isključi opcije formatiranja',
     attachFiles: 'Priloži datoteke',
