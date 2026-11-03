@@ -37,6 +37,7 @@ import { Logger } from '../utils/logger';
 import { isSettingsHash, settingsCategoryOf, settingsHash } from '../utils/routes';
 import { BACKGROUND_CHANGED_EVENT, ensurePageEntry, nextSettingsEntry, pageEntryId, settingsEntry, stampSettingsEntry, type SettingsEntry } from '../utils/settings-history';
 import { endBoot } from '../utils/boot-splash';
+import { anyEditKept } from '../utils/kept-edits';
 
 const DEFAULT_TOAST_TIMEOUT_MS = 3000;
 /** Long enough to be read and acted on; the automatic paths catch a missed one. */
@@ -204,9 +205,14 @@ export class AppRoot extends LitElement {
     window.addEventListener(PLUGIN_LOAD_FAILED_EVENT, this._handlePluginLoadFailed);
     window.addEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
     window.addEventListener(UPDATE_AVAILABLE_EVENT, this._handleUpdateAvailable);
-    // A reload waits while a composer is open. Asked of this element because
-    // the composers render inside its shadow root, out of a document query's reach.
-    registerBusyProbe(() => this.composeStore.getState().activeComposers.length > 0);
+    // A reload waits while a composer is open, and while a Settings form
+    // holds an edit its Save has not stored: in the open window, or kept for
+    // the form's next visit after the window went. Asked of this element
+    // because the composers and the window render inside its shadow root,
+    // out of a document query's reach.
+    registerBusyProbe(() => this.composeStore.getState().activeComposers.length > 0
+      || this.settingsUnsaved()
+      || anyEditKept());
 
     if (this.isOffline) {
       this._handleOfflineEvent();
@@ -216,6 +222,12 @@ export class AppRoot extends LitElement {
     if (isLoggedIn) {
       this._fetchSessionData();
     }
+  }
+
+  /** Whether the open Settings window has a section with unsaved changes. */
+  private settingsUnsaved(): boolean {
+    const settings = this.shadowRoot?.querySelector('settings-window') as { hasUnsavedChanges?: boolean } | null;
+    return settings?.hasUnsavedChanges === true;
   }
 
   private _handleOpenAttachmentPreview = (e: CustomEvent) => {

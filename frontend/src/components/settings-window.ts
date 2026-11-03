@@ -419,13 +419,21 @@ export class SettingsWindow extends LitElement {
     if (active instanceof HTMLElement && (active.localName === 'input' || active.localName === 'textarea' || active.isContentEditable)) {
       active.blur();
     }
-    const wrapper = this.shadowRoot?.querySelector('.settings-content-wrapper');
-    const unsaved = [...(wrapper?.children ?? [])].some((section) => (section as Partial<UnsavedChanges>).hasUnsavedChanges === true);
-    if (unsaved) {
+    if (this.hasUnsavedChanges) {
       this.pendingLeave = action;
       return;
     }
     action();
+  }
+
+  /**
+   * Whether the open section holds what its own Save has not stored (see
+   * `UnsavedChanges`): what `leave` asks about, and what the shell asks
+   * before an automatic reload, which waits for it.
+   */
+  get hasUnsavedChanges(): boolean {
+    const wrapper = this.shadowRoot?.querySelector('.settings-content-wrapper');
+    return [...(wrapper?.children ?? [])].some((section) => (section as Partial<UnsavedChanges>).hasUnsavedChanges === true);
   }
 
   private confirmLeave = () => {
