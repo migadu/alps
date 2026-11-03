@@ -91,9 +91,6 @@ export class AlpsContactsCategories extends LitElement {
       margin-inline-start: auto;
       margin-inline-end: -4px;
     }
-    .category-item.active .category-actions {
-      display: none;
-    }
     .category-badge {
       background: rgba(0,0,0,0.08);
       padding: 2px 8px;
