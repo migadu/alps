@@ -26,7 +26,7 @@ test('calendar and tasks follow the chosen clock and changes made over an open c
     await expect(page.locator('calendar-event-preview').filter({ visible: true })).toContainText(time);
     await page.keyboard.press('Escape');
     await page.goto(`/#/calendar/day/${day}?q=Clock%20event`);
-    await expect(page.locator('calendar-list-view .date-time')).toHaveText(time);
+    await expect(page.locator('calendar-list-view .event-item').filter({ hasText: 'Clock event' }).locator('.date-time')).toHaveText(time);
     await page.goto('/#/tasks/all');
     await expect(page.locator('tasks-list .row').filter({ hasText: 'Clock task' }).locator('.due')).toHaveText(time);
   }

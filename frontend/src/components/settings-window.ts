@@ -641,7 +641,7 @@ export class SettingsWindow extends LitElement {
           <textarea dir="auto" aria-label=${this.i18nStore?.t('settings.identity.signature') ?? ''} @change=${(e: Event) => this.handleUpdate(e, 'signature')} .value=${this.settingsState.signature || ''}></textarea>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.replyTo')}" description="${this.i18nStore?.t('settings.identity.replyToDesc')}">
-          <alps-input label="${this.i18nStore?.t('settings.identity.replyTo')}" type="email" .value=${this.settingsState.replyTo || ''} @change=${(e: Event) => this.handleUpdate(e, 'replyTo')} placeholder="${this.i18nStore?.t('settings.placeholderReplyTo')}"></alps-input>
+          <alps-input label="${this.i18nStore?.t('settings.identity.replyTo')}" type="text" .value=${this.settingsState.replyTo || ''} @change=${(e: Event) => this.handleUpdate(e, 'replyTo')} placeholder="${this.i18nStore?.t('settings.placeholderReplyTo')}"></alps-input>
         </alps-setting-group>
         <alps-setting-group>
           <label class="checkbox-label">
