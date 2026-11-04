@@ -37,11 +37,15 @@ func providerMailboxToInfo(mbox provider.Mailbox) MailboxInfo {
 	}
 
 	return MailboxInfo{
-		ListData:   listData,
-		Active:     false,
-		Total:      mbox.Total,
-		Unseen:     mbox.Unseen,
-		Subscribed: mbox.Subscribed,
+		ListData:        listData,
+		Active:          false,
+		Total:           mbox.Total,
+		Unseen:          mbox.Unseen,
+		Subscribed:      mbox.Subscribed,
+		Namespace:       mbox.Namespace,
+		NamespacePrefix: mbox.NamespacePrefix,
+		Rights:          mbox.Rights,
+		Shareable:       mbox.Shareable,
 	}
 }
 

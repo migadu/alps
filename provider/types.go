@@ -206,7 +206,31 @@ type Mailbox struct {
 	UIDNext       uint32
 	HighestModSeq uint64
 	Subscribed    bool
+	// Namespace is the namespace (RFC 2342) the mailbox is in: "" for the
+	// user's own folders, or NamespaceOther or NamespaceShared, the folders
+	// other people let the user see. NamespacePrefix is that namespace's
+	// prefix, which the folder's own name follows.
+	Namespace       string
+	NamespacePrefix string
+	// Rights, where not nil, are the user's own rights on a mailbox of another
+	// namespace, as the server spells them (RFC 4314 MYRIGHTS): what the user
+	// may do there. Nil for the user's own folders, and on a server without
+	// access lists, where nothing is held back.
+	Rights *string
+	// Shareable says that the user may give other people access to the
+	// mailbox: the server keeps access lists, the user may administer the
+	// mailbox's, and the people it is shared with can reach it.
+	Shareable bool
 }
+
+// The namespaces of other people's folders (RFC 2342 §5).
+const (
+	// NamespaceOther holds folders of other users that they share with this one.
+	NamespaceOther = "other"
+	// NamespaceShared holds folders that belong to no one user, shared among
+	// several.
+	NamespaceShared = "shared"
+)
 
 // MailboxStatus contains mailbox metadata
 type MailboxStatus struct {
