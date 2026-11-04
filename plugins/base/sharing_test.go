@@ -218,6 +218,37 @@ func TestHTTP_SharingPreservesSessionAndServiceErrors(t *testing.T) {
 	}
 }
 
+type sharingProbeFailureProvider struct {
+	sharingFailureProvider
+	probeErr error
+}
+
+func (p sharingProbeFailureProvider) FolderRights(string) (string, error) { return "", p.probeErr }
+
+func TestHTTP_SharingPreservesFailuresDuringTheExistenceProbe(t *testing.T) {
+	for _, failure := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"auth", provider.AuthError{Cause: errors.New("credentials expired")}, http.StatusUnauthorized},
+		{"outage", errors.Join(alps.ErrMailProviderUnavailable, errors.New("backend offline")), http.StatusServiceUnavailable},
+	} {
+		for _, method := range []string{"PUT", "DELETE"} {
+			t.Run(failure.name+"/"+method, func(t *testing.T) {
+				s := newTestServerWrapping(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(p provider.MailProvider) provider.MailProvider {
+					return sharingProbeFailureProvider{
+						sharingFailureProvider: sharingFailureProvider{MailProvider: p, err: &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeNonExistent}},
+						probeErr:               failure.err,
+					}
+				})
+				s.login()
+				s.expect(s.do(method, sharingPath("INBOX", "bob@example.com"), map[string]string{"level": "read_only"}), failure.status)
+			})
+		}
+	}
+}
+
 // The levels are the rights alps gives, whatever order or virtual rights the
 // server spells them with.
 func TestShareLevelOf(t *testing.T) {

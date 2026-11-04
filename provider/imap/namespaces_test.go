@@ -4,6 +4,8 @@
 package imap
 
 import (
+	"errors"
+	"net"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +13,16 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
 )
+
+func TestListMailboxesPreservesConnectionErrors(t *testing.T) {
+	p := scriptedProvider(t, &scriptedIMAP{caps: "IMAP4rev1 NAMESPACE", namespace: sharedLayout})
+	if err := p.client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.ListMailboxes(); !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("ListMailboxes returned %v, want a closed connection error", err)
+	}
+}
 
 // sharedLayout is sora's: the user's own folders under no prefix, folders
 // shared among the domain's users under Shared/, and no namespace of other

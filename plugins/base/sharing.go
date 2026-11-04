@@ -245,7 +245,7 @@ func handleShareMailbox(ctx *alps.Context) error {
 			return err
 		}
 		err = sharer.GrantFolderAccess(mailbox, identifier, level.rights)
-		unknown = unknownIdentifier(sharer, mailbox, err)
+		unknown, err = unknownIdentifier(sharer, mailbox, err)
 		return err
 	})
 	if err != nil {
@@ -269,7 +269,7 @@ func handleUnshareMailbox(ctx *alps.Context) error {
 			return err
 		}
 		err = sharer.RevokeFolderAccess(mailbox, identifier)
-		unknown = unknownIdentifier(sharer, mailbox, err)
+		unknown, err = unknownIdentifier(sharer, mailbox, err)
 		return err
 	})
 	if err != nil {
@@ -280,11 +280,14 @@ func handleUnshareMailbox(ctx *alps.Context) error {
 
 // unknownIdentifier reports whether err, the server's answer to a change of
 // mailbox's access list, refused an identifier it does not know rather than
-// a folder that is not there: see respondSharingError.
-func unknownIdentifier(sharer provider.FolderSharer, mailbox string, err error) bool {
+// a folder that is not there: see respondSharingError. A failed probe must
+// retain its own error, especially a lost sign-in or connection.
+func unknownIdentifier(sharer provider.FolderSharer, mailbox string, err error) (bool, error) {
 	if !refusedWith(err, imap.ResponseCodeNonExistent) {
-		return false
+		return false, err
 	}
-	_, gone := sharer.FolderRights(mailbox)
-	return gone == nil
+	if _, probeErr := sharer.FolderRights(mailbox); probeErr != nil {
+		return false, probeErr
+	}
+	return true, err
 }

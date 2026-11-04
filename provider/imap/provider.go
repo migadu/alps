@@ -181,7 +181,7 @@ func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 		mailboxes, err = p.withOtherNamespaces(mailboxes, options)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to list mailboxes: %v", err)
+		return nil, p.lostIf(fmt.Errorf("failed to list mailboxes: %w", err))
 	}
 	return mailboxes, nil
 }
