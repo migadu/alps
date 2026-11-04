@@ -1085,6 +1085,11 @@ export class FolderList extends LitElement {
 
         let icon = renderIcon(shared ? 'folderUser' : 'folder');
         let label = node.name;
+        if (shared && depth === 0 && sharedNodes.some(other => other !== node && other.name === node.name)) {
+          // Show the namespace when stripping it would leave two identical
+          // captions, so the user can tell which folder they are acting on.
+          label = node.fullName;
+        }
 
         if (display) {
           icon = renderIcon(display.icon);

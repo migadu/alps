@@ -98,6 +98,8 @@ describe('the shared folders section', () => {
       shared('Shared/Team/Plans', 'lrs'),
       own('Other Users/Team/Plans', { Namespace: 'other', NamespacePrefix: 'Other Users/', Rights: 'lrswi' }),
     ], { expandedFolders: new Set(['Shared/Team', 'Other Users/Team']) });
+    expect(drawn(el)).toContain('Shared/Team');
+    expect(drawn(el)).toContain('Other Users/Team');
     const picked: string[] = [];
     el.addEventListener('select-mailbox', (e: Event) => picked.push((e as CustomEvent).detail.name));
     const plans = shadowAll(el, '.folder-item').filter(r => r.getAttribute('title') === 'Plans');
