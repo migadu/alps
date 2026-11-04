@@ -92,6 +92,20 @@ describe('the shared folders section', () => {
     expect(drawn(el)).not.toContain('# folderList.sharedFolders');
   });
 
+  it('keeps identical relative paths in different namespaces independent', async () => {
+    const el = await sidebar([
+      ...SPECIAL,
+      shared('Shared/Team/Plans', 'lrs'),
+      own('Other Users/Team/Plans', { Namespace: 'other', NamespacePrefix: 'Other Users/', Rights: 'lrswi' }),
+    ], { expandedFolders: new Set(['Shared/Team', 'Other Users/Team']) });
+    const picked: string[] = [];
+    el.addEventListener('select-mailbox', (e: Event) => picked.push((e as CustomEvent).detail.name));
+    const plans = shadowAll(el, '.folder-item').filter(r => r.getAttribute('title') === 'Plans');
+    expect(plans).toHaveLength(2);
+    for (const plan of plans) await click(plan, el);
+    expect(new Set(picked)).toEqual(new Set(['Shared/Team/Plans', 'Other Users/Team/Plans']));
+  });
+
   it('gives no shared folder the role of one of the user\'s own', async () => {
     const mailboxes = [own('INBOX'), own('Sent'), shared('Shared/Sent', 'lrs', { Attrs: ['\\Sent'] }), shared('Shared/Trash', 'lrs', { Attrs: ['\\Trash'] })];
     expect(specialMailboxName('sent', mailboxes)).toBe('Sent');

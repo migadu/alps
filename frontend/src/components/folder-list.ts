@@ -884,17 +884,20 @@ export class FolderList extends LitElement {
           const part = parts[i];
           pathAcc = i === 0 ? pathAcc + part : pathAcc + delimiter + part;
 
-          if (!currentLevel[part]) {
-            currentLevel[part] = {
+          // Identical relative paths in distinct namespaces are distinct
+          // folders. Keep the full path as identity after stripping the label.
+          const key = inNamespace ? pathAcc : part;
+          if (!currentLevel[key]) {
+            currentLevel[key] = {
               name: part,
               fullName: pathAcc,
               children: level()
             };
           }
           if (i === parts.length - 1) {
-            currentLevel[part].mb = mb;
+            currentLevel[key].mb = mb;
           }
-          currentLevel = currentLevel[part].children;
+          currentLevel = currentLevel[key].children;
         }
       });
       return root;

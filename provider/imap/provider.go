@@ -395,7 +395,9 @@ func (p *IMAPProvider) forgetSpecialMailboxes() {
 	p.cacheLock.Unlock()
 }
 
-// listMailboxByType asks the server which top-level folder has the type.
+// listMailboxByType finds a personal folder of the type. Shared folders can
+// advertise the same attributes, but must never receive this user's drafts
+// or outgoing mail.
 func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provider.Mailbox, error) {
 	var attr imap.MailboxAttr
 	var fallbackNames []string
@@ -418,7 +420,16 @@ func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provid
 		fallbackNames = []string{"Archive"}
 	}
 
-	list := p.client.List("", "%", nil)
+	ns, err := p.readNamespaces()
+	if err != nil {
+		return nil, err
+	}
+	pattern := "%"
+	if ns != nil {
+		// Personal folders may be nested under INBOX. or another prefix.
+		pattern = "*"
+	}
+	list := p.client.List("", pattern, nil)
 
 	var attrMatched bool
 	var best *imap.ListData
@@ -426,6 +437,16 @@ func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provid
 		mbox := list.Next()
 		if mbox == nil {
 			break
+		}
+		if kind, _ := namespaceOf(ns, mbox.Mailbox); kind != "" {
+			continue
+		}
+		attrs := make([]string, len(mbox.Attrs))
+		for i, a := range mbox.Attrs {
+			attrs[i] = string(a)
+		}
+		if !selectable(&provider.Mailbox{Attributes: attrs}) {
+			continue
 		}
 
 		for _, a := range mbox.Attrs {
@@ -439,15 +460,25 @@ func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provid
 			break
 		}
 
+		name := mbox.Mailbox
+		if ns != nil {
+			longest := 0
+			for _, personal := range ns.Personal {
+				if strings.HasPrefix(name, personal.Prefix) && len(personal.Prefix) > longest {
+					longest = len(personal.Prefix)
+				}
+			}
+			name = name[longest:]
+		}
 		for _, fallback := range fallbackNames {
-			if strings.EqualFold(fallback, mbox.Mailbox) {
+			if strings.EqualFold(fallback, name) {
 				best = mbox
 				break
 			}
 		}
 	}
 	if err := list.Close(); err != nil {
-		return nil, fmt.Errorf("failed to get mailbox with attribute %q: %v", attr, err)
+		return nil, p.lostIf(fmt.Errorf("failed to get mailbox with attribute %q: %w", attr, err))
 	}
 
 	if best == nil {

@@ -115,6 +115,42 @@ describe('the folder share dialog', () => {
     expect(shadow<El>(el, 'alps-input').value).toBe('');
   });
 
+  it('does not present stale access as current when the refresh after a change fails', async () => {
+    const { read } = server([bob]);
+    const el = await dialog();
+    read.mockResolvedValue({ ok: false, reason: 'failed' });
+    await type(el, 'carol@example.test');
+    await pressShare(el);
+    expect(text(el)).toContain('folderShare.listFailed');
+    expect(rows(el)).toEqual([]);
+    expect(text(el)).not.toContain('folderShare.noneYet');
+  });
+
+  it('waits for an access change and its refresh before another change or closing', async () => {
+    server([bob]);
+    const el = await dialog();
+    let finish!: (result: SharingOutcome) => void;
+    const change = vi.mocked(mailboxOperations.shareMailbox).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const closed = vi.fn();
+    el.addEventListener('close', closed);
+    const select = rowOf(el, bob.identifier).querySelector<El>('alps-select')!;
+    select.value = 'full';
+    select.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    await el.updateComplete;
+    expect(select.disabled).toBe(true);
+    expect(shadow<El>(el, 'ui-modal').dismissible).toBe(false);
+    await type(el, 'carol@example.test');
+    await el.grant();
+    el.close();
+    expect(change).toHaveBeenCalledTimes(1);
+    expect(closed).not.toHaveBeenCalled();
+    finish({ ok: true });
+    await waitFor(() => el.changing === null, 'the access change and refresh');
+    await el.updateComplete;
+    expect(select.disabled).toBe(false);
+    expect(shadow<El>(el, 'ui-modal').dismissible).toBe(true);
+  });
+
   it('leaves a refused grant off the list, and says why', async () => {
     const { share } = server([bob], { share: { ok: false, reason: 'unknown_identifier' } });
     const el = await dialog();

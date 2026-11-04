@@ -190,7 +190,12 @@ export class FolderShareDialog extends LitElement {
   }
 
   private close() {
+    if (this.pending) return;
     this.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }));
+  }
+
+  private get pending(): boolean {
+    return this.busy || this.changing !== null;
   }
 
   /**
@@ -202,7 +207,7 @@ export class FolderShareDialog extends LitElement {
    */
   private async grant() {
     const typed = this.address.trim();
-    if (!typed || this.busy) return;
+    if (!typed || this.pending) return;
     // One address, whole: a name, a second address or a word like "anyone"
     // is no one person to share with, and the server would only refuse it.
     if (!/^[^\s@,;<>]+@[^\s@,;<>]+$/.test(typed)) {
@@ -229,7 +234,7 @@ export class FolderShareDialog extends LitElement {
   }
 
   private async changeLevel(entry: FolderShare, level: ShareLevel) {
-    if (level === entry.level || this.changing) return;
+    if (level === entry.level || this.pending) return;
     this.changing = entry.identifier;
     this.error = null;
     try {
@@ -242,6 +247,7 @@ export class FolderShareDialog extends LitElement {
   }
 
   private async revoke(entry: FolderShare) {
+    if (this.pending) return;
     this.changing = entry.identifier;
     this.error = null;
     try {
@@ -259,7 +265,7 @@ export class FolderShareDialog extends LitElement {
 
   private renderEntries() {
     if (this.loading) return html`<div class="note" role="status">${this.t('folderShare.loading')}</div>`;
-    if (this.listFailed && this.entries.length === 0) {
+    if (this.listFailed) {
       return html`<div class="note error" role="alert">${this.t('folderShare.listFailed')}</div>`;
     }
     if (this.entries.length === 0) return html`<div class="note">${this.t('folderShare.noneYet')}</div>`;
@@ -278,14 +284,14 @@ export class FolderShareDialog extends LitElement {
                 label=${this.t('folderShare.levelFor', { who: entry.identifier })}
                 .value=${live(entry.level)}
                 .options=${options}
-                ?disabled=${this.changing !== null}
+                ?disabled=${this.pending}
                 @change=${(e: Event) => this.changeLevel(entry, (e.target as HTMLSelectElement).value as ShareLevel)}
               ></alps-select>
               <alps-icon-btn
                 class="revoke"
                 icon="trash"
                 title=${this.t('folderShare.revokeFor', { who: entry.identifier })}
-                ?disabled=${this.changing !== null}
+                ?disabled=${this.pending}
                 @click=${() => { this.confirmingRevoke = entry; }}
               ></alps-icon-btn>
             </li>
@@ -299,7 +305,7 @@ export class FolderShareDialog extends LitElement {
     return html`
       <ui-modal
         .heading=${this.t('folderShare.title', { folder: this.folderName || this.mailbox })}
-        .dismissible=${!this.busy}
+        .dismissible=${!this.pending}
         width="520px"
         @cancel=${() => this.close()}
       >
@@ -335,7 +341,7 @@ export class FolderShareDialog extends LitElement {
           <alps-button
             class="grant"
             variant="primary"
-            ?disabled=${this.busy || this.address.trim() === ''}
+            ?disabled=${this.pending || this.address.trim() === ''}
             ?spinning=${this.busy}
             @click=${() => this.grant()}
           >${this.t('folderShare.grant')}</alps-button>
@@ -347,7 +353,7 @@ export class FolderShareDialog extends LitElement {
           ${this.renderEntries()}
         </section>
 
-        <alps-button slot="actions" variant="normal" ?disabled=${this.busy} @click=${() => this.close()}>${this.t('folderShare.done')}</alps-button>
+        <alps-button slot="actions" variant="normal" ?disabled=${this.pending} @click=${() => this.close()}>${this.t('folderShare.done')}</alps-button>
       </ui-modal>
 
       ${this.confirmingRevoke ? html`

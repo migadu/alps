@@ -248,3 +248,29 @@ func TestNamespaceOf(t *testing.T) {
 		}
 	}
 }
+
+// Saving outgoing mail must never choose another person's special-use folder.
+func TestSpecialMailboxesBelongToThePersonalNamespace(t *testing.T) {
+	for _, tc := range []struct {
+		name, namespace, own, foreign string
+	}{
+		{"Cyrus", `* NAMESPACE (("INBOX." ".")) (("user." ".")) (("" "."))`, "INBOX.Sent", "Announcements"},
+		{"empty personal prefix", sharedLayout, "Sent", "Shared/Sent"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := &scriptedIMAP{
+				caps: "IMAP4rev1 NAMESPACE", namespace: tc.namespace,
+				list: []string{
+					`* LIST (\Sent) "." "` + tc.foreign + `"`,
+					`* LIST (\Noselect \Sent) "." "INBOX.Placeholder"`,
+					`* LIST (\Sent) "." "` + tc.own + `"`,
+				},
+			}
+			p := scriptedProvider(t, srv)
+			mbox, err := p.FindMailboxByType(provider.MailboxTypeSent)
+			if err != nil || mbox == nil || mbox.Name != tc.own {
+				t.Fatalf("Sent = %+v, %v; want %q", mbox, err, tc.own)
+			}
+		})
+	}
+}
