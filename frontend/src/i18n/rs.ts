@@ -210,7 +210,8 @@ export const rs = {
     moveToBottom: "Помери на дно",
     more: "Више",
     less: "Мање",
-    unsubscribedFolders: "Фасцикле без претплате"
+    unsubscribedFolders: "Фасцикле без претплате",
+    sharedFolders: 'Дељене фасцикле'
   },
   search: {
     placeholder: 'Претражи пошту',

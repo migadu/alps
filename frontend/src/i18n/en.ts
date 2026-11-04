@@ -263,7 +263,8 @@ export const en = {
     moveToBottom: "Move to Bottom",
     more: "More",
     less: "Less",
-    unsubscribedFolders: "Unsubscribed folders"
+    unsubscribedFolders: "Unsubscribed folders",
+    sharedFolders: 'Shared folders'
   },
   search: {
     placeholder: 'Search mail',

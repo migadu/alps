@@ -263,7 +263,8 @@ export const hi = {
     moveToBottom: 'सबसे नीचे ले जाएँ',
     more: 'और',
     less: 'कम',
-    unsubscribedFolders: 'बिना सदस्यता वाले फ़ोल्डर'
+    unsubscribedFolders: 'बिना सदस्यता वाले फ़ोल्डर',
+    sharedFolders: 'साझा फ़ोल्डर'
   },
   search: {
     placeholder: 'मेल खोजें'

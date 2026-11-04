@@ -262,7 +262,8 @@ export const zhHant = {
     moveToBottom: '移至底部',
     more: '更多',
     less: '摺疊',
-    unsubscribedFolders: '未訂閱的資料夾'
+    unsubscribedFolders: '未訂閱的資料夾',
+    sharedFolders: '共用資料夾'
   },
   search: {
     placeholder: '搜尋郵件'

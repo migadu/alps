@@ -209,7 +209,8 @@ export const fr = {
     moveToBottom: "Placer en bas",
     more: "Plus",
     less: "Moins",
-    unsubscribedFolders: "Dossiers sans abonnement"
+    unsubscribedFolders: "Dossiers sans abonnement",
+    sharedFolders: 'Dossiers partagés'
   },
   search: {
     placeholder: 'Rechercher des messages',

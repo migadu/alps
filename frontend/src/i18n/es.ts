@@ -209,7 +209,8 @@ export const es = {
     moveToBottom: "Mover al final",
     more: "Más",
     less: "Menos",
-    unsubscribedFolders: "Carpetas sin suscripción"
+    unsubscribedFolders: "Carpetas sin suscripción",
+    sharedFolders: 'Carpetas compartidas'
   },
   search: {
     placeholder: 'Buscar correo',

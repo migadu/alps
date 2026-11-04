@@ -211,7 +211,8 @@ export const de: TranslationDictionary = {
     moveToBottom: "Ganz nach unten",
     more: "Mehr",
     less: "Weniger",
-    unsubscribedFolders: "Nicht abonnierte Ordner"
+    unsubscribedFolders: "Nicht abonnierte Ordner",
+    sharedFolders: 'Freigegebene Ordner'
   },
   search: {
     placeholder: 'E-Mails durchsuchen',

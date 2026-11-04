@@ -262,7 +262,8 @@ export const ko = {
     moveToBottom: '맨 아래로 이동',
     more: '더보기',
     less: '접기',
-    unsubscribedFolders: '구독하지 않은 폴더'
+    unsubscribedFolders: '구독하지 않은 폴더',
+    sharedFolders: '공유 폴더'
   },
   search: {
     placeholder: '메일 검색'

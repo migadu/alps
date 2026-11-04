@@ -265,7 +265,8 @@ export const ru = {
     moveToBottom: 'В конец',
     more: 'Больше',
     less: 'Меньше',
-    unsubscribedFolders: 'Папки без подписки'
+    unsubscribedFolders: 'Папки без подписки',
+    sharedFolders: 'Общие папки'
   },
   search: {
     placeholder: 'Поиск в почте'

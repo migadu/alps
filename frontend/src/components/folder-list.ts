@@ -6,7 +6,7 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages, advertisedRoles, mailboxRole, reportsSubscriptions, specialMailboxName, type MailboxRole } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages, advertisedRoles, mailboxRole, reportsSubscriptions, specialMailboxName, mailboxNamespace, mayInMailbox, nameInNamespace, type MailboxRole } from '../utils/folders';
 import { carriesMessages, dropCopies, readMessageDrag } from '../utils/message-drag';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { confirmUnsubscribed, forgetUnsubscribedTree, renameUnsubscribedTree, settleUnsubscribedFolders, withUnsubscribedFolder, withoutUnsubscribedFolder } from '../utils/unsubscribed-folders';
@@ -673,7 +673,11 @@ export class FolderList extends LitElement {
     const parts = mailboxLevels(folderName, delimiter);
     const parentPath = parts.slice(0, -1).join(delimiter);
 
+    // Among the folders of its own section: the namespace root of the shared
+    // folders, which is not drawn, is no sibling of the user's own.
+    const shared = mailboxNamespace(mb) !== null;
     const siblings = this.mailboxes
+      .filter(m => (mailboxNamespace(m) !== null) === shared)
       .map(m => m.Name || m.Mailbox || '')
       .filter(name => {
         if (this.primaryFullNames.has(name)) return false;
@@ -848,33 +852,52 @@ export class FolderList extends LitElement {
     // should be and was never drawn, and one called "__proto__" was written onto
     // Object.prototype itself, handing every object in the app its mailbox.
     const level = (): Record<string, TreeNode> => Object.create(null);
-    const root = level();
 
-    this.mailboxes.forEach(mb => {
-      const fullName = mb.Name || mb.Mailbox || '';
-      const delimiter = delimiterOf(mb, '.');
-      const parts = mailboxLevels(fullName, delimiter);
+    /*
+     * OTHER PEOPLE'S FOLDERS, in a section of their own.
+     *
+     * A folder another user shares, or one shared among several, is in
+     * another namespace than the user's own (RFC 2342), and the folder list
+     * says which. Drawn among the user's folders it was a stray "Shared" or
+     * "Other Users" parent, its folders captioned as if they were the user's.
+     * They are drawn under Shared folders instead, named after the
+     * namespace's prefix: sora's "Shared/Team" is "Team" there, and its
+     * "Shared" root, no one's folder, is not drawn at all. A row's full name
+     * is still the folder's own, which every action uses.
+     */
+    const buildTree = (mailboxes: any[], inNamespace: boolean): Record<string, TreeNode> => {
+      const root = level();
+      mailboxes.forEach(mb => {
+        const fullName = mb.Name || mb.Mailbox || '';
+        const delimiter = delimiterOf(mb, '.');
+        const shown = inNamespace ? nameInNamespace(mb) : fullName;
+        if (shown === '') return;
+        const parts = mailboxLevels(shown, delimiter);
 
-      let currentLevel = root;
-      let pathAcc = '';
+        let currentLevel = root;
+        let pathAcc = inNamespace ? fullName.slice(0, fullName.length - shown.length) : '';
 
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        pathAcc = i === 0 ? part : pathAcc + delimiter + part;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          pathAcc = i === 0 ? pathAcc + part : pathAcc + delimiter + part;
 
-        if (!currentLevel[part]) {
-          currentLevel[part] = {
-            name: part,
-            fullName: pathAcc,
-            children: level()
-          };
+          if (!currentLevel[part]) {
+            currentLevel[part] = {
+              name: part,
+              fullName: pathAcc,
+              children: level()
+            };
+          }
+          if (i === parts.length - 1) {
+            currentLevel[part].mb = mb;
+          }
+          currentLevel = currentLevel[part].children;
         }
-        if (i === parts.length - 1) {
-          currentLevel[part].mb = mb;
-        }
-        currentLevel = currentLevel[part].children;
-      }
-    });
+      });
+      return root;
+    };
+    const root = buildTree(this.mailboxes.filter(mb => mailboxNamespace(mb) === null), false);
+    const sharedRoot = buildTree(this.mailboxes.filter(mb => mailboxNamespace(mb) !== null), true);
 
     // The roles the server assigns itself: a name stands only for a role no
     // folder carries.
@@ -933,14 +956,16 @@ export class FolderList extends LitElement {
 
     const customOrder = this.settingsStore?.getState()?.customMailboxOrder || [];
 
-    customNodes.sort((a, b) => {
+    const byCustomOrder = (a: TreeNode, b: TreeNode) => {
       const idxA = customOrder.indexOf(a.fullName);
       const idxB = customOrder.indexOf(b.fullName);
       if (idxA !== -1 && idxB !== -1) return idxA - idxB;
       if (idxA !== -1) return -1;
       if (idxB !== -1) return 1;
       return a.name.localeCompare(b.name);
-    });
+    };
+    customNodes.sort(byCustomOrder);
+    const sharedNodes = Object.values(sharedRoot).sort(byCustomOrder);
 
     /*
      * UNSUBSCRIBED FOLDERS, and where they go.
@@ -987,21 +1012,30 @@ export class FolderList extends LitElement {
       isSelfOrDescendantMailbox(this.currentMailbox, node.fullName, delimiterOf(node.mb)));
     const unsubscribedOpen = this.showUnsubscribed || viewingUnsubscribed;
 
-    const renderTree = (nodes: TreeNode[], depth: number = 0): TemplateResult[] => {
+    const renderTree = (nodes: TreeNode[], depth: number = 0, shared = false): TemplateResult[] => {
       return nodes.map(node => {
         const hasChildren = Object.keys(node.children).length > 0;
         const isExpanded = this.expandedFolders.has(node.fullName);
         const isActive = this.currentMailbox === node.fullName;
-        const hasActions = depth > 0 || !node.primary;
+        // What the user may do with the folder: everything with their own,
+        // and with another's what its rights allow (see mayInMailbox). A row
+        // among the shared folders with no folder behind it, such as another
+        // user's name above their folders, allows nothing.
+        const may = (right: string) => (shared ? !!node.mb && mayInMailbox(node.mb, right) : mayInMailbox(node.mb, right));
+        const manages = depth > 0 || !node.primary;
+        const hasActions = manages;
+        const canCreate = may('k');
+        const canRemove = may('x');
 
         let isFirst = false;
         let isLast = false;
-        if (hasActions) {
+        if (manages) {
           const delimiter = delimiterOf(node.mb, '.');
           const parts = mailboxLevels(node.fullName, delimiter);
           const parentPath = parts.slice(0, -1).join(delimiter);
 
           const siblings = this.mailboxes
+            .filter(m => (mailboxNamespace(m) !== null) === shared)
             .map(m => m.Name || m.Mailbox || '')
             .filter(name => {
               if (this.primaryFullNames.has(name)) return false;
@@ -1039,7 +1073,7 @@ export class FolderList extends LitElement {
         const slot = nestedSlots.get(node.fullName);
         const display = node.primary ?? (slot !== undefined ? slotDisplay(node, slot) : undefined);
 
-        let icon = renderIcon('folder');
+        let icon = renderIcon(shared ? 'folderUser' : 'folder');
         let label = node.name;
 
         if (display) {
@@ -1115,6 +1149,8 @@ export class FolderList extends LitElement {
                   @popup-close=${() => { if (this.activeKebabMenu === node.fullName) this.activeKebabMenu = null; }}
                 >
                   <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" title=${this.i18nStore?.t('general.moreOptions')}></alps-icon-btn>
+                  ${manages ? html`
+                  ${canCreate ? html`
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
@@ -1123,6 +1159,8 @@ export class FolderList extends LitElement {
             }}>
                     ${renderIcon('folderPlus')} <span class="item-text">${this.i18nStore?.t('folderList.createSubfolder')}</span>
                   </button>
+                  ` : ''}
+                  ${canRemove ? html`
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
@@ -1131,6 +1169,7 @@ export class FolderList extends LitElement {
             }}>
                     ${renderIcon('pen')} <span class="item-text">${this.i18nStore?.t('folderList.rename')}</span>
                   </button>
+                  ` : ''}
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
@@ -1217,6 +1256,7 @@ export class FolderList extends LitElement {
                   </alps-popup>
 
 
+                  ${canRemove ? html`
                   <div class="dropdown-divider"></div>
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
@@ -1230,8 +1270,11 @@ export class FolderList extends LitElement {
               // or "Trashcan" was treated as Trash: Delete offered only permanent
               // deletion, never the move. It also stood in for "inside Trash", which
               // the resolved Trash name and the server's delimiter answer exactly.
+              //
+              // A folder of another namespace is deleted outright too: moved into
+              // the user's own Trash, it would leave the people it is shared with.
               const trashName = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
-              if (mailboxRoleByName(node.fullName, this.mailboxes) === 'trash'
+              if (shared || mailboxRoleByName(node.fullName, this.mailboxes) === 'trash'
                 || isSelfOrDescendantMailbox(node.fullName, trashName, delimiterOf(node.mb))) {
                 this.showDeleteConfirm = true;
               } else {
@@ -1240,6 +1283,8 @@ export class FolderList extends LitElement {
             }}>
                     ${renderIcon('trash')} <span class="item-text">${this.i18nStore?.t('folderList.delete')}</span>
                   </button>
+                  ` : ''}
+                  ` : ''}
                 </alps-popup>
               </div>
             ` : ''}
@@ -1249,14 +1294,7 @@ export class FolderList extends LitElement {
           
           ${hasChildren && isExpanded ? html`
             <div class="folder-children">
-              ${renderTree(Object.values(node.children).sort((a, b) => {
-              const idxA = customOrder.indexOf(a.fullName);
-              const idxB = customOrder.indexOf(b.fullName);
-              if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-              if (idxA !== -1) return -1;
-              if (idxB !== -1) return 1;
-              return a.name.localeCompare(b.name);
-            }), depth + 1)}
+              ${renderTree(Object.values(node.children).sort(byCustomOrder), depth + 1, shared)}
             </div>
           ` : ''}
         `;
@@ -1308,6 +1346,11 @@ export class FolderList extends LitElement {
                 <div class="folder-name">${unsubscribedOpen ? this.i18nStore?.t('folderList.less') : this.i18nStore?.t('folderList.more')}</div>
               </button>
               ${unsubscribedOpen ? renderTree(unsubscribedNodes) : ''}
+            ` : ''}
+            ${sharedNodes.length > 0 ? html`
+              <div class="folder-separator"></div>
+              <alps-sidebar-heading class="shared-heading" heading=${this.i18nStore?.t('folderList.sharedFolders') ?? ''}></alps-sidebar-heading>
+              ${renderTree(sharedNodes, 0, true)}
             ` : ''}
           </div>
         </alps-sidebar-content>

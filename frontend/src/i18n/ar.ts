@@ -267,7 +267,8 @@ export const ar = {
     moveToBottom: 'نقل إلى الأسفل',
     more: 'المزيد',
     less: 'أقل',
-    unsubscribedFolders: 'المجلدات غير المشترك فيها'
+    unsubscribedFolders: 'المجلدات غير المشترك فيها',
+    sharedFolders: 'المجلدات المشتركة'
   },
   search: {
     placeholder: 'البحث في البريد'

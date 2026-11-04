@@ -210,7 +210,8 @@ export const sr = {
     moveToBottom: "Pomeri na dno",
     more: "Više",
     less: "Manje",
-    unsubscribedFolders: "Fascikle bez pretplate"
+    unsubscribedFolders: "Fascikle bez pretplate",
+    sharedFolders: 'Deljene fascikle'
   },
   search: {
     placeholder: 'Pretraži poštu',

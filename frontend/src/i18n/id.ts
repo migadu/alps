@@ -262,7 +262,8 @@ export const id = {
     moveToBottom: 'Pindahkan ke paling bawah',
     more: 'Lainnya',
     less: 'Lebih sedikit',
-    unsubscribedFolders: 'Folder tanpa langganan'
+    unsubscribedFolders: 'Folder tanpa langganan',
+    sharedFolders: 'Folder bersama'
   },
   search: {
     placeholder: 'Cari email'

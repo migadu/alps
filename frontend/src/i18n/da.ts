@@ -265,7 +265,8 @@ export const da: TranslationDictionary = {
     moveToBottom: 'Flyt nederst',
     more: 'Mere',
     less: 'Mindre',
-    unsubscribedFolders: 'Mapper uden abonnement'
+    unsubscribedFolders: 'Mapper uden abonnement',
+    sharedFolders: 'Delte mapper'
   },
   search: {
     placeholder: 'Søg i mail',

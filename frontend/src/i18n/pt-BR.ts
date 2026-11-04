@@ -263,7 +263,8 @@ export const ptBR = {
     moveToBottom: 'Mover para o fim',
     more: 'Mais',
     less: 'Menos',
-    unsubscribedFolders: 'Pastas não assinadas'
+    unsubscribedFolders: 'Pastas não assinadas',
+    sharedFolders: 'Pastas compartilhadas'
   },
   search: {
     placeholder: 'Pesquisar e-mails'

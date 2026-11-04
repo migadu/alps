@@ -209,7 +209,8 @@ export const it = {
     moveToBottom: "Sposta in fondo",
     more: "Altro",
     less: "Meno",
-    unsubscribedFolders: "Cartelle non sottoscritte"
+    unsubscribedFolders: "Cartelle non sottoscritte",
+    sharedFolders: 'Cartelle condivise'
   },
   search: {
     placeholder: 'Cerca nella posta',

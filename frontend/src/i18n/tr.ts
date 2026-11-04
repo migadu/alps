@@ -263,7 +263,8 @@ export const tr = {
     moveToBottom: 'En alta taşı',
     more: 'Diğer',
     less: 'Daha az',
-    unsubscribedFolders: 'Abone olunmayan klasörler'
+    unsubscribedFolders: 'Abone olunmayan klasörler',
+    sharedFolders: 'Paylaşılan klasörler'
   },
   search: {
     placeholder: 'Postalarda ara'

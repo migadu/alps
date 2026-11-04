@@ -264,7 +264,8 @@ export const zhHans: TranslationDictionary = {
     moveToBottom: '移至底部',
     more: '更多',
     less: '收起',
-    unsubscribedFolders: '未订阅的文件夹'
+    unsubscribedFolders: '未订阅的文件夹',
+    sharedFolders: '共享文件夹'
   },
   search: {
     placeholder: '搜索邮件',

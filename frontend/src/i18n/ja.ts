@@ -262,7 +262,8 @@ export const ja = {
     moveToBottom: '一番下に移動',
     more: 'もっと表示',
     less: '折りたたむ',
-    unsubscribedFolders: '購読していないフォルダー'
+    unsubscribedFolders: '購読していないフォルダー',
+    sharedFolders: '共有フォルダー'
   },
   search: {
     placeholder: 'メールを検索'

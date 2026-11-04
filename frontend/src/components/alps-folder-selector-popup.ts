@@ -3,6 +3,7 @@ import { customElement, property, state, query } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { getDestinationLabel, renderIcon } from '../utils/ui';
+import { mayInMailbox } from '../utils/folders';
 import './alps-popup';
 import { motionStyles } from '../utils/motion';
 
@@ -168,8 +169,10 @@ export class AlpsFolderSelectorPopup extends LitElement {
     // Each destination as the sidebar names a special folder, in the user's
     // language, where this listed raw IMAP names ("INBOX", "[Gmail]/Trash");
     // any other folder by its whole path. The filter matches either, so typing
-    // the server's name still finds the folder.
+    // the server's name still finds the folder. A folder shared with the user
+    // that they may not file into is no destination: the server refuses it.
     const filteredFolders = this.mailboxes
+      .filter(mb => mayInMailbox(mb, 'i'))
       .map(mb => mb.Name || mb.Mailbox || '')
       .filter(name => name !== '' && name !== this.currentMailbox)
       .map(name => ({ name, caption: getDestinationLabel(name, this.i18nStore, this.mailboxes) }))

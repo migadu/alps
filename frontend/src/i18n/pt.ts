@@ -256,7 +256,8 @@ export const pt = {
     moveToBottom: "Mover para o final",
     more: "Mais",
     less: "Menos",
-    unsubscribedFolders: "Pastas não subscritas"
+    unsubscribedFolders: "Pastas não subscritas",
+    sharedFolders: 'Pastas partilhadas'
   },
   search: {
     placeholder: 'Pesquisar e-mails',
