@@ -4,21 +4,21 @@ export default {
       other: '{total} 个联系人中有 {count} 个无法删除。'
     },
     categoryRenameFailed: {
-      other: '{total} 个联系人中有 {count} 个无法更新，因此该类别只被部分重命名。'
+      other: '{total} 个联系人中有 {count} 个无法更新，因此该分类的重命名操作仅部分完成。'
     },
     categoryDeleteFailed: {
-      other: '{total} 个联系人中有 {count} 个无法更新，因此该类别只被部分移除。'
+      other: '{total} 个联系人中有 {count} 个无法更新，因此该分类的移除操作仅部分完成。'
     },
     categoryUpdateFailed: {
       other: '{total} 个联系人中有 {count} 个无法更新。'
     },
     deleteOneFailed: '无法删除该联系人。',
-    categoryRenameOneFailed: '有一个联系人无法更新，因此该类别只被部分重命名。',
-    categoryDeleteOneFailed: '有一个联系人无法更新，因此该类别只被部分移除。',
+    categoryRenameOneFailed: '无法更新某个联系人，因此该类别的重命名操作仅部分完成。',
+    categoryDeleteOneFailed: '无法更新某个联系人，因此该类别的删除操作仅部分完成。',
     categoryUpdateOneFailed: '无法更新该联系人。',
     saveFailed: '无法保存该联系人。',
-    loadFailed: '无法加载该联系人，因此暂时无法编辑。',
-    saveConflict: '此联系人已在另一台设备上被更改，因此您的修改未保存。请取消编辑以查看最新版本。',
+    loadFailed: '无法加载该联系人，因此暂时无法对其进行编辑。',
+    saveConflict: '该联系人在其他设备上已被修改，因此您的编辑未被保存。请取消编辑以查看最新版本。',
     starFailed: {
       other: '{total} 个联系人中有 {count} 个无法更新。'
     },
@@ -34,44 +34,44 @@ export default {
     unnamedContact: '未命名联系人',
     title: '联系人',
     allContacts: '所有联系人',
-    favorites: '收藏',
+    favorites: '收藏夹',
     addContact: '添加联系人',
-    createCategory: '创建类别',
-    categoryName: '类别名称',
-    renameCategory: '重命名类别',
-    deleteCategory: '删除类别',
-    deleteCategoryConfirm: '确定要删除类别“{category}”吗？它将从所有联系人中移除，但不会删除任何联系人。',
+    createCategory: '创建分类',
+    categoryName: '分类名称',
+    renameCategory: '重命名分类',
+    deleteCategory: '删除分类',
+    deleteCategoryConfirm: '确定要删除分类 “{category}” 吗？这将把它从所有联系人中移除，但不会删除任何联系人。',
     rename: '重命名',
     delete: '删除',
     create: '创建',
     add: '添加',
-    newCategory: '新建类别',
+    newCategory: '新建分类',
     refreshContacts: '刷新联系人',
-    sortZa: '按 Z-A 排序',
-    sortAz: '按 A-Z 排序',
-    filterStarred: '筛选已加星标的联系人',
+    sortZa: '按降序 (Z-A) 排序',
+    sortAz: '按升序 (A-Z) 排序',
+    filterStarred: '筛选已收藏',
     uncategorized: '未分类',
-    addToCategory: '添加到类别',
+    addToCategory: '添加到分类',
     deleteContact: '删除联系人',
     deleteContactConfirm: '确定要删除此联系人吗？',
     editContact: '编辑联系人',
     save: '保存',
     cancel: '取消',
-    noContacts: '没有找到联系人',
-    selectContact: '选择一个联系人以查看详细信息',
+    noContacts: '未找到联系人',
+    selectContact: '选择联系人查看详情',
     selectedContacts: {
       other: '已选中 {count} 个联系人'
     },
-    clearSelection: '取消选择',
+    clearSelection: '清除选择',
     selectAll: '全选',
     clearSearch: '清除搜索',
-    searchContacts: '搜索联系人…',
-    details: '详细信息',
+    searchContacts: '搜索联系人 ...',
+    details: '详情',
     notes: '备注',
     name: '姓名',
     nickname: '昵称',
     organization: '组织',
-    titleField: '职位',
+    titleField: '职务',
     email: '电子邮件',
     phone: '电话',
     address: '地址',
@@ -95,7 +95,7 @@ export default {
     typeDefault: '默认',
     typeHome: '家庭',
     typeWork: '工作',
-    typeOther: '其他',
+    typeOther: '其它',
     typeMobile: '手机'
   }
 };
