@@ -4,13 +4,15 @@
  * Other people's folders, which the folder list says are in another
  * namespace (RFC 2342), are drawn in a section of their own, named after the
  * namespace's prefix, and what their menus offer is what the user's rights in
- * them allow (RFC 4314).
+ * them allow (RFC 4314). A folder the user may share has Share in its menu,
+ * the special folders included.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/folder-list';
 import '../src/components/alps-folder-selector-popup';
 import { acceptsDroppedMessages, findMailboxNameByRole, mailboxNamespace, mayInMailbox, nameInNamespace, specialMailboxName } from '../src/utils/folders';
-import { cleanup, click, flush, mount, shadowAll } from './helpers/dom';
+import { mailboxOperations } from '../src/services/mailbox-operations';
+import { cleanup, click, flush, mount, shadow, shadowAll } from './helpers/dom';
 
 type El = HTMLElement & Record<string, any>;
 
@@ -105,23 +107,45 @@ describe('a folder menu, by the rights on the folder', () => {
     const el = await sidebar([...SPECIAL, shared('Shared/Team', 'lrs')]);
     const items = menu(el, 'Team');
     expect(items).toContain('folderList.unsubscribe');
-    for (const key of ['folderList.createSubfolder', 'folderList.rename', 'folderList.delete']) {
+    for (const key of ['folderList.createSubfolder', 'folderList.rename', 'folderList.delete', 'folderList.share']) {
       expect(items, key).not.toContain(key);
     }
   });
 
-  it('offers what the rights allow: subfolders with k, rename and delete with x', async () => {
-    const el = await sidebar([...SPECIAL, shared('Shared/Team', 'lrswipkxtea'), shared('Shared/Notes', 'lrsk')]);
-    expect(menu(el, 'Team')).toEqual(expect.arrayContaining(['folderList.createSubfolder', 'folderList.rename', 'folderList.delete']));
+  it('offers what the rights allow: subfolders with k, rename and delete with x, sharing where the folder can be shared', async () => {
+    const el = await sidebar([...SPECIAL, shared('Shared/Team', 'lrswipkxtea', { Shareable: true }), shared('Shared/Notes', 'lrsk')]);
+    expect(menu(el, 'Team')).toEqual(expect.arrayContaining(['folderList.createSubfolder', 'folderList.rename', 'folderList.delete', 'folderList.share']));
     const notes = menu(el, 'Notes');
     expect(notes).toContain('folderList.createSubfolder');
     expect(notes).not.toContain('folderList.rename');
     expect(notes).not.toContain('folderList.delete');
+    expect(notes).not.toContain('folderList.share');
   });
 
-  it('offers a folder of the user\'s own everything', async () => {
-    const el = await sidebar([...SPECIAL, own('Work')]);
-    expect(menu(el, 'Work')).toEqual(expect.arrayContaining(['folderList.createSubfolder', 'folderList.rename', 'folderList.delete']));
+  it('offers a folder of the user\'s own everything, and Share only where it can be shared', async () => {
+    const el = await sidebar([...SPECIAL, own('Work', { Shareable: true }), own('Private')]);
+    expect(menu(el, 'Work')).toEqual(expect.arrayContaining(['folderList.createSubfolder', 'folderList.rename', 'folderList.delete', 'folderList.share']));
+    expect(menu(el, 'Private')).toEqual(expect.arrayContaining(['folderList.createSubfolder', 'folderList.rename', 'folderList.delete']));
+    expect(menu(el, 'Private')).not.toContain('folderList.share');
+  });
+
+  it('gives a special folder that can be shared a menu with Share alone', async () => {
+    const el = await sidebar([own('INBOX', { Shareable: true }), own('Sent', { Attrs: ['\\Sent'] })]);
+    expect(menu(el, 'folderList.inbox')).toEqual(['folderList.share']);
+    expect(row(el, 'folderList.sent').querySelector('.folder-actions')).toBeNull();
+  });
+
+  it('opens the sharing dialog for the folder, by its full name and as the sidebar names it', async () => {
+    vi.spyOn(mailboxOperations, 'readSharing').mockResolvedValue({ ok: true, rights: 'lrswipkxtea', entries: [] });
+    const el = await sidebar([...SPECIAL, shared('Shared/Team', 'lrswipkxtea', { Shareable: true })]);
+    const share = Array.from(row(el, 'Team').querySelectorAll<HTMLButtonElement>('.dropdown-item')).find(b => b.textContent!.includes('folderList.share'))!;
+    await click(share, el);
+    const dialog = shadow<El>(el, 'alps-folder-share-dialog');
+    expect(dialog.mailbox).toBe('Shared/Team');
+    expect(dialog.folderName).toBe('Team');
+    dialog.dispatchEvent(new CustomEvent('close'));
+    await el.updateComplete;
+    expect(el.shadowRoot!.querySelector('alps-folder-share-dialog')).toBeNull();
   });
 
   it('deletes a shared folder outright rather than moving it into the user\'s own Trash', async () => {

@@ -22,6 +22,7 @@ import { sidebarLayoutStyles } from './alps-sidebar';
 import { sidebarStripContext } from './alps-sidebar-strip';
 import { sectionHeadingStyles } from './alps-sidebar-heading';
 import './alps-popup';
+import './folder-share-dialog';
 import { motionStyles } from '../utils/motion';
 
 @customElement('alps-folder-list')
@@ -57,6 +58,8 @@ export class FolderList extends LitElement {
   @state() private showMoveToTrashConfirm = false;
   @state() private mailboxToDelete = '';
   @state() private parentForNewFolder = '';
+  /** The folder whose sharing dialog is open, by full name and as drawn. */
+  @state() private folderToShare: { name: string; label: string } | null = null;
   @state() private activeKebabMenu: string | null = null;
   /** The folder a drag of messages is over and may be dropped on, by name. */
   @state() private dropTarget: string | null = null;
@@ -1022,8 +1025,12 @@ export class FolderList extends LitElement {
         // among the shared folders with no folder behind it, such as another
         // user's name above their folders, allows nothing.
         const may = (right: string) => (shared ? !!node.mb && mayInMailbox(node.mb, right) : mayInMailbox(node.mb, right));
+        // Sharing is asked of the folder itself, and is offered on the
+        // special folders too, which have no menu otherwise: an Inbox is the
+        // folder most often delegated.
+        const canShare = !!node.mb?.Shareable;
         const manages = depth > 0 || !node.primary;
-        const hasActions = manages;
+        const hasActions = manages || canShare;
         const canCreate = may('k');
         const canRemove = may('x');
 
@@ -1285,6 +1292,16 @@ export class FolderList extends LitElement {
                   </button>
                   ` : ''}
                   ` : ''}
+                  ${canShare ? html`
+                  ${manages ? html`<div class="dropdown-divider"></div>` : ''}
+                  <button class="dropdown-item share-item" @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+              this.folderToShare = { name: node.fullName, label };
+            }}>
+                    ${renderIcon('userPlus')} <span class="item-text">${this.i18nStore?.t('folderList.share')}</span>
+                  </button>
+                  ` : ''}
                 </alps-popup>
               </div>
             ` : ''}
@@ -1391,6 +1408,14 @@ export class FolderList extends LitElement {
           @confirm=${this.handleMoveToTrashConfirm}
           @cancel=${() => this.showMoveToTrashConfirm = false}
         ></ui-confirm>
+      ` : ''}
+
+      ${this.folderToShare ? html`
+        <alps-folder-share-dialog
+          .mailbox=${this.folderToShare.name}
+          .folderName=${this.folderToShare.label}
+          @close=${() => { this.folderToShare = null; }}
+        ></alps-folder-share-dialog>
       ` : ''}
 
       ${this.showDeleteConfirm ? html`

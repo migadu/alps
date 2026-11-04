@@ -34,6 +34,60 @@ export type EmptyOutcome =
   | { ok: true; discarded?: number }
   | { ok: false; reason: 'auth' | 'not_discardable' | 'timeout' | 'failed' };
 
+/**
+ * The levels a folder can be shared at, the least first, as the server names
+ * them (see plugins/base/sharing.go for the rights each stands for): to read,
+ * to read and organise, and full access, which is everything but deciding who
+ * else has access.
+ */
+export const SHARE_LEVELS = ['read_only', 'read_write', 'full'] as const;
+export type ShareLevel = (typeof SHARE_LEVELS)[number];
+
+/** One other person's access to a folder: their address, the server's
+ * letters for their rights, and the level those stand for, or '' for rights
+ * another client gave that are none of the levels. */
+export interface FolderShare {
+  identifier: string;
+  rights: string;
+  level: ShareLevel | '';
+}
+
+/**
+ * Why a sharing request did not go through, as the server words it, with
+ * `auth` for a session that is gone (the shell is already on its way to the
+ * login screen) and `failed` for everything else.
+ */
+export type SharingRefusal =
+  | 'auth'
+  | 'invalid_identifier'
+  | 'self'
+  | 'invalid_level'
+  | 'unknown_identifier'
+  | 'not_found'
+  | 'forbidden'
+  | 'refused'
+  | 'not_supported'
+  | 'failed';
+
+const SHARING_REFUSALS: ReadonlySet<string> = new Set([
+  'invalid_identifier', 'self', 'invalid_level', 'unknown_identifier', 'not_found', 'forbidden', 'refused', 'not_supported',
+]);
+
+export type SharingOutcome = { ok: true } | { ok: false; reason: SharingRefusal };
+export type SharingRead = { ok: true; rights: string; entries: FolderShare[] } | { ok: false; reason: SharingRefusal };
+
+/** The refusal an answer that was not 2xx carries. */
+async function sharingRefusal(res: Response): Promise<SharingRefusal> {
+  if (res.status === 401) return 'auth';
+  try {
+    const body = await res.json();
+    if (typeof body?.error === 'string' && SHARING_REFUSALS.has(body.error)) return body.error as SharingRefusal;
+  } catch {
+    // An answer without a word for it is a failure like any other.
+  }
+  return 'failed';
+}
+
 /** Ten minutes. Long enough for an expunge over a folder nobody has emptied in
  * years, short enough that a wedged connection still ends in an answer. */
 const EMPTY_MAILBOX_TIMEOUT_MS = 10 * 60 * 1000;
@@ -228,6 +282,58 @@ export class MailboxOperationsService {
       return { ok: false, reason: 'failed' };
     } catch (err) {
       Logger.error(`Failed to ${verb} mailbox`, err);
+      return { ok: false, reason: 'failed' };
+    }
+  }
+
+  /** Who else has access to a folder, and the user's own rights on it. */
+  async readSharing(name: string): Promise<SharingRead> {
+    try {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/sharing`);
+      if (!res.ok) {
+        // A warning: the server answered, and the dialog says what it said.
+        Logger.warn('Could not read who has access to a folder', res.status);
+        return { ok: false, reason: await sharingRefusal(res) };
+      }
+      const body = await res.json();
+      const entries: FolderShare[] = Array.isArray(body?.entries)
+        ? body.entries.filter((e: any) => typeof e?.identifier === 'string').map((e: any) => ({
+          identifier: e.identifier,
+          rights: typeof e.rights === 'string' ? e.rights : '',
+          level: (SHARE_LEVELS as readonly string[]).includes(e.level) ? e.level : '',
+        }))
+        : [];
+      return { ok: true, rights: typeof body?.rights === 'string' ? body.rights : '', entries };
+    } catch (err) {
+      Logger.error('Failed to read who has access to a folder', err);
+      return { ok: false, reason: 'failed' };
+    }
+  }
+
+  /** Gives the person `identifier` names `level` on a folder, in place of the
+   * access they had. */
+  async shareMailbox(name: string, identifier: string, level: ShareLevel): Promise<SharingOutcome> {
+    return this.changeSharing(name, identifier, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level }),
+    });
+  }
+
+  /** Takes every right the person `identifier` names has on a folder away. */
+  async unshareMailbox(name: string, identifier: string): Promise<SharingOutcome> {
+    return this.changeSharing(name, identifier, { method: 'DELETE' });
+  }
+
+  private async changeSharing(name: string, identifier: string, init: RequestInit): Promise<SharingOutcome> {
+    try {
+      // The address is a path segment, encoded as a folder's name is.
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/sharing/${encodeMailboxPath(identifier)}`, init);
+      if (res.ok) return { ok: true };
+      Logger.warn('Could not change who has access to a folder', res.status);
+      return { ok: false, reason: await sharingRefusal(res) };
+    } catch (err) {
+      Logger.error('Failed to change who has access to a folder', err);
       return { ok: false, reason: 'failed' };
     }
   }
