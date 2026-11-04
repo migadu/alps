@@ -19,6 +19,13 @@ type MailboxInfo struct {
 	Total      int
 	Unseen     int
 	Subscribed bool
+	// Namespace, NamespacePrefix, Rights and Shareable say whose folder it
+	// is and what the user may do in it: see provider.Mailbox. Left out for
+	// the user's own folders on a server that shares none.
+	Namespace       string  `json:",omitempty"`
+	NamespacePrefix string  `json:",omitempty"`
+	Rights          *string `json:",omitempty"`
+	Shareable       bool    `json:",omitempty"`
 }
 
 func (mbox *MailboxInfo) Name() string {

@@ -262,7 +262,37 @@ export const zhHant = {
     moveToBottom: '移至底部',
     more: '更多',
     less: '摺疊',
-    unsubscribedFolders: '未訂閱的資料夾'
+    unsubscribedFolders: '未訂閱的資料夾',
+    share: '共用…',
+    sharedFolders: '共用資料夾'
+  },
+  folderShare: {
+    title: '共用「{folder}」',
+    intro: '讓同事存取此資料夾。它會出現在對方的共用資料夾中。',
+    address: '電子郵件地址',
+    level: '存取權限',
+    levelFor: '{who} 的存取權限',
+    grant: '共用',
+    currentAccess: '具有存取權限的人',
+    loading: '正在載入…',
+    noneYet: '尚未與任何人共用。',
+    listFailed: '無法載入具有存取權限的人。請關閉此視窗後重新開啟。',
+    revoke: '移除存取權限',
+    revokeFor: '移除 {who} 的存取權限',
+    revokeTitle: '移除存取權限？',
+    revokeMessage: '{who} 將立即失去「{folder}」的存取權限。您可以隨時再次共用。',
+    done: '完成',
+    levelRead: '可閱讀',
+    levelOrganise: '可閱讀和整理',
+    levelFull: '完整存取',
+    levelCustom: '自訂存取',
+    errorInvalidAddress: '請輸入一個完整的電子郵件地址。',
+    errorSelf: '您無法與自己共用資料夾。',
+    errorUnknown: '您的郵件伺服器上沒有使用該地址的人。',
+    errorGone: '此資料夾已不存在。',
+    errorForbidden: '您無法變更誰可以存取此資料夾。',
+    errorRefused: '郵件伺服器拒絕了該存取權限。',
+    errorGeneric: '無法變更共用設定。請再試一次。'
   },
   search: {
     placeholder: '搜尋郵件'

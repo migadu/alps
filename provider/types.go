@@ -206,6 +206,66 @@ type Mailbox struct {
 	UIDNext       uint32
 	HighestModSeq uint64
 	Subscribed    bool
+	// Namespace is the namespace (RFC 2342) the mailbox is in: "" for the
+	// user's own folders, or NamespaceOther or NamespaceShared, the folders
+	// other people let the user see. NamespacePrefix is that namespace's
+	// prefix, which the folder's own name follows.
+	Namespace       string
+	NamespacePrefix string
+	// Rights, where not nil, are the user's own rights on a mailbox of another
+	// namespace, as the server spells them (RFC 4314 MYRIGHTS): what the user
+	// may do there. Nil for the user's own folders, and on a server without
+	// access lists, where nothing is held back.
+	Rights *string
+	// Shareable says that the user may give other people access to the
+	// mailbox: the server keeps access lists, the user may administer the
+	// mailbox's, and the people it is shared with can reach it (see
+	// FolderSharer).
+	Shareable bool
+}
+
+// The namespaces of other people's folders (RFC 2342 §5).
+const (
+	// NamespaceOther holds folders of other users that they share with this one.
+	NamespaceOther = "other"
+	// NamespaceShared holds folders that belong to no one user, shared among
+	// several.
+	NamespaceShared = "shared"
+)
+
+// FolderSharer is a MailProvider whose mail server keeps who may do what in
+// each folder (IMAP ACL, RFC 4314), so that a user can share a folder with
+// other people. An identifier names one of them as the server does, which for
+// alps is an email address; rights are the server's letters (RFC 4314 §2.1).
+type FolderSharer interface {
+	// SharesFolders reports whether the mail server keeps access lists at
+	// all. An error says that it could not be asked.
+	SharesFolders() (bool, error)
+	// FolderAccess answers the user's own rights on mailbox and, where they
+	// may administer it, who else has access and with which rights.
+	FolderAccess(mailbox string) (*FolderAccess, error)
+	// FolderRights answers the user's own rights on mailbox.
+	FolderRights(mailbox string) (string, error)
+	// GrantFolderAccess gives identifier exactly rights on mailbox, in place
+	// of whatever it had.
+	GrantFolderAccess(mailbox, identifier, rights string) error
+	// RevokeFolderAccess takes every right identifier has on mailbox away.
+	RevokeFolderAccess(mailbox, identifier string) error
+}
+
+// FolderAccess is who may do what in one folder.
+type FolderAccess struct {
+	// Rights are the user's own.
+	Rights string
+	// Entries are the folder's access list, as the server answered it, the
+	// user's own entry included.
+	Entries []FolderAccessEntry
+}
+
+// FolderAccessEntry is one identifier's rights on a folder.
+type FolderAccessEntry struct {
+	Identifier string
+	Rights     string
 }
 
 // MailboxStatus contains mailbox metadata

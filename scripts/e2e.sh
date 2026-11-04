@@ -234,6 +234,13 @@ retry_backoff = ["1s"]
 [servers]
 trusted_networks = ["127.0.0.1/32", "::1/128"]
 
+# Folders under Shared/ can be shared with the other accounts of the domain
+# (IMAP ACL); e2e/folder-sharing.spec.ts is about them. Personal folders
+# cannot be, on sora.
+[shared_mailboxes]
+enabled = true
+namespace_prefix = "Shared/"
+
 # alps lists a folder with UID THREAD and SORT, both of which count against
 # sora's per-account search limit (60 a minute, and 0 does not switch it off).
 # The suite, one account clicking through folders all run long, is far past it.

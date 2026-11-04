@@ -65,7 +65,11 @@ type IMAPProvider struct {
 	// with BAD although it advertises it, so later listings go straight to a
 	// plain LIST instead of paying for the refusal each time.
 	listReturnRefused bool
-	cacheLock         sync.RWMutex
+	// namespaces is what NAMESPACE answered, asked once per connection
+	// (namespacesRead); nil for a server without namespaces. See namespaces.go.
+	namespaces     *imap.NamespaceData
+	namespacesRead bool
+	cacheLock      sync.RWMutex
 
 	// news passes on what the server says unasked; nil for a connection made
 	// without it (see Idle). idled is what the mailbox the last IDLE waited
@@ -160,7 +164,7 @@ func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 		}
 	}
 
-	mailboxes, err := p.listMailboxes(options)
+	mailboxes, err := p.listMailboxes("*", options)
 	var imapErr *imap.Error
 	if options != nil && errors.As(err, &imapErr) && imapErr.Type == imap.StatusResponseTypeBad {
 		// A server that advertises the RETURN form and still refuses it is
@@ -168,10 +172,16 @@ func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 		// folders at all, and is not asked for it again in this session.
 		log.Printf("alps/provider: IMAP server refused LIST with RETURN options, listing without them from now on: %v", err)
 		p.noteListReturnRefused()
-		mailboxes, err = p.listMailboxes(nil)
+		options = nil
+		mailboxes, err = p.listMailboxes("*", nil)
+	}
+	if err == nil {
+		// Other people's folders: where they are, and what the user may do
+		// in them (see namespaces.go).
+		mailboxes, err = p.withOtherNamespaces(mailboxes, options)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to list mailboxes: %v", err)
+		return nil, p.lostIf(fmt.Errorf("failed to list mailboxes: %w", err))
 	}
 	return mailboxes, nil
 }
@@ -188,17 +198,18 @@ func (p *IMAPProvider) noteListReturnRefused() {
 	p.listReturnRefused = true
 }
 
-// listMailboxes lists every folder with one LIST "" "*", sending the given
-// RETURN options or, when they are nil, a plain LIST, whose subscriptions are
-// read with an LSUB sent behind it (see markSubscriptions).
-func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mailbox, error) {
+// listMailboxes lists the folders that match pattern with one LIST "",
+// sending the given RETURN options or, when they are nil, a plain LIST, whose
+// subscriptions are read with an LSUB of the same pattern sent behind it (see
+// markSubscriptions). "*" is every folder.
+func (p *IMAPProvider) listMailboxes(pattern string, options *imap.ListOptions) ([]provider.Mailbox, error) {
 	var mailboxes []provider.Mailbox
-	list := p.client.List("", "*", options)
+	list := p.client.List("", pattern, options)
 	var subscribed <-chan map[string]bool
 	if options == nil {
 		// Sent before the LIST is answered, so that its answer costs no wait
 		// of its own.
-		subscribed = p.readSubscriptions(p.client.Lsub("", "*"))
+		subscribed = p.readSubscriptions(p.client.Lsub("", pattern))
 	}
 	for {
 		data := list.Next()
@@ -246,6 +257,12 @@ func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mail
 		p.markSubscriptions(mailboxes, <-subscribed)
 	}
 
+	sortMailboxes(mailboxes)
+	return mailboxes, nil
+}
+
+// sortMailboxes puts INBOX first and the other folders after it by name.
+func sortMailboxes(mailboxes []provider.Mailbox) {
 	sort.Slice(mailboxes, func(i, j int) bool {
 		if mailboxes[i].Name == "INBOX" {
 			return true
@@ -255,7 +272,6 @@ func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mail
 		}
 		return mailboxes[i].Name < mailboxes[j].Name
 	})
-	return mailboxes, nil
 }
 
 // mailboxStatusItems is what a STATUS asks for. The client only reads it.
@@ -379,7 +395,9 @@ func (p *IMAPProvider) forgetSpecialMailboxes() {
 	p.cacheLock.Unlock()
 }
 
-// listMailboxByType asks the server which top-level folder has the type.
+// listMailboxByType finds a personal folder of the type. Shared folders can
+// advertise the same attributes, but must never receive this user's drafts
+// or outgoing mail.
 func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provider.Mailbox, error) {
 	var attr imap.MailboxAttr
 	var fallbackNames []string
@@ -402,7 +420,16 @@ func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provid
 		fallbackNames = []string{"Archive"}
 	}
 
-	list := p.client.List("", "%", nil)
+	ns, err := p.readNamespaces()
+	if err != nil {
+		return nil, err
+	}
+	pattern := "%"
+	if ns != nil {
+		// Personal folders may be nested under INBOX. or another prefix.
+		pattern = "*"
+	}
+	list := p.client.List("", pattern, nil)
 
 	var attrMatched bool
 	var best *imap.ListData
@@ -410,6 +437,16 @@ func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provid
 		mbox := list.Next()
 		if mbox == nil {
 			break
+		}
+		if kind, _ := namespaceOf(ns, mbox.Mailbox); kind != "" {
+			continue
+		}
+		attrs := make([]string, len(mbox.Attrs))
+		for i, a := range mbox.Attrs {
+			attrs[i] = string(a)
+		}
+		if !selectable(&provider.Mailbox{Attributes: attrs}) {
+			continue
 		}
 
 		for _, a := range mbox.Attrs {
@@ -423,15 +460,25 @@ func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provid
 			break
 		}
 
+		name := mbox.Mailbox
+		if ns != nil {
+			longest := 0
+			for _, personal := range ns.Personal {
+				if strings.HasPrefix(name, personal.Prefix) && len(personal.Prefix) > longest {
+					longest = len(personal.Prefix)
+				}
+			}
+			name = name[longest:]
+		}
 		for _, fallback := range fallbackNames {
-			if strings.EqualFold(fallback, mbox.Mailbox) {
+			if strings.EqualFold(fallback, name) {
 				best = mbox
 				break
 			}
 		}
 	}
 	if err := list.Close(); err != nil {
-		return nil, fmt.Errorf("failed to get mailbox with attribute %q: %v", attr, err)
+		return nil, p.lostIf(fmt.Errorf("failed to get mailbox with attribute %q: %w", attr, err))
 	}
 
 	if best == nil {

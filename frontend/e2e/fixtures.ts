@@ -89,6 +89,8 @@ let deliveries = 0;
  *
  * `raw` replaces the generated message entirely. Otherwise a plain-text
  * message is built, with a Message-ID derived from `messageId` or made unique.
+ * `mailbox` files it straight into that folder of the recipient's, past the
+ * Sieve filters.
  */
 export async function deliver(opts: {
   subject: string;
@@ -100,6 +102,7 @@ export async function deliver(opts: {
   messageId?: string;
   raw?: string;
   recipient?: string;
+  mailbox?: string;
 }): Promise<void> {
   const from = opts.from ?? "Ada Lovelace <ada@remote.test>";
   const messageId =
@@ -124,7 +127,7 @@ export async function deliver(opts: {
     await fetch(`${SORA_ADMIN_URL}/admin/mail/deliver`, {
       method: "POST",
       headers: { Authorization: `Bearer ${SORA_ADMIN_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ recipients: [opts.recipient ?? USER.address], message: raw }),
+      body: JSON.stringify({ recipients: [opts.recipient ?? USER.address], message: raw, ...(opts.mailbox ? { mailbox: opts.mailbox } : {}) }),
     }),
     "deliver",
   );

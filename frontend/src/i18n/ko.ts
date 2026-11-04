@@ -262,7 +262,37 @@ export const ko = {
     moveToBottom: '맨 아래로 이동',
     more: '더보기',
     less: '접기',
-    unsubscribedFolders: '구독하지 않은 폴더'
+    unsubscribedFolders: '구독하지 않은 폴더',
+    share: '공유…',
+    sharedFolders: '공유 폴더'
+  },
+  folderShare: {
+    title: '"{folder}" 공유',
+    intro: '동료에게 이 폴더에 대한 액세스 권한을 줍니다. 동료의 공유 폴더에 표시됩니다.',
+    address: '이메일 주소',
+    level: '액세스 권한',
+    levelFor: '{who}의 액세스 권한',
+    grant: '공유',
+    currentAccess: '액세스 권한이 있는 사용자',
+    loading: '불러오는 중...',
+    noneYet: '아직 아무와도 공유하지 않았습니다.',
+    listFailed: '액세스 권한이 있는 사용자를 불러오지 못했습니다. 이 창을 닫았다가 다시 여세요.',
+    revoke: '액세스 권한 삭제',
+    revokeFor: '{who}의 액세스 권한 삭제',
+    revokeTitle: '액세스 권한을 삭제할까요?',
+    revokeMessage: '{who}님은 즉시 "{folder}"에 액세스할 수 없게 됩니다. 언제든지 다시 공유할 수 있습니다.',
+    done: '완료',
+    levelRead: '읽기 가능',
+    levelOrganise: '읽기 및 정리 가능',
+    levelFull: '전체 액세스',
+    levelCustom: '사용자 지정 액세스',
+    errorInvalidAddress: '완전한 이메일 주소 하나를 입력하세요.',
+    errorSelf: '자신과 폴더를 공유할 수 없습니다.',
+    errorUnknown: '메일 서버에 해당 주소를 가진 사용자가 없습니다.',
+    errorGone: '이 폴더는 더 이상 존재하지 않습니다.',
+    errorForbidden: '이 폴더에 액세스할 수 있는 사용자를 변경할 수 없습니다.',
+    errorRefused: '메일 서버가 해당 액세스 권한을 거부했습니다.',
+    errorGeneric: '공유 설정을 변경하지 못했습니다. 다시 시도하세요.'
   },
   search: {
     placeholder: '메일 검색'

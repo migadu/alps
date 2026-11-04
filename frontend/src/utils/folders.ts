@@ -98,6 +98,9 @@ function lookupRole(table: Record<string, MailboxRole>, key: string): MailboxRol
  */
 export function mailboxRole(mb: any, advertised?: Set<MailboxRole>): MailboxRole | null {
   if (!mb) return null;
+  // Another person's Sent is not this user's, nor a shared Trash the Trash
+  // Delete files into: a folder of another namespace has no role here.
+  if (mailboxNamespace(mb) !== null) return null;
   const attrs: any[] = Array.isArray(mb.Attrs) ? mb.Attrs : [];
   const lowerAttrs = attrs.map(a => (typeof a === 'string' ? a.toLowerCase() : ''));
   for (const a of lowerAttrs) {
@@ -193,6 +196,7 @@ export function specialMailboxRole(name: string, mailboxes: any[] = []): Mailbox
 export function advertisedRoles(mailboxes: any[] = []): Set<MailboxRole> {
   const roles = new Set<MailboxRole>();
   for (const mb of mailboxes || []) {
+    if (mailboxNamespace(mb) !== null) continue;
     const attrs: any[] = Array.isArray(mb?.Attrs) ? mb.Attrs : [];
     for (const a of attrs) {
       const role = typeof a === 'string' ? lookupRole(ATTR_TO_ROLE, a.toLowerCase()) : null;
@@ -232,7 +236,9 @@ export function reportsSubscriptions(mailboxes: any[] = []): boolean {
  * editing, and both sit right under the Inbox, where a drag aimed at the Inbox
  * ends up by a few pixels. A user's own folder that is merely called "Drafts",
  * beside a server that marks another one \Drafts, takes mail like any other:
- * mailboxRole guesses by name only for a role no folder carries.
+ * mailboxRole guesses by name only for a role no folder carries. Nor a folder
+ * shared with the user that they may not file into (no 'i' right): the server
+ * refuses the MOVE there too.
  */
 export function acceptsDroppedMessages(mb: any, mailboxes: any[], viewing: string): boolean {
   if (!mb) return false;
@@ -241,8 +247,50 @@ export function acceptsDroppedMessages(mb: any, mailboxes: any[], viewing: strin
   const attrs: any[] = Array.isArray(mb.Attrs) ? mb.Attrs : [];
   const lowerAttrs = attrs.map(a => (typeof a === 'string' ? a.toLowerCase() : ''));
   if (lowerAttrs.includes('\\noselect') || lowerAttrs.includes('\\nonexistent')) return false;
+  if (!mayInMailbox(mb, 'i')) return false;
   const role = mailboxRole(mb, advertisedRoles(mailboxes));
   return role !== 'drafts' && role !== 'sent';
+}
+
+/**
+ * The namespace a listed folder is in (RFC 2342), as the folder list says:
+ * 'other' for a folder another user shares with this one, 'shared' for one
+ * shared among several, and null for the user's own.
+ */
+export function mailboxNamespace(mb: any): 'other' | 'shared' | null {
+  const ns = mb?.Namespace;
+  return ns === 'other' || ns === 'shared' ? ns : null;
+}
+
+/**
+ * Whether the user holds `right` on a listed folder (RFC 4314 §2.1: 'i' to
+ * file messages into it, 'k' to make folders under it, 'x' to delete or
+ * rename it, 'a' to say who else has access).
+ *
+ * The folder list carries the rights only for the folders of other people,
+ * where the server keeps them; a folder without them is the user's own, and
+ * nothing in it is held back. A folder of another namespace whose rights are
+ * not known allows nothing that could be refused.
+ */
+export function mayInMailbox(mb: any, right: string): boolean {
+  const rights = mb?.Rights;
+  if (typeof rights === 'string') return rights.includes(right);
+  return mailboxNamespace(mb) === null;
+}
+
+/**
+ * The part of a listed folder's name after its namespace's prefix, which is
+ * how the sidebar names it among the shared folders: "Team" for sora's
+ * "Shared/Team". '' for the namespace's own root ("Shared"), which is no
+ * folder of anyone's.
+ */
+export function nameInNamespace(mb: any): string {
+  const name: string = mb?.Name || mb?.Mailbox || '';
+  const prefix: string = typeof mb?.NamespacePrefix === 'string' ? mb.NamespacePrefix : '';
+  if (prefix && name.startsWith(prefix)) return name.slice(prefix.length);
+  const delimiter = delimiterOf(mb);
+  if (prefix && delimiter && prefix === name + delimiter) return '';
+  return name;
 }
 
 /**

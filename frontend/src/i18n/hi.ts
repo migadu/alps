@@ -263,7 +263,37 @@ export const hi = {
     moveToBottom: 'सबसे नीचे ले जाएँ',
     more: 'और',
     less: 'कम',
-    unsubscribedFolders: 'बिना सदस्यता वाले फ़ोल्डर'
+    unsubscribedFolders: 'बिना सदस्यता वाले फ़ोल्डर',
+    share: 'साझा करें…',
+    sharedFolders: 'साझा फ़ोल्डर'
+  },
+  folderShare: {
+    title: '“{folder}” साझा करें',
+    intro: 'किसी सहकर्मी को इस फ़ोल्डर की पहुँच दें। यह उनके साझा फ़ोल्डरों में दिखाई देगा।',
+    address: 'ईमेल पता',
+    level: 'पहुँच',
+    levelFor: '{who} की पहुँच',
+    grant: 'साझा करें',
+    currentAccess: 'किसके पास पहुँच है',
+    loading: 'लोड हो रहा है...',
+    noneYet: 'अभी किसी के साथ साझा नहीं किया गया है।',
+    listFailed: 'यह लोड नहीं हो सका कि किसके पास पहुँच है। इस विंडो को बंद करके फिर से खोलें।',
+    revoke: 'पहुँच हटाएँ',
+    revokeFor: '{who} की पहुँच हटाएँ',
+    revokeTitle: 'पहुँच हटाएँ?',
+    revokeMessage: '{who} तुरंत “{folder}” की पहुँच खो देंगे। आप इसे कभी भी फिर से साझा कर सकते हैं।',
+    done: 'हो गया',
+    levelRead: 'पढ़ सकते हैं',
+    levelOrganise: 'पढ़ और व्यवस्थित कर सकते हैं',
+    levelFull: 'पूरी पहुँच',
+    levelCustom: 'कस्टम पहुँच',
+    errorInvalidAddress: 'एक पूरा ईमेल पता दर्ज करें।',
+    errorSelf: 'आप किसी फ़ोल्डर को स्वयं के साथ साझा नहीं कर सकते।',
+    errorUnknown: 'आपके मेल सर्वर पर इस पते वाला कोई नहीं है।',
+    errorGone: 'यह फ़ोल्डर अब मौजूद नहीं है।',
+    errorForbidden: 'आप यह नहीं बदल सकते कि इस फ़ोल्डर तक किसकी पहुँच है।',
+    errorRefused: 'मेल सर्वर ने यह पहुँच अस्वीकार कर दी।',
+    errorGeneric: 'साझाकरण नहीं बदला जा सका। कृपया फिर से प्रयास करें।'
   },
   search: {
     placeholder: 'मेल खोजें'

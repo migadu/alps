@@ -263,7 +263,37 @@ export const tr = {
     moveToBottom: 'En alta taşı',
     more: 'Diğer',
     less: 'Daha az',
-    unsubscribedFolders: 'Abone olunmayan klasörler'
+    unsubscribedFolders: 'Abone olunmayan klasörler',
+    share: 'Paylaş…',
+    sharedFolders: 'Paylaşılan klasörler'
+  },
+  folderShare: {
+    title: '"{folder}" klasörünü paylaş',
+    intro: 'Bir iş arkadaşınıza bu klasöre erişim verin. Klasör, onun paylaşılan klasörleri arasında görünür.',
+    address: 'E-posta adresi',
+    level: 'Erişim',
+    levelFor: '{who} için erişim',
+    grant: 'Paylaş',
+    currentAccess: 'Erişimi olanlar',
+    loading: 'Yükleniyor...',
+    noneYet: 'Henüz kimseyle paylaşılmadı.',
+    listFailed: 'Erişimi olanlar yüklenemedi. Bu pencereyi kapatıp yeniden açın.',
+    revoke: 'Erişimi kaldır',
+    revokeFor: '{who} için erişimi kaldır',
+    revokeTitle: 'Erişim kaldırılsın mı?',
+    revokeMessage: '{who}, "{folder}" klasörüne erişimini hemen kaybedecek. Klasörü istediğiniz zaman yeniden paylaşabilirsiniz.',
+    done: 'Bitti',
+    levelRead: 'Okuyabilir',
+    levelOrganise: 'Okuyabilir ve düzenleyebilir',
+    levelFull: 'Tam erişim',
+    levelCustom: 'Özel erişim',
+    errorInvalidAddress: 'Tek bir tam e-posta adresi girin.',
+    errorSelf: 'Bir klasörü kendinizle paylaşamazsınız.',
+    errorUnknown: 'Posta sunucunuzda bu adrese sahip kimse yok.',
+    errorGone: 'Bu klasör artık yok.',
+    errorForbidden: 'Bu klasöre kimin erişebileceğini değiştiremezsiniz.',
+    errorRefused: 'Posta sunucusu bu erişimi reddetti.',
+    errorGeneric: 'Paylaşım değiştirilemedi. Lütfen yeniden deneyin.'
   },
   search: {
     placeholder: 'Postalarda ara'

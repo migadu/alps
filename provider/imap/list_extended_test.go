@@ -38,13 +38,47 @@ type scriptedIMAP struct {
 	// makes a NO instead.
 	quota       []string
 	refuseQuota bool
+	// listUnder answers a plain LIST whose arguments are the key, such as
+	// `"" "Shared/*"`, in place of list.
+	listUnder map[string][]string
+	// namespace is its NAMESPACE line, such as `* NAMESPACE (("" "/")) NIL NIL`.
+	namespace string
+	// rights answer MYRIGHTS, and acl GETACL, by mailbox: a mailbox missing
+	// from rights is answered NO [NONEXISTENT], and one missing from acl
+	// NO [NOPERM]. refuseACL answers SETACL and DELETEACL with its line in
+	// place of OK, after the tag.
+	rights    map[string]string
+	acl       map[string][]string
+	refuseACL string
 
 	mu       sync.Mutex
 	lists    []string // the arguments of each LIST, in the order received
 	lsubs    []string // and of each LSUB
 	quotas   []string // and of each GETQUOTAROOT
+	acls     []string // and of each MYRIGHTS, GETACL, SETACL and DELETEACL, with its name
 	conns    int      // the connections it took
 	commands []string // the name of every command, in upper case
+}
+
+// aclCommands are the access-list commands received, each its name and its
+// arguments.
+func (s *scriptedIMAP) aclCommands() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.acls...)
+}
+
+// commandCount counts the commands named name the server was sent.
+func (s *scriptedIMAP) commandCount(name string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, c := range s.commands {
+		if c == name {
+			n++
+		}
+	}
+	return n
 }
 
 // received reports whether the server was sent a command named name.
@@ -116,11 +150,14 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 				reply(tag + " BAD Command Argument Error")
 				continue
 			}
-			lines := s.list
-			if lines == nil {
+			lines, under := s.listUnder[args]
+			if !under {
+				lines = s.list
+			}
+			if lines == nil && !under {
 				lines = []string{`* LIST (\HasNoChildren) "/" INBOX`, `* LIST (\HasNoChildren) "/" Work`}
 			}
-			reply(append(lines, tag+" OK LIST completed")...)
+			reply(append(slices.Clone(lines), tag+" OK LIST completed")...)
 		case "LSUB":
 			s.mu.Lock()
 			s.lsubs = append(s.lsubs, args)
@@ -146,6 +183,39 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 				continue
 			}
 			reply(append(s.quota, tag+" OK GETQUOTAROOT completed")...)
+		case "NAMESPACE":
+			if s.namespace == "" {
+				reply(tag + " BAD unknown command")
+				continue
+			}
+			reply(s.namespace, tag+" OK NAMESPACE completed")
+		case "MYRIGHTS", "GETACL", "SETACL", "DELETEACL":
+			s.mu.Lock()
+			s.acls = append(s.acls, strings.ToUpper(name)+" "+args)
+			s.mu.Unlock()
+			mailbox := firstArg(args)
+			switch strings.ToUpper(name) {
+			case "MYRIGHTS":
+				rights, ok := s.rights[mailbox]
+				if !ok {
+					reply(tag + " NO [NONEXISTENT] no such mailbox")
+					continue
+				}
+				reply(`* MYRIGHTS "`+mailbox+`" "`+rights+`"`, tag+" OK MYRIGHTS completed")
+			case "GETACL":
+				entries, ok := s.acl[mailbox]
+				if !ok {
+					reply(tag + " NO [NOPERM] not yours to read")
+					continue
+				}
+				reply(`* ACL "`+mailbox+`" `+strings.Join(entries, " "), tag+" OK GETACL completed")
+			default:
+				if s.refuseACL != "" {
+					reply(tag + " " + s.refuseACL)
+					continue
+				}
+				reply(tag + " OK " + name + " completed")
+			}
 		case "LOGOUT":
 			reply("* BYE logging out", tag+" OK LOGOUT completed")
 			return
@@ -153,6 +223,19 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 			reply(tag + " BAD unknown command")
 		}
 	}
+}
+
+// firstArg is the first argument on a command line, unquoted.
+func firstArg(args string) string {
+	if strings.HasPrefix(args, `"`) {
+		end := strings.Index(args[1:], `"`)
+		if end < 0 {
+			return args[1:]
+		}
+		return args[1 : end+1]
+	}
+	first, _, _ := strings.Cut(args, " ")
+	return first
 }
 
 // countArgs counts the arguments on a command line: atoms, quoted strings and
