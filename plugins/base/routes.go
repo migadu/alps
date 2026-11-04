@@ -38,6 +38,9 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.PUT("/mailboxes/{mbox}/rename", handleRenameMailbox)
 	p.PUT("/mailboxes/{mbox}/subscribe", handleSubscribeMailbox)
 	p.PUT("/mailboxes/{mbox}/unsubscribe", handleUnsubscribeMailbox)
+	p.GET("/mailboxes/{mbox}/sharing", handleGetSharing)
+	p.PUT("/mailboxes/{mbox}/sharing/{identifier}", handleShareMailbox)
+	p.DELETE("/mailboxes/{mbox}/sharing/{identifier}", handleUnshareMailbox)
 	p.GET("/quota", handleQuota)
 
 	// Messages
