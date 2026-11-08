@@ -34,6 +34,11 @@ export class UIPrompt extends LitElement {
   /** The heading, passed on to ui-modal; not HTML's `title` (see there). */
   @property({ type: String }) heading: string = 'Prompt';
   @property({ type: Array }) fields: PromptField[] = [];
+  /**
+   * Words above the fields, for what the answer will do. They describe the
+   * dialog, so a screen reader reads them with the field it lands in.
+   */
+  @property({ type: String }) message: string = '';
   @property({ type: String }) confirmText: string = '';
   @property({ type: String }) cancelText: string = '';
   /**
@@ -65,6 +70,10 @@ export class UIPrompt extends LitElement {
     motionStyles,
     modalButtonStyles,
     css`
+      .prompt-message {
+        margin: 0 0 16px;
+        color: var(--text-secondary, #4b5563);
+      }
       .field-group {
         margin-bottom: 16px;
       }
@@ -201,8 +210,10 @@ export class UIPrompt extends LitElement {
         .heading=${this.heading}
         .isDanger=${this.isDanger}
         .dismissible=${!this.busy}
+        .bodyDescribes=${!!this.message}
         @cancel=${this._handleCancel}>
-        
+
+        ${this.message ? html`<p class="prompt-message">${this.message}</p>` : ''}
         <div class="prompt-form">
           ${this.fields.map(f => html`
             <div class="field-group">

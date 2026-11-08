@@ -672,6 +672,7 @@ export const sr = {
     key_name_placeholder: 'Ime uređaja (npr. YubiKey)',
     name_key_title: 'Imenuj bezbednosni ključ',
     name_key_label: 'Ime uređaja',
+    name_key_notice: 'Kada sačuvate ovaj ključ, prijava na veb-poštu će ga tražiti posle lozinke.',
     add_key: 'Dodaj bezbednosni ključ',
     trust_linked: 'Veruj povezanim nalozima',
     trust_linked_desc: 'Ako je omogućeno, možete da se prebacite na ovaj nalog sa povezanog naloga bez ponovnog unosa 2FA akreditiva.',
@@ -698,7 +699,7 @@ export const sr = {
       general: 'Došlo je do greške.',
     },
     settings: {
-      group_desc: 'Zaštitite svoj nalog hardverskim bezbednosnim ključem ili biometrijom.',
+      group_desc: 'Zaštitite svoj nalog hardverskim bezbednosnim ključem ili biometrijom. Kada dodate ključ, prijava na veb-poštu će ga tražiti posle lozinke.',
       keys_title: 'Bezbednosni ključevi',
       noKeys: 'Nema registrovanih ključeva.',
       added: 'Dodato',

@@ -175,6 +175,7 @@ export const da: TranslationDictionary = {
     key_name_placeholder: 'Enhedsnavn (f.eks. YubiKey)',
     name_key_title: 'Navngiv sikkerhedsnøgle',
     name_key_label: 'Enhedsnavn',
+    name_key_notice: 'Når du har gemt denne nøgle, beder webmailen om den efter din adgangskode, når du logger ind.',
     add_key: 'Tilføj sikkerhedsnøgle',
     trust_linked: 'Hav tillid til tilknyttede konti',
     trust_linked_desc: 'Hvis dette er slået til, kan du skifte til denne konto fra en tilknyttet konto uden at angive 2FA igen.',
@@ -201,7 +202,7 @@ export const da: TranslationDictionary = {
       general: 'Der opstod en fejl.',
     },
     settings: {
-      group_desc: 'Beskyt din konto med en hardware-sikkerhedsnøgle eller biometri.',
+      group_desc: 'Beskyt din konto med en hardware-sikkerhedsnøgle eller biometri. Når du har tilføjet en nøgle, beder webmailen om den efter din adgangskode, når du logger ind.',
       keys_title: 'Sikkerhedsnøgler',
       noKeys: 'Ingen registrerede nøgler.',
       added: 'Tilføjet',

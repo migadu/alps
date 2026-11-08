@@ -166,6 +166,7 @@ export const pt = {
     key_name_placeholder: 'Nome do dispositivo (ex. YubiKey)',
     name_key_title: 'Nomear chave de segurança',
     name_key_label: 'Nome do dispositivo',
+    name_key_notice: 'Depois de guardar esta chave, o início de sessão no webmail pede-a a seguir à sua palavra-passe.',
     add_key: 'Adicionar chave de segurança',
     trust_linked: 'Confiar em contas associadas',
     trust_linked_desc: 'Se estiver ativado, pode alternar para esta conta a partir de uma conta associada sem fornecer novamente uma credencial 2FA.',
@@ -192,7 +193,7 @@ export const pt = {
       general: 'Ocorreu um erro.',
     },
     settings: {
-      group_desc: 'Proteja a sua conta com uma chave de segurança física ou com biometria.',
+      group_desc: 'Proteja a sua conta com uma chave de segurança física ou com biometria. Depois de adicionar uma chave, o início de sessão no webmail pede-a a seguir à sua palavra-passe.',
       keys_title: 'Chaves de segurança',
       noKeys: 'Nenhuma chave registada.',
       added: 'Adicionada',

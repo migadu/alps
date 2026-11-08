@@ -653,6 +653,7 @@ export const it = {
     key_name_placeholder: 'Nome del dispositivo (es. YubiKey)',
     name_key_title: 'Assegna un nome alla chiave di sicurezza',
     name_key_label: 'Nome del dispositivo',
+    name_key_notice: 'Dopo che avrai salvato questa chiave, l\'accesso alla webmail te la chiederà dopo la password.',
     add_key: 'Aggiungi chiave di sicurezza',
     trust_linked: 'Fidati degli account collegati',
     trust_linked_desc: 'Se abilitato, puoi passare a questo account da un account collegato senza fornire nuovamente una credenziale 2FA.',
@@ -679,7 +680,7 @@ export const it = {
       general: 'Si è verificato un errore.',
     },
     settings: {
-      group_desc: 'Proteggi il tuo account con una chiave di sicurezza hardware o dati biometrici.',
+      group_desc: 'Proteggi il tuo account con una chiave di sicurezza hardware o dati biometrici. Dopo che avrai aggiunto una chiave, l\'accesso alla webmail te la chiederà dopo la password.',
       keys_title: 'Chiavi di sicurezza',
       noKeys: 'Nessuna chiave registrata.',
       added: 'Aggiunto',

@@ -172,6 +172,7 @@ export const ja = {
     key_name_placeholder: '端末名（例：YubiKey）',
     name_key_title: 'セキュリティキーの名前',
     name_key_label: '端末名',
+    name_key_notice: 'このキーを保存すると、Webメールへのログイン時にパスワードの後でこのキーが求められます。',
     add_key: 'セキュリティキーを追加',
     trust_linked: '連携アカウントを信頼',
     trust_linked_desc: '有効にすると、連携アカウントからこのアカウントに切り替えるときに、2段階認証を再度求められません。',
@@ -198,7 +199,7 @@ export const ja = {
       general: 'エラーが発生しました。'
     },
     settings: {
-      group_desc: 'ハードウェアセキュリティキーまたは生体認証でアカウントを保護します。',
+      group_desc: 'ハードウェアセキュリティキーまたは生体認証でアカウントを保護します。キーを追加すると、Webメールへのログイン時にパスワードの後でそのキーが求められます。',
       keys_title: 'セキュリティキー',
       noKeys: '登録済みのキーはありません。',
       added: '追加日時',

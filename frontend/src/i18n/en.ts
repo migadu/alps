@@ -173,6 +173,7 @@ export const en = {
     key_name_placeholder: 'Device name (e.g. YubiKey)',
     name_key_title: 'Name Security Key',
     name_key_label: 'Device Name',
+    name_key_notice: 'Once you save this key, signing in to the webmail asks for it after your password.',
     add_key: 'Add Security Key',
     trust_linked: 'Trust Linked Accounts',
     trust_linked_desc: 'If enabled, you can switch to this account from a linked account without providing a 2FA credential again.',
@@ -199,7 +200,7 @@ export const en = {
       general: 'An error occurred.',
     },
     settings: {
-      group_desc: 'Secure your account with a hardware security key or biometrics.',
+      group_desc: 'Secure your account with a hardware security key or biometrics. Once you add a key, signing in to the webmail asks for it after your password.',
       keys_title: 'Security Keys',
       noKeys: 'No registered keys.',
       added: 'Added',

@@ -299,6 +299,29 @@ test.describe("with a security key", () => {
     expect(await signInStatus(browser, address, PASSWORD)).toBe(200);
   });
 
+  // A platform key is added with one touch and a name dialog that comes filled
+  // in, and from the next sign-in on the webmail asks for it. The pane says so
+  // at rest, and the name dialog, where the key is kept or dropped, says it
+  // again before anything is saved.
+  test("adding a key says, before it is saved, that signing in will ask for it", async ({ page, browser }) => {
+    const address = await freshAccount(page, "notice");
+    await withAuthenticator(page);
+    await page.goto("/#/settings/webauthn");
+
+    const pane = page.locator("alps-webauthn-settings");
+    await expect(pane).toContainText("Once you add a key, signing in to the webmail asks for it after your password.");
+
+    await action(pane, "Add Security Key").click();
+    const naming = pane.locator("ui-prompt");
+    await expect(naming).toContainText("Once you save this key, signing in to the webmail asks for it after your password.");
+
+    // Cancel keeps nothing, and signing in asks for no key.
+    await action(naming, "Cancel").click();
+    await expect(naming).toHaveCount(0);
+    await expect(pane).toContainText("No registered keys.");
+    expect(await signInStatus(browser, address, PASSWORD)).toBe(200);
+  });
+
   test("a click on Verify as the key page appears signs in with one ceremony", async ({ page }) => {
     const address = await freshAccount(page, "verify");
     await withAuthenticator(page);
