@@ -189,6 +189,49 @@ func TestHTTP_PasswordBackendErrorsHaveCodes(t *testing.T) {
 	}
 }
 
+// The admin API's status is not passed on: alps answers with its own status
+// for what the refusal means. The browser takes any 401 for its own session
+// ending, and any 429 for its own login limits, and neither is what an admin
+// API's refusal of alps's request says. Its credentials are the deployment's,
+// so a 401 or 403 from it is a service that cannot be used, not a refused
+// change.
+func TestHTTP_PasswordBackendStatusIsNotPassedOn(t *testing.T) {
+	for _, tc := range []struct {
+		upstream int
+		status   int
+		code     string
+	}{
+		{http.StatusUnauthorized, http.StatusBadGateway, "password_service_unavailable"},
+		{http.StatusForbidden, http.StatusBadGateway, "password_service_unavailable"},
+		{http.StatusTooManyRequests, http.StatusBadRequest, "password_change_rejected"},
+		{http.StatusUnprocessableEntity, http.StatusBadRequest, "password_change_rejected"},
+		{http.StatusInternalServerError, http.StatusBadGateway, "password_service_unavailable"},
+	} {
+		t.Run(http.StatusText(tc.upstream), func(t *testing.T) {
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.upstream)
+			}))
+			t.Cleanup(backend.Close)
+			s, _ := newLimitedServer(t, func(o *alps.Options) {
+				o.Plugins = map[string]alps.PluginConfig{
+					"password": {Enabled: true, Options: map[string]interface{}{"endpoint": backend.URL}},
+				}
+			})
+			s.login()
+			r := s.do("POST", "/password/change", map[string]string{"old_password": testPassword, "password": "new horse"})
+			s.expect(r, tc.status)
+			var body struct{ Code string }
+			r.json(t, &body)
+			if body.Code != tc.code {
+				t.Fatalf("code %q, want %q: %s", body.Code, tc.code, r.body)
+			}
+			if r.header.Get("Retry-After") != "" {
+				t.Errorf("the admin API's refusal came with a Retry-After: %q", r.header.Get("Retry-After"))
+			}
+		})
+	}
+}
+
 // Below the limits the right password still changes it, after a wrong one.
 func TestHTTP_PasswordChangeStillWorksUnderTheLimits(t *testing.T) {
 	var changes atomic.Int32
