@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"strings"
 	"sync"
 
 	"github.com/emersion/go-imap/v2"
@@ -159,6 +160,30 @@ func (s *imapStore) GetFresh(key string, out interface{}) error {
 	return s.Get(key, out)
 }
 
+// List never uses the per-connection cache. DEPTH infinity is standard RFC
+// 5464; no vendor command, mailbox, or second database is involved.
+func (s *imapStore) List(prefix string) (map[string]json.RawMessage, error) {
+	root := s.key(prefix)
+	data, err := s.client.GetMetadata("", []string{root}, &imap.GetMetadataOptions{Depth: imap.GetMetadataDepthInfinity}).Wait()
+	if err != nil {
+		return nil, fmt.Errorf("provider/imap: listing shared metadata: %w", err)
+	}
+	if data.LongEntries != 0 {
+		return nil, fmt.Errorf("provider/imap: shared metadata listing was truncated")
+	}
+	entries := make(map[string]json.RawMessage)
+	for key, value := range data.Entries {
+		key = strings.ToLower(key)
+		if key != root && !strings.HasPrefix(key, root+"/") {
+			return nil, fmt.Errorf("provider/imap: unexpected shared metadata entry %q", key)
+		}
+		if value != nil {
+			entries[strings.TrimPrefix(key, "/private/vendor/alps/")] = bytes.Clone(*value)
+		}
+	}
+	return entries, nil
+}
+
 func decodeStoreEntry(key string, raw []byte, out interface{}) error {
 	if err := json.Unmarshal(raw, out); err != nil {
 		return fmt.Errorf("provider/imap: failed to decode IMAP store entry %q: %w", key, err)
@@ -167,6 +192,14 @@ func decodeStoreEntry(key string, raw []byte, out interface{}) error {
 }
 
 func (s *imapStore) Put(key string, v interface{}) error {
+	return s.put(key, v, true)
+}
+
+func (s *imapStore) PutUncached(key string, v interface{}) error {
+	return s.put(key, v, false)
+}
+
+func (s *imapStore) put(key string, v interface{}, keep bool) error {
 	var bPtr *[]byte
 	if v != nil {
 		b, err := json.Marshal(v)
@@ -178,6 +211,9 @@ func (s *imapStore) Put(key string, v interface{}) error {
 	entries := map[string]*[]byte{s.key(key): bPtr}
 	if err := s.client.SetMetadata("", entries).Wait(); err != nil {
 		return fmt.Errorf("provider/imap: failed to put IMAP store entry %q: %v", key, err)
+	}
+	if !keep {
+		return s.cache.Put(key, nil)
 	}
 
 	if bPtr == nil {
