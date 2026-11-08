@@ -650,6 +650,7 @@ export const it = {
     verify_btn: 'Verifica identità',
     verifying_btn: 'Verifica in corso...',
     back_to_login: 'Torna al login',
+    use_recovery_code: 'Usa un codice di recupero',
     key_name_placeholder: 'Nome del dispositivo (es. YubiKey)',
     name_key_title: 'Assegna un nome alla chiave di sicurezza',
     name_key_label: 'Nome del dispositivo',
@@ -686,6 +687,27 @@ export const it = {
       added: 'Aggiunto',
       remove_btn: 'Rimuovi',
       unnamed_key: "Chiave di sicurezza"
+    },
+    recovery: {
+      instruction: 'Inserisci uno dei codici di recupero che hai salvato per questo account.',
+      code_label: 'Codice di recupero',
+      use_key: 'Usa invece la chiave di sicurezza',
+      wrong_code: 'Questo codice di recupero non è corretto o è già stato usato.',
+      code_required: 'Inserisci un codice di recupero.',
+      title: 'Codici di recupero',
+      desc: 'Se non hai a portata di mano la chiave di sicurezza, un codice di recupero ti fa accedere al suo posto. Ogni codice funziona una sola volta.',
+      left: {
+        one: '{count} codice di recupero rimasto',
+        other: '{count} codici di recupero rimasti'
+      },
+      none: 'Non hai codici di recupero. Creane alcuni per poter accedere senza la chiave.',
+      create: 'Crea nuovi codici',
+      create_notice: 'I nuovi codici sostituiscono quelli che hai ora.',
+      password_label: 'Inserisci la password per creare nuovi codici',
+      codes_title: 'Salva i codici di recupero',
+      codes_intro: 'Ognuno di questi codici ti fa accedere una volta quando la chiave di sicurezza non è a portata di mano. Conservali in un luogo sicuro: non verranno mostrati di nuovo.',
+      create_failed: 'Non è stato possibile creare nuovi codici di recupero. Riprova.',
+      done: 'Fatto'
     }
   }
 };

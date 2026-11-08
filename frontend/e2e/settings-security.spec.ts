@@ -228,8 +228,13 @@ test.describe("with a security key", () => {
     return { cdp, authenticatorId };
   }
 
-  /** Registers a key under `name` from the WebAuthn pane, and waits for it to be listed. */
-  async function addKey(page: Page, name: string): Promise<Locator> {
+  /**
+   * Registers a key under `name` from the WebAuthn pane, and waits for it to
+   * be listed. The first key comes with recovery codes, shown once in a dialog
+   * that stands over the pane: they are read and the dialog closed with Done,
+   * as a user would, and returned with the key's row.
+   */
+  async function addKeyWithCodes(page: Page, name: string): Promise<{ row: Locator; codes: string[] }> {
     const pane = page.locator("alps-webauthn-settings");
     await action(pane, "Add Security Key").click();
     const naming = pane.locator("ui-prompt");
@@ -239,7 +244,19 @@ test.describe("with a security key", () => {
     expect((await finished).status()).toBe(200);
     const row = pane.locator(".setting-row").filter({ hasText: name });
     await expect(row).toBeVisible();
-    return row;
+    const shown = pane.locator("ui-modal").filter({ hasText: "Save Your Recovery Codes" });
+    let codes: string[] = [];
+    if (await shown.count()) {
+      codes = await shown.locator("li").allTextContents();
+      await action(shown, "Done").click();
+      await expect(shown).toHaveCount(0);
+    }
+    return { row, codes };
+  }
+
+  /** As addKeyWithCodes, for a test that needs only the key's row. */
+  async function addKey(page: Page, name: string): Promise<Locator> {
+    return (await addKeyWithCodes(page, name)).row;
   }
 
   test("removing a key asks for the password, refuses a wrong one, and takes the right one", async ({
@@ -297,6 +314,93 @@ test.describe("with a security key", () => {
     // It was the last key, so the second factor is off: a browser that has
     // never seen the account signs in with the password alone.
     expect(await signInStatus(browser, address, PASSWORD)).toBe(200);
+  });
+
+  /**
+   * Signs in to `address` with the password in a browser of its own, which
+   * has no authenticator, as far as the key's page.
+   */
+  async function atTheKeyPage(browser: Browser, address: string): Promise<Page> {
+    const context = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+    const page = await context.newPage();
+    await page.goto("/#/login");
+    await page.locator("login-page #username").fill(address);
+    await page.locator("login-page #password").fill(PASSWORD);
+    await page.locator("login-page button[type=submit]").click();
+    await expect(page.locator("login-webauthn-page")).toBeVisible();
+    return page;
+  }
+
+  // The way back when the key is not at hand: the codes that came with the
+  // first key sign in in its place, once each, and the session one opens can
+  // remove the key that is gone. Without them, the account could not be
+  // signed in to at all.
+  test("a recovery code signs in when the key is not at hand, and the lost key can go", async ({ page }) => {
+    const address = await freshAccount(page, "recover");
+    const { cdp, authenticatorId } = await withAuthenticator(page);
+    await page.goto("/#/settings/webauthn");
+    const pane = page.locator("alps-webauthn-settings");
+    // The first key comes with ten codes, shown once.
+    const { codes } = await addKeyWithCodes(page, "Laptop");
+    expect(codes).toHaveLength(10);
+    await expect(pane).toContainText("10 recovery codes left");
+
+    // The key is gone. Signed out, the password leads to the key's page,
+    // where a code is typed as it might be written down.
+    await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
+    await page.context().clearCookies();
+    allowConsoleErrors(page, /status of 401/);
+    await page.goto("/#/login");
+    await page.reload();
+    await page.locator("login-page #username").fill(address);
+    await page.locator("login-page #password").fill(PASSWORD);
+    await page.locator("login-page button[type=submit]").click();
+    const keyPage = page.locator("login-webauthn-page");
+    await action(keyPage, "Use a recovery code").click();
+    await keyPage.locator("#recovery-code").fill(codes[0].toUpperCase().replace("-", " "));
+    await action(keyPage, "Sign In").click();
+    await page.waitForURL(/#\/mailbox/, { timeout: 15_000 });
+
+    // That session has given the second factor: the lost key can be removed.
+    await page.goto("/#/settings/webauthn");
+    await expect(pane).toContainText("9 recovery codes left");
+    await action(pane.locator(".setting-row").filter({ hasText: "Laptop" }), "Remove").click();
+    const removing = pane.locator("ui-prompt");
+    await removing.locator('input[type="password"]').fill(PASSWORD);
+    const removed = page.waitForResponse((r) => new URL(r.url()).pathname.endsWith("/delete"));
+    await action(removing, "Remove").click();
+    expect((await removed).status()).toBe(200);
+    await expect(pane).toContainText("No registered keys.");
+  });
+
+  test("a used recovery code is refused, and another one works", async ({ page, browser }) => {
+    const address = await freshAccount(page, "recover-once");
+    await withAuthenticator(page);
+    await page.goto("/#/settings/webauthn");
+    const { codes } = await addKeyWithCodes(page, "Laptop");
+    expect(codes).toHaveLength(10);
+
+    const first = await atTheKeyPage(browser, address);
+    await action(first.locator("login-webauthn-page"), "Use a recovery code").click();
+    await first.locator("login-webauthn-page #recovery-code").fill(codes[0]);
+    await action(first.locator("login-webauthn-page"), "Sign In").click();
+    await first.waitForURL(/#\/mailbox/, { timeout: 15_000 });
+    await first.context().close();
+
+    const second = await atTheKeyPage(browser, address);
+    // The refusal is a 400 the page handles.
+    allowConsoleErrors(second, /status of 400/);
+    const keyPage = second.locator("login-webauthn-page");
+    await action(keyPage, "Use a recovery code").click();
+    await keyPage.locator("#recovery-code").fill(codes[0]);
+    await action(keyPage, "Sign In").click();
+    await expect(keyPage).toContainText("That recovery code is not right, or it has been used already.");
+    await expect(second).toHaveURL(/#\/login\/webauthn/);
+
+    await keyPage.locator("#recovery-code").fill(codes[1]);
+    await action(keyPage, "Sign In").click();
+    await second.waitForURL(/#\/mailbox/, { timeout: 15_000 });
+    await second.context().close();
   });
 
   // A platform key is added with one touch and a name dialog that comes filled

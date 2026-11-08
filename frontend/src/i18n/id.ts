@@ -169,6 +169,7 @@ export const id = {
     verify_btn: 'Verifikasi Identitas',
     verifying_btn: 'Memverifikasi...',
     back_to_login: 'Kembali ke Halaman Masuk',
+    use_recovery_code: 'Gunakan kode pemulihan',
     key_name_placeholder: 'Nama perangkat (mis. YubiKey)',
     name_key_title: 'Beri Nama Kunci Keamanan',
     name_key_label: 'Nama Perangkat',
@@ -205,6 +206,26 @@ export const id = {
       added: 'Ditambahkan',
       remove_btn: 'Hapus',
       unnamed_key: 'Kunci Keamanan'
+    },
+    recovery: {
+      instruction: 'Masukkan salah satu kode pemulihan yang Anda simpan untuk akun ini.',
+      code_label: 'Kode pemulihan',
+      use_key: 'Gunakan kunci keamanan saja',
+      wrong_code: 'Kode pemulihan itu salah, atau sudah pernah dipakai.',
+      code_required: 'Masukkan kode pemulihan.',
+      title: 'Kode Pemulihan',
+      desc: 'Jika kunci keamanan Anda tidak ada di dekat Anda, kode pemulihan akan memasukkan Anda sebagai gantinya. Setiap kode hanya berlaku sekali.',
+      left: {
+        other: 'Sisa {count} kode pemulihan'
+      },
+      none: 'Anda tidak punya kode pemulihan. Buat beberapa agar Anda bisa masuk tanpa kunci.',
+      create: 'Buat Kode Baru',
+      create_notice: 'Kode baru menggantikan kode yang Anda miliki sekarang.',
+      password_label: 'Masukkan sandi Anda untuk membuat kode baru',
+      codes_title: 'Simpan Kode Pemulihan Anda',
+      codes_intro: 'Setiap kode ini memasukkan Anda sekali saat kunci keamanan Anda tidak ada di dekat Anda. Simpan di tempat yang aman: kode ini tidak akan ditampilkan lagi.',
+      create_failed: 'Kode pemulihan baru tidak dapat dibuat. Silakan coba lagi.',
+      done: 'Selesai'
     }
   },
   print: {

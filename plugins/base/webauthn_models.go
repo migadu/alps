@@ -22,6 +22,10 @@ type UserCredentials struct {
 	// The rules trust was turned on under: alps.TrustLinkedAccountsVersion
 	// when it is on, nothing when it is off.
 	TrustLinkedAccountsVersion int `json:"trust_linked_accounts_version,omitempty"`
+	// The recovery codes not yet used, each as its SHA-256 (see
+	// webauthn_recovery.go). The codes themselves are shown once and kept
+	// nowhere.
+	RecoveryCodes []string `json:"recovery_codes,omitempty"`
 }
 
 // setTrust turns trust in linked accounts on or off, and marks trust turned

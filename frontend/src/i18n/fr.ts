@@ -650,6 +650,7 @@ export const fr = {
     verify_btn: 'Vérifier l\'identité',
     verifying_btn: 'Vérification...',
     back_to_login: 'Retour à la connexion',
+    use_recovery_code: 'Utiliser un code de récupération',
     key_name_placeholder: 'Nom de l\'appareil (ex. YubiKey)',
     name_key_title: 'Nommer la clé de sécurité',
     name_key_label: 'Nom de l\'appareil',
@@ -686,6 +687,27 @@ export const fr = {
       added: 'Ajouté',
       remove_btn: 'Supprimer',
       unnamed_key: "Clé de sécurité"
+    },
+    recovery: {
+      instruction: 'Saisissez l\'un des codes de récupération enregistrés pour ce compte.',
+      code_label: 'Code de récupération',
+      use_key: 'Utiliser plutôt votre clé de sécurité',
+      wrong_code: 'Ce code de récupération n\'est pas correct, ou il a déjà été utilisé.',
+      code_required: 'Saisissez un code de récupération.',
+      title: 'Codes de récupération',
+      desc: 'Si votre clé de sécurité n\'est pas à portée de main, un code de récupération vous connecte à sa place. Chaque code ne sert qu\'une fois.',
+      left: {
+        one: '{count} code de récupération restant',
+        other: '{count} codes de récupération restants'
+      },
+      none: 'Vous n\'avez aucun code de récupération. Créez-en pour pouvoir vous connecter sans votre clé.',
+      create: 'Créer de nouveaux codes',
+      create_notice: 'Les nouveaux codes remplacent ceux que vous avez maintenant.',
+      password_label: 'Saisissez votre mot de passe pour créer de nouveaux codes',
+      codes_title: 'Enregistrez vos codes de récupération',
+      codes_intro: 'Chacun de ces codes vous connecte une fois lorsque votre clé de sécurité n\'est pas à portée de main. Conservez-les en lieu sûr : ils ne seront plus affichés.',
+      create_failed: 'Impossible de créer de nouveaux codes de récupération. Veuillez réessayer.',
+      done: 'Terminé'
     }
   }
 };

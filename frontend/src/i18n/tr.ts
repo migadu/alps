@@ -170,6 +170,7 @@ export const tr = {
     verify_btn: 'Kimliği Doğrula',
     verifying_btn: 'Doğrulanıyor...',
     back_to_login: 'Oturum Açmaya Dön',
+    use_recovery_code: 'Kurtarma kodu kullan',
     key_name_placeholder: 'Cihaz adı (ör. YubiKey)',
     name_key_title: 'Güvenlik Anahtarını Adlandır',
     name_key_label: 'Cihaz Adı',
@@ -206,6 +207,27 @@ export const tr = {
       added: 'Eklenme',
       remove_btn: 'Kaldır',
       unnamed_key: 'Güvenlik Anahtarı'
+    },
+    recovery: {
+      instruction: 'Bu hesap için kaydettiğiniz kurtarma kodlarından birini girin.',
+      code_label: 'Kurtarma kodu',
+      use_key: 'Bunun yerine güvenlik anahtarınızı kullanın',
+      wrong_code: 'Bu kurtarma kodu doğru değil veya daha önce kullanılmış.',
+      code_required: 'Bir kurtarma kodu girin.',
+      title: 'Kurtarma Kodları',
+      desc: 'Güvenlik anahtarınız yanınızda değilse, bir kurtarma kodu onun yerine oturumunuzu açar. Her kod yalnızca bir kez çalışır.',
+      left: {
+        one: '{count} kurtarma kodu kaldı',
+        other: '{count} kurtarma kodu kaldı'
+      },
+      none: 'Hiç kurtarma kodunuz yok. Anahtarınız olmadan oturum açabilmek için kod oluşturun.',
+      create: 'Yeni Kodlar Oluştur',
+      create_notice: 'Yeni kodlar şu anki kodlarınızın yerini alır.',
+      password_label: 'Yeni kodlar oluşturmak için parolanızı girin',
+      codes_title: 'Kurtarma Kodlarınızı Kaydedin',
+      codes_intro: 'Bu kodların her biri, güvenlik anahtarınız yanınızda olmadığında oturumunuzu bir kez açar. Onları güvenli bir yerde saklayın: tekrar gösterilmeyecekler.',
+      create_failed: 'Yeni kurtarma kodları oluşturulamadı. Lütfen tekrar deneyin.',
+      done: 'Tamam'
     }
   },
   print: {

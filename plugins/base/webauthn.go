@@ -30,6 +30,8 @@ type WebAuthnSettingsData struct {
 	Credentials         []CredentialDisplay `json:"credentials"`
 	IsSecuritySettings  bool                `json:"isSecuritySettings"`
 	TrustLinkedAccounts bool                `json:"trustLinkedAccounts"`
+	// How many recovery codes are left to sign in with.
+	RecoveryCodesLeft int `json:"recoveryCodesLeft"`
 }
 
 // handleSetupPage shows the WebAuthn enrollment page
@@ -58,6 +60,7 @@ func handleSetupPage(ctx *alps.Context) error {
 		Credentials:         displayCreds,
 		IsSecuritySettings:  true,
 		TrustLinkedAccounts: creds.TrustLinkedAccounts,
+		RecoveryCodesLeft:   len(creds.RecoveryCodes),
 	}
 
 	return ctx.JSON(http.StatusOK, data)
@@ -227,6 +230,18 @@ func handleSetupFinish(ctx *alps.Context) error {
 		credName = fmt.Sprintf("Security Key %d", len(creds.Credentials)+1)
 	}
 
+	// The first key turns the second factor on, and comes with the recovery
+	// codes that stand in for it when it is not at hand (see
+	// webauthn_recovery.go). They are in this answer alone.
+	var codes []string
+	if len(creds.Credentials) == 0 {
+		var hashes []string
+		if codes, hashes, err = newRecoveryCodes(); err != nil {
+			return err
+		}
+		creds.RecoveryCodes = hashes
+	}
+
 	// Add new credential with metadata
 	creds.Credentials = append(creds.Credentials, CredentialInfo{
 		Credential: *credential,
@@ -239,6 +254,9 @@ func handleSetupFinish(ctx *alps.Context) error {
 		return fmt.Errorf("failed to save credentials: %v", err)
 	}
 	logKeyChange(ctx, "security key added", creds.Credentials[len(creds.Credentials)-1], len(creds.Credentials))
+	if codes != nil {
+		logRecoveryCodesCreated(ctx)
+	}
 
 	if err := clearSessionData(ctx.Session); err != nil {
 		return fmt.Errorf("failed to clear session: %v", err)
@@ -257,10 +275,12 @@ func handleSetupFinish(ctx *alps.Context) error {
 		ctx.SetLoginToken(tokenUser, tokenPass, true, isPersistent)
 	}
 
+	answer := map[string]interface{}{"success": true}
+	if codes != nil {
+		answer["recovery_codes"] = codes
+	}
 	ctx.Response.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(ctx.Response).Encode(map[string]interface{}{
-		"success": true,
-	})
+	return json.NewEncoder(ctx.Response).Encode(answer)
 }
 
 // deleteCredentialRequest is the body of a security key removal.
@@ -527,6 +547,15 @@ func handleVerifyFinish(ctx *alps.Context) error {
 	}
 	recordKeyUse(ctx, session, creds, credential)
 
+	return completeSecondFactor(ctx, session, map[string]interface{}{}, "factor", "security key")
+}
+
+// completeSecondFactor lets in a sign-in, or an account switch, that waited
+// for the second factor and has now given it, with the key or a recovery
+// code: the session is marked as having given it and issued to the browser,
+// and the pending one's cookie and data are cleared. The answer gains success
+// and the username; logged is added to the sign-in's log line.
+func completeSecondFactor(ctx *alps.Context, session *alps.Session, answer map[string]interface{}, logged ...any) error {
 	// Success! Mark session as authenticated with 2FA
 	session.SetAuthenticated2FA(true)
 
@@ -556,13 +585,15 @@ func handleVerifyFinish(ctx *alps.Context) error {
 	// This is necessary to ensure the session persists correctly
 	ctx.SetSessionWithExpiry(session, persistent)
 
-	ctx.Server.Logger().Slog().Info("sign-in",
+	attrs := []any{
 		"user", session.Username(),
 		"ip", ctx.ClientIP(),
 		"session", session.ID(),
 		"2fa", true,
 		"remember", persistent,
-		"agent", ctx.Request.UserAgent())
+		"agent", ctx.Request.UserAgent(),
+	}
+	ctx.Server.Logger().Slog().Info("sign-in", append(attrs, logged...)...)
 
 	// Set login token for session restoration after server restart
 	// Retrieve credentials that were stored during initial login from session memory
@@ -585,11 +616,10 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		ctx.Server.Logger().Warnf("WebAuthn verify: no stored credentials found in session")
 	}
 
+	answer["success"] = true
+	answer["username"] = session.Username()
 	ctx.Response.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(ctx.Response).Encode(map[string]interface{}{
-		"success":  true,
-		"username": session.Username(),
-	})
+	return json.NewEncoder(ctx.Response).Encode(answer)
 }
 
 // recordKeyUse keeps what a sign-in learnt about the key it was given: the

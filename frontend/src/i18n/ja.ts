@@ -169,6 +169,7 @@ export const ja = {
     verify_btn: '本人確認',
     verifying_btn: '確認中...',
     back_to_login: 'ログインに戻る',
+    use_recovery_code: 'リカバリーコードを使う',
     key_name_placeholder: '端末名（例：YubiKey）',
     name_key_title: 'セキュリティキーの名前',
     name_key_label: '端末名',
@@ -205,6 +206,26 @@ export const ja = {
       added: '追加日時',
       remove_btn: '削除',
       unnamed_key: 'セキュリティキー'
+    },
+    recovery: {
+      instruction: 'このアカウント用に保存したリカバリーコードのいずれかを入力してください。',
+      code_label: 'リカバリーコード',
+      use_key: 'セキュリティキーを使う',
+      wrong_code: 'そのリカバリーコードは正しくないか、すでに使用されています。',
+      code_required: 'リカバリーコードを入力してください。',
+      title: 'リカバリーコード',
+      desc: 'セキュリティキーが手元にないときは、代わりにリカバリーコードでログインできます。各コードは1回だけ使えます。',
+      left: {
+        other: 'リカバリーコード残り{count}個'
+      },
+      none: 'リカバリーコードがありません。キーなしでもログインできるよう、コードを作成してください。',
+      create: '新しいコードを作成',
+      create_notice: '新しいコードは、現在のコードに置き換わります。',
+      password_label: '新しいコードを作成するにはパスワードを入力してください',
+      codes_title: 'リカバリーコードを保存してください',
+      codes_intro: 'セキュリティキーが手元にないとき、これらのコードはそれぞれ1回ずつログインに使えます。安全な場所に保管してください。再表示はされません。',
+      create_failed: '新しいリカバリーコードを作成できませんでした。もう一度お試しください。',
+      done: '完了'
     }
   },
   print: {

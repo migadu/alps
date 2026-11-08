@@ -171,6 +171,7 @@ export const zhHans: TranslationDictionary = {
     verify_btn: '验证身份',
     verifying_btn: '正在验证 ...',
     back_to_login: '返回登录',
+    use_recovery_code: '使用恢复码',
     key_name_placeholder: '设备名称 (例如 YubiKey)',
     name_key_title: '命名安全密钥',
     name_key_label: '设备名称',
@@ -207,6 +208,26 @@ export const zhHans: TranslationDictionary = {
       added: '已添加',
       remove_btn: '删除',
       unnamed_key: '安全密钥'
+    },
+    recovery: {
+      instruction: '请输入您为此账户保存的恢复码之一。',
+      code_label: '恢复码',
+      use_key: '改用安全密钥',
+      wrong_code: '该恢复码不正确，或已被使用。',
+      code_required: '请输入恢复码。',
+      title: '恢复码',
+      desc: '安全密钥不在手边时，可以用恢复码代替它登录。每个恢复码只能使用一次。',
+      left: {
+        other: '剩余 {count} 个恢复码'
+      },
+      none: '您没有恢复码。请创建一些，以便在没有密钥时也能登录。',
+      create: '创建新恢复码',
+      create_notice: '新恢复码将替换您现有的恢复码。',
+      password_label: '输入密码以创建新恢复码',
+      codes_title: '保存您的恢复码',
+      codes_intro: '安全密钥不在手边时，这些恢复码每个都可以登录一次。请将它们保存在安全的地方：它们不会再次显示。',
+      create_failed: '无法创建新恢复码。请重试。',
+      done: '完成'
     }
   },
   print: {

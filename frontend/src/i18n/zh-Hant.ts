@@ -169,6 +169,7 @@ export const zhHant = {
     verify_btn: '驗證身分',
     verifying_btn: '正在驗證…',
     back_to_login: '返回登入',
+    use_recovery_code: '使用復原碼',
     key_name_placeholder: '裝置名稱（例如 YubiKey）',
     name_key_title: '為安全金鑰命名',
     name_key_label: '裝置名稱',
@@ -205,6 +206,26 @@ export const zhHant = {
       added: '新增時間',
       remove_btn: '移除',
       unnamed_key: '安全金鑰'
+    },
+    recovery: {
+      instruction: '請輸入您為此帳號儲存的其中一組復原碼。',
+      code_label: '復原碼',
+      use_key: '改用安全金鑰',
+      wrong_code: '此復原碼不正確，或已經使用過。',
+      code_required: '請輸入復原碼。',
+      title: '復原碼',
+      desc: '安全金鑰不在手邊時，可以用復原碼代替金鑰登入。每組復原碼只能使用一次。',
+      left: {
+        other: '剩餘 {count} 組復原碼'
+      },
+      none: '您沒有復原碼。請建立一些，以便在沒有金鑰時也能登入。',
+      create: '建立新的復原碼',
+      create_notice: '新的復原碼會取代您目前的復原碼。',
+      password_label: '輸入密碼以建立新的復原碼',
+      codes_title: '儲存您的復原碼',
+      codes_intro: '安全金鑰不在手邊時，每組復原碼都可以登入一次。請將它們存放在安全的地方：它們不會再次顯示。',
+      create_failed: '無法建立新的復原碼。請再試一次。',
+      done: '完成'
     }
   },
   print: {

@@ -650,6 +650,7 @@ export const es = {
     verify_btn: 'Verificar identidad',
     verifying_btn: 'Verificando...',
     back_to_login: 'Volver a iniciar sesión',
+    use_recovery_code: 'Usar un código de recuperación',
     key_name_placeholder: 'Nombre del dispositivo (p. ej., YubiKey)',
     name_key_title: 'Nombrar clave de seguridad',
     name_key_label: 'Nombre del dispositivo',
@@ -686,6 +687,27 @@ export const es = {
       added: 'Añadido',
       remove_btn: 'Eliminar',
       unnamed_key: "Llave de seguridad"
+    },
+    recovery: {
+      instruction: 'Introduce uno de los códigos de recuperación que guardaste para esta cuenta.',
+      code_label: 'Código de recuperación',
+      use_key: 'Usar tu clave de seguridad',
+      wrong_code: 'Ese código de recuperación no es correcto o ya se ha usado.',
+      code_required: 'Introduce un código de recuperación.',
+      title: 'Códigos de recuperación',
+      desc: 'Si no tienes a mano tu clave de seguridad, un código de recuperación te permite iniciar sesión en su lugar. Cada código sirve una sola vez.',
+      left: {
+        one: 'Queda {count} código de recuperación',
+        other: 'Quedan {count} códigos de recuperación'
+      },
+      none: 'No tienes códigos de recuperación. Crea algunos para poder iniciar sesión sin tu clave.',
+      create: 'Crear códigos nuevos',
+      create_notice: 'Los códigos nuevos sustituyen a los que tienes ahora.',
+      password_label: 'Introduce tu contraseña para crear códigos nuevos',
+      codes_title: 'Guarda tus códigos de recuperación',
+      codes_intro: 'Cada uno de estos códigos te permite iniciar sesión una vez cuando no tienes a mano tu clave de seguridad. Guárdalos en un lugar seguro: no se volverán a mostrar.',
+      create_failed: 'No se pudieron crear códigos de recuperación nuevos. Inténtalo de nuevo.',
+      done: 'Listo'
     }
   }
 };

@@ -170,6 +170,7 @@ export const ptBR = {
     verify_btn: 'Verificar identidade',
     verifying_btn: 'Verificando...',
     back_to_login: 'Voltar ao login',
+    use_recovery_code: 'Usar um código de recuperação',
     key_name_placeholder: 'Nome do dispositivo (ex.: YubiKey)',
     name_key_title: 'Nomear chave de segurança',
     name_key_label: 'Nome do Dispositivo',
@@ -206,6 +207,27 @@ export const ptBR = {
       added: 'Adicionada',
       remove_btn: 'Remover',
       unnamed_key: 'Chave de segurança'
+    },
+    recovery: {
+      instruction: 'Digite um dos códigos de recuperação que você salvou para esta conta.',
+      code_label: 'Código de recuperação',
+      use_key: 'Usar sua chave de segurança',
+      wrong_code: 'Esse código de recuperação não está correto ou já foi usado.',
+      code_required: 'Digite um código de recuperação.',
+      title: 'Códigos de recuperação',
+      desc: 'Se sua chave de segurança não estiver à mão, um código de recuperação faz o login no lugar dela. Cada código funciona uma única vez.',
+      left: {
+        one: 'Resta {count} código de recuperação',
+        other: 'Restam {count} códigos de recuperação'
+      },
+      none: 'Você não tem códigos de recuperação. Crie alguns para poder entrar sem a sua chave.',
+      create: 'Criar novos códigos',
+      create_notice: 'Os novos códigos substituem os que você tem agora.',
+      password_label: 'Digite sua senha para criar novos códigos',
+      codes_title: 'Salve seus códigos de recuperação',
+      codes_intro: 'Cada um destes códigos faz o login uma vez quando sua chave de segurança não estiver à mão. Guarde-os em um lugar seguro: eles não serão mostrados de novo.',
+      create_failed: 'Não foi possível criar novos códigos de recuperação. Tente novamente.',
+      done: 'Concluído'
     }
   },
   print: {

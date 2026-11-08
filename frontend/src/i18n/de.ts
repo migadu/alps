@@ -652,6 +652,7 @@ export const de: TranslationDictionary = {
     verify_btn: 'Identität überprüfen',
     verifying_btn: 'Wird überprüft...',
     back_to_login: 'Zurück zum Login',
+    use_recovery_code: 'Wiederherstellungscode verwenden',
     key_name_placeholder: 'Gerätename (z.B. YubiKey)',
     name_key_title: 'Sicherheitsschlüssel benennen',
     name_key_label: 'Gerätename',
@@ -688,6 +689,27 @@ export const de: TranslationDictionary = {
       added: 'Hinzugefügt',
       remove_btn: 'Entfernen',
       unnamed_key: "Sicherheitsschlüssel"
+    },
+    recovery: {
+      instruction: 'Geben Sie einen der Wiederherstellungscodes ein, die Sie für dieses Konto gespeichert haben.',
+      code_label: 'Wiederherstellungscode',
+      use_key: 'Stattdessen den Sicherheitsschlüssel verwenden',
+      wrong_code: 'Dieser Wiederherstellungscode ist nicht richtig oder wurde bereits verwendet.',
+      code_required: 'Geben Sie einen Wiederherstellungscode ein.',
+      title: 'Wiederherstellungscodes',
+      desc: 'Wenn Ihr Sicherheitsschlüssel nicht zur Hand ist, meldet Sie ein Wiederherstellungscode an seiner Stelle an. Jeder Code funktioniert nur einmal.',
+      left: {
+        one: '{count} Wiederherstellungscode übrig',
+        other: '{count} Wiederherstellungscodes übrig'
+      },
+      none: 'Sie haben keine Wiederherstellungscodes. Erstellen Sie welche, damit Sie sich auch ohne Ihren Schlüssel anmelden können.',
+      create: 'Neue Codes erstellen',
+      create_notice: 'Neue Codes ersetzen die, die Sie jetzt haben.',
+      password_label: 'Geben Sie Ihr Passwort ein, um neue Codes zu erstellen',
+      codes_title: 'Wiederherstellungscodes speichern',
+      codes_intro: 'Jeder dieser Codes meldet Sie einmal an, wenn Ihr Sicherheitsschlüssel nicht zur Hand ist. Bewahren Sie sie sicher auf: Sie werden nicht noch einmal angezeigt.',
+      create_failed: 'Neue Wiederherstellungscodes konnten nicht erstellt werden. Bitte versuchen Sie es erneut.',
+      done: 'Fertig'
     }
   }
 };
