@@ -1,13 +1,13 @@
 # Password Change Plugin
 
-ALPS provides a built-in mechanism to proxy password change requests to an external HTTP API. This allows ALPS to integrate with various backend identity providers or mail server management interfaces, offering users a seamless way to update their credentials directly from ALPS Settings.
+ALPS provides a built-in mechanism to proxy password change requests to an external HTTP API, or to run a program on the ALPS host for mail servers that offer a command line tool instead (see [Running a Command](#running-a-command)). This allows ALPS to integrate with various backend identity providers or mail server management interfaces, offering users a seamless way to update their credentials directly from ALPS Settings.
 
 ## How It Works
 
 1. The user opens **Settings** > **Password** in the ALPS web interface.
 2. The user inputs their current password and their new password.
-3. ALPS intercepts the request and forwards it to the configured external HTTP endpoint according to your configuration (`config.toml`).
-4. If the upstream server responds with a success status code (HTTP 200-399), ALPS assumes the password has been changed.
+3. ALPS checks the current password, then forwards the request to the configured external HTTP endpoint, or runs the configured command, according to your configuration (`config.toml`).
+4. If the upstream server responds with a success status code (HTTP 200-399), or the command exits with status 0, ALPS assumes the password has been changed.
 5. ALPS then gracefully reconnects the user's active IMAP connection and updates their session with the new password. This ensures the user is not unexpectedly logged out and can continue working seamlessly.
 
 ## Configuration
@@ -81,7 +81,29 @@ Assuming the same mapping as above, requests will have the `Content-Type: applic
 email=user%40example.com&password=currentPassword123&new_password=newSecurePassword456
 ```
 
+## Running a Command
+
+Some mail servers change passwords with a command line tool rather than an HTTP API. Set `command` in place of `endpoint`, and ALPS runs that program on its own host:
+
+```toml
+[plugin.password.options]
+# maddy reads the new password from standard input when -p is left out.
+command = ["/usr/local/bin/maddy", "creds", "password", "{email}"]
+
+# What the program reads on standard input (default: the new password on a
+# line of its own).
+# stdin = "{new_password}\n"
+```
+
+- `command` is a list: the program first, as an absolute path, then each of its arguments. ALPS runs the program directly, never through a shell, so each entry reaches it as exactly one argument, whatever the user's address or password contains. Quotes, `$VAR`, `|` and other shell syntax are passed on as they are; wrap the tool in a script if you need a shell.
+- Arguments may carry `{email}`, `{local}` and `{domain}`. They may not carry the passwords, because the arguments of a running program are visible to every user on the host. A value that would begin an argument with a dash is refused, so it is never read as an option.
+- The passwords reach the program on standard input. `stdin` sets what it reads, and may carry `{email}`, `{local}`, `{domain}`, `{old_password}` and `{new_password}`. Its default, `"{new_password}\n"`, suits tools that prompt for the new password. A password holding a line break is refused, as it would end the line early.
+- Exit status 0 means the password was changed. Any other status is shown to the user as a refused change, and the start of what the program wrote on standard error goes to the ALPS log, with the passwords masked. Standard output is discarded.
+- The program runs as the user ALPS runs as, with an environment holding only `PATH`, and is stopped after 15 seconds. If that user may not change passwords, give it the one tool through `sudo`, for example `command = ["/usr/bin/sudo", "-n", "-u", "maddy", "/usr/local/bin/maddy", "creds", "password", "{email}"]` with a matching sudoers rule.
+- ALPS refuses to start when `[plugin.password.options]` names a command that could not run as written: a program that is relative, missing or not executable, a password among the arguments, or both `endpoint` and `command`. A block routed per domain under `provider.multi` may name a command too; it is checked each time it is used, and refused then.
+
 ## Error Handling
 
 - If the upstream endpoint returns an HTTP 4xx or 5xx error, ALPS will relay a failure message to the user, and their session password will remain unchanged.
+- If the command exits with a non-zero status, cannot be started, or runs past its 15 seconds, ALPS reports a refused change or an unavailable service to the user, and their session password remains unchanged.
 - If the upstream endpoint returns a success status but ALPS fails to verify the new password against the IMAP server, ALPS will prompt the user to log in again manually.

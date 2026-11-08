@@ -3,6 +3,7 @@ package password
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/migadu/alps/provider"
 	"io"
@@ -23,16 +24,32 @@ type PasswordChangeConfig struct {
 	Token          string            `json:"token"`
 	Payload        string            `json:"payload"`
 	PayloadMapping map[string]string `json:"payload_mapping"`
+
+	// Command runs a program in place of the HTTP request: the program first,
+	// then each of its arguments. See command.go.
+	Command []string `json:"-"`
+	Stdin   string   `json:"stdin"`
 }
 
-func parseConfig(opts map[string]interface{}) *PasswordChangeConfig {
+// parseConfig reads an option block. It is lenient about the HTTP options, as
+// it always was, and strict about a command, which must run as written.
+func parseConfig(opts map[string]interface{}) (*PasswordChangeConfig, error) {
+	var cfg PasswordChangeConfig
 	if opts == nil {
-		return &PasswordChangeConfig{}
+		return &cfg, nil
 	}
 	b, _ := json.Marshal(opts)
-	var cfg PasswordChangeConfig
 	json.Unmarshal(b, &cfg)
-	return &cfg
+	if raw, ok := opts["command"]; ok {
+		b, _ := json.Marshal(raw)
+		if err := json.Unmarshal(b, &cfg.Command); err != nil || len(cfg.Command) == 0 {
+			return nil, errors.New("command must be a list: the program, then each of its arguments")
+		}
+	}
+	if err := cfg.validateCommand(); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
 }
 
 func handlePasswordChange(ctx *alps.Context) error {
@@ -47,7 +64,11 @@ func handlePasswordChange(ctx *alps.Context) error {
 	if routed := ctx.Server.ServiceOptionsFor(provider.ServicePassword, ctx.Session.Username()); routed != nil {
 		opts = routed
 	}
-	cfg := parseConfig(opts)
+	cfg, err := parseConfig(opts)
+	if err != nil {
+		ctx.Server.Logger().Errorf("Password change is misconfigured: %v", err)
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Password change service unavailable", "code": "password_service_unavailable"})
+	}
 
 	var req PasswordChangeRequest
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
@@ -98,6 +119,21 @@ func handlePasswordChange(ctx *alps.Context) error {
 	if len(parts) == 2 {
 		local = parts[0]
 		domain = parts[1]
+	}
+
+	if len(cfg.Command) > 0 {
+		failure := runCommand(ctx.Request.Context(), cfg, map[string]string{
+			"{email}":        username,
+			"{local}":        local,
+			"{domain}":       domain,
+			"{old_password}": req.OldPassword,
+			"{new_password}": req.Password,
+		})
+		if failure != nil {
+			ctx.Server.Logger().Errorf("Password change command failed for %s: %v", username, failure.err)
+			return ctx.JSON(failure.status, map[string]string{"error": failure.message, "code": failure.code})
+		}
+		return passwordChanged(ctx, username, req.Password)
 	}
 
 	endpoint := cfg.Endpoint
@@ -178,8 +214,14 @@ func handlePasswordChange(ctx *alps.Context) error {
 		return ctx.JSON(resp.StatusCode, map[string]string{"error": "Password change rejected by server", "code": "password_change_rejected"})
 	}
 
+	return passwordChanged(ctx, username, req.Password)
+}
+
+// passwordChanged brings the session up to date with a password the backend
+// has just changed.
+func passwordChanged(ctx *alps.Context, username, password string) error {
 	// Update the session password
-	err = ctx.Server.Sessions.UpdatePasswordContext(ctx.Request.Context(), ctx.Session, req.Password)
+	err := ctx.Server.Sessions.UpdatePasswordContext(ctx.Request.Context(), ctx.Session, password)
 	if err != nil {
 		ctx.Server.Logger().Errorf("Failed to update session password: %v", err)
 		return ctx.JSON(http.StatusOK, map[string]string{"message": "Password changed, but please log in again", "code": "reauthenticate"})
@@ -187,14 +229,14 @@ func handlePasswordChange(ctx *alps.Context) error {
 
 	// Also update login token if present, preserving the persistence setting
 	if tokenUsername, _, verified2FA, persistent := ctx.GetLoginToken(); tokenUsername == username {
-		ctx.SetLoginToken(username, req.Password, verified2FA, persistent)
+		ctx.SetLoginToken(username, password, verified2FA, persistent)
 	}
 
 	// Every account this one is linked to stores this account's password,
 	// encrypted, in its own METADATA — and the change just made all of those
 	// stale. Switching back from any of them would be rejected with the old
 	// password, silently.
-	if failed := ctx.Session.RefreshLinkedCredentials(req.Password); failed > 0 {
+	if failed := ctx.Session.RefreshLinkedCredentials(password); failed > 0 {
 		return ctx.JSON(http.StatusOK, map[string]interface{}{
 			"message": "Password successfully changed",
 			"warning": "linked_accounts_not_refreshed",

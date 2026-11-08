@@ -47,7 +47,10 @@ func TestRoutedPasswordBlockReplacesRatherThanMerges(t *testing.T) {
 	if got == nil {
 		t.Fatal("the routed login got no block of its own")
 	}
-	cfg := parseConfig(got)
+	cfg, err := parseConfig(got)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cfg.Endpoint != "https://admin.routed.example/api" {
 		t.Errorf("routed endpoint is %q, want the backend's own", cfg.Endpoint)
 	}
