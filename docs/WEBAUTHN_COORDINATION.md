@@ -1,6 +1,6 @@
 # Credential updates across Alps instances
 
-Recovery uses only standard [IMAP METADATA](https://www.rfc-editor.org/rfc/rfc5464.html). There is no Alps database, Sora-specific command, distributed lease, or dependency on gossip membership. The backend must provide atomic entry replacements and fresh, complete subtree reads: a write acknowledged before a read starts must be visible to that reader. Stale replicas and truncated listings cannot safely supply this contract.
+Recovery uses only standard [IMAP METADATA](https://www.rfc-editor.org/rfc/rfc5464.html). There is no Alps database, Sora-specific command, distributed lease, or dependency on gossip membership. The backend must provide atomic entry replacements and fresh, complete, consistent subtree snapshots: a write acknowledged before a read starts must be visible to that reader. Stale replicas, truncated listings, and a listing that tears across concurrent publication/pruning cannot safely supply this contract. Sora reads the subtree in one database query; the native integration tests exercise that backend through standard IMAP commands.
 
 ## Representation
 

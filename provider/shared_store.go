@@ -2,7 +2,8 @@ package provider
 
 import "encoding/json"
 
-// SharedStore lists a complete, fresh view of a persistent entry subtree.
+// SharedStore lists one complete, fresh, consistent snapshot of a persistent
+// entry subtree. It must not tear across concurrent pruning and publication.
 // Entries acknowledged before a read starts must be visible to every client.
 // Individual Put operations must replace one entry atomically. These are the
 // read/write-register semantics used by WebAuthn's versioned metadata protocol.
