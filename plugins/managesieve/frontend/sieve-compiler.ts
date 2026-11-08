@@ -90,6 +90,29 @@ export class SieveCompiler {
 		}
 	}
 	
+	/**
+	 * The rules a script holds for the visual editor: those it carries, while
+	 * it is still the script they compile to.
+	 *
+	 * The raw editor is handed the compiled script with the rules' comment in
+	 * it, and a rule written there by hand left that comment in place. The
+	 * script then came back as the rules from before the switch: what was saved,
+	 * and runs, could not be seen, and a save from either editor replaced it.
+	 * The comment line itself is not compared, as state written as Latin-1
+	 * before carries the same rules in other bytes; nor are CR LF line breaks.
+	 */
+	static visualStateOf(script: string): VisualState | null {
+		const state = this.extractVisualState(script);
+		if (!state) return null;
+		const body = (text: string) => text.replace(/\r\n?/g, '\n').replace(/^# ALPS_VISUAL_STATE: .*$/m, '');
+		try {
+			return body(this.compile(state)) === body(script) ? state : null;
+		} catch {
+			// State that is JSON but not rules, which the visual editor cannot show either.
+			return null;
+		}
+	}
+
 	static compile(state: VisualState): string {
 		if (state.rules.length === 0) {
 			return '';
