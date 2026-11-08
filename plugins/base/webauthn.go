@@ -30,6 +30,9 @@ type WebAuthnSettingsData struct {
 	Credentials         []CredentialDisplay `json:"credentials"`
 	IsSecuritySettings  bool                `json:"isSecuritySettings"`
 	TrustLinkedAccounts bool                `json:"trustLinkedAccounts"`
+	// How many recovery codes are left to sign in with.
+	RecoveryCodesLeft      int  `json:"recoveryCodesLeft"`
+	RecoveryCodesAvailable bool `json:"recoveryCodesAvailable"`
 }
 
 // handleSetupPage shows the WebAuthn enrollment page
@@ -53,11 +56,13 @@ func handleSetupPage(ctx *alps.Context) error {
 	}
 
 	data := WebAuthnSettingsData{
-		Enabled:             creds.Enabled,
-		CredentialCount:     len(creds.Credentials),
-		Credentials:         displayCreds,
-		IsSecuritySettings:  true,
-		TrustLinkedAccounts: creds.TrustLinkedAccounts,
+		Enabled:                creds.Enabled,
+		CredentialCount:        len(creds.Credentials),
+		Credentials:            displayCreds,
+		IsSecuritySettings:     true,
+		TrustLinkedAccounts:    creds.TrustLinkedAccounts,
+		RecoveryCodesLeft:      len(creds.RecoveryCodes),
+		RecoveryCodesAvailable: recoveryCodesAvailable(ctx),
 	}
 
 	return ctx.JSON(http.StatusOK, data)
@@ -145,121 +150,141 @@ func handleSetupFinish(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
 	}
 
-	// Checked again, not only at the beginning: a key may have been enrolled
-	// elsewhere since this session began its own.
-	creds, err := loadCredentials(ctx.Session)
-	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
-	}
-	if lacksSecondFactor(ctx, creds) {
-		return respondTwoFactorRequired(ctx)
-	}
+	return ctx.Session.WithWebAuthnRecord(func(record *alps.WebAuthnRecord) error {
 
-	// Parse request body first to get the name and transports before FinishRegistration consumes it
-	var requestData struct {
-		ID         string   `json:"id"`
-		RawID      string   `json:"rawId"`
-		Type       string   `json:"type"`
-		Transports []string `json:"transports"`
-		Response   struct {
-			AttestationObject string `json:"attestationObject"`
-			ClientDataJSON    string `json:"clientDataJSON"`
-		} `json:"response"`
-		Name string `json:"name"`
-	}
-	if err := json.NewDecoder(ctx.Request.Body).Decode(&requestData); err != nil {
-		return fmt.Errorf("failed to decode request: %v", err)
-	}
-
-	// Reconstruct the request body WITHOUT the name field for FinishRegistration
-	// Keep transports as it's part of the WebAuthn spec
-	credentialData := map[string]interface{}{
-		"id":         requestData.ID,
-		"rawId":      requestData.RawID,
-		"type":       requestData.Type,
-		"transports": requestData.Transports,
-		"response": map[string]interface{}{
-			"attestationObject": requestData.Response.AttestationObject,
-			"clientDataJSON":    requestData.Response.ClientDataJSON,
-		},
-	}
-	requestBody, err := json.Marshal(credentialData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %v", err)
-	}
-	ctx.Request.Body = io.NopCloser(bytes.NewReader(requestBody))
-
-	// Load session data
-	sessionDataStored, err := loadSessionData(ctx.Session)
-	if err != nil {
-		return fmt.Errorf("failed to load session: %v", err)
-	}
-
-	var session webauthn.SessionData
-	if err := json.Unmarshal([]byte(sessionDataStored.Challenge), &session); err != nil {
-		return fmt.Errorf("failed to unmarshal session: %v", err)
-	}
-
-	creds.UserID = sessionDataStored.UserID
-
-	user := &webauthnUser{
-		username:    ctx.Session.Username(),
-		credentials: creds,
-	}
-
-	credential, err := ctx.Server.WebAuthn.FinishRegistration(user, session, ctx.Request)
-	if err != nil {
-		return fmt.Errorf("failed to finish registration: %v", err)
-	}
-
-	// Manually set transports from the browser response
-	// FinishRegistration doesn't preserve them, so we need to set them ourselves
-	if len(requestData.Transports) > 0 {
-		credential.Transport = make([]protocol.AuthenticatorTransport, len(requestData.Transports))
-		for i, t := range requestData.Transports {
-			credential.Transport[i] = protocol.AuthenticatorTransport(t)
+		// Checked again, not only at the beginning: a key may have been enrolled
+		// elsewhere since this session began its own.
+		creds, err := readCredentials(record.Read)
+		if err != nil {
+			return fmt.Errorf("failed to load credentials: %v", err)
 		}
-	}
+		if lacksSecondFactor(ctx, creds) {
+			return respondTwoFactorRequired(ctx)
+		}
 
-	// Use the name from the request
-	credName := requestData.Name
-	if credName == "" {
-		credName = fmt.Sprintf("Security Key %d", len(creds.Credentials)+1)
-	}
+		// Parse request body first to get the name and transports before FinishRegistration consumes it
+		var requestData struct {
+			ID         string   `json:"id"`
+			RawID      string   `json:"rawId"`
+			Type       string   `json:"type"`
+			Transports []string `json:"transports"`
+			Response   struct {
+				AttestationObject string `json:"attestationObject"`
+				ClientDataJSON    string `json:"clientDataJSON"`
+			} `json:"response"`
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(ctx.Request.Body).Decode(&requestData); err != nil {
+			return fmt.Errorf("failed to decode request: %v", err)
+		}
 
-	// Add new credential with metadata
-	creds.Credentials = append(creds.Credentials, CredentialInfo{
-		Credential: *credential,
-		Name:       credName,
-		AddedAt:    time.Now().Format(time.RFC3339),
-	})
-	creds.Enabled = true
+		// Reconstruct the request body WITHOUT the name field for FinishRegistration
+		// Keep transports as it's part of the WebAuthn spec
+		credentialData := map[string]interface{}{
+			"id":         requestData.ID,
+			"rawId":      requestData.RawID,
+			"type":       requestData.Type,
+			"transports": requestData.Transports,
+			"response": map[string]interface{}{
+				"attestationObject": requestData.Response.AttestationObject,
+				"clientDataJSON":    requestData.Response.ClientDataJSON,
+			},
+		}
+		requestBody, err := json.Marshal(credentialData)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request: %v", err)
+		}
+		ctx.Request.Body = io.NopCloser(bytes.NewReader(requestBody))
 
-	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
-		return fmt.Errorf("failed to save credentials: %v", err)
-	}
-	logKeyChange(ctx, "security key added", creds.Credentials[len(creds.Credentials)-1], len(creds.Credentials))
+		// Load session data
+		sessionDataStored, err := loadSessionData(ctx.Session)
+		if err != nil {
+			return fmt.Errorf("failed to load session: %v", err)
+		}
 
-	if err := clearSessionData(ctx.Session); err != nil {
-		return fmt.Errorf("failed to clear session: %v", err)
-	}
+		var session webauthn.SessionData
+		if err := json.Unmarshal([]byte(sessionDataStored.Challenge), &session); err != nil {
+			return fmt.Errorf("failed to unmarshal session: %v", err)
+		}
 
-	// Elevate the session to 2FA authenticated since the user proved physical presence
-	ctx.Session.SetAuthenticated2FA(true)
+		creds.UserID = sessionDataStored.UserID
 
-	// Every other session of the account was opened without this key, or
-	// before the account had one, and is asked for it before it goes on.
-	ctx.Server.Sessions.RequireSecondFactor(ctx.Session.Username())
+		user := &webauthnUser{
+			username:    ctx.Session.Username(),
+			credentials: creds,
+		}
 
-	// Update the login token so the session restoration knows 2FA is verified
-	tokenUser, tokenPass, _, isPersistent := ctx.GetLoginToken()
-	if tokenUser != "" && tokenPass != "" {
-		ctx.SetLoginToken(tokenUser, tokenPass, true, isPersistent)
-	}
+		credential, err := ctx.Server.WebAuthn.FinishRegistration(user, session, ctx.Request)
+		if err != nil {
+			return fmt.Errorf("failed to finish registration: %v", err)
+		}
 
-	ctx.Response.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(ctx.Response).Encode(map[string]interface{}{
-		"success": true,
+		// Manually set transports from the browser response
+		// FinishRegistration doesn't preserve them, so we need to set them ourselves
+		if len(requestData.Transports) > 0 {
+			credential.Transport = make([]protocol.AuthenticatorTransport, len(requestData.Transports))
+			for i, t := range requestData.Transports {
+				credential.Transport[i] = protocol.AuthenticatorTransport(t)
+			}
+		}
+
+		// Use the name from the request
+		credName := requestData.Name
+		if credName == "" {
+			credName = fmt.Sprintf("Security Key %d", len(creds.Credentials)+1)
+		}
+
+		// The first key turns the second factor on, and comes with the recovery
+		// codes that stand in for it when it is not at hand (see
+		// webauthn_recovery.go). They are in this answer alone.
+		var codes []string
+		if len(creds.Credentials) == 0 && recoveryCodesAvailable(ctx) {
+			var hashes []string
+			if codes, hashes, err = newRecoveryCodes(); err != nil {
+				return err
+			}
+			creds.RecoveryCodes = hashes
+		}
+
+		// Add new credential with metadata
+		creds.Credentials = append(creds.Credentials, CredentialInfo{
+			Credential: *credential,
+			Name:       credName,
+			AddedAt:    time.Now().Format(time.RFC3339),
+		})
+		creds.Enabled = true
+
+		if err := saveCredentials(record.Write, creds); err != nil {
+			return fmt.Errorf("failed to save credentials: %v", err)
+		}
+		logKeyChange(ctx, "security key added", creds.Credentials[len(creds.Credentials)-1], len(creds.Credentials))
+		if codes != nil {
+			logRecoveryCodesCreated(ctx)
+		}
+
+		if err := clearSessionData(ctx.Session); err != nil {
+			return fmt.Errorf("failed to clear session: %v", err)
+		}
+
+		// Elevate the session to 2FA authenticated since the user proved physical presence
+		ctx.Session.SetAuthenticated2FA(true)
+
+		// Every other session of the account was opened without this key, or
+		// before the account had one, and is asked for it before it goes on.
+		ctx.Server.Sessions.RequireSecondFactor(ctx.Session.Username())
+
+		// Update the login token so the session restoration knows 2FA is verified
+		tokenUser, tokenPass, _, isPersistent := ctx.GetLoginToken()
+		if tokenUser != "" && tokenPass != "" {
+			ctx.SetLoginToken(tokenUser, tokenPass, true, isPersistent)
+		}
+
+		answer := map[string]interface{}{"success": true}
+		if codes != nil {
+			answer["recovery_codes"] = codes
+		}
+		ctx.Response.Header().Set("Content-Type", "application/json")
+		return json.NewEncoder(ctx.Response).Encode(answer)
 	})
 }
 
@@ -320,73 +345,76 @@ func handleDeleteCredential(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
 	}
 
-	credID := ctx.Param("id")
-	if credID == "" {
-		return alps.NewHTTPError(http.StatusBadRequest, "missing credential ID")
-	}
+	return ctx.Session.WithWebAuthnRecord(func(record *alps.WebAuthnRecord) error {
 
-	// Decode the credential ID from base64 URL encoding
-	credIDBytes, err := base64.URLEncoding.DecodeString(credID)
-	if err != nil {
-		return alps.NewHTTPError(http.StatusBadRequest, "invalid credential ID")
-	}
-
-	// No body at all is a request without a password, the way a page from
-	// before the password was asked for sends it, and is answered as one.
-	var req deleteCredentialRequest
-	if err := ctx.BindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
-		return ctx.RespondBindError(err)
-	}
-	// The keys cannot be read or written: an outage, answered as one with a
-	// code of its own, so the page does not mistake it for a wrong password.
-	creds, err := loadCredentials(ctx.Session)
-	if err != nil {
-		ctx.Server.Logger().Errorf("WebAuthn delete: failed to load credentials for user %s: %v", ctx.Session.Username(), err)
-		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
-	}
-	// Checked before the password, so that a session without the second
-	// factor cannot use this to find out whether a password is right.
-	if lacksSecondFactor(ctx, creds) {
-		return respondTwoFactorRequired(ctx)
-	}
-	if ok, err := confirmCurrentPassword(ctx, req.CurrentPassword); !ok {
-		return err
-	}
-
-	// Find and remove the credential. The capacity is not one less than the
-	// count: for an account with no keys that was -1, and a panic.
-	found := false
-	var removed CredentialInfo
-	newCreds := make([]CredentialInfo, 0, len(creds.Credentials))
-	for _, info := range creds.Credentials {
-		if string(info.Credential.ID) != string(credIDBytes) {
-			newCreds = append(newCreds, info)
-		} else {
-			found = true
-			removed = info
+		credID := ctx.Param("id")
+		if credID == "" {
+			return alps.NewHTTPError(http.StatusBadRequest, "missing credential ID")
 		}
-	}
 
-	if !found {
-		return alps.NewHTTPError(http.StatusNotFound, "credential not found")
-	}
+		// Decode the credential ID from base64 URL encoding
+		credIDBytes, err := base64.URLEncoding.DecodeString(credID)
+		if err != nil {
+			return alps.NewHTTPError(http.StatusBadRequest, "invalid credential ID")
+		}
 
-	creds.Credentials = newCreds
+		// No body at all is a request without a password, the way a page from
+		// before the password was asked for sends it, and is answered as one.
+		var req deleteCredentialRequest
+		if err := ctx.BindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			return ctx.RespondBindError(err)
+		}
+		// The keys cannot be read or written: an outage, answered as one with a
+		// code of its own, so the page does not mistake it for a wrong password.
+		creds, err := readCredentials(record.Read)
+		if err != nil {
+			ctx.Server.Logger().Errorf("WebAuthn delete: failed to load credentials for user %s: %v", ctx.Session.Username(), err)
+			return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
+		}
+		// Checked before the password, so that a session without the second
+		// factor cannot use this to find out whether a password is right.
+		if lacksSecondFactor(ctx, creds) {
+			return respondTwoFactorRequired(ctx)
+		}
+		if ok, err := confirmCurrentPassword(ctx, req.CurrentPassword); !ok {
+			return err
+		}
 
-	// If no credentials left, disable 2FA, and with it the trust that waived
-	// it for linked accounts: it must not come back with the next key.
-	if len(newCreds) == 0 {
-		creds.Enabled = false
-		creds.setTrust(false)
-	}
+		// Find and remove the credential. The capacity is not one less than the
+		// count: for an account with no keys that was -1, and a panic.
+		found := false
+		var removed CredentialInfo
+		newCreds := make([]CredentialInfo, 0, len(creds.Credentials))
+		for _, info := range creds.Credentials {
+			if string(info.Credential.ID) != string(credIDBytes) {
+				newCreds = append(newCreds, info)
+			} else {
+				found = true
+				removed = info
+			}
+		}
 
-	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
-		ctx.Server.Logger().Errorf("WebAuthn delete: failed to save credentials for user %s: %v", ctx.Session.Username(), err)
-		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
-	}
-	logKeyChange(ctx, "security key removed", removed, len(newCreds))
+		if !found {
+			return alps.NewHTTPError(http.StatusNotFound, "credential not found")
+		}
 
-	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
+		creds.Credentials = newCreds
+
+		// If no credentials left, disable 2FA, and with it the trust that waived
+		// it for linked accounts: it must not come back with the next key.
+		if len(newCreds) == 0 {
+			creds.Enabled = false
+			creds.setTrust(false)
+		}
+
+		if err := saveCredentials(record.Write, creds); err != nil {
+			ctx.Server.Logger().Errorf("WebAuthn delete: failed to save credentials for user %s: %v", ctx.Session.Username(), err)
+			return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
+		}
+		logKeyChange(ctx, "security key removed", removed, len(newCreds))
+
+		return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
+	})
 }
 
 // logKeyChange logs a key added to the account or removed from it, as a
@@ -462,7 +490,10 @@ func handleVerifyBegin(ctx *alps.Context) error {
 	}
 
 	ctx.Response.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(ctx.Response).Encode(options)
+	return json.NewEncoder(ctx.Response).Encode(struct {
+		*protocol.CredentialAssertion
+		RecoveryCodesAvailable bool `json:"recoveryCodesAvailable"`
+	}{options, recoveryCodesAvailable(ctx)})
 }
 
 // keptSignedInData is the session data that holds, while a sign-in or an
@@ -487,46 +518,57 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "invalid 2FA session")
 	}
 
-	// The challenge handed out by begin. Without one there is no ceremony to
-	// finish, which the page answers by running a new one.
-	sessionDataStored, err := loadSessionData(session)
-	if err != nil {
-		return alps.NewHTTPError(http.StatusBadRequest, "no verification in progress")
-	}
+	return session.WithWebAuthnRecord(func(record *alps.WebAuthnRecord) error {
+		// The challenge handed out by begin. Without one there is no ceremony to
+		// finish, which the page answers by running a new one.
+		sessionDataStored, err := loadSessionData(session)
+		if err != nil {
+			return alps.NewHTTPError(http.StatusBadRequest, "no verification in progress")
+		}
 
-	var sessionData webauthn.SessionData
-	if err := json.Unmarshal([]byte(sessionDataStored.Challenge), &sessionData); err != nil {
-		return fmt.Errorf("failed to unmarshal session: %v", err)
-	}
+		var sessionData webauthn.SessionData
+		if err := json.Unmarshal([]byte(sessionDataStored.Challenge), &sessionData); err != nil {
+			return fmt.Errorf("failed to unmarshal session: %v", err)
+		}
 
-	// Load credentials. Failing to is an outage, and must not read as a key
-	// that was refused: both were a 500, and the page told someone whose key
-	// works that its verification had failed.
-	creds, err := loadCredentials(session)
-	if err != nil {
-		ctx.Server.Logger().Errorf("WebAuthn verify: failed to load credentials for user %s: %v", session.Username(), err)
-		return alps.NewHTTPError(http.StatusServiceUnavailable, "security keys unavailable")
-	}
+		// Load credentials. Failing to is an outage, and must not read as a key
+		// that was refused: both were a 500, and the page told someone whose key
+		// works that its verification had failed.
+		creds, err := readCredentials(record.Read)
+		if err != nil {
+			ctx.Server.Logger().Errorf("WebAuthn verify: failed to load credentials for user %s: %v", session.Username(), err)
+			return alps.NewHTTPError(http.StatusServiceUnavailable, "security keys unavailable")
+		}
 
-	user := &webauthnUser{
-		username:    session.Username(),
-		credentials: creds,
-	}
+		user := &webauthnUser{
+			username:    session.Username(),
+			credentials: creds,
+		}
 
-	// Verify WebAuthn assertion. A 400 rather than a 401, which says the
-	// pending sign-in itself is gone.
-	credential, err := ctx.Server.WebAuthn.FinishLogin(user, sessionData, ctx.Request)
-	if err != nil {
-		ctx.Server.Logger().Slog().Warn("sign-in failed",
-			"user", session.Username(),
-			"ip", ctx.ClientIP(),
-			"reason", "second factor refused",
-			"session", session.ID(),
-			"error", err.Error())
-		return alps.NewHTTPError(http.StatusBadRequest, "verification failed")
-	}
-	recordKeyUse(ctx, session, creds, credential)
+		// Verify WebAuthn assertion. A 400 rather than a 401, which says the
+		// pending sign-in itself is gone.
+		credential, err := ctx.Server.WebAuthn.FinishLogin(user, sessionData, ctx.Request)
+		if err != nil {
+			ctx.Server.Logger().Slog().Warn("sign-in failed",
+				"user", session.Username(),
+				"ip", ctx.ClientIP(),
+				"reason", "second factor refused",
+				"session", session.ID(),
+				"error", err.Error())
+			return alps.NewHTTPError(http.StatusBadRequest, "verification failed")
+		}
+		recordKeyUse(ctx, session, record, creds, credential)
 
+		return completeSecondFactor(ctx, session, map[string]interface{}{}, "factor", "security key")
+	})
+}
+
+// completeSecondFactor lets in a sign-in, or an account switch, that waited
+// for the second factor and has now given it, with the key or a recovery
+// code: the session is marked as having given it and issued to the browser,
+// and the pending one's cookie and data are cleared. The answer gains success
+// and the username; logged is added to the sign-in's log line.
+func completeSecondFactor(ctx *alps.Context, session *alps.Session, answer map[string]interface{}, logged ...any) error {
 	// Success! Mark session as authenticated with 2FA
 	session.SetAuthenticated2FA(true)
 
@@ -556,13 +598,15 @@ func handleVerifyFinish(ctx *alps.Context) error {
 	// This is necessary to ensure the session persists correctly
 	ctx.SetSessionWithExpiry(session, persistent)
 
-	ctx.Server.Logger().Slog().Info("sign-in",
+	attrs := []any{
 		"user", session.Username(),
 		"ip", ctx.ClientIP(),
 		"session", session.ID(),
 		"2fa", true,
 		"remember", persistent,
-		"agent", ctx.Request.UserAgent())
+		"agent", ctx.Request.UserAgent(),
+	}
+	ctx.Server.Logger().Slog().Info("sign-in", append(attrs, logged...)...)
 
 	// Set login token for session restoration after server restart
 	// Retrieve credentials that were stored during initial login from session memory
@@ -585,11 +629,10 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		ctx.Server.Logger().Warnf("WebAuthn verify: no stored credentials found in session")
 	}
 
+	answer["success"] = true
+	answer["username"] = session.Username()
 	ctx.Response.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(ctx.Response).Encode(map[string]interface{}{
-		"success":  true,
-		"username": session.Username(),
-	})
+	return json.NewEncoder(ctx.Response).Encode(answer)
 }
 
 // recordKeyUse keeps what a sign-in learnt about the key it was given: the
@@ -604,7 +647,7 @@ func handleVerifyFinish(ctx *alps.Context) error {
 // The record is saved only when the sign-in changed it: a key that always
 // reports a count of 0, as many passkeys do, changes nothing. Failing to save
 // is logged and is no reason to refuse a key that verified.
-func recordKeyUse(ctx *alps.Context, session *alps.Session, creds *UserCredentials, credential *webauthn.Credential) {
+func recordKeyUse(ctx *alps.Context, session *alps.Session, record *alps.WebAuthnRecord, creds *UserCredentials, credential *webauthn.Credential) {
 	for i := range creds.Credentials {
 		stored := &creds.Credentials[i]
 		if !bytes.Equal(stored.Credential.ID, credential.ID) {
@@ -625,7 +668,7 @@ func recordKeyUse(ctx *alps.Context, session *alps.Session, creds *UserCredentia
 			return
 		}
 		stored.Credential = *credential
-		if err := saveCredentials(session.Store(), creds); err != nil {
+		if err := saveCredentials(record.Write, creds); err != nil {
 			ctx.Server.Logger().Errorf("WebAuthn verify: failed to save the key's signature count for user %s: %v", session.Username(), err)
 		}
 		return
@@ -664,34 +707,37 @@ func handleLinkedAccountsTrust(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
 	}
 
-	var req trustRequest
-	if err := ctx.BindJSON(&req); err != nil {
-		return ctx.RespondBindError(err)
-	}
+	return ctx.Session.WithWebAuthnRecord(func(record *alps.WebAuthnRecord) error {
 
-	creds, err := loadCredentials(ctx.Session)
-	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
-	}
-
-	if req.Trust {
-		if len(creds.Credentials) == 0 {
-			return ctx.JSON(http.StatusConflict, map[string]string{"error": "no_security_key"})
+		var req trustRequest
+		if err := ctx.BindJSON(&req); err != nil {
+			return ctx.RespondBindError(err)
 		}
-		// Checked before the password, so that a session without the second
-		// factor cannot use this to find out whether a password is right.
-		if !ctx.Session.IsAuthenticated2FA() {
-			return respondTwoFactorRequired(ctx)
-		}
-		if ok, err := confirmCurrentPassword(ctx, req.CurrentPassword); !ok {
-			return err
-		}
-	}
 
-	creds.setTrust(req.Trust)
-	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
-		return fmt.Errorf("failed to save credentials: %v", err)
-	}
+		creds, err := readCredentials(record.Read)
+		if err != nil {
+			return fmt.Errorf("failed to load credentials: %v", err)
+		}
 
-	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
+		if req.Trust {
+			if len(creds.Credentials) == 0 {
+				return ctx.JSON(http.StatusConflict, map[string]string{"error": "no_security_key"})
+			}
+			// Checked before the password, so that a session without the second
+			// factor cannot use this to find out whether a password is right.
+			if !ctx.Session.IsAuthenticated2FA() {
+				return respondTwoFactorRequired(ctx)
+			}
+			if ok, err := confirmCurrentPassword(ctx, req.CurrentPassword); !ok {
+				return err
+			}
+		}
+
+		creds.setTrust(req.Trust)
+		if err := saveCredentials(record.Write, creds); err != nil {
+			return fmt.Errorf("failed to save credentials: %v", err)
+		}
+
+		return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
+	})
 }

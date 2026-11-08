@@ -27,6 +27,30 @@ Whether a session needs the second factor is otherwise decided when it is opened
 
 In a cluster, the node where the key was enrolled also tells the other nodes over gossip, and the account's sessions there read the record on their next request instead of at the end of the minute. The message only prompts the read; the record decides. It starts with a tag byte (`0x02`) that no JSON text starts with, so a node that knows only rate-limit events, which are bare JSON, fails to decode it and drops it. If the message is lost or dropped, the minute still holds.
 
+### Recovery Codes
+
+A recovery code signs in once in the key's place, for when the key is not at hand: a passkey kept in another browser or on another computer, a hardware key left at home or lost. The session it opens has given the second factor, so it can add a new key and remove the old one, which is the way back without the operator.
+
+- The first key comes with ten codes, in the answer that adds it (`recovery_codes` beside `success`), and the settings pane shows them once, to copy or download. A later key comes with none.
+- A code is two groups of five letters and digits, from Crockford's base32 (no `i`, `l`, `o` or `u`). It is read as it may be written down: in capitals, with spaces or no dash, an `O` for a `0`, an `I` or `L` for a `1`.
+- On the key's page, "Use a recovery code" sends one to `POST /webauthn/verify/recovery` (`{"code": "..."}`), with the pending sign-in's cookie, as the key's own answer goes. A code that works is spent, before the session is let in: if the record cannot be saved, the sign-in is refused (`503 keys_unavailable`) rather than leave the code usable again. Otherwise the answer is `success`, the `username` and `recovery_codes_left`, and the session is issued as after a key. A code that is wrong or already used is `400 wrong_code`; an empty one `400 code_required`.
+- Codes can be guessed, as a key's signature cannot, so each try counts against the login rate limits for the account and the address it comes from, as a password does (`429 rate_limited`, with `Retry-After`).
+- `POST /settings/2fa/recovery-codes` (`{"current_password": "..."}`) replaces them with ten new ones and answers with them, once. It takes what removing a key takes: a key (`409 no_security_key`), a session that has passed the second factor (`403 two_factor_required`) and the password (`400 password_required`, `403 wrong_password`, `429 rate_limited`). `GET /settings/2fa` says how many are left (`recoveryCodesLeft`) and whether this installation supports recovery (`recoveryCodesAvailable`).
+- Removing the last key removes the record, and the codes with it. A first key added afterwards comes with new ones.
+- A sign-in with a code is logged as `sign-in` with `"factor": "recovery code"` and `recovery_codes_left`, and a refused code as `sign-in failed` with `"reason": "recovery code refused"`. New codes are logged as `recovery codes created`. The codes themselves never reach the log.
+
+All reads and changes to the credential record share a per-account lock on a standalone server. Code redemption, code rotation, key enrollment and deletion, trust changes, signature-counter updates, and malformed-record cleanup therefore cannot overwrite one another with a stale copy. The login rate limit is checked after taking the lock, so queued guesses are checked against earlier failures. Other accounts can proceed independently.
+
+**Recovery codes require exactly one alps process writing an account's records.** IMAP METADATA has no compare-and-swap, and gossip cannot atomically consume a code across nodes. When clustering is configured, alps does not issue recovery codes and refuses both redemption and rotation with `503 recovery_unavailable`; the settings explain that recovery is unavailable and key verification does not offer it. Previously issued codes are refused there too. Security-key sign-in remains available. Disabling gossip in a multi-process deployment does not make recovery codes safe: such deployments must not use recovery codes until shared atomic storage is supported. Run the operator recovery procedure below when keys are unavailable in a cluster.
+
+The maildir settings store also serializes writes across store instances within a process, so a concurrent preference write cannot overwrite a credential update in its shared settings file.
+
+### When the Key Is Lost and the Codes Are Gone
+
+An account whose keys are not at hand and whose codes are used up or lost cannot pass the second factor, and so cannot sign in to the webmail. (IMAP and SMTP clients are not affected: the second factor is the webmail's.) The operator turns the second factor off by removing the account's record, the server metadata entry `/private/vendor/alps/webauthn`, with the mail server's own administration tools (for Dovecot, `doveadm mailbox metadata unset`).
+
+alps reads the record again at every sign-in, so nothing needs restarting: the next sign-in asks for the password alone, and the user can then add a key again, which comes with new codes. Sessions open at the time keep the second factor they gave.
+
 ---
 
 ## Account Switching with 2FA
@@ -70,3 +94,6 @@ The `webauthn` metadata key stores a JSON payload containing:
 - `trust_linked_accounts`: Boolean indicating if linked accounts can bypass 2FA. It is only kept beside at least one credential: removing the last one removes the record, trust included, and a record without credentials is read as trusting no one.
 - `trust_linked_accounts_version`: Present while trust is on, naming the rules it was turned on under (currently `1`: a key, the second factor and the password). Trust without it is read as off.
 - `credentials`: An array of enrolled authenticators (storing the public key, credential ID, transport types, and an assigned nickname).
+- `recovery_codes`: The recovery codes not yet used, each as the hex SHA-256 of the code written without its dash, in lower case. The codes themselves are kept nowhere. A code is 50 random bits and is tried only against the login rate limits, so a plain hash is enough to keep it from being read back.
+
+During a rolling deploy, a node not yet upgraded does not know `recovery_codes`, so a record it saves, for instance when a key is added there, loses them: the settings then say there are none, and new ones can be created.

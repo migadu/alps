@@ -169,6 +169,7 @@ export const ko = {
     verify_btn: '본인 확인',
     verifying_btn: '확인 중…',
     back_to_login: '로그인으로 돌아가기',
+    use_recovery_code: '복구 코드 사용',
     key_name_placeholder: '기기 이름(예: YubiKey)',
     name_key_title: '보안 키 이름 지정',
     name_key_label: '기기 이름',
@@ -205,6 +206,27 @@ export const ko = {
       added: '추가됨',
       remove_btn: '삭제',
       unnamed_key: '보안 키'
+    },
+    recovery: {
+      unavailable: "이 설치에서는 복구 코드를 사용할 수 없습니다. 보안 키를 사용하거나 관리자에게 문의하세요.",
+      instruction: '이 계정용으로 저장한 복구 코드 중 하나를 입력하세요.',
+      code_label: '복구 코드',
+      use_key: '보안 키 사용',
+      wrong_code: '복구 코드가 올바르지 않거나 이미 사용되었습니다.',
+      code_required: '복구 코드를 입력하세요.',
+      title: '복구 코드',
+      desc: '보안 키가 곁에 없을 때 복구 코드로 대신 로그인할 수 있습니다. 각 코드는 한 번만 사용할 수 있습니다.',
+      left: {
+        other: '복구 코드 {count}개 남음'
+      },
+      none: '복구 코드가 없습니다. 키 없이도 로그인할 수 있도록 코드를 만드세요.',
+      create: '새 코드 만들기',
+      create_notice: '새 코드는 지금 가지고 있는 코드를 대체합니다.',
+      password_label: '새 코드를 만들려면 비밀번호를 입력하세요',
+      codes_title: '복구 코드 저장',
+      codes_intro: '보안 키가 곁에 없을 때 이 코드로 각각 한 번씩 로그인할 수 있습니다. 안전한 곳에 보관하세요. 다시 표시되지 않습니다.',
+      create_failed: '새 복구 코드를 만들 수 없습니다. 다시 시도하세요.',
+      done: '완료'
     }
   },
   print: {

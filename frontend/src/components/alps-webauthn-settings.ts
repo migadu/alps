@@ -24,6 +24,8 @@ interface WebAuthnSettingsData {
     credentials: CredentialDisplay[];
     isSecuritySettings: boolean;
     trustLinkedAccounts: boolean;
+    recoveryCodesLeft?: number;
+    recoveryCodesAvailable?: boolean;
 }
 
 @customElement('alps-webauthn-settings')
@@ -48,6 +50,16 @@ export class AlpsWebauthnSettings extends LitElement {
      * already typed past.
      */
     @state() private removeErrors: Record<string, string> = {};
+    /**
+     * Recovery codes just made, which the server shows this once: with the
+     * first key, or when new ones are asked for. Shown until the user is done
+     * with them.
+     */
+    @state() private shownCodes: string[] | null = null;
+    @state() private showCodesPrompt = false;
+    @state() private codesBusy = false;
+    /** The new-codes prompt's field errors, assigned as removeErrors is. */
+    @state() private codesErrors: Record<string, string> = {};
 
     static styles = css`
         :host { display: block; }
@@ -72,6 +84,16 @@ export class AlpsWebauthnSettings extends LitElement {
         }
         .cred-list { margin-top: 16px; }
         .alert { padding: 12px; border-radius: 6px; background: rgba(220, 38, 38, 0.1); color: var(--error, #ef4444); margin-bottom: 12px; }
+        .codes {
+            margin: 16px 0 0;
+            padding: 0;
+            list-style: none;
+            display: grid;
+            grid-template-columns: repeat(2, max-content);
+            gap: 8px 32px;
+            font-family: var(--font-mono, ui-monospace, monospace);
+            font-size: 15px;
+        }
         .empty-state {
             color: var(--text-muted);
             font-style: italic;
@@ -216,6 +238,9 @@ export class AlpsWebauthnSettings extends LitElement {
                 body: JSON.stringify(payload)
             });
             if (!finishRes.ok) throw new Error(await finishRes.text());
+            // The first key comes with the recovery codes, in this answer alone.
+            const finished = await finishRes.json().catch(() => ({}));
+            if (Array.isArray(finished?.recovery_codes) && finished.recovery_codes.length) this.shownCodes = finished.recovery_codes;
 
             this.fetchData();
         } catch (err: any) {
@@ -300,6 +325,103 @@ export class AlpsWebauthnSettings extends LitElement {
         return this.t('webauthn.errors.remove_failed');
     }
 
+    private askForNewCodes() {
+        this.error = '';
+        this.codesErrors = {};
+        this.showCodesPrompt = true;
+    }
+
+    /**
+     * New codes replace the old ones, so they take the account's password, as
+     * removing a key does. A refusal stays in the prompt; success shows them.
+     */
+    private async createCodes(e: CustomEvent) {
+        if (this.codesBusy) return;
+        const password = typeof e.detail?.password === 'string' ? e.detail.password : '';
+        if (!password) {
+            this.codesErrors = { password: this.t('webauthn.errors.password_required') };
+            return;
+        }
+        this.codesBusy = true;
+        try {
+            const res = await fetchWithTimeout('/settings/2fa/recovery-codes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ current_password: password }),
+            });
+            // An ended session is handled by fetchWithTimeout, which sends the
+            // user to the login screen with a notice saying why.
+            if (res.status === 401) {
+                this.showCodesPrompt = false;
+                return;
+            }
+            const body = await res.json().catch(() => ({}));
+            if (res.ok && Array.isArray(body?.recovery_codes)) {
+                this.showCodesPrompt = false;
+                this.shownCodes = body.recovery_codes;
+                this.fetchData();
+                return;
+            }
+            this.codesErrors = { password: this.codesRefusal(res.status, body?.error) };
+        } catch {
+            this.codesErrors = { password: this.t('webauthn.recovery.create_failed') };
+        } finally {
+            this.codesBusy = false;
+        }
+    }
+
+    /** The words for refused new codes, by the server's stable code. */
+    private codesRefusal(status: number, code: unknown): string {
+        switch (code) {
+            case 'wrong_password': return this.t('webauthn.errors.wrong_password');
+            case 'password_required': return this.t('webauthn.errors.password_required');
+            case 'two_factor_required': return this.t('webauthn.errors.two_factor_required');
+            case 'no_security_key': return this.t('webauthn.errors.no_security_key');
+        }
+        if (code === 'recovery_unavailable') return this.t('webauthn.recovery.unavailable');
+        if (status === 429) return this.t('webauthn.errors.rate_limited');
+        return this.t('webauthn.recovery.create_failed');
+    }
+
+    private async copyCodes() {
+        try {
+            await navigator.clipboard.writeText((this.shownCodes ?? []).join('\n'));
+            window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.t('originalMessage.copied'), timeout: 3000 } }));
+        } catch {
+            window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.t('originalMessage.copyFailed'), type: 'error', timeout: 3000 } }));
+        }
+    }
+
+    private downloadCodes() {
+        const blob = new Blob([(this.shownCodes ?? []).join('\n') + '\n'], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'recovery-codes.txt';
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+
+    /**
+     * The codes, shown once. Only Done closes the dialog, not Escape or a
+     * click beside it, which would lose them by accident.
+     */
+    private renderCodes() {
+        return html`
+            <ui-modal heading=${this.t('webauthn.recovery.codes_title')} .bodyDescribes=${true}>
+                <div>${this.t('webauthn.recovery.codes_intro')}</div>
+                <ol class="codes" dir="ltr">
+                    ${this.shownCodes!.map((code) => html`<li>${code}</li>`)}
+                </ol>
+                <div slot="actions">
+                    <alps-button variant="text" @click=${this.copyCodes}>${this.t('originalMessage.copyClipboard')}</alps-button>
+                    <alps-button variant="text" @click=${this.downloadCodes}>${this.t('attachment.download')}</alps-button>
+                    <alps-button variant="normal" @click=${() => this.shownCodes = null}>${this.t('webauthn.recovery.done')}</alps-button>
+                </div>
+            </ui-modal>
+        `;
+    }
+
     render() {
         if (this.loading) return html`<div>${this.i18nStore?.t('settings.loading')}</div>`;
 
@@ -382,6 +504,31 @@ export class AlpsWebauthnSettings extends LitElement {
                 ></ui-prompt>
             ` : ''}
 
+            ${this.shownCodes ? this.renderCodes() : ''}
+
+            ${this.showCodesPrompt ? html`
+                <ui-prompt
+                    heading="${this.t('webauthn.recovery.create')}"
+                    .message=${this.t('webauthn.recovery.create_notice')}
+                    confirmText="${this.t('webauthn.recovery.create')}"
+                    cancelText="${this.t('general.cancel')}"
+                    .busy=${this.codesBusy}
+                    .errors=${this.codesErrors}
+                    .fields=${[
+                    {
+                        id: 'password',
+                        type: 'password',
+                        label: this.t('webauthn.recovery.password_label'),
+                        autocomplete: 'current-password',
+                        autofocus: true,
+                        validate: (value: string) => (value ? null : this.t('webauthn.errors.password_required')),
+                    }
+                ]}
+                    @submit=${this.createCodes}
+                    @cancel=${() => { if (!this.codesBusy) this.showCodesPrompt = false; }}
+                ></ui-prompt>
+            ` : ''}
+
             <alps-setting-group 
                 label="${this.i18nStore?.t('webauthn.settings.keys_title')}" 
                 description="${this.i18nStore?.t('webauthn.settings.group_desc')}">
@@ -406,6 +553,24 @@ export class AlpsWebauthnSettings extends LitElement {
                     </alps-button>
                 </div>
             </alps-setting-group>
+
+            ${(this.data?.credentialCount ?? 0) > 0 ? html`
+                <alps-setting-group label="${this.t('webauthn.recovery.title')}" description="${this.t('webauthn.recovery.desc')}">
+                    ${this.data?.recoveryCodesAvailable === false ? html`<p>${this.t('webauthn.recovery.unavailable')}</p>` : html`
+                    <div class="setting-row">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div class="icon-container">${renderIcon('key')}</div>
+                            <span>${(this.data?.recoveryCodesLeft ?? 0) > 0
+                                ? this.i18nStore?.t('webauthn.recovery.left', { count: this.data!.recoveryCodesLeft })
+                                : this.t('webauthn.recovery.none')}</span>
+                        </div>
+                    </div>
+                    <alps-button variant="normal" style="margin-top: 4px;" @click=${this.askForNewCodes}>
+                        ${this.t('webauthn.recovery.create')}
+                    </alps-button>
+                    `}
+                </alps-setting-group>
+            ` : ''}
 
             ${(this.data?.credentialCount ?? 0) > 0 ? html`
                 <alps-setting-group label="${this.i18nStore?.t('webauthn.trust_linked')}" description="${this.i18nStore?.t('webauthn.trust_linked_desc')}">

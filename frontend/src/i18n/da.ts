@@ -172,6 +172,7 @@ export const da: TranslationDictionary = {
     verify_btn: 'Bekræft identitet',
     verifying_btn: 'Bekræfter...',
     back_to_login: 'Tilbage til login',
+    use_recovery_code: 'Brug en gendannelseskode',
     key_name_placeholder: 'Enhedsnavn (f.eks. YubiKey)',
     name_key_title: 'Navngiv sikkerhedsnøgle',
     name_key_label: 'Enhedsnavn',
@@ -208,6 +209,28 @@ export const da: TranslationDictionary = {
       added: 'Tilføjet',
       remove_btn: 'Fjern',
       unnamed_key: 'Sikkerhedsnøgle'
+    },
+    recovery: {
+      unavailable: "Gendannelseskoder er ikke tilgængelige på denne installation. Brug din sikkerhedsnøgle, eller kontakt din administrator.",
+      instruction: 'Indtast en af de gendannelseskoder, du har gemt til denne konto.',
+      code_label: 'Gendannelseskode',
+      use_key: 'Brug din sikkerhedsnøgle i stedet',
+      wrong_code: 'Gendannelseskoden er forkert, eller den er allerede brugt.',
+      code_required: 'Indtast en gendannelseskode.',
+      title: 'Gendannelseskoder',
+      desc: 'Hvis din sikkerhedsnøgle ikke er ved hånden, logger en gendannelseskode dig ind i stedet. Hver kode virker én gang.',
+      left: {
+        one: '{count} gendannelseskode tilbage',
+        other: '{count} gendannelseskoder tilbage'
+      },
+      none: 'Du har ingen gendannelseskoder. Opret nogle, så du kan logge ind uden din nøgle.',
+      create: 'Opret nye koder',
+      create_notice: 'Nye koder erstatter dem, du har nu.',
+      password_label: 'Indtast din adgangskode for at oprette nye koder',
+      codes_title: 'Gem dine gendannelseskoder',
+      codes_intro: 'Hver af disse koder logger dig ind én gang, når din sikkerhedsnøgle ikke er ved hånden. Opbevar dem et sikkert sted: de vises ikke igen.',
+      create_failed: 'Der kunne ikke oprettes nye gendannelseskoder. Prøv igen.',
+      done: 'Færdig'
     }
   },
   print: {

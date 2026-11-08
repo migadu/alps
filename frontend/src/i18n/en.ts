@@ -170,6 +170,7 @@ export const en = {
     verify_btn: 'Verify Identity',
     verifying_btn: 'Verifying...',
     back_to_login: 'Back to Login',
+    use_recovery_code: 'Use a recovery code',
     key_name_placeholder: 'Device name (e.g. YubiKey)',
     name_key_title: 'Name Security Key',
     name_key_label: 'Device Name',
@@ -206,6 +207,28 @@ export const en = {
       added: 'Added',
       remove_btn: 'Remove',
       unnamed_key: "Security Key"
+    },
+    recovery: {
+      unavailable: "Recovery codes are unavailable on this installation. Use your security key or contact your administrator.",
+      instruction: 'Enter one of the recovery codes you saved for this account.',
+      code_label: 'Recovery code',
+      use_key: 'Use your security key instead',
+      wrong_code: 'That recovery code is not right, or it has been used already.',
+      code_required: 'Enter a recovery code.',
+      title: 'Recovery Codes',
+      desc: 'If your security key is not at hand, a recovery code signs you in in its place. Each code works once.',
+      left: {
+        one: '{count} recovery code left',
+        other: '{count} recovery codes left'
+      },
+      none: 'You have no recovery codes. Create some, so that you can sign in without your key.',
+      create: 'Create New Codes',
+      create_notice: 'New codes replace the ones you have now.',
+      password_label: 'Enter your password to create new codes',
+      codes_title: 'Save Your Recovery Codes',
+      codes_intro: 'Each of these codes signs you in once when your security key is not at hand. Keep them somewhere safe: they are not shown again.',
+      create_failed: 'New recovery codes could not be created. Please try again.',
+      done: 'Done'
     }
   },
   print: {

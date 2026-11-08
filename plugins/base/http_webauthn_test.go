@@ -202,6 +202,13 @@ func (s *testServer) signInWithKey(k *softKey, counter uint32) (*testServer, res
 // as a key that has signed counter times would.
 func (s *testServer) giveKey(k *softKey, counter uint32) response {
 	s.t.Helper()
+	return s.do("POST", "/webauthn/verify/finish", s.keyAssertion(k, counter))
+}
+
+// keyAssertion prepares the assertion separately so a test can interleave the
+// finish with another credential-record update, after begin has read the keys.
+func (s *testServer) keyAssertion(k *softKey, counter uint32) map[string]any {
+	s.t.Helper()
 	r := s.do("POST", "/webauthn/verify/begin", nil)
 	s.expect(r, http.StatusOK)
 	var options struct {
@@ -226,7 +233,7 @@ func (s *testServer) giveKey(k *softKey, counter uint32) response {
 		s.t.Fatal(err)
 	}
 	b64 := base64.RawURLEncoding.EncodeToString
-	return s.do("POST", "/webauthn/verify/finish", map[string]any{
+	return map[string]any{
 		"id":    b64(k.id),
 		"rawId": b64(k.id),
 		"type":  "public-key",
@@ -235,7 +242,7 @@ func (s *testServer) giveKey(k *softKey, counter uint32) response {
 			"clientDataJSON":    b64(clientData),
 			"signature":         b64(signature),
 		},
-	})
+	}
 }
 
 // storedAuthenticator is what the account's record keeps about its one key.

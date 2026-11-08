@@ -142,7 +142,8 @@ describe('leaving security-key verification', () => {
     begins.mockReturnValue(begin.promise);
     const el = await page();
     const run = el._handleVerify();
-    shadowAll<HTMLElement>(el, 'alps-button')[1].click();
+    // Back to login: the last button, beside the recovery code's.
+    shadowAll<HTMLElement>(el, 'alps-button').at(-1)!.click();
     expect(el.isConnected).toBe(true);
     expect(window.location.hash).toBe('#/login');
     begin.resolve(answer(options()));

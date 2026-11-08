@@ -669,6 +669,7 @@ export const sr = {
     verify_btn: 'Potvrdi identitet',
     verifying_btn: 'Verifikacija...',
     back_to_login: 'Nazad na prijavu',
+    use_recovery_code: 'Koristite kod za oporavak',
     key_name_placeholder: 'Ime uređaja (npr. YubiKey)',
     name_key_title: 'Imenuj bezbednosni ključ',
     name_key_label: 'Ime uređaja',
@@ -705,6 +706,29 @@ export const sr = {
       added: 'Dodato',
       remove_btn: 'Ukloni',
       unnamed_key: "Bezbednosni ključ"
+    },
+    recovery: {
+      unavailable: "Kodovi za oporavak nisu dostupni na ovoj instalaciji. Koristite bezbednosni ključ ili se obratite administratoru.",
+      instruction: 'Unesite jedan od kodova za oporavak koje ste sačuvali za ovaj nalog.',
+      code_label: 'Kod za oporavak',
+      use_key: 'Koristite bezbednosni ključ',
+      wrong_code: 'Taj kod za oporavak nije tačan ili je već iskorišćen.',
+      code_required: 'Unesite kod za oporavak.',
+      title: 'Kodovi za oporavak',
+      desc: 'Ako bezbednosni ključ nije pri ruci, kod za oporavak vas prijavljuje umesto njega. Svaki kod važi samo jednom.',
+      left: {
+        one: 'Preostao je {count} kod za oporavak',
+        few: 'Preostala su {count} koda za oporavak',
+        other: 'Preostalo je {count} kodova za oporavak'
+      },
+      none: 'Nemate kodove za oporavak. Napravite ih da biste mogli da se prijavite bez ključa.',
+      create: 'Napravi nove kodove',
+      create_notice: 'Novi kodovi zamenjuju one koje sada imate.',
+      password_label: 'Unesite lozinku da biste napravili nove kodove',
+      codes_title: 'Sačuvati kodove za oporavak',
+      codes_intro: 'Svaki od ovih kodova vas jednom prijavljuje kada bezbednosni ključ nije pri ruci. Čuvajte ih na sigurnom mestu: više neće biti prikazani.',
+      create_failed: 'Novi kodovi za oporavak nisu mogli da budu napravljeni. Pokušajte ponovo.',
+      done: 'Gotovo'
     }
   }
 };

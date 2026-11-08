@@ -242,7 +242,7 @@ func TestSaveCredentials_KeepsNoTrustWithoutAKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := saveCredentials(store, &UserCredentials{Credentials: []CredentialInfo{}, TrustLinkedAccounts: true}); err != nil {
+	if err := saveCredentials(func(v interface{}) error { return store.Put("webauthn", v) }, &UserCredentials{Credentials: []CredentialInfo{}, TrustLinkedAccounts: true}); err != nil {
 		t.Fatal(err)
 	}
 	if record, ok := s.storedWebAuthn(); ok {

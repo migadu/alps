@@ -163,6 +163,7 @@ export const pt = {
     verify_btn: 'Verificar identidade',
     verifying_btn: 'A verificar...',
     back_to_login: 'Voltar ao início de sessão',
+    use_recovery_code: 'Utilizar um código de recuperação',
     key_name_placeholder: 'Nome do dispositivo (ex. YubiKey)',
     name_key_title: 'Nomear chave de segurança',
     name_key_label: 'Nome do dispositivo',
@@ -199,6 +200,28 @@ export const pt = {
       added: 'Adicionada',
       remove_btn: 'Remover',
       unnamed_key: "Chave de segurança"
+    },
+    recovery: {
+      unavailable: "Os códigos de recuperação não estão disponíveis nesta instalação. Utilize a sua chave de segurança ou contacte o administrador.",
+      instruction: 'Introduza um dos códigos de recuperação que guardou para esta conta.',
+      code_label: 'Código de recuperação',
+      use_key: 'Utilizar antes a chave de segurança',
+      wrong_code: 'Esse código de recuperação não está correto ou já foi utilizado.',
+      code_required: 'Introduza um código de recuperação.',
+      title: 'Códigos de recuperação',
+      desc: 'Se não tiver a chave de segurança à mão, um código de recuperação inicia a sessão em vez dela. Cada código funciona uma única vez.',
+      left: {
+        one: 'Resta {count} código de recuperação',
+        other: 'Restam {count} códigos de recuperação'
+      },
+      none: 'Não tem códigos de recuperação. Crie alguns para poder iniciar sessão sem a chave.',
+      create: 'Criar novos códigos',
+      create_notice: 'Os novos códigos substituem os que tem agora.',
+      password_label: 'Introduza a palavra-passe para criar novos códigos',
+      codes_title: 'Guarde os seus códigos de recuperação',
+      codes_intro: 'Cada um destes códigos inicia a sessão uma vez quando não tiver a chave de segurança à mão. Guarde-os num local seguro: não voltam a ser mostrados.',
+      create_failed: 'Não foi possível criar novos códigos de recuperação. Tente novamente.',
+      done: 'Concluído'
     }
   },
   print: {

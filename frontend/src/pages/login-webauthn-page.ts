@@ -70,6 +70,36 @@ export class LoginWebAuthnPage extends LitElement {
       color: var(--success, #16a34a);
       border: 1px solid color-mix(in srgb, var(--success, #16a34a) 30%, transparent);
     }
+
+    .code-label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary, #111827);
+    }
+
+    /* As the login form's fields. A code is written left to right in every
+       language. */
+    .code-input {
+      width: 100%;
+      height: 36px;
+      padding: 0 12px;
+      background: var(--alps-input-bg, var(--bg-primary, #ffffff));
+      border: 1px solid var(--border-color, #e5e7eb);
+      border-radius: var(--input-radius, 6px);
+      color: var(--text-primary, #111827);
+      font-family: var(--font-mono, ui-monospace, monospace);
+      font-size: var(--input-font-size, 14px);
+      box-sizing: border-box;
+      outline: none;
+    }
+
+    .code-input:focus {
+      border-color: var(--accent-color, #005A9E);
+      box-shadow: 0 0 0 2px rgba(0, 90, 158, 0.2);
+      outline: 2px solid transparent;
+    }
     
 
   `;
@@ -88,6 +118,19 @@ export class LoginWebAuthnPage extends LitElement {
 
   @state()
   private isSuccess = false;
+
+  /** The key is not at hand, and a recovery code is given in its place. */
+  @state()
+  private usingCode = false;
+
+  @state()
+  private recoveryCodesAvailable = true;
+
+  @state()
+  private code = '';
+
+  @state()
+  private codeBusy = false;
 
   private _handleI18nChange = () => {
     this.requestUpdate();
@@ -192,6 +235,7 @@ export class LoginWebAuthnPage extends LitElement {
       }
 
       const credentialRequestOptions = begin.body;
+      this.recoveryCodesAvailable = begin.body?.recoveryCodesAvailable !== false;
 
       if (!credentialRequestOptions || !credentialRequestOptions.publicKey) {
         throw new Error(this.i18nStore?.t('webauthn.errors.invalid_options'));
@@ -217,41 +261,7 @@ export class LoginWebAuthnPage extends LitElement {
       const result = finish.body;
 
       if (finish.ok && result?.success) {
-        this.statusMessage = this.i18nStore?.t('webauthn.success');
-        this.statusType = 'success';
-        this.isSuccess = true;
-
-        let isSwitch = false;
-        try {
-          isSwitch = sessionStorage.getItem('pending_2fa_is_switch') === '1';
-          sessionStorage.removeItem('pending_2fa_is_switch');
-        } catch {}
-
-        let username = result.username;
-        if (!username) {
-          try {
-            username = sessionStorage.getItem('pending_2fa_username') || '';
-            sessionStorage.removeItem('pending_2fa_username');
-          } catch {}
-        } else {
-          try {
-            sessionStorage.removeItem('pending_2fa_username');
-          } catch {}
-        }
-
-        // Complete the login flow
-        this._completeLogin = setTimeout(() => {
-          if (!current()) return;
-          window.dispatchEvent(new CustomEvent('user-logged-in', {
-            detail: { username }
-          }));
-          window.location.hash = '/mailbox/INBOX';
-          if (isSwitch && typeof window.location.reload === 'function') {
-            try {
-              window.location.reload();
-            } catch {}
-          }
-        }, 500);
+        this._signedIn(result, current);
       } else {
         throw new Error(this.i18nStore?.t('webauthn.errors.verification_failed'));
       }
@@ -278,12 +288,153 @@ export class LoginWebAuthnPage extends LitElement {
     }
   }
 
+  /**
+   * The second factor was given, with the key or a recovery code: on to the
+   * mailbox, as the sign-in or account switch that waited for it meant.
+   * `current` says whether the page is still the one that gave it.
+   */
+  private _signedIn(result: any, current: () => boolean) {
+    this.statusMessage = this.i18nStore?.t('webauthn.success');
+    this.statusType = 'success';
+    this.isSuccess = true;
+
+    let isSwitch = false;
+    try {
+      isSwitch = sessionStorage.getItem('pending_2fa_is_switch') === '1';
+      sessionStorage.removeItem('pending_2fa_is_switch');
+    } catch {}
+
+    let username = result.username;
+    if (!username) {
+      try {
+        username = sessionStorage.getItem('pending_2fa_username') || '';
+        sessionStorage.removeItem('pending_2fa_username');
+      } catch {}
+    } else {
+      try {
+        sessionStorage.removeItem('pending_2fa_username');
+      } catch {}
+    }
+
+    // Complete the login flow
+    this._completeLogin = setTimeout(() => {
+      if (!current()) return;
+      window.dispatchEvent(new CustomEvent('user-logged-in', {
+        detail: { username }
+      }));
+      window.location.hash = '/mailbox/INBOX';
+      if (isSwitch && typeof window.location.reload === 'function') {
+        try {
+          window.location.reload();
+        } catch {}
+      }
+    }, 500);
+  }
+
+  /**
+   * The key is not at hand: a recovery code stands in for it. The ceremony
+   * under way is cancelled, as leaving the page cancels it.
+   */
+  private _useCode() {
+    this._cancelVerification();
+    this.usingCode = true;
+    this.statusMessage = '';
+    this.updateComplete.then(() => this.renderRoot.querySelector<HTMLInputElement>('#recovery-code')?.focus());
+  }
+
+  /** Back to the key, with a new ceremony. */
+  private _useKey() {
+    this.usingCode = false;
+    this.code = '';
+    this.statusMessage = '';
+    this._handleVerify();
+  }
+
+  private _codeError(key: string) {
+    this.statusMessage = this.i18nStore?.t(key);
+    this.statusType = 'error';
+  }
+
+  /**
+   * Gives the code typed in the key's place. The server takes it as written
+   * down, in capitals or with spaces, and spends it. A refusal is said here,
+   * where another code can be typed: a wrong or used code as one, a throttle
+   * and an outage in their own words.
+   */
+  private async _submitCode(e?: Event) {
+    e?.preventDefault();
+    if (this.codeBusy || this.isSuccess) return;
+    const code = this.code.trim();
+    if (!code) return this._codeError('webauthn.recovery.code_required');
+
+    this.codeBusy = true;
+    this.statusMessage = this.i18nStore?.t('webauthn.verifying');
+    this.statusType = 'info';
+    try {
+      const answer = await post('/webauthn/verify/recovery', {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      if (!this.isConnected || !this.usingCode) return;
+      if (answer === null) return this._codeError('login.networkError');
+      if (answer.status === 401) return this._backToPassword();
+      if (answer.status === 429) return this._codeError('webauthn.errors.rate_limited');
+      if (answer.body?.error === 'recovery_unavailable') return this._codeError('webauthn.recovery.unavailable');
+      if (isOutage(answer)) return this._codeError('webauthn.errors.unavailable');
+      if (answer.ok && answer.body?.success) return this._signedIn(answer.body, () => this.isConnected);
+      this._codeError(answer.body?.error === 'code_required' ? 'webauthn.recovery.code_required' : 'webauthn.recovery.wrong_code');
+    } finally {
+      this.codeBusy = false;
+    }
+  }
+
+  private _renderCode() {
+    return html`
+      <form @submit=${this._submitCode}>
+        <label class="code-label" for="recovery-code">${this.i18nStore?.t('webauthn.recovery.code_label')}</label>
+        <input
+          id="recovery-code"
+          class="code-input"
+          type="text"
+          dir="ltr"
+          autocomplete="one-time-code"
+          autocapitalize="none"
+          spellcheck="false"
+          .value=${this.code}
+          ?disabled=${this.isSuccess}
+          @input=${(e: Event) => this.code = (e.target as HTMLInputElement).value}
+        />
+      </form>
+
+      <alps-button
+        variant="primary"
+        full-width
+        style="height: 36px; margin-top: 16px;"
+        @click=${() => this._submitCode()}
+        ?disabled=${this.codeBusy || this.isSuccess}
+        ?spinning=${this.codeBusy}
+      >
+        ${this.i18nStore?.t('login.signIn')}
+      </alps-button>
+
+      <alps-button
+        variant="text"
+        full-width
+        style="height: 36px; margin-top: 8px;"
+        @click=${this._useKey}
+        ?disabled=${this.codeBusy || this.isSuccess}
+      >
+        ${this.i18nStore?.t('webauthn.recovery.use_key')}
+      </alps-button>
+    `;
+  }
+
   render() {
     return html`
       <alps-auth-card
         icon="fingerprint"
         title="${this.i18nStore?.t('webauthn.title')}"
-        subtitle="${this.i18nStore?.t('webauthn.instruction')}"
+        subtitle="${this.i18nStore?.t(this.usingCode ? 'webauthn.recovery.instruction' : 'webauthn.instruction')}"
         style="--auth-card-icon-color: var(--accent-color, #2563eb); --auth-card-icon-size: 64px;"
       >
         ${this.statusMessage ? html`
@@ -292,16 +443,33 @@ export class LoginWebAuthnPage extends LitElement {
           </div>
         ` : ''}
         
-        <alps-button 
-          variant="primary"
-          full-width
-          style="height: 36px; margin-top: 4px;"
-          @click=${this._handleVerify} 
-          ?disabled=${this.isLoading || this.isSuccess || !isWebAuthnSupported()}
-          ?spinning=${this.isLoading}
-        >
-          ${this.isLoading ? (this.i18nStore?.t('webauthn.verifying_btn')) : (this.i18nStore?.t('webauthn.verify_btn'))}
-        </alps-button>
+        ${this.usingCode ? this._renderCode() : html`
+          <alps-button 
+            variant="primary"
+            full-width
+            style="height: 36px; margin-top: 4px;"
+            @click=${this._handleVerify} 
+            ?disabled=${this.isLoading || this.isSuccess || !isWebAuthnSupported()}
+            ?spinning=${this.isLoading}
+          >
+            ${this.isLoading ? (this.i18nStore?.t('webauthn.verifying_btn')) : (this.i18nStore?.t('webauthn.verify_btn'))}
+          </alps-button>
+
+          <!-- The way in when the key is not at hand. Offered while a
+               ceremony runs too: the browser's prompt may wait for a key
+               that never comes. -->
+          ${this.recoveryCodesAvailable ? html`
+          <alps-button
+            variant="text"
+            full-width
+            style="height: 36px; margin-top: 8px;"
+            @click=${this._useCode}
+            ?disabled=${this.isSuccess}
+          >
+            ${this.i18nStore?.t('webauthn.use_recovery_code')}
+          </alps-button>
+          ` : ''}
+        `}
         
         <alps-button 
           variant="text"

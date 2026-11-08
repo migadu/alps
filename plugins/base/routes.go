@@ -87,8 +87,10 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.POST("/settings/2fa/finish", handleSetupFinish)
 	p.POST("/settings/2fa/credential/{id}/delete", handleDeleteCredential)
 	p.POST("/settings/2fa/trust-linked-accounts", handleLinkedAccountsTrust)
+	p.POST("/settings/2fa/recovery-codes", handleRecoveryCodes)
 	p.POST("/webauthn/verify/begin", handleVerifyBegin)
 	p.POST("/webauthn/verify/finish", handleVerifyFinish)
+	p.POST("/webauthn/verify/recovery", handleVerifyRecovery)
 
 	p.GET("/accounts", handleSettingsAccounts)
 	p.POST("/accounts", handleAddAccount)
