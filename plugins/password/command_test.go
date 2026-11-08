@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -175,6 +176,102 @@ func TestCommandExitStatusIsARefusal(t *testing.T) {
 	logged := failure.err.Error()
 	if strings.Contains(logged, "hunter2") || !strings.Contains(logged, "too weak: [password]") {
 		t.Errorf("logged %q", logged)
+	}
+}
+
+// Exercise os/exec's stderr copy, which can bypass Write when the destination
+// also exposes bytes.Buffer.ReadFrom. Excess output must be drained, not kept.
+func TestCommandCapsStderr(t *testing.T) {
+	program := script(t, "head -c 65536 /dev/zero | tr '\\000' x >&2\nprintf 'discarded tail' >&2\nexit 3\n")
+	cfg, err := parseConfig(commandBlock(program))
+	if err != nil {
+		t.Fatal(err)
+	}
+	failure := runCommand(t.Context(), cfg, changeValues("ada@example.com", "new"))
+	if failure == nil || failure.status != http.StatusBadRequest {
+		t.Fatalf("got %+v, want a refusal", failure)
+	}
+	want := `(stderr "` + strings.Repeat("x", stderrLimit) + `")`
+	if !strings.HasSuffix(failure.err.Error(), want) {
+		t.Errorf("expected exactly %d stderr bytes, logged %d bytes", stderrLimit, len(failure.err.Error()))
+	}
+}
+
+// Matching one password must not alter the other before it can be masked.
+func TestCommandRedactsOverlappingPasswords(t *testing.T) {
+	program := script(t, `IFS= read -r old
+IFS= read -r new
+printf 'rejected: <%s> <%s>' "$old" "$new" >&2
+exit 3
+`)
+	for name, passwords := range map[string][2]string{
+		"old prefixes new": {"old secret", "old secret-private-suffix"},
+		"old inside new":   {"old secret", "private-old secret-suffix"},
+		"new inside old":   {"private-new secret-suffix", "new secret"},
+		"equal passwords":  {"same secret", "same secret"},
+		"mask is password": {"password", "[password]"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := parseConfig(commandBlock(program))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.Stdin = "{old_password}\n{new_password}\n"
+			values := changeValues("ada@example.com", passwords[1])
+			values["{old_password}"] = passwords[0]
+			failure := runCommand(t.Context(), cfg, values)
+			if failure == nil {
+				t.Fatal("expected refusal")
+			}
+			if !strings.HasSuffix(failure.err.Error(), `(stderr "rejected: <[password]> <[password]>")`) {
+				t.Errorf("passwords were not fully masked: %v", failure.err)
+			}
+		})
+	}
+}
+
+// Occurrences can overlap even when neither password contains the other.
+func TestCommandRedactsIntersectingPasswordOccurrences(t *testing.T) {
+	program := script(t, "printf 'abcd' >&2\nexit 3\n")
+	cfg, err := parseConfig(commandBlock(program))
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := changeValues("ada@example.com", "bcd")
+	values["{old_password}"] = "abc"
+	failure := runCommand(t.Context(), cfg, values)
+	if failure == nil {
+		t.Fatal("expected refusal")
+	}
+	if !strings.HasSuffix(failure.err.Error(), `(stderr "[password]")`) {
+		t.Errorf("overlapping password occurrences were not fully masked: %v", failure.err)
+	}
+}
+
+// Once stderr is capped, the last retained bytes can be only a prefix of a
+// password. They must be masked too, for either password.
+func TestCommandRedactsPasswordsAtStderrLimit(t *testing.T) {
+	program := script(t, `head -c "$1" /dev/zero | tr '\000' x >&2
+cat >&2
+exit 3
+`)
+	for _, placeholder := range passwordPlaceholders {
+		t.Run(placeholder, func(t *testing.T) {
+			values := changeValues("ada@example.com", "new secret")
+			padding := strings.Repeat("x", stderrLimit-len(values[placeholder])+1)
+			cfg, err := parseConfig(commandBlock(program, strconv.Itoa(len(padding))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.Stdin = placeholder
+			failure := runCommand(t.Context(), cfg, values)
+			if failure == nil {
+				t.Fatal("expected refusal")
+			}
+			if !strings.HasSuffix(failure.err.Error(), `(stderr "`+padding+`[password]")`) {
+				t.Error("the password cut off by the stderr limit was not masked")
+			}
+		})
 	}
 }
 

@@ -125,12 +125,7 @@ func runCommand(ctx context.Context, cfg *PasswordChangeConfig, values map[strin
 	if err == nil || errors.Is(err, exec.ErrWaitDelay) {
 		return nil
 	}
-	output := stderr.String()
-	for _, p := range passwordPlaceholders {
-		if v := values[p]; v != "" {
-			output = strings.ReplaceAll(output, v, "[password]")
-		}
-	}
+	output := stderr.redacted(values["{old_password}"], values["{new_password}"])
 	err = fmt.Errorf("%s: %w (stderr %q)", args[0], err, strings.TrimSpace(output))
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return unavailable(http.StatusGatewayTimeout, fmt.Errorf("timed out after %v: %w", commandTimeout, err))
@@ -187,12 +182,44 @@ func commandStdin(template string, values map[string]string) (string, error) {
 // cappedBuffer keeps the first stderrLimit bytes written to it and accepts the
 // rest unkept, so a program is never stopped for writing too much.
 type cappedBuffer struct {
-	bytes.Buffer
+	// Do not embed Buffer: its ReadFrom would let io.Copy bypass Write's cap.
+	buffer    bytes.Buffer
+	truncated bool
 }
 
 func (b *cappedBuffer) Write(p []byte) (int, error) {
-	if room := stderrLimit - b.Len(); room > 0 {
-		b.Buffer.Write(p[:min(len(p), room)])
-	}
+	kept := min(len(p), stderrLimit-b.buffer.Len())
+	b.buffer.Write(p[:kept])
+	b.truncated = b.truncated || kept < len(p)
 	return len(p), nil
+}
+
+// redacted matches against the original bytes, merging overlapping password
+// occurrences so neither a shorter password nor a replacement can hide a
+// longer match. If the cap cut a password short, mask its retained prefix too.
+func (b *cappedBuffer) redacted(passwords ...string) string {
+	output := b.buffer.String()
+	var masked strings.Builder
+	end := 0
+	for i := 0; i < len(output); i++ {
+		nextEnd := i
+		for _, password := range passwords {
+			if password == "" {
+				continue
+			}
+			if strings.HasPrefix(output[i:], password) {
+				nextEnd = max(nextEnd, i+len(password))
+			} else if b.truncated && strings.HasPrefix(password, output[i:]) {
+				nextEnd = len(output)
+			}
+		}
+		if nextEnd > i && i >= end {
+			masked.WriteString("[password]")
+		}
+		end = max(end, nextEnd)
+		if i >= end {
+			masked.WriteByte(output[i])
+		}
+	}
+	return masked.String()
 }
