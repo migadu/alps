@@ -32,11 +32,22 @@ const (
 	recoveryAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
 )
 
-// Recovery codes need one process to serialize every credential-record writer.
-// Gossip is not an atomic claim: in a cluster, fail closed until the backing
-// store can provide one. Disabling gossip does not make multiple writers safe.
-func recoveryCodesAvailable(ctx *alps.Context) bool {
-	return ctx.Server.Options.ClusterBroadcaster == nil
+// Shared METADATA coordinates credential versions across instances. Other
+// stores retain standalone support; a clustered transient/file store cannot
+// safely consume recovery codes across processes.
+func recoveryCodesAvailable(ctx *alps.Context, pending ...*alps.Session) bool {
+	if ctx.Server.Options.ClusterBroadcaster == nil {
+		return true
+	}
+	session := ctx.Session
+	if len(pending) != 0 {
+		session = pending[0]
+	}
+	if session == nil {
+		return false
+	}
+	available, err := session.SharedWebAuthnAvailable()
+	return err == nil && available
 }
 
 func recoveryUnavailable(ctx *alps.Context) error {
@@ -214,7 +225,7 @@ func handleVerifyRecovery(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "code_required"})
 	}
 
-	if !recoveryCodesAvailable(ctx) {
+	if !recoveryCodesAvailable(ctx, session) {
 		return recoveryUnavailable(ctx)
 	}
 

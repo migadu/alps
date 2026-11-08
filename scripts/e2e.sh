@@ -42,6 +42,9 @@ SMTP_PORT=$((ALPS_PORT + 5))
 DAV_PORT=$((ALPS_PORT + 6))
 CONTROL_PORT=$((ALPS_PORT + 7))
 RELAY_PORT=$((ALPS_PORT + 8))
+SECONDARY_PORT=$((ALPS_PORT + 9))
+PRIMARY_GOSSIP_PORT=$((ALPS_PORT + 10))
+SECONDARY_GOSSIP_PORT=$((ALPS_PORT + 11))
 
 PG_HOST="${E2E_PG_HOST:-localhost}"
 PG_PORT="${E2E_PG_PORT:-5432}"
@@ -83,7 +86,11 @@ fi
 
 # A server left over from an earlier run would silently take a port, and the
 # suite would then test against its state instead of this run's.
-for port in "$ALPS_PORT" "$IMAP_PORT" "$SIEVE_PORT" "$ADMIN_PORT" "$S3_PORT" "$SMTP_PORT" "$DAV_PORT" "$CONTROL_PORT" "$RELAY_PORT"; do
+ports=("$ALPS_PORT" "$IMAP_PORT" "$SIEVE_PORT" "$ADMIN_PORT" "$S3_PORT" "$SMTP_PORT" "$DAV_PORT" "$CONTROL_PORT" "$RELAY_PORT")
+if [ "${E2E_CLUSTER:-}" = 1 ]; then
+  ports+=("$SECONDARY_PORT" "$PRIMARY_GOSSIP_PORT" "$SECONDARY_GOSSIP_PORT")
+fi
+for port in "${ports[@]}"; do
   if lsof -ti:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
     echo "e2e: port $port is in use; stop whatever holds it or set E2E_PORT." >&2
     exit 1
@@ -397,10 +404,41 @@ curl -sf -X POST "http://127.0.0.1:$ADMIN_PORT/admin/accounts" \
   -H "Authorization: Bearer $ADMIN_KEY" -H "Content-Type: application/json" \
   -d "{\"email\":\"$E2E_USER\",\"password\":\"$E2E_PASSWORD\"}" >/dev/null
 
+if [ "${E2E_CLUSTER:-}" = 1 ]; then
+  # Separate processes, session managers and gossip members; only the IMAP
+  # backend and login-token key are shared. No in-process mutex can arbitrate.
+  sed "s/addr = \"127.0.0.1:$ALPS_PORT\"/addr = \"127.0.0.1:$SECONDARY_PORT\"/" "$STATE/alps.toml" > "$STATE/alps-secondary.toml"
+  cat >> "$STATE/alps.toml" <<EOF
+
+[cluster]
+enabled = true
+node_id = "e2e-primary-$ALPS_PORT"
+bind = "127.0.0.1"
+port = $PRIMARY_GOSSIP_PORT
+secret_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+EOF
+  cat >> "$STATE/alps-secondary.toml" <<EOF
+
+[cluster]
+enabled = true
+node_id = "e2e-secondary-$ALPS_PORT"
+bind = "127.0.0.1"
+port = $SECONDARY_GOSSIP_PORT
+peers = ["127.0.0.1:$PRIMARY_GOSSIP_PORT"]
+secret_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+EOF
+fi
+
 echo "==> starting alps on :$ALPS_PORT"
 "$STATE/bin/alps" -config "$STATE/alps.toml" >"$LOGS/alps.log" 2>&1 &
 pids+=($!)
 wait_for "alps" "${pids[2]}" "curl -sf -o /dev/null http://127.0.0.1:$ALPS_PORT/" "$LOGS/alps.log"
+if [ "${E2E_CLUSTER:-}" = 1 ]; then
+  "$STATE/bin/alps" -config "$STATE/alps-secondary.toml" >"$LOGS/alps-secondary.log" 2>&1 &
+  pids+=($!)
+  wait_for "secondary alps" "${pids[3]}" "curl -sf -o /dev/null http://127.0.0.1:$SECONDARY_PORT/" "$LOGS/alps-secondary.log"
+  export ALPS_SECONDARY_URL="http://127.0.0.1:$SECONDARY_PORT"
+fi
 echo "==> up"
 
 export ALPS_URL="http://127.0.0.1:$ALPS_PORT"
@@ -409,6 +447,7 @@ export SORA_ADMIN_URL="http://127.0.0.1:$ADMIN_PORT"
 export SORA_ADMIN_KEY="$ADMIN_KEY"
 export DAV_URL="http://127.0.0.1:$DAV_PORT"
 export SIEVE_ADDR="127.0.0.1:$SIEVE_PORT"
+export IMAP_ADDR="127.0.0.1:$IMAP_PORT"
 export E2E_USER E2E_PASSWORD
 
 status=0
@@ -420,6 +459,9 @@ dead=""
 kill -0 "${pids[0]}" 2>/dev/null || dead="$dead e2estack"
 kill -0 "${pids[1]}" 2>/dev/null || dead="$dead sora"
 kill -0 "${pids[2]}" 2>/dev/null || dead="$dead alps"
+if [ "${E2E_CLUSTER:-}" = 1 ]; then
+  kill -0 "${pids[3]}" 2>/dev/null || dead="$dead alps-secondary"
+fi
 if [ -n "$dead" ]; then
   echo >&2
   echo "==> a server died during the run:$dead — the results above are void." >&2

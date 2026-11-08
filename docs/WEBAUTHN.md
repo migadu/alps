@@ -39,17 +39,25 @@ A recovery code signs in once in the key's place, for when the key is not at han
 - Removing the last key removes the record, and the codes with it. A first key added afterwards comes with new ones.
 - A sign-in with a code is logged as `sign-in` with `"factor": "recovery code"` and `recovery_codes_left`, and a refused code as `sign-in failed` with `"reason": "recovery code refused"`. New codes are logged as `recovery codes created`. The codes themselves never reach the log.
 
-All reads and changes to the credential record share a per-account lock on a standalone server. Code redemption, code rotation, key enrollment and deletion, trust changes, signature-counter updates, and malformed-record cleanup therefore cannot overwrite one another with a stale copy. The login rate limit is checked after taking the lock, so queued guesses are checked against earlier failures. Other accounts can proceed independently.
+Shared IMAP METADATA stores use versioned credential records so recovery works across Alps instances without a separate database or backend extension. Each writer announces a uniquely named version before reading, writes its snapshot at that name, and confirms that version is still current before accepting a recovery code. A delayed write from a paused or failed node cannot overwrite a newer version. Abandoned proposals do not block a subsequent update; no lock expires or needs operator cleanup. Obsolete versions are pruned automatically, retaining the highest proposal and latest committed state.
 
-**Recovery codes require exactly one alps process writing an account's records.** IMAP METADATA has no compare-and-swap, and gossip cannot atomically consume a code across nodes. When clustering is configured, alps does not issue recovery codes and refuses both redemption and rotation with `503 recovery_unavailable`; the settings explain that recovery is unavailable and key verification does not offer it. Previously issued codes are refused there too. Security-key sign-in remains available. Disabling gossip in a multi-process deployment does not make recovery codes safe: such deployments must not use recovery codes until shared atomic storage is supported. Run the operator recovery procedure below when keys are unavailable in a cluster.
+All credential writers participate: recovery redemption and rotation, enrollment, deletion, trust changes, signature counters, and malformed-record cleanup. Competing updates can return `503`; retry the operation. A lost reply can leave a code consumed without a completed sign-in, so try another code in that case. The full protocol, assumptions, upgrade procedure and adversarial checks are described in [WebAuthn coordination](WEBAUTHN_COORDINATION.md).
 
-The maildir settings store also serializes writes across store instances within a process, so a concurrent preference write cannot overwrite a credential update in its shared settings file.
+**Upgrade every Alps instance together before serving traffic.** Existing `/private/vendor/alps/webauthn` records bootstrap the new format automatically; after the first committed version, `/private/vendor/alps/webauthn-state/` is authoritative. An older binary reads only the legacy entry and must not share accounts with upgraded instances. This applies to standalone instances too. Do not roll back without restoring the newest committed state to the legacy entry during maintenance.
+
+Configured clusters enable recovery when their provider has a persistent, fresh shared metadata store. Unsupported transient or local file stores still refuse clustered recovery with `503 recovery_unavailable`. Normal standalone maildir support is unchanged; its file writes remain serialized across store instances.
 
 ### When the Key Is Lost and the Codes Are Gone
 
-An account whose keys are not at hand and whose codes are used up or lost cannot pass the second factor, and so cannot sign in to the webmail. (IMAP and SMTP clients are not affected: the second factor is the webmail's.) The operator turns the second factor off by removing the account's record, the server metadata entry `/private/vendor/alps/webauthn`, with the mail server's own administration tools (for Dovecot, `doveadm mailbox metadata unset`).
+An account whose keys are not at hand and whose codes are used up or lost cannot pass the second factor. IMAP and SMTP clients are not affected: this second factor protects the webmail.
 
-alps reads the record again at every sign-in, so nothing needs restarting: the next sign-in asks for the password alone, and the user can then add a key again, which comes with new codes. Sessions open at the time keep the second factor they gave.
+For a versioned IMAP record, the operator resets the account by writing a **new committed deletion tombstone**, not by removing the legacy entry or clearing the version namespace:
+
+1. Drain credential updates for the account on all Alps instances. Read `/private/vendor/alps/webauthn-state` using `GETMETADATA (DEPTH infinity)`.
+2. Choose a version number greater than every returned entry, formatted as 20 decimal digits, and a fresh 32-character lowercase hex ID. The new entry name is `/private/vendor/alps/webauthn-state/<number>-<id>`.
+3. `SETMETADATA` that entry to `{"version":1,"committed":true,"data":null}`. Read the subtree again and confirm the new entry is greatest before reopening traffic; retry with a higher version if another writer raced it. Keep the tombstone and the existing version fence so a delayed old write cannot restore the keys.
+
+The next sign-in reads the tombstone as no security keys, asks for the password alone, and can enroll a new key with new codes. A standalone maildir record can still be reset by removing its `webauthn` entry. Sessions already open retain the second factor they gave.
 
 ---
 

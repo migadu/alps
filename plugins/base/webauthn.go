@@ -255,7 +255,7 @@ func handleSetupFinish(ctx *alps.Context) error {
 		creds.Enabled = true
 
 		if err := saveCredentials(record.Write, creds); err != nil {
-			return fmt.Errorf("failed to save credentials: %v", err)
+			return fmt.Errorf("failed to save credentials: %w", err)
 		}
 		logKeyChange(ctx, "security key added", creds.Credentials[len(creds.Credentials)-1], len(creds.Credentials))
 		if codes != nil {
@@ -493,7 +493,7 @@ func handleVerifyBegin(ctx *alps.Context) error {
 	return json.NewEncoder(ctx.Response).Encode(struct {
 		*protocol.CredentialAssertion
 		RecoveryCodesAvailable bool `json:"recoveryCodesAvailable"`
-	}{options, recoveryCodesAvailable(ctx)})
+	}{options, recoveryCodesAvailable(ctx, session)})
 }
 
 // keptSignedInData is the session data that holds, while a sign-in or an
@@ -735,7 +735,7 @@ func handleLinkedAccountsTrust(ctx *alps.Context) error {
 
 		creds.setTrust(req.Trust)
 		if err := saveCredentials(record.Write, creds); err != nil {
-			return fmt.Errorf("failed to save credentials: %v", err)
+			return fmt.Errorf("failed to save credentials: %w", err)
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})

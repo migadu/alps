@@ -1062,15 +1062,36 @@ func (ss *sessionStore) read(key string, out interface{}, get func(provider.Stor
 }
 
 func (ss *sessionStore) Put(key string, v interface{}) error {
-	return ss.session.DoMailWithContext(context.Background(), func(p provider.MailProvider) error {
+	return ss.put(key, v, ss.session.DoMailWithContext, true)
+}
+
+// putOnce must not reconnect and replay a credential or coordination write.
+// A lost reply leaves its outcome unknown. The caller must validate a fresh
+// version before accepting a recovery code, not infer success from a replay.
+func (ss *sessionStore) putOnce(key string, v interface{}) error {
+	return ss.put(key, v, ss.session.DoMailOnceWithContext, false)
+}
+
+func (ss *sessionStore) put(key string, v interface{}, run func(context.Context, func(provider.MailProvider) error) error, keep bool) error {
+	return run(context.Background(), func(p provider.MailProvider) error {
 		store, err := p.GetStore()
 		if err != nil {
 			return err
 		}
-		if err := store.Put(key, v); err != nil {
+		put := store.Put
+		if !keep {
+			if fresh, ok := store.(provider.UncachedStore); ok {
+				put = fresh.PutUncached
+			}
+		}
+		if err := put(key, v); err != nil {
 			// Whether the server took it is not known; the next read asks.
 			ss.session.forgetStoreEntry(key)
 			return err
+		}
+		if !keep {
+			ss.session.forgetStoreEntry(key)
+			return nil
 		}
 		if !keepsCopies(store) {
 			return nil
@@ -1084,6 +1105,35 @@ func (ss *sessionStore) Put(key string, v interface{}) error {
 		}
 		return nil
 	})
+}
+
+func (s *Session) SharedWebAuthnAvailable() (bool, error) {
+	available := false
+	err := s.DoMailWithContext(context.Background(), func(p provider.MailProvider) error {
+		store, err := p.GetStore()
+		if err == nil {
+			_, available = store.(provider.SharedStore)
+		}
+		return err
+	})
+	return available, err
+}
+
+func (ss *sessionStore) List(prefix string) (map[string]json.RawMessage, error) {
+	var entries map[string]json.RawMessage
+	err := ss.session.DoMailWithContext(context.Background(), func(p provider.MailProvider) error {
+		store, err := p.GetStore()
+		if err != nil {
+			return err
+		}
+		shared, ok := store.(provider.SharedStore)
+		if !ok {
+			return fmt.Errorf("provider has no shared metadata listing")
+		}
+		entries, err = shared.List(prefix)
+		return err
+	})
+	return entries, err
 }
 
 // keepsCopies reports whether store keeps a copy of each entry it has read or

@@ -23,6 +23,15 @@ const webAuthnKey = "webauthn"
 // sign-in to the account. A value of the wrong type inside the record keeps
 // what out held, and the rest is read.
 func (s *Session) ReadWebAuthn(out interface{}) error {
+	err := s.readWebAuthn(out)
+	var typeErr *json.UnmarshalTypeError
+	var syntaxErr *json.SyntaxError
+	if errors.As(err, &typeErr) && typeErr.Field != "" {
+		return nil
+	}
+	if !((errors.As(err, &typeErr) && typeErr.Field == "") || errors.As(err, &syntaxErr)) {
+		return err
+	}
 	return s.WithWebAuthnRecord(func(record *WebAuthnRecord) error {
 		return record.Read(out)
 	})

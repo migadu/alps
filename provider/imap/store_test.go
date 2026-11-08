@@ -3,6 +3,7 @@ package imap
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"regexp"
 	"testing"
@@ -18,6 +19,23 @@ type storedSettings struct {
 	UI         struct {
 		LayoutMode string `json:"layoutMode"`
 	} `json:"ui"`
+}
+
+func TestSharedMetadataVersionsBypassCaches(t *testing.T) {
+	p := memIMAP(t, &memServer{caps: imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapMetadata: {}}})
+	s := p.store.(*imapStore)
+	for i := 0; i < 32; i++ {
+		key := fmt.Sprintf("webauthn-state/%d", i)
+		if err := s.PutUncached(key, map[string]int{"version": i}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.PutUncached(key, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(s.cache.entries) != 0 {
+		t.Fatalf("version names retained in cache: %d", len(s.cache.entries))
+	}
 }
 
 // A store entry is read by callers that want different parts of it: signing
