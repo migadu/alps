@@ -691,6 +691,7 @@ export const de: TranslationDictionary = {
       unnamed_key: "Sicherheitsschlüssel"
     },
     recovery: {
+      unavailable: "Wiederherstellungscodes sind in dieser Installation nicht verfügbar. Verwenden Sie Ihren Sicherheitsschlüssel oder wenden Sie sich an Ihren Administrator.",
       instruction: 'Geben Sie einen der Wiederherstellungscodes ein, die Sie für dieses Konto gespeichert haben.',
       code_label: 'Wiederherstellungscode',
       use_key: 'Stattdessen den Sicherheitsschlüssel verwenden',

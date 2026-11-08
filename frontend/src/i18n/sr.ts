@@ -708,6 +708,7 @@ export const sr = {
       unnamed_key: "Bezbednosni ključ"
     },
     recovery: {
+      unavailable: "Kodovi za oporavak nisu dostupni na ovoj instalaciji. Koristite bezbednosni ključ ili se obratite administratoru.",
       instruction: 'Unesite jedan od kodova za oporavak koje ste sačuvali za ovaj nalog.',
       code_label: 'Kod za oporavak',
       use_key: 'Koristite bezbednosni ključ',

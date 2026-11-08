@@ -689,6 +689,7 @@ export const fr = {
       unnamed_key: "Clé de sécurité"
     },
     recovery: {
+      unavailable: "Les codes de récupération ne sont pas disponibles sur cette installation. Utilisez votre clé de sécurité ou contactez votre administrateur.",
       instruction: 'Saisissez l\'un des codes de récupération enregistrés pour ce compte.',
       code_label: 'Code de récupération',
       use_key: 'Utiliser plutôt votre clé de sécurité',

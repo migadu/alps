@@ -209,6 +209,7 @@ export const tr = {
       unnamed_key: 'Güvenlik Anahtarı'
     },
     recovery: {
+      unavailable: "Bu kurulumda kurtarma kodları kullanılamıyor. Güvenlik anahtarınızı kullanın veya yöneticinize başvurun.",
       instruction: 'Bu hesap için kaydettiğiniz kurtarma kodlarından birini girin.',
       code_label: 'Kurtarma kodu',
       use_key: 'Bunun yerine güvenlik anahtarınızı kullanın',

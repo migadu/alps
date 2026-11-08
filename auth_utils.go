@@ -3,7 +3,6 @@ package alps
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/migadu/alps/provider"
 )
@@ -24,24 +23,9 @@ const webAuthnKey = "webauthn"
 // sign-in to the account. A value of the wrong type inside the record keeps
 // what out held, and the rest is read.
 func (s *Session) ReadWebAuthn(out interface{}) error {
-	store := s.Store()
-	err := provider.GetFresh(store, webAuthnKey, out)
-	var typeErr *json.UnmarshalTypeError
-	var syntaxErr *json.SyntaxError
-	switch {
-	case err == nil:
-		return nil
-	case errors.As(err, &typeErr) && typeErr.Field != "":
-		return nil
-	case errors.As(err, &typeErr) || errors.As(err, &syntaxErr):
-		if putErr := store.Put(webAuthnKey, nil); putErr != nil {
-			return fmt.Errorf("failed to remove unreadable WebAuthn record: %v", putErr)
-		}
-		s.manager.logger.Printf("Removed unreadable WebAuthn record of %s: %v", s.username, err)
-		return provider.ErrNoStoreEntry
-	default:
-		return err
-	}
+	return s.WithWebAuthnRecord(func(record *WebAuthnRecord) error {
+		return record.Read(out)
+	})
 }
 
 // webAuthnEnabled reports whether signing in to the account takes a second

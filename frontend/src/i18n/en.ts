@@ -209,6 +209,7 @@ export const en = {
       unnamed_key: "Security Key"
     },
     recovery: {
+      unavailable: "Recovery codes are unavailable on this installation. Use your security key or contact your administrator.",
       instruction: 'Enter one of the recovery codes you saved for this account.',
       code_label: 'Recovery code',
       use_key: 'Use your security key instead',

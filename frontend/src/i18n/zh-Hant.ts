@@ -208,6 +208,7 @@ export const zhHant = {
       unnamed_key: '安全金鑰'
     },
     recovery: {
+      unavailable: "此部署無法使用復原碼。請使用安全金鑰或聯絡管理員。",
       instruction: '請輸入您為此帳號儲存的其中一組復原碼。',
       code_label: '復原碼',
       use_key: '改用安全金鑰',

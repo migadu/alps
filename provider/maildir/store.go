@@ -3,6 +3,7 @@ package maildir
 import (
 	"encoding/json"
 	"errors"
+	"hash/fnv"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,12 +14,27 @@ import (
 
 type Store struct {
 	path string
-	mu   sync.RWMutex
+}
+
+// Each GetStore returns a new Store, but Put rewrites the account's whole
+// settings file. An instance mutex lets a concurrent preference write restore
+// a WebAuthn record another instance has just updated. Share bounded locks by
+// absolute path, including the temporary file and rename, across all instances.
+var storeLocks [256]sync.RWMutex
+
+func (s *Store) mutex() *sync.RWMutex {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s.path))
+	return &storeLocks[h.Sum32()%uint32(len(storeLocks))]
 }
 
 func (p *Provider) GetStore() (provider.Store, error) {
 	// Use a file named alps_store.json in the base path of the maildir
 	storePath := filepath.Join(p.basePath, "alps_store.json")
+	storePath, err := filepath.Abs(storePath)
+	if err != nil {
+		return nil, err
+	}
 	return &Store{
 		path: storePath,
 	}, nil
@@ -60,8 +76,9 @@ func (s *Store) readData() (map[string]interface{}, error) {
 }
 
 func (s *Store) Get(key string, out interface{}) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	mu := s.mutex()
+	mu.RLock()
+	defer mu.RUnlock()
 
 	data, err := s.readData()
 	if err != nil {
@@ -83,8 +100,9 @@ func (s *Store) Get(key string, out interface{}) error {
 }
 
 func (s *Store) Put(key string, v interface{}) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	mu := s.mutex()
+	mu.Lock()
+	defer mu.Unlock()
 
 	data, err := s.readData()
 	if err != nil {

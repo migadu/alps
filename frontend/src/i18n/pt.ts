@@ -202,6 +202,7 @@ export const pt = {
       unnamed_key: "Chave de segurança"
     },
     recovery: {
+      unavailable: "Os códigos de recuperação não estão disponíveis nesta instalação. Utilize a sua chave de segurança ou contacte o administrador.",
       instruction: 'Introduza um dos códigos de recuperação que guardou para esta conta.',
       code_label: 'Código de recuperação',
       use_key: 'Utilizar antes a chave de segurança',

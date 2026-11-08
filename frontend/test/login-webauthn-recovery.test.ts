@@ -25,6 +25,7 @@ const answer = (status: number, body: unknown) => ({
 
 /** What the server answers each recovery code with. */
 let recovery: () => any;
+let recoveryAvailable: boolean | undefined;
 /** The bodies of the recovery codes posted, in order. */
 let posted: unknown[];
 let key: ReturnType<typeof vi.spyOn>;
@@ -35,12 +36,13 @@ beforeEach(() => {
   sessionStorage.clear();
   window.location.hash = '#/login/webauthn';
   posted = [];
+  recoveryAvailable = undefined;
   recovery = () => answer(200, { success: true, username: 'ada@example.com', recovery_codes_left: 9 });
   vi.spyOn(webauthnUtils, 'isWebAuthnSupported').mockReturnValue(true);
   key = vi.spyOn(webauthnUtils, 'authenticateCredential')
     .mockRejectedValue(new DOMException('The operation either timed out or was not allowed.', 'NotAllowedError'));
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any, init?: RequestInit) => {
-    if (String(url).endsWith('/webauthn/verify/begin')) return answer(200, { publicKey: { challenge: 'challenge' } });
+    if (String(url).endsWith('/webauthn/verify/begin')) return answer(200, { publicKey: { challenge: 'challenge' }, recoveryCodesAvailable: recoveryAvailable });
     if (String(url).endsWith('/webauthn/verify/recovery')) {
       posted.push(JSON.parse(String(init?.body)));
       return recovery();
@@ -88,6 +90,22 @@ async function submitCode(el: Page) {
 }
 
 describe('a recovery code in the key\'s place', () => {
+  it('does not offer recovery when the installation cannot consume codes safely', async () => {
+    recoveryAvailable = false;
+    const el = await keyNotAtHand();
+    expect(button(el, 'webauthn.use_recovery_code')).toBeUndefined();
+    expect(button(el, 'webauthn.verify_btn')).toBeDefined();
+  });
+
+  it('names unavailable recovery separately from a refused code or key outage', async () => {
+    recovery = () => answer(503, { error: 'recovery_unavailable' });
+    const el = await keyNotAtHand();
+    await typeCode(el, 'abcde-fghjk');
+    await submitCode(el);
+    expect(el.statusMessage).toBe('webauthn.recovery.unavailable');
+    expect(el.isSuccess).toBe(false);
+  });
+
   it('is offered beside the key, and signs in', async () => {
     const signedIn: unknown[] = [];
     const listener = (e: Event) => signedIn.push((e as CustomEvent).detail);

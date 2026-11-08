@@ -124,6 +124,9 @@ export class LoginWebAuthnPage extends LitElement {
   private usingCode = false;
 
   @state()
+  private recoveryCodesAvailable = true;
+
+  @state()
   private code = '';
 
   @state()
@@ -232,6 +235,7 @@ export class LoginWebAuthnPage extends LitElement {
       }
 
       const credentialRequestOptions = begin.body;
+      this.recoveryCodesAvailable = begin.body?.recoveryCodesAvailable !== false;
 
       if (!credentialRequestOptions || !credentialRequestOptions.publicKey) {
         throw new Error(this.i18nStore?.t('webauthn.errors.invalid_options'));
@@ -375,6 +379,7 @@ export class LoginWebAuthnPage extends LitElement {
       if (answer === null) return this._codeError('login.networkError');
       if (answer.status === 401) return this._backToPassword();
       if (answer.status === 429) return this._codeError('webauthn.errors.rate_limited');
+      if (answer.body?.error === 'recovery_unavailable') return this._codeError('webauthn.recovery.unavailable');
       if (isOutage(answer)) return this._codeError('webauthn.errors.unavailable');
       if (answer.ok && answer.body?.success) return this._signedIn(answer.body, () => this.isConnected);
       this._codeError(answer.body?.error === 'code_required' ? 'webauthn.recovery.code_required' : 'webauthn.recovery.wrong_code');
@@ -453,6 +458,7 @@ export class LoginWebAuthnPage extends LitElement {
           <!-- The way in when the key is not at hand. Offered while a
                ceremony runs too: the browser's prompt may wait for a key
                that never comes. -->
+          ${this.recoveryCodesAvailable ? html`
           <alps-button
             variant="text"
             full-width
@@ -462,6 +468,7 @@ export class LoginWebAuthnPage extends LitElement {
           >
             ${this.i18nStore?.t('webauthn.use_recovery_code')}
           </alps-button>
+          ` : ''}
         `}
         
         <alps-button 

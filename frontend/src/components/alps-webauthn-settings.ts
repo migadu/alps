@@ -25,6 +25,7 @@ interface WebAuthnSettingsData {
     isSecuritySettings: boolean;
     trustLinkedAccounts: boolean;
     recoveryCodesLeft?: number;
+    recoveryCodesAvailable?: boolean;
 }
 
 @customElement('alps-webauthn-settings')
@@ -377,6 +378,7 @@ export class AlpsWebauthnSettings extends LitElement {
             case 'two_factor_required': return this.t('webauthn.errors.two_factor_required');
             case 'no_security_key': return this.t('webauthn.errors.no_security_key');
         }
+        if (code === 'recovery_unavailable') return this.t('webauthn.recovery.unavailable');
         if (status === 429) return this.t('webauthn.errors.rate_limited');
         return this.t('webauthn.recovery.create_failed');
     }
@@ -554,6 +556,7 @@ export class AlpsWebauthnSettings extends LitElement {
 
             ${(this.data?.credentialCount ?? 0) > 0 ? html`
                 <alps-setting-group label="${this.t('webauthn.recovery.title')}" description="${this.t('webauthn.recovery.desc')}">
+                    ${this.data?.recoveryCodesAvailable === false ? html`<p>${this.t('webauthn.recovery.unavailable')}</p>` : html`
                     <div class="setting-row">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <div class="icon-container">${renderIcon('key')}</div>
@@ -565,6 +568,7 @@ export class AlpsWebauthnSettings extends LitElement {
                     <alps-button variant="normal" style="margin-top: 4px;" @click=${this.askForNewCodes}>
                         ${this.t('webauthn.recovery.create')}
                     </alps-button>
+                    `}
                 </alps-setting-group>
             ` : ''}
 

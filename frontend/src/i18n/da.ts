@@ -211,6 +211,7 @@ export const da: TranslationDictionary = {
       unnamed_key: 'Sikkerhedsnøgle'
     },
     recovery: {
+      unavailable: "Gendannelseskoder er ikke tilgængelige på denne installation. Brug din sikkerhedsnøgle, eller kontakt din administrator.",
       instruction: 'Indtast en af de gendannelseskoder, du har gemt til denne konto.',
       code_label: 'Gendannelseskode',
       use_key: 'Brug din sikkerhedsnøgle i stedet',

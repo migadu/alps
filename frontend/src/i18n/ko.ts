@@ -208,6 +208,7 @@ export const ko = {
       unnamed_key: '보안 키'
     },
     recovery: {
+      unavailable: "이 설치에서는 복구 코드를 사용할 수 없습니다. 보안 키를 사용하거나 관리자에게 문의하세요.",
       instruction: '이 계정용으로 저장한 복구 코드 중 하나를 입력하세요.',
       code_label: '복구 코드',
       use_key: '보안 키 사용',

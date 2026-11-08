@@ -209,6 +209,7 @@ export const ptBR = {
       unnamed_key: 'Chave de segurança'
     },
     recovery: {
+      unavailable: "Os códigos de recuperação não estão disponíveis nesta instalação. Use sua chave de segurança ou entre em contato com o administrador.",
       instruction: 'Digite um dos códigos de recuperação que você salvou para esta conta.',
       code_label: 'Código de recuperação',
       use_key: 'Usar sua chave de segurança',

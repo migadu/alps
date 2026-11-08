@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/migadu/alps"
 )
@@ -33,11 +32,16 @@ const (
 	recoveryAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
 )
 
-// recoveryCodeMu makes taking a code one step on this node, so that two
-// sign-ins cannot both spend the same code. Nodes of a cluster do not share
-// it; the record is read and written over IMAP, which offers no
-// compare-and-swap.
-var recoveryCodeMu sync.Mutex
+// Recovery codes need one process to serialize every credential-record writer.
+// Gossip is not an atomic claim: in a cluster, fail closed until the backing
+// store can provide one. Disabling gossip does not make multiple writers safe.
+func recoveryCodesAvailable(ctx *alps.Context) bool {
+	return ctx.Server.Options.ClusterBroadcaster == nil
+}
+
+func recoveryUnavailable(ctx *alps.Context) error {
+	return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "recovery_unavailable"})
+}
 
 // newRecoveryCodes makes a fresh set of codes, as shown to the user, and the
 // hashes the record keeps of them.
@@ -138,35 +142,41 @@ func handleRecoveryCodes(ctx *alps.Context) error {
 		return ctx.RespondBindError(err)
 	}
 
-	creds, err := loadCredentials(ctx.Session)
-	if err != nil {
-		ctx.Server.Logger().Errorf("WebAuthn recovery codes: failed to load credentials for user %s: %v", ctx.Session.Username(), err)
-		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
-	}
-	if len(creds.Credentials) == 0 {
-		return ctx.JSON(http.StatusConflict, map[string]string{"error": "no_security_key"})
-	}
-	// Checked before the password, so that a session without the second
-	// factor cannot use this to find out whether a password is right.
-	if !ctx.Session.IsAuthenticated2FA() {
-		return respondTwoFactorRequired(ctx)
-	}
-	if ok, err := confirmCurrentPassword(ctx, req.CurrentPassword); !ok {
-		return err
+	if !recoveryCodesAvailable(ctx) {
+		return recoveryUnavailable(ctx)
 	}
 
-	codes, hashes, err := newRecoveryCodes()
-	if err != nil {
-		return err
-	}
-	creds.RecoveryCodes = hashes
-	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
-		ctx.Server.Logger().Errorf("WebAuthn recovery codes: failed to save credentials for user %s: %v", ctx.Session.Username(), err)
-		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
-	}
-	logRecoveryCodesCreated(ctx)
+	return ctx.Session.WithWebAuthnRecord(func(record *alps.WebAuthnRecord) error {
+		creds, err := readCredentials(record.Read)
+		if err != nil {
+			ctx.Server.Logger().Errorf("WebAuthn recovery codes: failed to load credentials for user %s: %v", ctx.Session.Username(), err)
+			return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
+		}
+		if len(creds.Credentials) == 0 {
+			return ctx.JSON(http.StatusConflict, map[string]string{"error": "no_security_key"})
+		}
+		// Checked before the password, so that a session without the second
+		// factor cannot use this to find out whether a password is right.
+		if !ctx.Session.IsAuthenticated2FA() {
+			return respondTwoFactorRequired(ctx)
+		}
+		if ok, err := confirmCurrentPassword(ctx, req.CurrentPassword); !ok {
+			return err
+		}
 
-	return ctx.JSON(http.StatusOK, map[string]interface{}{"recovery_codes": codes})
+		codes, hashes, err := newRecoveryCodes()
+		if err != nil {
+			return err
+		}
+		creds.RecoveryCodes = hashes
+		if err := saveCredentials(record.Write, creds); err != nil {
+			ctx.Server.Logger().Errorf("WebAuthn recovery codes: failed to save credentials for user %s: %v", ctx.Session.Username(), err)
+			return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
+		}
+		logRecoveryCodesCreated(ctx)
+
+		return ctx.JSON(http.StatusOK, map[string]interface{}{"recovery_codes": codes})
+	})
 }
 
 // recoveryCodeRequest is the body of a sign-in with a recovery code.
@@ -204,47 +214,50 @@ func handleVerifyRecovery(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "code_required"})
 	}
 
-	username := session.Username()
-	if allowed, _, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
-		ctx.Server.Logger().Printf("WebAuthn: recovery code rate limited for %s", username)
-		seconds := int(retryAfter.Seconds())
-		if seconds > 0 {
-			ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
+	if !recoveryCodesAvailable(ctx) {
+		return recoveryUnavailable(ctx)
+	}
+
+	return session.WithWebAuthnRecord(func(record *alps.WebAuthnRecord) error {
+		username := session.Username()
+		if allowed, _, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
+			ctx.Server.Logger().Printf("WebAuthn: recovery code rate limited for %s", username)
+			seconds := int(retryAfter.Seconds())
+			if seconds > 0 {
+				ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
+			}
+			return ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
+				"error":       "rate_limited",
+				"retry_after": seconds,
+			})
 		}
-		return ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
-			"error":       "rate_limited",
-			"retry_after": seconds,
-		})
-	}
 
-	recoveryCodeMu.Lock()
-	defer recoveryCodeMu.Unlock()
+		creds, err := readCredentials(record.Read)
+		if err != nil {
+			ctx.Server.Logger().Errorf("WebAuthn recovery: failed to load credentials for user %s: %v", username, err)
+			return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
+		}
+		if !creds.Enabled || len(creds.Credentials) == 0 {
+			return alps.NewHTTPError(http.StatusBadRequest, "2FA not enabled")
+		}
 
-	creds, err := loadCredentials(session)
-	if err != nil {
-		ctx.Server.Logger().Errorf("WebAuthn recovery: failed to load credentials for user %s: %v", username, err)
-		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
-	}
-	if !creds.Enabled || len(creds.Credentials) == 0 {
-		return alps.NewHTTPError(http.StatusBadRequest, "2FA not enabled")
-	}
+		taken := creds.takeRecoveryCode(req.Code)
+		ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, taken)
+		if !taken {
+			ctx.Server.Logger().Slog().Warn("sign-in failed",
+				"user", username,
+				"ip", ctx.ClientIP(),
+				"reason", "recovery code refused",
+				"session", session.ID())
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "wrong_code"})
+		}
+		if err := saveCredentials(record.Write, creds); err != nil {
+			ctx.Server.Logger().Errorf("WebAuthn recovery: failed to spend a code for user %s: %v", username, err)
+			return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
+		}
 
-	taken := creds.takeRecoveryCode(req.Code)
-	ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, taken)
-	if !taken {
-		ctx.Server.Logger().Slog().Warn("sign-in failed",
-			"user", username,
-			"ip", ctx.ClientIP(),
-			"reason", "recovery code refused",
-			"session", session.ID())
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "wrong_code"})
-	}
-	if err := saveCredentials(session.Store(), creds); err != nil {
-		ctx.Server.Logger().Errorf("WebAuthn recovery: failed to spend a code for user %s: %v", username, err)
-		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
-	}
-
-	left := len(creds.RecoveryCodes)
-	return completeSecondFactor(ctx, session, map[string]interface{}{"recovery_codes_left": left},
-		"factor", "recovery code", "recovery_codes_left", left)
+		left := len(creds.RecoveryCodes)
+		return completeSecondFactor(ctx, session, map[string]interface{}{"recovery_codes_left": left},
+			"factor", "recovery code", "recovery_codes_left", left)
+	})
 }

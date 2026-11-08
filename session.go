@@ -1215,6 +1215,8 @@ type SessionManager struct {
 	// connectProvider.
 	trackChanges bool
 
+	webAuthnRecords accountRecordLocks
+
 	locker       sync.RWMutex
 	sessions     map[string]*Session // token -> Session, protected by locker
 	userSessions map[string][]string // username -> []token, protected by locker

@@ -208,6 +208,7 @@ export const id = {
       unnamed_key: 'Kunci Keamanan'
     },
     recovery: {
+      unavailable: "Kode pemulihan tidak tersedia pada instalasi ini. Gunakan kunci keamanan Anda atau hubungi administrator.",
       instruction: 'Masukkan salah satu kode pemulihan yang Anda simpan untuk akun ini.',
       code_label: 'Kode pemulihan',
       use_key: 'Gunakan kunci keamanan saja',

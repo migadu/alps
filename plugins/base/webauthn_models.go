@@ -89,8 +89,12 @@ func (u *webauthnUser) WebAuthnCredentials() []webauthn.Credential {
 // carried the trust over. Nor does trust turned on before it took a key, the
 // second factor and the password, which such a record does not mark.
 func loadCredentials(session *alps.Session) (*UserCredentials, error) {
+	return readCredentials(session.ReadWebAuthn)
+}
+
+func readCredentials(read func(interface{}) error) (*UserCredentials, error) {
 	var creds UserCredentials
-	if err := session.ReadWebAuthn(&creds); errors.Is(err, provider.ErrNoStoreEntry) {
+	if err := read(&creds); errors.Is(err, provider.ErrNoStoreEntry) {
 		return &UserCredentials{Credentials: []CredentialInfo{}}, nil
 	} else if err != nil {
 		return nil, err
@@ -104,11 +108,11 @@ func loadCredentials(session *alps.Session) (*UserCredentials, error) {
 // saveCredentials stores the account's WebAuthn record, or removes it when
 // there is no key left in it. Trust in linked accounts waives a second factor,
 // so it means nothing without one and is not kept on its own.
-func saveCredentials(store provider.Store, creds *UserCredentials) error {
+func saveCredentials(write func(interface{}) error, creds *UserCredentials) error {
 	if creds == nil || len(creds.Credentials) == 0 {
-		return store.Put("webauthn", nil)
+		return write(nil)
 	}
-	return store.Put("webauthn", creds)
+	return write(creds)
 }
 
 func loadSessionData(session *alps.Session) (*sessionData, error) {

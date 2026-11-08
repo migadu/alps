@@ -210,6 +210,7 @@ export const zhHans: TranslationDictionary = {
       unnamed_key: '安全密钥'
     },
     recovery: {
+      unavailable: "此部署无法使用恢复码。请使用安全密钥或联系管理员。",
       instruction: '请输入您为此账户保存的恢复码之一。',
       code_label: '恢复码',
       use_key: '改用安全密钥',

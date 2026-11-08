@@ -689,6 +689,7 @@ export const it = {
       unnamed_key: "Chiave di sicurezza"
     },
     recovery: {
+      unavailable: "I codici di recupero non sono disponibili in questa installazione. Usa la chiave di sicurezza o contatta il tuo amministratore.",
       instruction: 'Inserisci uno dei codici di recupero che hai salvato per questo account.',
       code_label: 'Codice di recupero',
       use_key: 'Usa invece la chiave di sicurezza',

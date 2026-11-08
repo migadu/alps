@@ -29,6 +29,7 @@ const json = (status: number, body: unknown) =>
 
 let keys: string[];
 let left: number;
+let available: boolean | undefined;
 let answers: Record<string, () => Response>;
 let fetchMock: ReturnType<typeof vi.fn>;
 const calls = (path: string) => fetchMock.mock.calls.filter(([url]) => String(url) === path);
@@ -36,6 +37,7 @@ const calls = (path: string) => fetchMock.mock.calls.filter(([url]) => String(ur
 beforeEach(() => {
   keys = [];
   left = 0;
+  available = undefined;
   answers = {};
   fetchMock = vi.fn(async (url: RequestInfo | URL) => {
     const path = String(url);
@@ -46,6 +48,7 @@ beforeEach(() => {
         isSecuritySettings: true,
         trustLinkedAccounts: false,
         recoveryCodesLeft: left,
+        recoveryCodesAvailable: available,
       });
     }
     if (answers[path]) return answers[path]();
@@ -131,6 +134,7 @@ describe('the codes left', () => {
     cleanup();
 
     left = 0;
+  available = undefined;
     el = await pane();
     expect(el.shadowRoot!.textContent).toContain('webauthn.recovery.none');
   });
@@ -187,4 +191,14 @@ describe('new codes', () => {
     expect(shadow<Prompt>(el, 'ui-prompt').errors).toEqual({ password: 'webauthn.errors.wrong_password' });
     expect(codesDialog(el)).toBeUndefined();
   });
+});
+
+
+it('explains unavailable recovery and offers no code rotation on that installation', async () => {
+  keys = ['laptop'];
+  left = 10;
+  available = false;
+  const el = await pane();
+  expect(el.shadowRoot?.textContent).toContain('webauthn.recovery.unavailable');
+  expect(shadowAll(el, 'alps-button').some((b) => b.textContent?.includes('webauthn.recovery.create'))).toBe(false);
 });
