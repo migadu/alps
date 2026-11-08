@@ -146,7 +146,7 @@ export class ManageSievePage extends LitElement {
 				this.mode = 'visual';
 				this.visualState = { rules: [] };
 			} else {
-				const parsed = SieveCompiler.extractVisualState(this.script);
+				const parsed = SieveCompiler.visualStateOf(this.script);
 				if (parsed) {
 					this.visualState = parsed;
 					this.mode = 'visual';

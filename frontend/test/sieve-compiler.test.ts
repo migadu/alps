@@ -147,6 +147,32 @@ describe('the embedded editor state', () => {
     expect(SieveCompiler.extractVisualState(legacy)).toEqual(state);
   });
 
+  it('is the visual editor\'s only while the script is still what it compiles to', () => {
+    const state = { rules: [rule()] };
+    const script = SieveCompiler.compile(state);
+    expect(SieveCompiler.visualStateOf(script)).toEqual(state);
+
+    // A rule rewritten in the raw editor, the comment left in place.
+    const rewritten = script.slice(0, script.indexOf('if ')) + 'if true { discard; }\n';
+    expect(SieveCompiler.extractVisualState(rewritten)).toEqual(state);
+    expect(SieveCompiler.visualStateOf(rewritten)).toBeNull();
+    // A comment added is an edit too: a save from the visual editor drops it.
+    expect(SieveCompiler.visualStateOf(`${script}# mine\n`)).toBeNull();
+    expect(SieveCompiler.visualStateOf('if true { stop; }')).toBeNull();
+    // JSON, but no rules to compile.
+    expect(SieveCompiler.visualStateOf(`# ALPS_VISUAL_STATE: ${btoa('{}')}\n`)).toBeNull();
+  });
+
+  it('is the visual editor\'s whatever the line breaks, or the encoding of the state', () => {
+    const state = { rules: [rule({ conditions: [{ field: 'Subject', operator: 'contains', value: 'für' }] })] };
+    const script = SieveCompiler.compile(state);
+    expect(SieveCompiler.visualStateOf(script.replace(/\n/g, '\r\n'))).toEqual(state);
+    // Written as Latin-1 before the state was UTF-8: the same rules, compiled the same.
+    const legacy = script.replace(/^# ALPS_VISUAL_STATE: .*$/m, `# ALPS_VISUAL_STATE: ${btoa(JSON.stringify(state))}`);
+    expect(legacy).not.toBe(script);
+    expect(SieveCompiler.visualStateOf(legacy)).toEqual(state);
+  });
+
   it('answers null for a script without state, or with state it cannot read', () => {
     expect(SieveCompiler.extractVisualState('if true { stop; }')).toBeNull();
     expect(SieveCompiler.extractVisualState('# ALPS_VISUAL_STATE: !!!\n')).toBeNull();

@@ -451,6 +451,32 @@ test("a valid script checks clean, saves, and survives a reload", async ({ page 
   await expect(script(page)).toHaveValue(valid);
 });
 
+// The raw editor is handed the script the rules compile to, and that script
+// carries the rules in a comment. A rule written over the compiled one, with
+// that comment left in place, came back on the next visit as the rules from
+// before the switch, in the visual editor: the script saved could not be seen.
+test("a script edited in place in the raw editor reopens there as it was saved", async ({ page }) => {
+  const marker = uniqueMarker();
+  await openRawEditor(page);
+  const compiled = await script(page).inputValue();
+  expect(compiled).toMatch(/^# ALPS_VISUAL_STATE: /m);
+
+  // Only the rule is rewritten; the require and the comment above it stay.
+  const edited =
+    compiled.slice(0, compiled.indexOf("if ")) +
+    [`if header :contains "subject" ["${marker}"] {`, "    discard;", "    stop;", "}", ""].join("\n");
+  await script(page).fill(edited);
+  const response = await clickAndAwaitSave(page, saveScriptBtn(page));
+  expect(response.status()).toBe(200);
+  const [active] = (await storedScripts()).filter((s) => s.active);
+  expect(active.content).toBe(edited);
+
+  await page.reload();
+  await expect(script(page)).toHaveValue(edited);
+  await expect(visual(page)).toHaveCount(0);
+  await expect(saveScriptBtn(page)).toBeDisabled();
+});
+
 test("saving a script that does not compile is refused and leaves the stored one intact", async ({ page }) => {
   const stored = 'require ["fileinto"];\n';
   await openRawEditor(page);
