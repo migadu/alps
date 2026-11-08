@@ -1,12 +1,17 @@
 package alpsbase
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
@@ -155,4 +160,96 @@ func TestHTTP_PasswordCommandInARoutedBlock(t *testing.T) {
 			t.Error("the program ran")
 		}
 	})
+	t.Run("invalid stdin", func(t *testing.T) {
+		s := newCommandServer(t, func(passwd string) (map[string]interface{}, map[string]interface{}) {
+			block := commandOptions(program, passwd, "{email}")
+			block["stdin"] = []string{"{old_password}", "{new_password}"}
+			return nil, block
+		})
+		s.login()
+		s.expectCode(s.changePassword("routed horse"), http.StatusInternalServerError, "password_service_unavailable")
+		if !s.signsIn(testPassword) {
+			t.Error("the misconfigured program changed the password")
+		}
+	})
+}
+
+func TestHTTP_PasswordCommandCancellationStopsDescendants(t *testing.T) {
+	started := filepath.Join(t.TempDir(), "started")
+	done := filepath.Join(t.TempDir(), "done")
+	program := passwordScript(t, `IFS= read -r password
+(
+  printf started > "$3"
+  sleep 1
+  printf '%s:{PLAIN}%s\n' "$2" "$password" > "$1"
+  printf done > "$4"
+) </dev/null >/dev/null 2>&1 &
+wait
+`)
+	s := newCommandServer(t, func(passwd string) (map[string]interface{}, map[string]interface{}) {
+		return commandOptions(program, passwd, "{email}", started, done), nil
+	})
+	s.login()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	form := url.Values{"old_password": {testPassword}, "password": {"late new password"}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.url+"/password/change", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", s.url)
+	returned := make(chan error, 1)
+	go func() {
+		r, err := s.client.Do(req)
+		if r != nil {
+			r.Body.Close()
+		}
+		returned <- err
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("child did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if err := <-returned; !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected canceled request, got %v", err)
+	}
+	// Wait beyond the child's delayed write, then verify the real auth store.
+	time.Sleep(2 * time.Second)
+	if _, err := os.Stat(done); !os.IsNotExist(err) {
+		t.Errorf("child completed after cancellation, stat: %v", err)
+	}
+	if !s.signsIn(testPassword) || s.signsIn("late new password") {
+		t.Error("password changed after HTTP cancellation")
+	}
+}
+
+func TestHTTP_PasswordCommandRefusesDashAfterEmptyPlaceholder(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "argument")
+	program := passwordScript(t, "printf '%s' \"$1\" > \"$2\"\nexit 3\n")
+	s, _ := newLimitedServer(t, func(o *alps.Options) {
+		p := o.Provider.(*maildir.Options)
+		if err := os.WriteFile(p.AuthPasswdFile, []byte("--admin:{PLAIN}"+testPassword+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		store := maildir.NewProvider(filepath.Join(filepath.Dir(p.AuthPasswdFile), "--admin"), "--admin")
+		if err := store.CreateMailbox("INBOX"); err != nil {
+			t.Fatal(err)
+		}
+		o.Plugins = map[string]alps.PluginConfig{"password": {
+			Enabled: true, Options: commandOptions(program, "{domain}{local}", out),
+		}}
+	})
+	s.expect(s.do("POST", "/session", map[string]string{"username": "--admin", "password": testPassword}), http.StatusOK)
+	s.expectCode(s.changePassword("new password"), http.StatusBadRequest, "password_change_rejected")
+	if arg, err := os.ReadFile(out); !os.IsNotExist(err) {
+		t.Fatalf("program ran with argument %q, read error: %v", arg, err)
+	}
 }

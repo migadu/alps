@@ -282,7 +282,7 @@ Changes user passwords through an external HTTP API, or a command run on the ALP
 | `password` | String | None | Basic auth password. |
 | `token` | String | None | Bearer token. |
 | `payload` | String | `"json"` | Payload format (`"json"`, `"form"`). |
-| `command` | Array | None | A program and its arguments, run in place of the HTTP request (supports `{email}`, `{local}`, `{domain}`). See [Running a Command](PASSWORD_CHANGE.md#running-a-command). |
+| `command` | Array | None | A program and its arguments on a Unix host, run in place of the HTTP request (supports `{email}`, `{local}`, `{domain}`). Cancellation and timeout stop its process group. See [Running a Command](PASSWORD_CHANGE.md#running-a-command). |
 | `stdin` | String | `"{new_password}\n"` | What the command reads on standard input, the only place the passwords may appear (supports `{old_password}`, `{new_password}` and the above). |
 
 #### `[plugin.password.options.payload_mapping]`

@@ -48,6 +48,9 @@ func (cfg *PasswordChangeConfig) validateCommand() error {
 		}
 		return nil
 	}
+	if !commandSupported {
+		return errors.New("password commands require a Unix host with process groups")
+	}
 	if cfg.Endpoint != "" {
 		return errors.New("set either endpoint or command, not both")
 	}
@@ -109,6 +112,7 @@ func runCommand(ctx context.Context, cfg *PasswordChangeConfig, values map[strin
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	configureCommandCancellation(cmd)
 	// Nothing of alps's own environment, which may hold its secrets, reaches
 	// the program. A program that needs more is wrapped in a script.
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
@@ -148,14 +152,16 @@ func commandArgs(command []string, values map[string]string) ([]string, error) {
 
 	args := []string{command[0]}
 	for _, arg := range command[1:] {
-		// A value that opens an argument and starts with a dash would be read
-		// as an option.
+		filled := fill.Replace(arg)
+		// Check the rendered argument: an empty leading placeholder can let a
+		// later value (or dash in the template) open it as an option. Fixed
+		// option prefixes such as --user={email} remain valid.
 		for _, p := range argumentPlaceholders {
-			if strings.HasPrefix(arg, p) && strings.HasPrefix(values[p], "-") {
-				return nil, fmt.Errorf("%s would open an argument with a dash: %q", p, values[p])
+			if strings.HasPrefix(arg, p) && strings.HasPrefix(filled, "-") {
+				return nil, fmt.Errorf("%s would open an argument with a dash", p)
 			}
 		}
-		args = append(args, fill.Replace(arg))
+		args = append(args, filled)
 	}
 	return args, nil
 }
