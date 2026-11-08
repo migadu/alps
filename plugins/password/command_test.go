@@ -96,6 +96,38 @@ func TestCommandBlockIsCheckedWhenRead(t *testing.T) {
 	}
 }
 
+func TestCommandRejectsNonStringStdinAtStartup(t *testing.T) {
+	program := script(t, "exit 0\n")
+	for name, value := range map[string]interface{}{
+		"number":  42,
+		"boolean": true,
+		"list":    []string{"{old_password}", "{new_password}"},
+		"null":    nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			block := commandBlock(program)
+			block["stdin"] = value
+			s := &alps.Server{Options: &alps.Options{Plugins: map[string]alps.PluginConfig{
+				"password": {Enabled: true, Options: block},
+			}}}
+			if _, err := load(s); err == nil || !strings.Contains(err.Error(), "stdin") {
+				t.Fatalf("stdin=%#v: want a startup error naming stdin, got %v", value, err)
+			}
+		})
+	}
+	for _, stdin := range []string{"", "{new_password}\n", "{old_password}\n{new_password}\n"} {
+		block := commandBlock(program)
+		block["stdin"] = stdin
+		cfg, err := parseConfig(block)
+		if err != nil {
+			t.Fatalf("valid stdin %q: %v", stdin, err)
+		}
+		if cfg.Stdin != stdin {
+			t.Errorf("stdin %q was changed to %q", stdin, cfg.Stdin)
+		}
+	}
+}
+
 // Each configured argument stays one argument whatever the values put into
 // it, and the passwords reach the program on standard input only.
 func TestCommandArgumentsStayWholeAndPasswordsGoOnStdin(t *testing.T) {
@@ -308,6 +340,36 @@ func TestCommandIsStoppedAtTheTimeout(t *testing.T) {
 	}
 }
 
+// A wrapper waiting for a child must not leave that child free to change the
+// password after the caller has been told that the operation timed out.
+func TestCommandTimeoutStopsDescendants(t *testing.T) {
+	defer func(d time.Duration) { commandTimeout = d }(commandTimeout)
+	commandTimeout = 2 * time.Second
+	marker := filepath.Join(t.TempDir(), "password-changed")
+	program := script(t, `(
+  printf started > "$1.started"
+  sleep 3
+  printf changed > "$1"
+) </dev/null >/dev/null 2>&1 &
+wait
+`)
+	cfg, err := parseConfig(commandBlock(program, marker))
+	if err != nil {
+		t.Fatal(err)
+	}
+	failure := runCommand(t.Context(), cfg, changeValues("ada@example.com", "new"))
+	if failure == nil || failure.status != http.StatusGatewayTimeout {
+		t.Fatalf("expected timeout, got %+v", failure)
+	}
+	if _, err := os.Stat(marker + ".started"); err != nil {
+		t.Fatalf("child did not start before timeout: %v", err)
+	}
+	time.Sleep(2 * time.Second)
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("child changed its backing file after timeout, stat: %v", err)
+	}
+}
+
 // A program that succeeded changed the password, even when a child it left
 // behind still holds its standard error open.
 func TestCommandSucceedsPastALingeringChild(t *testing.T) {
@@ -331,6 +393,9 @@ func TestCommandRefusesValuesItWouldMisread(t *testing.T) {
 	}{
 		"an address opening an argument with a dash": {[]string{program, ran, "{email}"}, "-x@example.com", "new"},
 		"a local part opening an argument":           {[]string{program, ran, "{local}"}, "-x@example.com", "new"},
+		"an empty domain before an option":           {[]string{program, ran, "{domain}{local}"}, "--admin", "new"},
+		"two empty domains before an option":         {[]string{program, ran, "{domain}{domain}{email}"}, "--admin", "new"},
+		"a dash after an empty domain":               {[]string{program, ran, "{domain}-{local}"}, "ada", "new"},
 		"a line break in the new password":           {[]string{program, ran, "{email}"}, "ada@example.com", "new\nsecond line"},
 		"a carriage return in the new password":      {[]string{program, ran, "{email}"}, "ada@example.com", "new\r"},
 	} {

@@ -45,6 +45,13 @@ func parseConfig(opts map[string]interface{}) (*PasswordChangeConfig, error) {
 		if err := json.Unmarshal(b, &cfg.Command); err != nil || len(cfg.Command) == 0 {
 			return nil, errors.New("command must be a list: the program, then each of its arguments")
 		}
+		if raw, present := opts["stdin"]; present {
+			var ok bool
+			cfg.Stdin, ok = raw.(string)
+			if !ok {
+				return nil, errors.New("stdin must be a string")
+			}
+		}
 	}
 	if err := cfg.validateCommand(); err != nil {
 		return nil, err
