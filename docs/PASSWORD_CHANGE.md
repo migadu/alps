@@ -104,6 +104,6 @@ command = ["/usr/local/bin/maddy", "creds", "password", "{email}"]
 
 ## Error Handling
 
-- If the upstream endpoint returns an HTTP 4xx or 5xx error, ALPS will relay a failure message to the user, and their session password will remain unchanged.
+- If the upstream endpoint returns an HTTP 4xx or 5xx error, ALPS reports a refused change or an unavailable service to the user, and their session password remains unchanged. The upstream's status goes to the ALPS log; the browser gets ALPS's own. A 401 or 403 means ALPS's `username`, `password` or `token` were not accepted, so it is reported as an unavailable service (`502 password_service_unavailable`), as is a 5xx. Any other 4xx is a refused change (`400 password_change_rejected`).
 - If the command exits with a non-zero status, cannot be started, or runs past its 15 seconds, ALPS reports a refused change or an unavailable service to the user, and their session password remains unchanged.
 - If the upstream endpoint returns a success status but ALPS fails to verify the new password against the IMAP server, ALPS will prompt the user to log in again manually.

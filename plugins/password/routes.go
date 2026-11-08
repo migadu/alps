@@ -218,10 +218,26 @@ func handlePasswordChange(ctx *alps.Context) error {
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		ctx.Server.Logger().Errorf("Password change failed, status %d: %s", resp.StatusCode, string(bodyBytes))
-		return ctx.JSON(resp.StatusCode, map[string]string{"error": "Password change rejected by server", "code": "password_change_rejected"})
+		status, message, code := upstreamRefusal(resp.StatusCode)
+		return ctx.JSON(status, map[string]string{"error": message, "code": code})
 	}
 
 	return passwordChanged(ctx, username, req.Password)
+}
+
+// upstreamRefusal is alps's own answer to an admin API's refusal. The
+// upstream's status is never passed on: the browser takes a 401 for its own
+// session ending and a 429 for its own login limits. The admin API's
+// credentials are the deployment's, so a 401 or 403 from it, like a failure
+// of its own, is a service that cannot be used; any other refusal is a
+// refused change.
+func upstreamRefusal(status int) (int, string, string) {
+	switch {
+	case status == http.StatusUnauthorized || status == http.StatusForbidden || status >= 500:
+		return http.StatusBadGateway, "Password change service unavailable", "password_service_unavailable"
+	default:
+		return http.StatusBadRequest, "Password change rejected by server", "password_change_rejected"
+	}
 }
 
 // passwordChanged brings the session up to date with a password the backend
