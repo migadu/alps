@@ -238,6 +238,7 @@ func handleSetupFinish(ctx *alps.Context) error {
 	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
 		return fmt.Errorf("failed to save credentials: %v", err)
 	}
+	logKeyChange(ctx, "security key added", creds.Credentials[len(creds.Credentials)-1], len(creds.Credentials))
 
 	if err := clearSessionData(ctx.Session); err != nil {
 		return fmt.Errorf("failed to clear session: %v", err)
@@ -355,12 +356,14 @@ func handleDeleteCredential(ctx *alps.Context) error {
 	// Find and remove the credential. The capacity is not one less than the
 	// count: for an account with no keys that was -1, and a panic.
 	found := false
+	var removed CredentialInfo
 	newCreds := make([]CredentialInfo, 0, len(creds.Credentials))
 	for _, info := range creds.Credentials {
 		if string(info.Credential.ID) != string(credIDBytes) {
 			newCreds = append(newCreds, info)
 		} else {
 			found = true
+			removed = info
 		}
 	}
 
@@ -381,8 +384,29 @@ func handleDeleteCredential(ctx *alps.Context) error {
 		ctx.Server.Logger().Errorf("WebAuthn delete: failed to save credentials for user %s: %v", ctx.Session.Username(), err)
 		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
 	}
+	logKeyChange(ctx, "security key removed", removed, len(newCreds))
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
+}
+
+// logKeyChange logs a key added to the account or removed from it, as a
+// sign-in is logged: who, from where, in which session and browser. With the
+// key's name and transports, and the number of keys the account has after the
+// change, so that the log says when the second factor was turned on or off,
+// and from where. The account's record keeps only when a key was added.
+func logKeyChange(ctx *alps.Context, msg string, key CredentialInfo, keys int) {
+	transports := make([]string, len(key.Credential.Transport))
+	for i, t := range key.Credential.Transport {
+		transports[i] = string(t)
+	}
+	ctx.Server.Logger().Slog().Info(msg,
+		"user", ctx.Session.Username(),
+		"ip", ctx.ClientIP(),
+		"session", ctx.Session.ID(),
+		"key", key.Name,
+		"transports", transports,
+		"keys", keys,
+		"agent", ctx.Request.UserAgent())
 }
 
 // handleVerifyBegin initiates WebAuthn authentication during login

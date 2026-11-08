@@ -305,8 +305,11 @@ export class AlpsWebauthnSettings extends LitElement {
 
         return html`
             ${this.showNamePrompt ? html`
-                <ui-prompt 
+                <!-- Said here, where the key is kept or dropped: Cancel
+                     saves nothing. -->
+                <ui-prompt
                     heading=${this.i18nStore?.t('webauthn.name_key_title')}
+                    .message=${this.i18nStore?.t('webauthn.name_key_notice') ?? ''}
                     confirmText=${this.i18nStore?.t('general.save')}
                     cancelText=${this.i18nStore?.t('general.cancel')}
                     .fields=${[

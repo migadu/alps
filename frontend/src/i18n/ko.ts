@@ -172,6 +172,7 @@ export const ko = {
     key_name_placeholder: '기기 이름(예: YubiKey)',
     name_key_title: '보안 키 이름 지정',
     name_key_label: '기기 이름',
+    name_key_notice: '이 키를 저장하면 웹메일에 로그인할 때 비밀번호 다음에 이 키를 요구합니다.',
     add_key: '보안 키 추가',
     trust_linked: '연결된 계정 신뢰',
     trust_linked_desc: '사용하도록 설정하면 연결된 계정에서 이 계정으로 전환할 때 2단계 인증을 다시 거치지 않아도 됩니다.',
@@ -198,7 +199,7 @@ export const ko = {
       general: '오류가 발생했습니다.'
     },
     settings: {
-      group_desc: '하드웨어 보안 키나 생체 인증으로 계정을 보호하세요.',
+      group_desc: '하드웨어 보안 키나 생체 인증으로 계정을 보호하세요. 키를 추가하면 웹메일에 로그인할 때 비밀번호 다음에 그 키를 요구합니다.',
       keys_title: '보안 키',
       noKeys: '등록된 키가 없습니다.',
       added: '추가됨',

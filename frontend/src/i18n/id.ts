@@ -172,6 +172,7 @@ export const id = {
     key_name_placeholder: 'Nama perangkat (mis. YubiKey)',
     name_key_title: 'Beri Nama Kunci Keamanan',
     name_key_label: 'Nama Perangkat',
+    name_key_notice: 'Setelah Anda menyimpan kunci ini, proses masuk ke webmail akan memintanya setelah sandi Anda.',
     add_key: 'Tambah Kunci Keamanan',
     trust_linked: 'Percayai Akun Tertaut',
     trust_linked_desc: 'Jika diaktifkan, Anda dapat beralih ke akun ini dari akun tertaut tanpa memberikan kredensial 2FA lagi.',
@@ -198,7 +199,7 @@ export const id = {
       general: 'Terjadi kesalahan.'
     },
     settings: {
-      group_desc: 'Amankan akun Anda dengan kunci keamanan fisik atau biometrik.',
+      group_desc: 'Amankan akun Anda dengan kunci keamanan fisik atau biometrik. Setelah Anda menambahkan kunci, proses masuk ke webmail akan memintanya setelah sandi Anda.',
       keys_title: 'Kunci Keamanan',
       noKeys: 'Belum ada kunci terdaftar.',
       added: 'Ditambahkan',

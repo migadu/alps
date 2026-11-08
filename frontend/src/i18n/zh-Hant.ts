@@ -172,6 +172,7 @@ export const zhHant = {
     key_name_placeholder: '裝置名稱（例如 YubiKey）',
     name_key_title: '為安全金鑰命名',
     name_key_label: '裝置名稱',
+    name_key_notice: '儲存此金鑰後，登入網頁信箱時會在輸入密碼後要求使用此金鑰。',
     add_key: '新增安全金鑰',
     trust_linked: '信任已連結的帳號',
     trust_linked_desc: '啟用後，您可以從已連結的帳號切換至此帳號，無須再次通過雙重驗證。',
@@ -198,7 +199,7 @@ export const zhHant = {
       general: '發生錯誤。'
     },
     settings: {
-      group_desc: '使用硬體安全金鑰或生物辨識保護您的帳號。',
+      group_desc: '使用硬體安全金鑰或生物辨識保護您的帳號。新增金鑰後，登入網頁信箱時會在輸入密碼後要求使用該金鑰。',
       keys_title: '安全金鑰',
       noKeys: '沒有已註冊的金鑰。',
       added: '新增時間',

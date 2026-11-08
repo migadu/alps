@@ -653,6 +653,7 @@ export const fr = {
     key_name_placeholder: 'Nom de l\'appareil (ex. YubiKey)',
     name_key_title: 'Nommer la clé de sécurité',
     name_key_label: 'Nom de l\'appareil',
+    name_key_notice: 'Une fois cette clé enregistrée, la connexion au webmail la demande après votre mot de passe.',
     add_key: 'Ajouter une clé de sécurité',
     trust_linked: 'Faire confiance aux comptes liés',
     trust_linked_desc: 'Si activé, vous pouvez basculer vers ce compte depuis un compte lié sans avoir à fournir de nouveau un identifiant 2FA.',
@@ -679,7 +680,7 @@ export const fr = {
       general: 'Une erreur s\'est produite.',
     },
     settings: {
-      group_desc: 'Sécurisez votre compte avec une clé de sécurité matérielle ou la biométrie.',
+      group_desc: 'Sécurisez votre compte avec une clé de sécurité matérielle ou la biométrie. Une fois une clé ajoutée, la connexion au webmail la demande après votre mot de passe.',
       keys_title: 'Clés de sécurité',
       noKeys: 'Aucune clé enregistrée.',
       added: 'Ajouté',

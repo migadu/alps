@@ -174,6 +174,7 @@ export const zhHans: TranslationDictionary = {
     key_name_placeholder: '设备名称 (例如 YubiKey)',
     name_key_title: '命名安全密钥',
     name_key_label: '设备名称',
+    name_key_notice: '保存此密钥后，登录网页邮箱时会在输入密码后要求使用此密钥。',
     add_key: '添加安全密钥',
     trust_linked: '信任关联账户',
     trust_linked_desc: '启用此功能后，可以从关联账户切换至该账户，且无需再次提供双重身份验证 (2FA) 凭据。',
@@ -200,7 +201,7 @@ export const zhHans: TranslationDictionary = {
       general: '发生错误。',
     },
     settings: {
-      group_desc: '使用硬件安全密钥或生物识别技术来保护您的账户。',
+      group_desc: '使用硬件安全密钥或生物识别技术来保护您的账户。添加密钥后，登录网页邮箱时会在输入密码后要求使用该密钥。',
       keys_title: '安全密钥',
       noKeys: '暂无已注册的密钥。',
       added: '已添加',

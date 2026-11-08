@@ -173,6 +173,7 @@ export const tr = {
     key_name_placeholder: 'Cihaz adı (ör. YubiKey)',
     name_key_title: 'Güvenlik Anahtarını Adlandır',
     name_key_label: 'Cihaz Adı',
+    name_key_notice: 'Bu anahtarı kaydettiğinizde, webmail\'de oturum açarken parolanızdan sonra bu anahtar istenir.',
     add_key: 'Güvenlik Anahtarı Ekle',
     trust_linked: 'Bağlı Hesaplara Güven',
     trust_linked_desc: 'Etkinleştirilirse bağlı bir hesaptan bu hesaba yeniden 2FA doğrulaması yapmadan geçebilirsiniz.',
@@ -199,7 +200,7 @@ export const tr = {
       general: 'Bir hata oluştu.'
     },
     settings: {
-      group_desc: 'Hesabınızı bir donanım güvenlik anahtarı veya biyometri ile koruyun.',
+      group_desc: 'Hesabınızı bir donanım güvenlik anahtarı veya biyometri ile koruyun. Bir anahtar eklediğinizde, webmail\'de oturum açarken parolanızdan sonra bu anahtar istenir.',
       keys_title: 'Güvenlik Anahtarları',
       noKeys: 'Kayıtlı anahtar yok.',
       added: 'Eklenme',

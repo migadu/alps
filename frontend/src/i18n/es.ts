@@ -653,6 +653,7 @@ export const es = {
     key_name_placeholder: 'Nombre del dispositivo (p. ej., YubiKey)',
     name_key_title: 'Nombrar clave de seguridad',
     name_key_label: 'Nombre del dispositivo',
+    name_key_notice: 'Cuando guardes esta clave, el webmail te la pedirá después de tu contraseña al iniciar sesión.',
     add_key: 'Añadir clave de seguridad',
     trust_linked: 'Confiar en cuentas vinculadas',
     trust_linked_desc: 'Si está activado, puedes cambiar a esta cuenta desde una cuenta vinculada sin volver a proporcionar una credencial 2FA.',
@@ -679,7 +680,7 @@ export const es = {
       general: 'Se ha producido un error.',
     },
     settings: {
-      group_desc: 'Protege tu cuenta con una clave de seguridad de hardware o biometría.',
+      group_desc: 'Protege tu cuenta con una clave de seguridad de hardware o biometría. Cuando añadas una clave, el webmail te la pedirá después de tu contraseña al iniciar sesión.',
       keys_title: 'Claves de seguridad',
       noKeys: 'No hay claves registradas.',
       added: 'Añadido',

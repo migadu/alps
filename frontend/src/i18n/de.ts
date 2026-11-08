@@ -655,6 +655,7 @@ export const de: TranslationDictionary = {
     key_name_placeholder: 'Gerätename (z.B. YubiKey)',
     name_key_title: 'Sicherheitsschlüssel benennen',
     name_key_label: 'Gerätename',
+    name_key_notice: 'Sobald Sie diesen Schlüssel speichern, wird er bei der Anmeldung im Webmail nach Ihrem Passwort abgefragt.',
     add_key: 'Sicherheitsschlüssel hinzufügen',
     trust_linked: 'Verknüpften Konten vertrauen',
     trust_linked_desc: 'Wenn aktiviert, können Sie von einem verknüpften Konto zu diesem Konto wechseln, ohne erneut 2FA-Anmeldeinformationen anzugeben.',
@@ -681,7 +682,7 @@ export const de: TranslationDictionary = {
       general: 'Ein Fehler ist aufgetreten.',
     },
     settings: {
-      group_desc: 'Sichern Sie Ihr Konto mit einem Hardware-Sicherheitsschlüssel oder Biometrie.',
+      group_desc: 'Sichern Sie Ihr Konto mit einem Hardware-Sicherheitsschlüssel oder Biometrie. Sobald Sie einen Schlüssel hinzugefügt haben, wird er bei der Anmeldung im Webmail nach Ihrem Passwort abgefragt.',
       keys_title: 'Sicherheitsschlüssel',
       noKeys: 'Keine registrierten Schlüssel.',
       added: 'Hinzugefügt',
