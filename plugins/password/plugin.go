@@ -1,13 +1,28 @@
 package password
 
 import (
+	"fmt"
+
 	"github.com/migadu/alps"
 )
 
+var plugin = alps.GoPlugin{Name: "password"}
+
 func init() {
-	p := alps.GoPlugin{Name: "password"}
+	plugin.POST("/password/change", handlePasswordChange)
 
-	p.POST("/password/change", handlePasswordChange)
+	alps.RegisterPluginLoader(load)
+}
 
-	alps.RegisterPluginLoader(p.Loader())
+// load refuses to start with a global option block that could not run. A block
+// routed per domain is checked when it is used, and refused then.
+func load(s *alps.Server) ([]alps.Plugin, error) {
+	if s.Options != nil {
+		if cfg, ok := s.Options.Plugins["password"]; ok && cfg.Enabled {
+			if _, err := parseConfig(cfg.Options); err != nil {
+				return nil, fmt.Errorf("plugin.password: %v", err)
+			}
+		}
+	}
+	return plugin.Loader()(s)
 }

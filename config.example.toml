@@ -681,7 +681,8 @@ enabled = true
 
 
 # Password Change Configuration
-# Allows users to change their password via an external HTTP API
+# Allows users to change their password via an external HTTP API, or a command
+# run on this host
 [plugin.password]
 # Enable the password change feature (default: false)
 enabled = false
@@ -708,6 +709,14 @@ enabled = false
 # Payload format for the request body
 # Options: "json", "form" (default: "json")
 # payload = "json"
+
+# Or, in place of endpoint, a program to run: an absolute path, then each
+# argument. It runs without a shell. Arguments support {email}, {local} and
+# {domain}; the passwords reach it on stdin only. See docs/PASSWORD_CHANGE.md.
+# command = ["/usr/local/bin/maddy", "creds", "password", "{email}"]
+# What the program reads on stdin (default: the new password and a newline).
+# Supports {old_password} and {new_password} besides the above.
+# stdin = "{new_password}\n"
 
 # Payload Mapping Configuration (Required)
 # Maps internal ALPS variables to custom payload fields expected by the endpoint.
