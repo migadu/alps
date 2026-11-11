@@ -80,6 +80,7 @@ export default {
     week: 'أسبوع',
     month: 'شهر',
     year: 'سنة',
+    view: 'العرض',
     today: 'اليوم',
     allDay: 'طوال اليوم',
     noTitle: '(بلا عنوان)',

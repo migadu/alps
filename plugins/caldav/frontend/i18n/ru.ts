@@ -80,6 +80,7 @@ export default {
     week: 'Неделя',
     month: 'Месяц',
     year: 'Год',
+    view: 'Вид',
     today: 'Сегодня',
     allDay: 'Весь день',
     noTitle: '(Без названия)',

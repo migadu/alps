@@ -595,3 +595,26 @@ test("the filter controls are labelled in words, not i18n keys", async ({ page }
   // above, so it cannot pass against a page that has not rendered.
   await expect(settings(page)).not.toContainText("managesieve.");
 });
+
+// The raw editor colours keywords, operators, strings and comments for a light
+// or a dark page. It chose by the system's setting, not by alps's theme, so the
+// Light theme on a dark system drew pale blue strings on white, and the Dark
+// theme on a light system dark navy ones on the dark field.
+for (const [system, theme, string, keyword] of [
+  ["dark", "light", "rgb(3, 47, 98)", "rgb(215, 58, 73)"],
+  ["light", "dark", "rgb(165, 214, 255)", "rgb(255, 123, 114)"],
+] as const) {
+  test(`the raw editor's highlighting follows the ${theme} theme on a ${system} system`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: system });
+    await page.addInitScript((theme) => {
+      if (window !== window.top || !location.protocol.startsWith("http")) return;
+      localStorage.setItem("alps_settings", JSON.stringify({ themeMode: theme }));
+    }, theme);
+    await openRawEditor(page);
+    await script(page).fill('require "fileinto";\n# sorted\nif header :contains "Subject" "x" { fileinto "Archive"; }');
+
+    const colourOf = (selector: string) => raw(page).locator(selector).first().evaluate((el) => getComputedStyle(el).color);
+    await expect.poll(() => colourOf(".sieve-string")).toBe(string);
+    await expect.poll(() => colourOf(".sieve-keyword")).toBe(keyword);
+  });
+}

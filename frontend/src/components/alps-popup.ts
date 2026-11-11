@@ -1,7 +1,7 @@
 import { modalOpened, modalClosed } from '../utils/modal-layers';
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { consumesSpaceAsText, isMultilineTextEntry } from '../utils/active-element';
+import { consumesSpaceAsText, isComposingKey, isMultilineTextEntry } from '../utils/active-element';
 import { motionStyles } from '../utils/motion';
 
 export const popupStyles = css`
@@ -311,7 +311,7 @@ export class AlpsPopup extends LitElement {
   }
 
   private _handleDialogKeydown = (e: KeyboardEvent) => {
-    if (!this.openState) return;
+    if (!this.openState || isComposingKey(e)) return;
 
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       if (isMultilineTextEntry(this._getActiveElement())) return;

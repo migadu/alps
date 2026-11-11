@@ -30,6 +30,7 @@ export default {
         week: 'Uge',
         month: 'Måned',
         year: 'År',
+        view: 'Visning',
         today: 'I dag',
         allDay: 'Hele dagen',
         noTitle: '(Ingen titel)',

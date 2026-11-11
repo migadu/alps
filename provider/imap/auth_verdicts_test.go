@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 func appendTo(t *testing.T, c *imapclient.Client, mailbox, m string) {

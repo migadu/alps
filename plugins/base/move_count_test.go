@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapserver"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapserver"
 )
 
 func plainMessage(subject string) string {
@@ -93,7 +93,7 @@ type copyUIDOnlyForCopies struct{ imapserver.Session }
 
 func (s copyUIDOnlyForCopies) Copy(ctx context.Context, numSet imap.NumSet, dest string) (*imap.CopyData, error) {
 	data, err := s.Session.Copy(ctx, numSet, dest)
-	if data != nil && len(data.SourceUIDs) == 0 {
+	if data != nil && len(data.UIDMapping) == 0 {
 		return nil, err
 	}
 	return data, err

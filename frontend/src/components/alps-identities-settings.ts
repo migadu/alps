@@ -7,6 +7,7 @@ import {
   identityAddress, identityProblem, MAX_IDENTITIES, MAX_IDENTITY_NAME, type Identity, type IdentityProblem,
 } from '../utils/identities';
 import { isolatedMailbox } from '../utils/bidi';
+import { isComposingKey } from '../utils/active-element';
 import type { UnsavedChanges } from './settings-window';
 import './alps-setting-group';
 import './alps-icon-btn';
@@ -208,7 +209,7 @@ export class AlpsIdentitiesSettings extends LitElement implements UnsavedChanges
   private onFormKeydown = (e: KeyboardEvent) => {
     // The form's, not the window's: Escape there closes the form and leaves
     // the window open (SettingsWindow lets a key that was handled go).
-    if (e.key !== 'Escape') return;
+    if (e.key !== 'Escape' || isComposingKey(e)) return;
     e.preventDefault();
     this.closeForm();
   };

@@ -2,7 +2,7 @@ package alpsbase
 
 import (
 	"encoding/json"
-	"github.com/emersion/go-imap/v2"
+	"github.com/migadu/go-imap"
 )
 
 // A MODSEQ is an opaque 63-bit value (RFC7162). Decimal text preserves it

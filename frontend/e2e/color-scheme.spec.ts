@@ -354,3 +354,15 @@ test("a message styled for both schemes prints readably on a dark system", async
     .toBe("complete");
   await expectReadable(frame, BOTH_SCHEMES_PARTS);
 });
+
+// The browser draws its own controls (date and time pickers, spinners, check
+// boxes, scrollbars) in the scheme the page declares, not in the theme's
+// colours. alps declared none, so under its dark theme they stayed light. Each
+// control here sits in a component's shadow root, as every one in alps does.
+for (const [system, theme] of [["light", "dark"], ["dark", "light"]] as const) {
+  test(`the browser's own controls are drawn ${theme} under the ${theme} theme on a ${system} system`, async ({ page }) => {
+    await setUp(page, system, theme);
+    const search = page.locator("app-header alps-input input").first();
+    await expect.poll(() => search.evaluate((el) => getComputedStyle(el).colorScheme)).toBe(theme);
+  });
+}
