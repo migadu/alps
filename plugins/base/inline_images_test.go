@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps"
+	"github.com/migadu/go-imap"
 )
 
 // newsletter is an HTML message showing images it carries, by Content-ID:

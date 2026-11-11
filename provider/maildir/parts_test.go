@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
 	imapprovider "github.com/migadu/alps/provider/imap"
+	"github.com/migadu/go-imap"
 )
 
 func appendOne(t *testing.T, p *Provider, content string) provider.MessageID {

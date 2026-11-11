@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 // A second EXISTS or an EXPUNGE is received while post-IDLE STATUS is on

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
+	"github.com/migadu/go-imap"
 )
 
 // searchLimited is what Sora answers any search with once the account has
