@@ -1,19 +1,38 @@
-# Alps Configuration File Example
+# ALPS Configuration File Example
+#
+# Copy this file to config.toml, edit it, and start ALPS with
+# -config config.toml. docs/CONFIGURATION.md describes every key.
+#
+# ALPS does not report keys or sections it does not know: a misspelled one is
+# ignored without warning, and the default applies. Check names against this
+# file.
 
 [server]
-# Server listening address
+# Server listening address (default: ":1323")
 addr = ":1323"
 
-# Enable debug logging
-debug = true
+# Debug mode (default: false). For development only.
+# With debug = true, the default log level becomes "debug" and the default
+# format "console" (where [logging] does not set them), and TLS handshake
+# errors are logged at debug level. It also writes protocol traces straight to
+# the process output, outside [logging]: the IMAP exchange to stderr, every
+# CardDAV and CalDAV request and response to stdout, and the ManageSieve
+# exchange to stdout. Message, contact and calendar content is included
+# (passwords are redacted).
+debug = false
 
-# Trust X-Forwarded-For, X-Real-IP, X-Forwarded-Proto and X-Forwarded-Host headers
-# from specific proxy IPs or CIDR blocks.
-# ONLY enable this if ALPS is deployed behind a trusted reverse proxy (like Nginx or HAProxy)
-# If enabled with untrusted IPs, attackers can spoof their IP address to bypass rate limits.
-# When the immediate peer is listed here, ALPS also uses X-Forwarded-Proto/X-Forwarded-Host
-# to compute the expected Origin for the CSRF check. This is the recommended way to run ALPS
-# behind a TLS-terminating reverse proxy (proxy speaks HTTPS to the browser, HTTP to ALPS).
+# Addresses or CIDR blocks of your own reverse proxies (default: none; a bare
+# address counts as /32 or /128, and an invalid entry stops startup).
+# Only when a request comes from one of them does ALPS read the forwarded
+# headers: the client address from X-Forwarded-For (or X-Real-IP), which the
+# rate limits and the logs use, and the scheme and host from X-Forwarded-Proto
+# and X-Forwarded-Host, which the CSRF origin check and the cookies' Secure
+# flag use. This list decides whose word ALPS takes for the client's address,
+# and so keeps the per-address rate limits counting each real client: list
+# only proxies you run. List every proxy hop in front of ALPS as well, since
+# the first unlisted hop is taken for the client. This is the recommended way
+# to run ALPS behind a TLS-terminating reverse proxy (proxy speaks HTTPS to the
+# browser, HTTP to ALPS).
 # trusted_proxies = ["127.0.0.1/32", "::1/128", "10.0.0.0/8"]
 
 # Additional origins accepted by the CSRF check, in addition to the one ALPS computes
@@ -22,52 +41,86 @@ debug = true
 # Origin header must match one of these exactly (scheme + host [+ port]).
 # trusted_origins = ["https://webmail.example.com"]
 
-# Fernet key for login persistence (optional)
-# Encrypts user credentials in browser cookies to enable "remember me" functionality
-# and session restoration after server restarts.
+# Fernet key for login persistence (optional, default: none)
+# Encrypts the user's credentials into the alps_login_token cookie, so that a
+# session the server has lost (after a restart, for one) can be restored
+# without a new sign-in, and "Stay signed in after closing the browser" can
+# keep a sign-in for up to 30 days (see docs/SESSIONS.md). Without it, no
+# login token is issued and no session is restored. A login token is accepted
+# for at most 30 days after it was issued. An invalid key stops startup.
+# login_key is also required for linked accounts: without it, linking an
+# account is refused, because the linked accounts' passwords are stored
+# encrypted with this key.
+# Every node serving the same hostname must use the same login_key.
 # Generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 # login_key = "your-fernet-key-here"
 #
-# Security note: Rotating the login_key will force all users to re-login.
-# This is a security feature - use it to invalidate all persisted credentials
-# during security incidents or when you suspect credential compromise.
+# Security note: Rotating the login_key signs everyone out, and every linked
+# account must then be linked again. Use it to invalidate all persisted
+# credentials during security incidents or when you suspect credential
+# compromise.
 
-# Temporary directory for file uploads and processing (optional)
-# Uses OS default temp directory if not specified
-# temp_dir = "/tmp/alps"
+# Temporary directory (optional, default: $TMPDIR, otherwise /tmp)
+# ALPS sets TMPDIR to it for its own process at startup. It holds the files of
+# attachment uploads and the BIMI logo cache (alps-avatars). Create it before
+# starting ALPS, writable only by the user ALPS runs as: until it exists, every
+# upload whose files add up to more than 32 KiB is refused with 400. Under the
+# shipped systemd unit (dist/alps.service), PrivateTmp gives ALPS a /tmp of its
+# own, so a directory under the host's /tmp does not exist for it; there, leave
+# temp_dir unset, or point it outside /tmp and /var/tmp and list it in
+# ReadWritePaths. See docs/OPERATIONS.md (section 3, "The Temp Directory").
+# temp_dir = "/var/lib/alps/tmp"
 
-# Session duration in minutes (default: 30)
-# Controls how long user sessions remain active without activity
+# Session idle timeout in minutes (default: 30; 0 or a negative value keeps it)
+# How long the server keeps a session without requests, for an account whose
+# saved settings hold no auto-logout time. It does not change what the page
+# does: for such an account, Settings shows an auto-logout of 30 minutes, the
+# page signs the user out after 30 minutes without activity in the browser,
+# and saving any setting stores those 30 minutes as the account's own choice.
+# In practice it applies only to accounts that have never saved their
+# settings. See docs/SESSIONS.md.
 # session_minutes = 30
 
-# Maximum session duration in minutes (default: 1440, i.e., 24 hours)
-# Caps the maximum session duration even if user sets a higher auto-logout preference
-# max_session_minutes = 1440
+# Cap on the auto-logout a user may choose, in minutes (default: 0, no cap;
+# a negative value means no cap too)
+# A user's choice in Settings above it, "Never" included, is lowered to it
+# (1440 caps it at 24 hours). Without it, "Never" means no idle timeout in
+# practice (a year), and only absolute_session_hours ends the session. It does
+# not cap session_minutes.
+# max_session_minutes = 0
 
 # Absolute session lifetime in hours (default: 168, i.e., 7 days)
-# A hard ceiling on how long one session may live NO MATTER how much it is used.
+# A hard limit on a session's total life, however active it is.
 #
-# The two settings above bound INACTIVITY, and inactivity alone bounds nothing:
-# every request resets the idle window, and the web UI pings /session every five
-# minutes while a tab is open. Without this ceiling a session token that has been
-# captured and is being kept warm never expires and the user is never asked to
-# authenticate again.
+# The two settings above bound INACTIVITY only: every request resets the idle
+# window, and a page left open keeps making requests of its own, its checks for
+# new mail among them. Without this limit a session that keeps being used
+# never ends, and its user is never asked to sign in again.
 #
 # Floored at session_minutes, so a value below the idle window cannot silently
-# redefine it. Set to -1 to disable the ceiling and let sessions slide forever.
+# redefine it. 0 keeps the default. Set to -1 (any negative value) to remove
+# the limit.
 # absolute_session_hours = 168
 
 # HTTP Server Timeouts
-# Protects against slow client attacks and resource exhaustion
+# They bound how long one client connection can hold the server's resources.
+# 0 or a negative value keeps a timeout's default.
 
 # HTTP read timeout in seconds (default: 10)
-# Maximum time allowed to read the entire HTTP request (headers + body)
-# Includes time from connection accept to end of request body read
+# Maximum time allowed to read the entire HTTP request (headers + body), so an
+# attachment upload must finish within it. On HTTP/1.1, a request whose
+# handler is still running when this time passes is cancelled; its mail
+# operation then gets up to 10 more seconds before the session's mail
+# connection is let go. Raise it for slow links or large uploads. The event
+# stream (GET /events) lifts it for itself.
 read_timeout_sec = 10
 
-# HTTP write timeout in seconds (default: 30)
-# Maximum time allowed to write the HTTP response
-# Should be high enough for large email attachments to be uploaded/downloaded
+# HTTP write timeout in seconds (default: 60)
+# Time from the end of the request headers until the response has been
+# written, so it governs downloads and long responses. An upload's body is
+# bounded by read_timeout_sec, and its response must still be written within
+# this time, so keep it at least as long as read_timeout_sec. This example
+# sets 30, below the default.
 write_timeout_sec = 30
 
 # HTTP idle timeout in seconds (default: 120)
@@ -75,51 +128,57 @@ write_timeout_sec = 30
 # Applies between requests, not during active transfers
 idle_timeout_sec = 120
 
-# IMAP operation timeout in seconds (default: 30)
-# Connection establishment timeout for the IMAP server (default: 30)
-# This strictly governs the initial TCP handshake and login to the IMAP server.
-# Note: Actual IMAP operations (fetch, search, etc.) are effectively timed out 
-# by the HTTP server's write_timeout_sec when the client connection drops.
-imap_timeout_sec = 30
+# IMAP timeout in seconds: set it as [provider] timeout_sec (see below).
+# imap_timeout_sec is another name for that key, read only with [provider]
+# type = "imap" and only when timeout_sec is unset (or 0); it then governs
+# exactly what timeout_sec does. With type = "multi" or "maildir" it is
+# ignored.
+# imap_timeout_sec = 30
 
-# SMTP operation timeout in seconds (default: 30)
-# This is a true operation timeout passed directly to the SMTP client.
-# It prevents indefinite blocking on stuck SMTP operations (connect, send, etc.)
+# SMTP timeout in seconds (default: 30)
+# Bounds each SMTP command, and the wait after the message data, once
+# connected. Connecting (TCP, and the TLS handshake for smtps://) has the SMTP
+# library's fixed 30-second limit. For smtp://, the greeting, EHLO and STARTTLS
+# happen before this timeout is applied, under the library's own 5-minute
+# default.
 smtp_timeout_sec = 30
 
-# Example configurations for different deployment scenarios:
+# Example configurations for different deployment scenarios
+# (timeout_sec goes in the [provider] section):
 #
 # Fast network, small mailboxes:
 #   read_timeout_sec = 5
 #   write_timeout_sec = 15
-#   imap_timeout_sec = 15
 #   smtp_timeout_sec = 15
+#   [provider] timeout_sec = 15
 #
-# Standard (recommended for most deployments):
+# Standard (recommended for most deployments, and what this file sets; the
+# built-in write_timeout_sec is 60):
 #   read_timeout_sec = 10
 #   write_timeout_sec = 30
-#   imap_timeout_sec = 30
 #   smtp_timeout_sec = 30
+#   [provider] timeout_sec = 30
 #
 # Slow network or large attachments:
 #   read_timeout_sec = 30
 #   write_timeout_sec = 120
-#   imap_timeout_sec = 60
 #   smtp_timeout_sec = 60
+#   [provider] timeout_sec = 60
 
 # Session Limits
-# Controls the maximum number of concurrent sessions to prevent memory exhaustion attacks
-# and resource abuse
+# Bound the number of concurrent sessions on this node, and so the memory and
+# mail connections they hold.
 
 # Maximum total concurrent sessions globally (default: 10000)
-# Set to 0 for unlimited sessions (not recommended)
-# When limit is reached, oldest sessions are evicted (LRU policy)
+# 0 or a negative value keeps the default: the global limit cannot be turned
+# off. When it is reached, the session used least recently is ended to make
+# room.
 max_sessions = 10000
 
 # Maximum concurrent sessions per user (default: 10)
-# Set to 0 for unlimited sessions per user (not recommended)
-# Prevents a single user or compromised account from creating excessive sessions
-# When limit is reached, oldest user sessions are evicted (LRU policy)
+# 0 or a negative value keeps the default: the per-user limit cannot be turned
+# off. It keeps one account from holding more sessions than this. When it is
+# reached, that user's session used least recently is ended.
 max_sessions_per_user = 10
 
 # Example configurations for different deployment sizes:
@@ -140,138 +199,128 @@ max_sessions_per_user = 10
 # Each session opens a second connection to the mail server, when it is first
 # needed, for the work the user is not waiting for: checks for new mail, sender
 # verdicts, the search of Sent for a conversation's replies, draft saves, and the
-# messages a conversation reads ahead. What the user opens meanwhile does not wait
-# behind it. The connection is closed once it has gone unused for a minute, and
-# the next such work opens it again and waits for its sign-in.
-# A session opens no more than this one beside its own, so a user's sessions
-# together hold up to twice max_sessions_per_user. A connection given up on
-# mid-command, when the browser went away, stays open until that command returns,
-# as before. Meanwhile the session opens no background connection, but its own
-# work does not wait for one that is busy: it opens its own connection beside it.
-# Mail servers limit the connections of one user from one address (Dovecot:
-# mail_max_userip_connections = 10), and every session comes from ALPS's address.
-# A server that will not open the second connection costs nothing but the speed:
-# the work then waits its turn on the session's own connection, and the session is
-# not ended. With push_new_mail on, though, the second connection stays open
-# while a mail page is (see below). A session whose own connection is refused at
-# the limit carries on with its background connection when the server says why
-# with [LIMIT] (RFC 5530), as Sora does; a bare NO ends the session.
-# Set to false to keep one connection per session.
+# messages a conversation reads ahead. It is closed once it has gone unused for
+# a minute. A session opens no more than this one beside its own, so a user's
+# sessions together hold up to twice max_sessions_per_user. Mail servers limit
+# the connections of one user from one address (Dovecot:
+# mail_max_userip_connections = 10), and every session comes from ALPS's
+# address. A server that will not open the second connection costs only speed:
+# the work then runs on the session's own connection. Set to false to keep one
+# connection per session. docs/CONFIGURATION.md (section 1.2) has the details.
 # background_connection = true
 
 # Push new mail (default: false)
-# Pages learn of new mail by checking for it every few minutes (the user's
-# check-mail interval). With this on, a session also waits on its background
-# connection for the mail server's news of the Inbox (IMAP IDLE) while a mail
-# page is open, and pushes it to the page over an event stream (GET /events),
-# which then checks at once. Pushed are messages that arrive in the Inbox or
-# leave it; flags and the other folders come with the checks, which go on as
-# before. A browser holds one stream, whatever the number of its tabs. Needs
-# background_connection, a mail server with IDLE, and a browser in a secure
-# context (HTTPS, or localhost): the tab that holds the stream is chosen with
-# navigator.locks, which browsers offer only there, so a deployment served
-# over plain HTTP gets no push.
-# The cost is on the mail server. Every session with a mail page open holds two
-# connections for as long as it is open, its own and the background one in
-# IDLE; without push the second closes after a minute. Every session comes from
-# ALPS's one address, and Sora's example configuration allows
-# max_connections_per_user_per_ip = 5 (8 through its proxy), and
-# max_connections_per_ip = 200, about 100 open mail pages across all users
-# since all of them come from ALPS's address. With the per-user limit, a user
-# with mail open in two browsers holds four, a third signs in on the fifth
-# without push, and a sign-in from a fourth is refused. ALPS gives way within a
-# session, not across the sessions of an account. And the server watches the
-# Inbox of each: Sora re-checks a mailbox in IDLE every 15 seconds
-# (idlePollInterval in server/imap/idle.go), which is more work for each open
-# session than one check every 5 minutes. A failed IDLE never signs anyone
-# out; it is tried again after a minute, then twice as long after each
-# failure in a row, up to about half an hour.
-# The event stream is an HTTP request that stays open for as long as the page.
-# A reverse proxy must not buffer it (ALPS sends X-Accel-Buffering: no, which
-# nginx honours) and must let it stay open: ALPS writes a heartbeat every
-# 20 seconds, within the usual proxy idle timeouts (nginx proxy_read_timeout,
-# HAProxy timeout server). In a cluster the stream must reach the node that
-# holds the session, as every request of the session already must.
+# Pages check for new mail at the user's check-mail interval. With this on, a
+# session also waits in IMAP IDLE on its background connection while a mail
+# page is open, and tells the page over an event stream (GET /events) as soon
+# as a message arrives in the Inbox or leaves it. Needs background_connection,
+# a mail server with IDLE, and a browser in a secure context (HTTPS, or
+# localhost); a deployment served over plain HTTP gets no push.
+# The cost is on the mail server: every session with a mail page open holds
+# two connections (its own and the background one in IDLE), all from ALPS's
+# one address, so check the server's per-user and per-address connection
+# limits.
+# A reverse proxy must not buffer /events and must let it stay open; ALPS
+# writes a heartbeat every 20 seconds. In a cluster the stream must reach the
+# node that holds the session. docs/CONFIGURATION.md (section 1.4, "Pushing new
+# mail") has what it costs and what a proxy must allow.
 # push_new_mail = false
 
 # Have the mail server number its changes (default: false)
-# A page of a folder is kept in the session while the folder's counts stay as
-# they were read. A flag changed in another client that leaves the unread count
-# as it was, a star, is then not listed until the page expires; one that moves
-# it, a message read, has every page of the folder read again in full. With
-# this on, each mail connection asks the server to number the changes to its
-# messages (IMAP CONDSTORE, RFC 7162: ENABLE CONDSTORE straight after sign-in),
-# and the counts carry the number of the latest (HIGHESTMODSEQ, asked with the
-# STATUS and LIST-STATUS ALPS sends anyway). A folder that holds the messages a
-# page was read with then has the flags that changed since read, one FETCH of
-# the page's messages (CHANGEDSINCE), and laid over the page; the pages notice
-# the new number at their next check. A server that does not list CONDSTORE is
-# used as before. QRESYNC is not turned on, even where the server lists it.
-# The folder selected on the connection a check runs on is asked with a NOOP
-# and that FETCH instead of a STATUS, as RFC 9051 asks, while nothing changed
-# in it, also where the check asks for several folders at once; a change is
-# then asked with STATUS as before.
-# It costs a round trip as each connection signs in. And a change made in ALPS
-# moves the number too, so the check after it reads the page again: from the
-# session, with that one FETCH.
+# With this on, each mail connection turns on IMAP CONDSTORE (RFC 7162) where
+# the server lists it, and a cached page of a folder whose messages are all
+# still there has only the flags that changed read again (one FETCH with
+# CHANGEDSINCE), so a star or a read made in another client is listed at the
+# next check. A server that does not list CONDSTORE is used as with
+# condstore = false, and QRESYNC is never turned on. It costs a round trip as
+# each connection signs in. docs/CONFIGURATION.md (section 1.5, "Numbered
+# changes") has the details.
 # condstore = false
 
 # Push the subscribed folders too (default: false)
-# With push_new_mail on, a session also asks the mail server, on the same
-# background connection, for the news of the subscribed folders (IMAP NOTIFY,
-# RFC 5465), and pushes it as it pushes the Inbox's: a folder on screen is
-# checked at once, and the sidebar's counts of the others follow. Pushed are
-# messages that arrive in a folder or leave it; flags, the folders not
-# subscribed and searches come with the checks, which run a third as often
-# while the folders are pushed (every 15 minutes at the default 5). Needs a
-# mail server with NOTIFY; without it, or where it is refused, the Inbox alone
-# is pushed. No connection is added, but the mail server does more for each
-# open page: Sora's NOTIFY watch reads the counts of every subscribed folder
-# every 15 seconds (notifyPollInterval in server/imap/notify.go).
+# With push_new_mail on and a mail server with NOTIFY (RFC 5465), a session also
+# asks, on the same background connection, for the news of the subscribed
+# folders, and pushes it as it pushes the Inbox's. While the folders are pushed,
+# the pages' own checks run a third as often (every 15 minutes at the default
+# 5). Without NOTIFY, or where it is refused, the Inbox alone is pushed. No
+# connection is added, but the mail server does more for each open page (see
+# docs/CONFIGURATION.md, section 1.4).
 # push_subscribed_folders = false
 
+# Attachment limits. See docs/ATTACHMENTS.md.
+# An upload is refused when it would take its own composer over
+# max_attachment_mib, when the files of one request are together larger than
+# any of the three limits, or when, over the session or the global limit,
+# nothing is left to drop.
+
 # Max attachment size per composer in MiB (default: 32)
-# Limits the size of a single email being composed
+# Limits the attachments of a single email being composed
 # max_attachment_mib = 32
 
 # Max attachment size per session in MiB (default: 128)
-# Limits the total size of attachments uploaded across all active composers in a session
+# When an upload would take the session over it, the session's oldest uploaded
+# attachments, from any of its composers, are dropped until it fits.
 # max_session_attachment_mib = 128
 
 # Max global attachment size in MiB (default: 1024)
-# Limits the total size of attachments stored on the server across all users
+# When an upload would take the server over it, the oldest uploaded
+# attachments across all sessions, other users' included, are dropped first.
 # max_global_attachment_mib = 1024
 
 # Rate Limiting Configuration
-# Protects the login endpoint from brute force attacks and abuse
+# Limits how often passwords and recovery codes can be tried. These limits
+# apply to sign-ins and to every other check of an account's password or
+# recovery code: linking an account, the current-password check before a
+# password change, password confirmations in the two-factor settings, and
+# recovery codes. All of them share the same per-address and per-account
+# budget.
+# Each limit must be a positive number: 0 or a negative value keeps that
+# limit's default, so a single tier cannot be switched off. Only
+# enabled = false turns rate limiting off, all tiers at once.
+# An attempt the limits refuse is not counted. An attempt that ends in a mail
+# server error, rather than in an answer to the credentials, counts towards
+# the global and per-minute limits only.
+# Without [cluster], each node keeps its own counts. See docs/RATELIMIT.md.
 [server.rate_limit]
 # Enable rate limiting (default: true)
 # Set to false to disable all rate limiting (not recommended for production)
 enabled = true
 
 # Per-IP rate limits
-# Maximum login attempts from a single IP address per minute
+# Maximum attempts from a single IP address per minute, counting every attempt:
+# successful, failed or ended in an error (default: 5)
 ip_requests_per_minute = 5
 
-# Maximum login attempts from a single IP address per hour
-# If exceeded, IP is locked out for the duration specified in lockout_minutes
+# Maximum FAILED sign-ins (credentials refused) from a single IP address per
+# hour (default: 20). Successful attempts and errors are not counted.
+# Once it is reached, the address's next attempt is refused and locks the
+# address out for lockout_minutes. A successful sign-in from the address
+# resets the count.
 ip_requests_per_hour = 20
 
 # Per-username rate limits
-# Maximum failed login attempts for a specific username per 15 minutes
+# A successful sign-in to the account resets both counts.
+# Maximum failed sign-ins for one account per 15 minutes (default: 5)
+# Once it is reached, the account's attempts are refused, with a wait of 15
+# minutes, until its count drops below it.
 username_fails_per_quarter = 5
 
-# Maximum failed login attempts for a specific username per hour
-# If exceeded, username is locked out for the duration specified in lockout_minutes
+# Maximum failed sign-ins for one account per hour (default: 10)
+# Once it is reached, the account's next attempt is refused and locks the
+# account out for lockout_minutes.
 username_fails_per_hour = 10
 
 # Global rate limit
-# Maximum login requests across all users and IPs per second
-# Protects server resources during large-scale attacks
+# Maximum attempts per second across all accounts and addresses
+# (default: 100): those this node recorded in the last second, successful,
+# failed or ended in an error, together with those the other nodes reported
+# under [cluster]. Once it is reached, further attempts from anyone are
+# refused as "server busy", with a wait of one second.
 global_requests_per_second = 100
 
 # Lockout duration in minutes (default: 15)
-# How long an IP or username is blocked after hitting rate limits
+# How long an IP or username is blocked after reaching an hourly limit. The
+# per-minute and per-15-minute limits lock nothing: they refuse with a wait.
 lockout_minutes = 15
 
 # Example configurations for different security postures:
@@ -315,13 +364,23 @@ enabled = true
 # max_part_kib = 1024
 
 [logging]
+# Not everything follows [logging]. Messages from TLS certificate management
+# (Let's Encrypt), from the cluster and a few others go to stderr as plain text
+# at info level, whatever output, format and level say. The server.debug
+# protocol traces do not go through it either (see debug above).
+
 # Log output destination
 # Options:
 #   "stdout"  - Write logs to standard output
-#   "stderr"  - Write logs to standard error (default)
+#   "stderr"  - Write logs to standard error
 #   "syslog"  - Send logs to system syslog daemon
 #   "/path/to/file.log" - Write logs to a file (path can be absolute or relative).
-#                         alps reopens the file on SIGHUP, for newsyslog/logrotate.
+#                         ALPS reopens the file on SIGHUP, for newsyslog/logrotate.
+# If syslog or the file cannot be opened, logs go to stderr.
+#
+# Default: "stderr" when [logging] sets output, format or level. When it sets
+# none of them, ALPS logs to stdout: JSON at info level, or console at debug
+# level with server.debug = true.
 #
 # Examples:
 #   output = "stdout"
@@ -333,8 +392,9 @@ output = "stderr"
 
 # Log format
 # Options:
-#   "json"    - Structured JSON logs for machine parsing (default for production)
-#   "console" - Human-readable text format (default when debug=true)
+#   "json"    - Structured JSON logs for machine parsing (default)
+#   "console" - Human-readable text format (default when server.debug = true)
+# Any value other than "json" gives the text format.
 #
 # JSON example output:
 #   {"time":"2025-10-21T10:30:45Z","level":"INFO","msg":"Starting server on :1323"}
@@ -345,11 +405,12 @@ format = "console"
 # Log level
 # Options:
 #   "debug" - Most verbose, includes all log messages
-#   "info"  - Standard operational messages (default for production)
-#   "warn"  - Warning messages only
-#   "error" - Error messages only (least verbose)
+#   "info"  - Standard operational messages (default)
+#   "warn"  - Warnings and errors (also "warning")
+#   "error" - Errors only (least verbose)
+# Values are case-insensitive, and an unknown value means "info".
 #
-# Note: When server.debug=true, the level defaults to "debug"
+# Note: When server.debug = true, the level defaults to "debug"
 level = "info"
 
 # Log every request at info level (default: true): method, path (without the
@@ -362,15 +423,20 @@ level = "info"
 
 [webauthn]
 # WebAuthn Configuration for Two-Factor Authentication (2FA)
-# Required for WebAuthn to work in production environments
+# Required for WebAuthn to work in production environments. Security keys work
+# only when rpid and origins match the hostname users reach ALPS at, so set
+# both to it. Each key falls back to its default on its own, and ALPS logs a
+# warning at startup when rpid is unset. See docs/WEBAUTHN.md.
 
-# The Relying Party ID (usually your domain name)
+# The Relying Party ID (usually your domain name) (default: "localhost")
 # rpid = "webmail.example.com"
 
 # The display name shown to users during authentication
+# (default: "Alps Webmail")
 # display_name = "Alps Webmail"
 
 # Allowed origins for WebAuthn requests
+# (default: ["http://localhost:1323", "http://localhost:5173"])
 # Must include the exact scheme (https://) and no trailing slash
 # origins = ["https://webmail.example.com"]
 
@@ -379,16 +445,19 @@ level = "info"
 # as it ships.
 
 # Colour theme for anyone who has not picked one: "alps" (default), "migadu",
-# "nord" or "ocean". A theme picked in Settings stays that user's.
+# "nord" or "ocean" (case-insensitive; any other value stops startup). A theme
+# picked in Settings stays that user's.
 # default_theme = "alps"
 
 # The logo in the edelweiss's place, on the sign-in page and in the header,
-# and the icon of the browser tab and the home screen. A logo alps ships, by
-# name: "migadu" (the Migadu mammoth, in the theme's colours), or "alps" for
-# the edelweiss. Or a folder holding a favicon package, the files
-# RealFaviconGenerator writes: favicon.svg, favicon-96x96.png, favicon.ico,
-# apple-touch-icon.png, web-app-manifest-192x192.png and
-# web-app-manifest-512x512.png. Defaults to the default theme's own logo, so
+# and the icon of the browser tab and the home screen. A logo ALPS ships, by
+# name (case-insensitive): "migadu" (the Migadu mammoth, in the theme's
+# colours), or "alps" for the edelweiss. Or the path of a folder holding a
+# favicon package, the files RealFaviconGenerator writes: all six of
+# favicon.svg, favicon-96x96.png, favicon.ico, apple-touch-icon.png,
+# web-app-manifest-192x192.png and web-app-manifest-512x512.png, each at most
+# 1 MiB. A missing or larger file, or a value that is neither a built-in name
+# nor a folder, stops startup. Defaults to the default theme's own logo, so
 # default_theme = "migadu" brings the Migadu logo.
 # logo = "migadu"
 
@@ -397,7 +466,9 @@ level = "info"
 # Enable TLS termination (default: false)
 # enabled = false
 
-# TLS Provider ("file" or "letsencrypt")
+# TLS Provider ("file" or "letsencrypt"; no default)
+# Required with enabled = true. Any other value, or none, stops startup
+# ("unsupported tls provider"). See docs/TLS.md.
 # provider = "file"
 
 # Path to TLS certificate (required if provider="file")
@@ -406,6 +477,10 @@ level = "info"
 # Path to TLS private key (required if provider="file")
 # key_file = "/path/to/key.pem"
 
+# With provider = "file", cert_file and key_file are read once, at startup.
+# Restart ALPS after renewing the certificate (SIGHUP only reopens the log
+# file). The minimum TLS version is 1.2.
+
 [tls.letsencrypt]
 # Email address for ACME registration (required)
 # email = "admin@example.com"
@@ -413,17 +488,24 @@ level = "info"
 # Domains to obtain certificates for (required)
 # domains = ["mail.example.com", "webmail.example.com"]
 
-# Default domain for SNI-less connections (optional)
+# Default domain for SNI-less connections (optional, default: the first entry
+# of domains)
 # default_domain = "mail.example.com"
 
-# Storage provider for certificates (default: "s3")
+# Storage provider for certificates: "s3" (default) or "file"
+# With "s3", the [tls.letsencrypt.s3] bucket must be reachable at startup, and
+# cache_dir holds a local copy of the certificates. With "file", certificates
+# are kept only in cache_dir, for a single node. Any other value stops
+# startup. A cluster requires "s3".
 # storage_provider = "s3"
 
 # Local cache directory for certificates (default: "cert-cache")
 # Used as fallback cache when using s3, or as main cache when using file provider
 # cache_dir = "cert-cache"
 
-# Sync interval in minutes for S3 fallback cache (default: 5)
+# How often, in minutes, a node uploads to S3 the certificates it could store
+# only in cache_dir while S3 was failing (default: 5). A check with nothing
+# waiting for upload does nothing. Used only with "s3". See docs/TLS.md.
 # sync_interval_minutes = 5
 
 # Address for HTTP-01 challenge handler (default: ":80")
@@ -441,29 +523,32 @@ level = "info"
 # certificate store.
 # directory_url = ""
 
-# Also pre-issue the legacy RSA certificate flavor alongside ECDSA
-# (default: false). Only needed if you must support very old clients that
-# cannot do ECDSA; doubles the number of certificates issued per domain.
-# Upgrade note: deployments whose cached certificates are RSA-only (issued
-# historically by handshakes from non-ECDSA clients) will obtain one new
-# ECDSA certificate per domain on the first warm pass after upgrading.
+# Also pre-issue an RSA certificate alongside the ECDSA one (default: false).
+# Only needed if you must support very old clients that cannot do ECDSA;
+# doubles the number of certificates issued per domain. Each warm pass makes
+# sure every domain has an ECDSA certificate, so a domain whose cache holds
+# only an RSA certificate gets an ECDSA one at the next pass.
 # warm_rsa_certs = false
 
 [tls.letsencrypt.s3]
 # S3 storage configuration for certificates
 # Uses autocert with S3 storage as the primary source of truth.
 
-# S3 endpoint (required if using custom S3 like MinIO or Backblaze B2)
-# endpoint = "s3.amazonaws.com"
+# S3 endpoint (required if using custom S3 like MinIO or Backblaze B2; leave it
+# unset for AWS S3). Without a scheme, https:// is assumed. A custom endpoint
+# uses path-style addressing.
+# endpoint = "minio.example.com:9000"
 
 # S3 bucket name (required)
 # bucket = "alps-certs"
 
-# S3 credentials (optional - uses IAM if not specified)
+# S3 credentials (optional). Without both, the AWS SDK's default credentials
+# are used (environment, shared config files, or an IAM role).
 # access_key = "your-access-key"
 # secret_key = "your-secret-key"
 
-# S3 region (optional)
+# S3 region (optional; with a custom endpoint the default is "us-east-1",
+# otherwise the AWS SDK's own region setting applies)
 # region = "us-east-1"
 
 # Key prefix for certificate storage (default: "")
@@ -471,46 +556,89 @@ level = "info"
 
 
 [cluster]
-# Optional - only needed for Let's Encrypt with S3 storage and multiple ALPS nodes.
+# Enable it whenever several ALPS nodes serve one site. Through it, the nodes
+# share sign-in rate-limit events and tell each other when an account enrols a
+# security key. With Let's Encrypt, only the leader requests certificates.
+# Without it, each node keeps its own rate-limit counts. See docs/CLUSTER.md.
 # Notes when enabled:
 #  - TLS letsencrypt storage_provider must be "s3" (enforced at startup);
 #    file storage is node-local and cannot be shared across the cluster.
 #  - A cluster initialization failure is fatal. Nodes do NOT silently fall
 #    back to single-node mode, since an ungated node would issue Let's
 #    Encrypt certificates on its own.
-#  - When deploying new versions, restart the current cluster leader first
-#    (leadership is pinned to the lexicographically smallest node_id).
+#  - Nodes that keep the same version can be restarted one at a time. A new
+#    version is not rolled out node by node: upgrade every node together,
+#    draining and stopping the nodes running the old version before any node
+#    of the new version serves. Nodes of different versions side by side are
+#    not supported. The order in which the nodes start does not matter: the
+#    node with the lexicographically smallest node_id takes leadership
+#    whenever it joins. docs/CLUSTER.md (section 3, "Restarting and
+#    Upgrading") has the details.
 enabled = false
-# node_id = "node-1"                            # Unique identifier for this node
-# bind = "0.0.0.0"                              # Can be "IP:port" or just "IP" (default: 0.0.0.0)
+# node_id: unique within the cluster (default: the host name). The node with
+# the lexicographically smallest node_id is the leader.
+# node_id = "node-1"
+# bind = "0.0.0.0"                              # An IPv4 address, as "IP:port" or just "IP" (default: 0.0.0.0)
 # port = 7946                                    # Gossip port, used if not specified in bind (default: 7946)
+#
+# secret_key: required when the cluster is enabled. It encrypts and
+# authenticates the gossip between nodes, so that only nodes holding the key
+# take part in the shared rate-limit counts, the security-key notices and the
+# choice of leader. Keep it secret, and the same on every node. Startup fails
+# without it unless allow_insecure = true is set explicitly, for a fully
+# private network. The value must be standard base64 of exactly 32 bytes;
+# anything else stops startup. The environment variable CLUSTER_SECRET_KEY,
+# when set, takes precedence over secret_key, which keeps the key out of the
+# config file.
 # secret_key = "base64-encoded-32-byte-key"    # Generate: openssl rand -base64 32
-# A secret_key is REQUIRED: without it, gossip is unencrypted and unauthenticated,
-# letting anyone with reach of the gossip port forge rate-limit events (lock out or
-# unlock arbitrary accounts) and hijack leader election. To run without encryption on
-# a fully trusted/private network, you must explicitly opt in:
-# allow_insecure = false                        # Set true to permit keyless (insecure) gossip
-# peers = ["node2:7946", "node3:7946"]           # List ALL internal peers so right-to-left XFF and rejoin work
+# allow_insecure = false                        # Set true to permit keyless (unencrypted) gossip
+#
+# peers: the gossip addresses (host:port) of the other nodes. They are used to
+# join the cluster at startup and, every 30 seconds while this node sees no
+# other member, to join it again. Client-address detection behind proxies
+# depends only on [server] trusted_proxies.
+# peers = ["node2:7946", "node3:7946"]
 
 
 [provider]
 # Mail provider type (default: "imap")
-# Options: "imap", "maildir", "multi", "jmap" (future)
-# A matching [provider.<type>] section is required.
+# Options: "imap", "maildir", "multi"
+# A matching [provider.<type>] section is required. Any other value stops
+# startup.
 type = "imap"
 
-# Provider connect timeout in seconds (default: 30)
-# For the imap provider this supersedes the legacy [server] imap_timeout_sec,
-# which is still honoured when this key is unset.
+# Provider timeout in seconds (default: 30)
+# It bounds connecting to the IMAP server: the TCP connect, plus the TLS
+# handshake for imaps://. It also bounds ALPS's waits for the answers to
+# ENABLE (CONDSTORE), IDLE and DONE, NOTIFY, the STATUS after an IDLE, and the
+# STATUS and UID lookup around saving a message without UIDPLUS. It does not
+# bound LOGIN or other commands. Those use the IMAP client's fixed 30-second
+# response timeout (5 minutes while it reads a literal, such as a message
+# body).
+# A mail operation runs until its request is cancelled: the page stops waiting
+# (25 seconds by default), the page goes away, or read_timeout_sec passes. It
+# may then run up to 10 more seconds. After that, the session's mail
+# connection is closed once the command in flight returns, and the next
+# request opens a new one.
+# For the imap provider, [server] imap_timeout_sec is read in its place when
+# this key is unset. With type = "multi", only this key applies, to every
+# backend (30 seconds without it), and the DNS lookups for template and
+# autodiscover routing are capped at 5 seconds, or at timeout_sec when it is
+# lower. The maildir provider has no network timeout.
 # timeout_sec = 30
 
 [provider.imap]
-# IMAP server URL
+# IMAP server URL (required, with a scheme)
 # Supported schemes: imaps:// (implicit TLS, default port 993),
-# imap:// (default port 143), imap+insecure:// (implies insecure)
+# imap:// (default port 143, requires STARTTLS), imap+insecure:// (implies
+# insecure)
 server = "imaps://imap.migadu.com:993"
 
 # Allow insecure connections (default: false)
+# insecure = true (like imap+insecure://) connects in plaintext without
+# STARTTLS. It has no effect on imaps://, and it never disables certificate
+# verification: certificates are always verified, for imaps:// and STARTTLS
+# alike.
 # insecure = false
 
 # Log the IMAP protocol exchange for this provider (default: false).
@@ -529,11 +657,17 @@ server = "imaps://imap.migadu.com:993"
 # Path to the Dovecot-style passwd file for authentication (REQUIRED)
 # auth_passwd_file = "/etc/dovecot/users"
 #
-# Path to the base maildir directory for all users (optional).
-# When unset, each user's maildir is taken from the home directory recorded
-# in auth_passwd_file (<home>/Maildir). Placeholders: %u (local part),
-# %d (domain), %n (full username).
-# path = "/var/mail/virtual/%d/%u"
+# Each user's own maildir, as a pattern (optional). After the placeholders are
+# replaced, the path is the user's maildir itself: the directory that holds
+# cur, new, tmp, the .Folder directories and alps_store.json. Placeholders:
+# %u (local part of the login), %d (domain), %n (the whole login); for a login
+# without "@", %u and %n are the whole login and %d is empty. Include %n, or
+# %u with %d, so that every account gets its own directory: with no
+# placeholder all accounts share one maildir, and with %u alone
+# john@example.com and john@example.org do. When unset, each user's maildir is
+# <home>/Maildir, with <home> from the user's entry in auth_passwd_file.
+# See docs/MAILDIR.md.
+# path = "/var/vmail/%d/%u/Maildir"
 
 # Multi-Provider Configuration
 # Routes each login to a backend chosen by the domain in the username.
@@ -566,21 +700,29 @@ server = "imaps://imap.migadu.com:993"
 # domain never matches and falls through to the next rule.
 # template_domains = ["example.com", "otherdomain.org"]
 #
-# Automatically discover IMAP server using RFC 6186 DNS SRV records (_imaps._tcp, _imap._tcp).
-# To protect against unauthenticated SSRF relays, an explicit domain allowlist is required.
+# Automatically discover the IMAP server using RFC 6186 DNS SRV records
+# (_imaps._tcp, then _imap._tcp). An explicit domain allowlist is required, so
+# that ALPS looks up and connects to the servers of the domains you list only.
+# Each node keeps the answers in memory: a server found is used for 15
+# minutes, and a lookup that found none is answered from the cache for 30
+# seconds, failing the sign-ins for that domain until it is tried again.
 # autodiscover = false
 # autodiscover_domains = ["example.com", "otherdomain.org"]
 #
-# Either allowlist accepts the single entry "*" to match every domain. That
-# makes the server dial hosts chosen by whoever is logging in -- use it only
-# where untrusted users cannot reach the login form. Private, loopback,
-# link-local and CGNAT targets stay blocked either way.
+# Either allowlist accepts the single entry "*" to match every domain. ALPS
+# then connects to whatever server the domain typed at sign-in leads to, so
+# use it only where the sign-in page is open to users you know. Private,
+# loopback, link-local and CGNAT targets stay blocked either way.
 #
 # Explicit per-domain provider mappings. Alongside the mail store, a backend
 # may name the other endpoints its users should reach: smtp, carddav, caldav
 # and managesieve, plus a password sub-table that replaces the options in
 # plugin.password. Anything a backend does not name falls back to the matching
 # global setting, so a backend never inherits an endpoint from another one.
+# Logins routed by template or autodiscover, and every domain that falls
+# through to the default, use the smtp, carddav, caldav, managesieve and
+# password settings of [provider.multi.default]. Where the default names none,
+# the global settings apply.
 # [provider.multi.domains."migadu.com"]
 # type = "imap"
 # server = "imaps://imap.migadu.com:993"
@@ -601,6 +743,10 @@ server = "imaps://imap.migadu.com:993"
 # managesieve = "managesieves://imap.sharedmail.com:4190"
 #
 # Password changes for those domains, replacing the options in plugin.password.
+# The block replaces [plugin.password.options] as a whole: nothing is merged,
+# the global payload_mapping included. Give it its own payload_mapping (or a
+# command); without one, an empty JSON object (or an empty form) is sent.
+# [plugin.password] enabled = true is still required.
 # In TOML this sub-table binds to the route declared ABOVE it, so keep each one
 # directly under its own [[provider.multi.routes]]. A domains entry takes the
 # same sub-table, as [provider.multi.domains."d".password].
@@ -611,6 +757,8 @@ server = "imaps://imap.migadu.com:993"
 # username = "..."
 # password = "..."
 # payload = "json"
+# [provider.multi.routes.password.payload_mapping]
+# password = "new_password"
 #
 # Default fallback provider for domains not matched above:
 # [provider.multi.default]
@@ -619,77 +767,111 @@ server = "imaps://imap.migadu.com:993"
 # smtp = "smtps://smtp.fallback.com:465"
 
 [smtp]
-# SMTP server
-# Supported schemes: smtps://, smtp://, smtp+insecure://
+# SMTP server (required, also with [provider] type = "multi")
+# Supported schemes: smtps:// (implicit TLS, default port 465), smtp://
+# (default port 587, requires STARTTLS), smtp+insecure:// (implies insecure)
 server = "smtps://smtp.migadu.com:465"
 
 # Allow insecure connections (default: false)
+# insecure = true (like smtp+insecure://) sends in plaintext without STARTTLS.
+# It is ignored for smtps://, and it never disables certificate verification.
+# It also applies to every SMTP server a multi backend names.
 # insecure = false
 
 
 # Plugin Configuration
-# Each plugin can have its own section with enabled flag and settings
-# If no [plugin.*] sections are defined, all plugins are enabled by default
+# Each plugin can have its own section with enabled flag and settings.
+# If any [plugin.*] section has enabled = true, only the plugins with
+# enabled = true are loaded, so list every plugin you want, base included.
+# If no section has enabled = true, which includes having no [plugin.*]
+# sections at all, all plugins load and enabled = false holds none of them
+# back. caldav, carddav and managesieve then load only with a server or
+# [provider] type = "multi". The password plugin then loads but answers 403,
+# since password change needs [plugin.password] enabled = true (and with it,
+# the rule above applies).
+# A caldav, carddav or managesieve section with enabled = true and no server,
+# as below, loads without an endpoint: its requests fail, logged as "...
+# server is not configured", unless type = "multi" and the user's backend
+# names one.
+# A server value that cannot be used (an unknown ManageSieve scheme, a CardDAV
+# server without a scheme) stops startup, even in a section with
+# enabled = false. See docs/PLUGINS.md and docs/CONFIGURATION.md (section 9).
+# Only [plugin.caldav] and [plugin.password] read options.
 
 [plugin.base]
 # Base plugin provides core email functionality (required)
 enabled = true
 
-# Plugin-specific options (optional map)
-# options = { "example_key" = "example_value" }
-
 
 [plugin.caldav]
-# CalDAV plugin for calendar support
+# CalDAV plugin for calendar support. See docs/CDAV.md.
 enabled = true
-# CalDAV server URL (optional, can use auto-discovery)
-# Supported schemes: caldavs://, caldav+insecure://, https://, http+insecure://
+# CalDAV server: a URL (caldavs:// or https:// for TLS; caldav+insecure://,
+# http+insecure:// or http:// for plain HTTP), or a bare host name with no
+# scheme or port. A bare host makes ALPS look up the CalDAV server in DNS
+# (SRV _caldavs._tcp) once, at startup; if that fails, the plugin is not
+# loaded. Without server, only users whose multi backend names caldav get
+# calendars.
 # server = "https://caldav.example.com"
 
 # Plugin-specific options (optional map)
 # Options:
-#   week_start: day that starts the week in the calendar UI (0 = Sunday, 1 = Monday). Default: 1.
+#   week_start (alias first_day_of_week): day that starts the week in the
+#   calendar UI: 0, "0", "sunday" or "sun" for Sunday; 1, "1", "monday" or
+#   "mon" for Monday (case-insensitive). Any other value means Monday.
+#   Default: 1. When both keys are set, week_start is used. It applies only
+#   to users who have not chosen their own first day of the week.
 # options = { week_start = 0 }
 
 
 [plugin.carddav]
-# CardDAV plugin for contacts support
+# CardDAV plugin for contacts support. See docs/CDAV.md.
 enabled = true
-# CardDAV server URL (optional, can use auto-discovery)
-# Supported schemes: carddavs://, carddav+insecure://, https://, http+insecure://
+# CardDAV server URL, with a scheme: carddavs:// or https:// for TLS, or
+# carddav+insecure://, http+insecure:// or http:// for plain HTTP. There is no
+# discovery: a value without a scheme stops startup. Without server, only
+# users whose multi backend names carddav get contacts.
 # server = "https://carddav.example.com"
-
-# Plugin-specific options (optional map)
-# options = { "example_key" = "example_value" }
 
 
 [plugin.managesieve]
-# ManageSieve plugin for email filtering
+# ManageSieve plugin for email filtering. See docs/FILTERS.md.
 enabled = true
-# ManageSieve server URL (optional, can use auto-discovery via SRV records)
-# Supported schemes: managesieves://, managesieve://, sieve://, managesieve+insecure://
+# ManageSieve server. There is no discovery: without it, filters are
+# unavailable (logged as "ManageSieve server is not configured") unless a
+# multi backend names managesieve.
+# Supported forms: managesieves://, managesieve://, sieve:// and a bare host
+# name, all on port 4190 by default, plus managesieve+insecure:// and
+# sieve+insecure://. None of them is implicit TLS.
 # TLS is required: the connection must be upgraded via STARTTLS before the
 # account password is sent. If the server does not offer STARTTLS the connection
-# is refused. Use managesieve+insecure:// only for a trusted/local server without
-# TLS — it permits cleartext authentication and skips certificate verification.
+# is refused. Use managesieve+insecure:// or sieve+insecure:// only for a
+# trusted/local server without TLS — it permits cleartext authentication and
+# skips certificate verification.
 # server = "managesieves://sieve.example.com:4190"
 
 
 [plugin.gpg]
-# GPG End-to-End Encryption plugin
+# GPG End-to-End Encryption plugin. See docs/GPG.md.
 enabled = true
 
 
 # Password Change Configuration
 # Allows users to change their password via an external HTTP API, or a command
-# run on this host
+# run on this host. The request, or the command, must finish within 15
+# seconds. See docs/PASSWORD_CHANGE.md.
 [plugin.password]
 # Enable the password change feature (default: false)
+# With enabled = true, an options block that cannot run (endpoint and command
+# both set, a program path that is not absolute, ...) stops startup.
 enabled = false
 
 [plugin.password.options]
 # Endpoint URL to send the password change request to.
-# Supports interpolation variables: {email}, {local}, {domain}
+# Supports interpolation variables, each path-escaped: {email} (the login as
+# the user signed in with it, so a bare user name under a multi
+# default_domain stays bare), {local} (the part before "@", or the whole
+# login) and {domain} (the part after "@", or empty).
 # endpoint = "https://api.example.com/users/{local}/password"
 
 # HTTP method to use (default: POST)
@@ -718,10 +900,14 @@ enabled = false
 # Supports {old_password} and {new_password} besides the above.
 # stdin = "{new_password}\n"
 
-# Payload Mapping Configuration (Required)
+# Payload Mapping Configuration (optional, used only with endpoint)
 # Maps internal ALPS variables to custom payload fields expected by the endpoint.
-# Internal variables available: "username", "local", "domain", "old_password", "new_password"
-# Only the fields mapped here will be sent in the request payload.
+# Each key is the field name sent, and each value is one of the internal
+# variables: "username" (the login, as {email} above), "local", "domain",
+# "old_password", "new_password". An entry naming any other value is dropped.
+# Only the fields mapped here will be sent in the request payload. Without this
+# table, an empty JSON object (or an empty form) is sent. It plays no part with
+# command.
 [plugin.password.options.payload_mapping]
 old_password = "old_password"
 password = "new_password"
