@@ -10,6 +10,7 @@
 // fail here, which is the point.
 
 import {
+  allowConsoleErrors,
   deliver,
   expect,
   login,
@@ -19,11 +20,15 @@ import {
   seedContact,
   seedEvent,
   test,
+  toast,
   USER,
   waitForSent,
 } from "./fixtures";
 
 const run = Date.now();
+
+/** The read of one whole card, behind the list's copy an opened contact shows first. */
+const isCardRead = (method: string, url: string) => method === "GET" && /^\/contacts\/[^/]+$/.test(new URL(url).pathname);
 
 test.afterEach(async () => {
   await resetDav();
@@ -135,8 +140,12 @@ test("deleting a contact already deleted elsewhere succeeds", async ({ page }) =
   await login(page);
   await page.goto("/#/contacts");
   const row = page.locator("alps-contacts-list .contact-item", { hasText: name });
+  // Removed once the card has been read: a card gone before its read is a
+  // contact the page learns has gone, the test after this one.
+  const read = page.waitForResponse((r) => isCardRead(r.request().method(), r.url()));
   await row.click();
   await expect(page.locator("alps-contact-view")).toContainText(name);
+  expect((await read).status()).toBe(200);
 
   await removeContact(uid);
   await page.locator('alps-contact-view alps-icon-btn[title="Delete"]').click();
@@ -145,6 +154,34 @@ test("deleting a contact already deleted elsewhere succeeds", async ({ page }) =
 
   expect((await deleted).status()).toBe(200);
   await expect(row).toHaveCount(0, { timeout: 15_000 });
+});
+
+test("a contact deleted elsewhere before its card is read closes, and says so", async ({ page }) => {
+  // The list still has it, so it opens from the list's copy, and the read of
+  // the whole card finds it gone. That read answered 500: the page logged an
+  // error and went on showing a contact that no longer exists.
+  allowConsoleErrors(page, /status of 404/);
+  const name = `Hopper E2E ${run}`;
+  const uid = `e2e-hopper-${run}`;
+  await seedContact({ uid, name, email: `hopper.${run}@example.test` });
+  await login(page);
+  await page.goto("/#/contacts");
+  let release!: () => void;
+  const removed = new Promise<void>((resolve) => { release = resolve; });
+  await page.route((url) => /^\/contacts\/[^/]+$/.test(url.pathname), async (route) => {
+    if (!isCardRead(route.request().method(), route.request().url())) return route.fallback();
+    await removed;
+    await route.continue();
+  });
+  const row = page.locator("alps-contacts-list .contact-item", { hasText: name });
+  await row.click();
+  await expect(page.locator("alps-contact-view")).toContainText(name);
+
+  await removeContact(uid);
+  release();
+  await expect(toast(page, "This contact was deleted on another device.")).toBeVisible();
+  await expect(page.locator("alps-contact-view")).not.toContainText(name);
+  await expect(row).toHaveCount(0);
 });
 
 test("an Apple birthday without a year stays without one through an edit", async ({ page }) => {
