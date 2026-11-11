@@ -15,6 +15,7 @@ import {
   expect,
   login,
   readContact,
+  removeCalendarObject,
   removeContact,
   resetDav,
   seedContact,
@@ -182,6 +183,31 @@ test("a contact deleted elsewhere before its card is read closes, and says so", 
   await expect(toast(page, "This contact was deleted on another device.")).toBeVisible();
   await expect(page.locator("alps-contact-view")).not.toContainText(name);
   await expect(row).toHaveCount(0);
+});
+
+test("an event deleted elsewhere while it is being edited says so when saved", async ({ page }) => {
+  // The editor saves over the event it opened. Deleted on another device
+  // meanwhile, the save answered 500: the page said it could not save, and
+  // logged the failure.
+  allowConsoleErrors(page, /status of 404/);
+  const uid = `e2e-retro-${run}`;
+  const summary = `E2E Retro ${run}`;
+  await seedEvent({ uid, summary, dtstart: "20260617T090000Z", dtend: "20260617T100000Z" });
+  await login(page);
+  await page.goto("/#/calendar/month/2026-06");
+  const chip = page.locator("calendar-month-view .event-chip", { hasText: summary });
+  await chip.click();
+  await page.locator("calendar-month-view calendar-event-preview alps-icon-btn.edit-btn").filter({ visible: true }).first().click();
+  const modal = page.locator("calendar-page calendar-event-modal");
+  const location = modal.getByLabel("Location", { exact: true });
+  await location.fill("Room 4");
+
+  await removeCalendarObject(uid);
+  await modal.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(toast(page, "This event was deleted on another device.")).toBeVisible();
+  // The editor stays, with what was typed, and the calendar is read again.
+  await expect(location).toHaveValue("Room 4");
+  await expect(chip).toHaveCount(0);
 });
 
 test("an Apple birthday without a year stays without one through an edit", async ({ page }) => {
