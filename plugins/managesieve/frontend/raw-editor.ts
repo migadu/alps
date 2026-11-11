@@ -90,17 +90,37 @@ export class RawEditor extends LitElement {
 			outline: none;
 		}
 		
-		.sieve-keyword { color: #d73a49; font-weight: 600; }
-		.sieve-operator { color: #005cc5; font-weight: 600; }
-		.sieve-string { color: #032f62; }
-		.sieve-comment { color: #6a737d; font-style: italic; }
-		
-		@media (prefers-color-scheme: dark) {
-			.sieve-keyword { color: #ff7b72; }
-			.sieve-operator { color: #79c0ff; }
-			.sieve-string { color: #a5d6ff; }
-			.sieve-comment { color: #8b949e; }
+		/* Each colour in a light and a dark version, picked by the scheme alps's
+		   theme sets on the page. The system's own setting is only a fallback,
+		   for a browser without light-dark(): it chose by itself the light
+		   palette on alps's dark theme, and the dark one on its light theme. */
+		:host {
+			--sieve-keyword: #d73a49;
+			--sieve-operator: #005cc5;
+			--sieve-string: #032f62;
+			--sieve-comment: #6a737d;
 		}
+		@media (prefers-color-scheme: dark) {
+			:host {
+				--sieve-keyword: #ff7b72;
+				--sieve-operator: #79c0ff;
+				--sieve-string: #a5d6ff;
+				--sieve-comment: #8b949e;
+			}
+		}
+		@supports (color: light-dark(white, black)) {
+			:host {
+				--sieve-keyword: light-dark(#d73a49, #ff7b72);
+				--sieve-operator: light-dark(#005cc5, #79c0ff);
+				--sieve-string: light-dark(#032f62, #a5d6ff);
+				--sieve-comment: light-dark(#6a737d, #8b949e);
+			}
+		}
+
+		.sieve-keyword { color: var(--sieve-keyword); font-weight: 600; }
+		.sieve-operator { color: var(--sieve-operator); font-weight: 600; }
+		.sieve-string { color: var(--sieve-string); }
+		.sieve-comment { color: var(--sieve-comment); font-style: italic; }
 
 		.actions {
 			display: flex;
