@@ -232,8 +232,9 @@ export const THEME_BUNDLES: Record<string, ThemeBundle> = {
       'bg-raised': '#ffffff',
       'bg-unread': '#1d4ed80b',
       'bg-unread-hover': '#1d4ed814',
-      'scrollbar-thumb': '#b9ceec',
-      'scrollbar-thumb-hover': '#8fb0de',
+      // 3:1 against the page and the sidebar, so the thumb shows.
+      'scrollbar-thumb': '#6585bb',
+      'scrollbar-thumb-hover': '#4a6aa3',
       'icon-inbox': '#1d4ed8',
       'icon-sent': '#0b7a48',
       'icon-drafts': '#8f4f00',
@@ -278,8 +279,9 @@ export const THEME_BUNDLES: Record<string, ThemeBundle> = {
       'bg-raised': '#132756',
       'bg-unread': '#38bdf80d',
       'bg-unread-hover': '#38bdf817',
-      'scrollbar-thumb': '#254380',
-      'scrollbar-thumb-hover': '#4d7ad1',
+      // 3:1 against the page and the sidebar, so the thumb shows.
+      'scrollbar-thumb': '#4d7ad1',
+      'scrollbar-thumb-hover': '#6f95dd',
       'icon-inbox': '#38bdf8',
       'icon-sent': '#34d399',
       'icon-drafts': '#fbbf24',
