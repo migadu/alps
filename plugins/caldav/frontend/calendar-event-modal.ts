@@ -3,7 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { addressOfPerson, calendarService, isAllDayEvent, personFromAddress, tellsSomeone } from './calendar-service';
-import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
+import { isGone, isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
 import type { EventData, CalendarData } from './calendar-service';
 import '../../../frontend/src/components/ui-modal';
 import '../../../frontend/src/components/alps-input';
@@ -305,15 +305,18 @@ export class CalendarEventModal extends LitElement {
             this.open = false;
             this.dispatchEvent(new CustomEvent('saved'));
         } catch (e) {
-            console.error('Failed to save event', e);
             // Refused rather than failed: the event was saved elsewhere while
-            // this editor was open. "Could not be saved" invites pressing Save
-            // again; the page re-reads instead, so reopening shows what the
-            // other device wrote, and the typed edit stays here until closed.
-            const conflict = isVersionConflict(e);
+            // this editor was open, or deleted there. "Could not be saved"
+            // invites pressing Save again; the page re-reads instead, so
+            // reopening shows what the other device wrote, and the typed edit
+            // stays here until closed.
+            const gone = isGone(e);
+            const conflict = gone || isVersionConflict(e);
+            if (!gone) console.error('Failed to save event', e);
             if (conflict) this.dispatchEvent(new CustomEvent('conflict'));
+            const key = gone ? 'calendar.deletedElsewhere' : conflict ? 'calendar.saveConflict' : 'calendar.saveEventFailed';
             window.dispatchEvent(new CustomEvent('show-toast', {
-                detail: { message: this.i18nStore?.t(conflict ? 'calendar.saveConflict' : 'calendar.saveEventFailed'), type: 'error', duration: 8000 }
+                detail: { message: this.i18nStore?.t(key), type: 'error', duration: 8000 }
             }));
         } finally {
             this.isSaving = false;

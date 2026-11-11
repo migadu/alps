@@ -114,7 +114,7 @@ class ContactsService {
   async fetchContact(path: string) {
     const res = await fetchWithTimeout(`/contacts/${encodePathParam(path)}`);
     if (!res.ok) {
-      throw new Error(`Failed to fetch contact: ${res.statusText}`);
+      throw new HttpStatusError(res.status, `Failed to fetch contact: ${res.statusText}`);
     }
     return res.json();
   }

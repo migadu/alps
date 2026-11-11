@@ -6,6 +6,7 @@ export default {
     saveEventFailed: '일정을 저장하지 못했습니다.',
     endBeforeStart: '일정의 종료 시간은 시작 시간보다 빠를 수 없습니다.',
     saveConflict: '다른 기기에서 이 일정이 변경되어 편집 내용을 저장하지 못했습니다. 편집기를 닫고 일정을 다시 열어 최신 버전을 확인하세요.',
+    deletedElsewhere: '다른 기기에서 이 일정이 삭제되었습니다.',
     loadFailed: '캘린더를 불러오지 못했습니다. 연결을 확인하고 다시 시도하세요.',
     months: {
       '0': '1월',
@@ -154,6 +155,7 @@ export default {
     someListsFailed: '일부 목록을 불러오지 못해 모든 작업이 표시되지는 않습니다.',
     saveFailed: '작업을 저장하지 못했습니다.',
     saveConflict: '다른 기기에서 이 작업이 변경되어 편집 내용을 저장하지 못했습니다. 편집기를 닫고 작업을 다시 열어 최신 버전을 확인하세요.',
+    deletedElsewhere: '다른 기기에서 이 작업이 삭제되었습니다.',
     completeFailed: '작업을 업데이트하지 못했습니다.',
     deleteFailed: '작업을 삭제하지 못했습니다.',
     createListFailed: '목록을 만들지 못했습니다.',

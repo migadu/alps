@@ -19,6 +19,7 @@ export default {
     saveFailed: '연락처를 저장하지 못했습니다.',
     loadFailed: '연락처를 불러오지 못해 아직 편집할 수 없습니다.',
     saveConflict: '다른 기기에서 이 연락처가 변경되어 편집 내용을 저장하지 못했습니다. 편집을 취소하면 최신 버전을 볼 수 있습니다.',
+    deletedElsewhere: '다른 기기에서 이 연락처가 삭제되었습니다.',
     starFailed: {
       other: '연락처 {total}개 중 {count}개를 업데이트하지 못했습니다.'
     },

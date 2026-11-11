@@ -6,6 +6,7 @@ export default {
     saveEventFailed: 'Não foi possível salvar o evento.',
     endBeforeStart: 'O evento não pode terminar antes de começar.',
     saveConflict: 'Este evento foi alterado em outro dispositivo, por isso sua edição não foi salva. Feche o editor e abra o evento novamente para ver a versão mais recente.',
+    deletedElsewhere: 'Este evento foi excluído em outro dispositivo.',
     loadFailed: 'Não foi possível carregar seu calendário. Verifique a conexão e tente novamente.',
     months: {
       '0': 'Janeiro',
@@ -154,6 +155,7 @@ export default {
     someListsFailed: 'Não foi possível carregar algumas listas, por isso nem todas as tarefas são mostradas.',
     saveFailed: 'Não foi possível salvar a tarefa.',
     saveConflict: 'Esta tarefa foi alterada em outro dispositivo, por isso sua edição não foi salva. Feche o editor e abra a tarefa novamente para ver a versão mais recente.',
+    deletedElsewhere: 'Esta tarefa foi excluída em outro dispositivo.',
     completeFailed: 'Não foi possível atualizar a tarefa.',
     deleteFailed: 'Não foi possível excluir a tarefa.',
     createListFailed: 'Não foi possível criar a lista.',

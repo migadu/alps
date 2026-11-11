@@ -23,6 +23,7 @@ export default {
     saveFailed: 'Non è stato possibile salvare il contatto.',
     loadFailed: 'Non è stato possibile caricare il contatto, quindi non può ancora essere modificato.',
     saveConflict: 'Il contatto è stato modificato su un altro dispositivo, quindi la modifica non è stata salvata. Annulla la modifica per vedere l\'ultima versione.',
+    deletedElsewhere: 'Il contatto è stato eliminato su un altro dispositivo.',
     starFailed: {
       one: 'Non è stato possibile aggiornare {count} contatto su {total}.',
       other: 'Non è stato possibile aggiornare {count} contatti su {total}.'
