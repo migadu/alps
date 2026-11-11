@@ -29,7 +29,7 @@ import './alps-sidebar-calendar';
 import '../../../frontend/src/components/alps-nav-buttons';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/ui-confirm';
-import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
+import { isGone, isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
 import '../../../frontend/src/components/alps-popup';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
@@ -926,6 +926,11 @@ export class CalendarPage extends LitElement {
             if (saved.sendFailed) this.reportFailure('invitations.sendFailed');
             await this.fetchData();
         } catch (err) {
+            if (isGone(err)) {
+                this.reportFailure(event.task ? 'tasks.deletedElsewhere' : 'calendar.deletedElsewhere');
+                await this.fetchData();
+                return;
+            }
             console.error('Failed to answer the invitation', err);
             const conflict = isVersionConflict(err);
             this.reportFailure(conflict ? 'invitations.changedElsewhere' : 'invitations.answerFailed');
@@ -939,6 +944,11 @@ export class CalendarPage extends LitElement {
             if (saved?.sendFailed) this.reportFailure('invitations.notTold');
             await this.fetchData();
         } catch (err) {
+            if (isGone(err)) {
+                this.reportFailure('tasks.deletedElsewhere');
+                await this.fetchData();
+                return;
+            }
             console.error('Failed to update task', err);
             this.reportFailure('tasks.completeFailed');
         }

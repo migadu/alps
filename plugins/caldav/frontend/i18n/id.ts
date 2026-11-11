@@ -6,6 +6,7 @@ export default {
     saveEventFailed: 'Acara tidak dapat disimpan.',
     endBeforeStart: 'Acara tidak dapat berakhir sebelum dimulai.',
     saveConflict: 'Acara ini diubah di perangkat lain, sehingga perubahan Anda tidak disimpan. Tutup editor dan buka acara ini lagi untuk melihat versi terbaru.',
+    deletedElsewhere: 'Acara ini dihapus di perangkat lain.',
     loadFailed: 'Tidak dapat memuat kalender Anda. Periksa koneksi dan coba lagi.',
     months: {
       '0': 'Januari',
@@ -154,6 +155,7 @@ export default {
     someListsFailed: 'Beberapa daftar tidak dapat dimuat, sehingga tidak semua tugas ditampilkan.',
     saveFailed: 'Tugas tidak dapat disimpan.',
     saveConflict: 'Tugas ini diubah di perangkat lain, sehingga perubahan Anda tidak disimpan. Tutup editor dan buka tugas ini lagi untuk melihat versi terbaru.',
+    deletedElsewhere: 'Tugas ini dihapus di perangkat lain.',
     completeFailed: 'Tugas tidak dapat diperbarui.',
     deleteFailed: 'Tugas tidak dapat dihapus.',
     createListFailed: 'Daftar tidak dapat dibuat.',

@@ -6,6 +6,7 @@ export default {
     saveEventFailed: '無法儲存行程。',
     endBeforeStart: '行程的結束時間不能早於開始時間。',
     saveConflict: '此行程已在其他裝置上變更，因此未儲存您的編輯。請關閉編輯器並重新開啟行程，以查看最新版本。',
+    deletedElsewhere: '此行程已在其他裝置上刪除。',
     loadFailed: '無法載入您的行事曆。請檢查連線後重試。',
     months: {
       '0': '一月',
@@ -154,6 +155,7 @@ export default {
     someListsFailed: '部分清單無法載入，因此並未顯示所有工作。',
     saveFailed: '無法儲存工作。',
     saveConflict: '此工作已在其他裝置上變更，因此未儲存您的編輯。請關閉編輯器並重新開啟工作，以查看最新版本。',
+    deletedElsewhere: '此工作已在其他裝置上刪除。',
     completeFailed: '無法更新工作。',
     deleteFailed: '無法刪除工作。',
     createListFailed: '無法建立清單。',
