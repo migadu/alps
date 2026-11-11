@@ -532,7 +532,8 @@ export const sr = {
     messages: 'Poruke',
     contacts: 'Kontakti',
     calendar: 'Kalendar',
-    tasks: 'Zadaci'
+    tasks: 'Zadaci',
+    label: 'Aplikacije'
   },
   userMenu: {
     settings: 'Podešavanja',

@@ -520,7 +520,8 @@ export const it = {
     messages: 'Messaggi',
     contacts: 'Contatti',
     calendar: 'Calendario',
-    tasks: 'Attività'
+    tasks: 'Attività',
+    label: 'App'
   },
   userMenu: {
     settings: 'Impostazioni',
