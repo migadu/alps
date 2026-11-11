@@ -1,12 +1,13 @@
 // Message previews: the list shows the start of each message's text under its
 // subject, as sora gives it (FETCH PREVIEW), with quoted text left out.
 //
-// The suite runs sora with previews unless E2E_PREVIEW=0, which runs it as a
-// backend without them; the list then shows none and asks for none.
+// Previews are opt-in: E2E_PREVIEW=1 and a PREVIEW-capable SORA_DIR run the
+// positive case. Otherwise the list shows none and asks for none. An explicit
+// opt-in against an unsupported server must fail the positive case.
 
 import { deliver, expect, login, test } from "./fixtures";
 
-const previewsOn = process.env.E2E_PREVIEW !== "0";
+const previewsOn = process.env.E2E_PREVIEW === "1";
 
 test("the list shows a message's preview under its subject", async ({ page }) => {
   test.skip(!previewsOn, "sora runs without previews");
