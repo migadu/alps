@@ -46,6 +46,17 @@ export function isVersionConflict(error: unknown): boolean {
 }
 
 /**
+ * Was this a write to an event or task that is no longer there, most often
+ * deleted on another device since the page read it?
+ *
+ * Not a failure either, and nothing to log: the message says where it went,
+ * and the page reads again.
+ */
+export function isGone(error: unknown): boolean {
+  return error instanceof HttpStatusError && error.status === 404;
+}
+
+/**
  * May a write that failed have been made anyway?
  *
  * A timeout, a lost connection or a 5xx says nothing about what the server

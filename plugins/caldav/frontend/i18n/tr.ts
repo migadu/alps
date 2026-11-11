@@ -6,6 +6,7 @@ export default {
     saveEventFailed: 'Etkinlik kaydedilemedi.',
     endBeforeStart: 'Etkinlik başlamadan bitemez.',
     saveConflict: 'Bu etkinlik başka bir cihazda değiştirildiği için düzenlemeniz kaydedilmedi. En son sürümü görmek için düzenleyiciyi kapatıp etkinliği yeniden açın.',
+    deletedElsewhere: 'Bu etkinlik başka bir cihazda silindi.',
     loadFailed: 'Takviminiz yüklenemedi. Bağlantınızı kontrol edip tekrar deneyin.',
     months: {
       '0': 'Ocak',
@@ -154,6 +155,7 @@ export default {
     someListsFailed: 'Bazı listeler yüklenemediği için tüm görevler gösterilmiyor.',
     saveFailed: 'Görev kaydedilemedi.',
     saveConflict: 'Bu görev başka bir cihazda değiştirildiği için düzenlemeniz kaydedilmedi. En son sürümü görmek için düzenleyiciyi kapatıp görevi yeniden açın.',
+    deletedElsewhere: 'Bu görev başka bir cihazda silindi.',
     completeFailed: 'Görev güncellenemedi.',
     deleteFailed: 'Görev silinemedi.',
     createListFailed: 'Liste oluşturulamadı.',

@@ -522,7 +522,8 @@ export const de: TranslationDictionary = {
     messages: 'Nachrichten',
     contacts: 'Kontakte',
     calendar: 'Kalender',
-    tasks: 'Aufgaben'
+    tasks: 'Aufgaben',
+    label: 'Apps'
   },
   userMenu: {
     settings: 'Einstellungen',

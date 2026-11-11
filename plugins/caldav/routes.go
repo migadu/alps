@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-ical"
+	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/google/uuid"
 	"github.com/migadu/alps"
@@ -300,6 +301,16 @@ func setEventTimes(event *ical.Event, start, end time.Time, allDay bool) {
 // the stored one: most often the user's own phone saved the object while it
 // was open here.
 var errChangedElsewhere = alps.NewHTTPError(http.StatusPreconditionFailed, "changed elsewhere since it was opened")
+
+// errGone answers a write to an object that is no longer stored: most often
+// deleted on another device since the page read it.
+var errGone = alps.NewHTTPError(http.StatusNotFound, "deleted elsewhere since it was read")
+
+// notFound reports whether err is the CalDAV server answering 404.
+func notFound(err error) bool {
+	var refused *webdav.HTTPError
+	return errors.As(err, &refused) && refused.Code == http.StatusNotFound
+}
 
 // deleteFailed answers a delete the CalDAV server did not carry out. An event
 // or a task already gone is not one: davsave.Delete takes it as deleted, since
@@ -722,6 +733,9 @@ func registerRoutes(p *plugin) {
 		if calendarObjectPath != "" {
 			co, err = c.GetCalendarObject(ctx.Request.Context(), calendarObjectPath)
 			if err != nil {
+				if notFound(err) {
+					return errGone
+				}
 				return fmt.Errorf("failed to get CalDAV event: %v", err)
 			}
 			// Compared here as well as sent as If-Match below, because they
@@ -937,6 +951,9 @@ func (p *plugin) respondToCopy(ctx *alps.Context) error {
 	}
 	co, err := c.GetCalendarObject(ctx.Request.Context(), objectPath)
 	if err != nil {
+		if notFound(err) {
+			return errGone
+		}
 		return fmt.Errorf("failed to get calendar object: %v", err)
 	}
 	if req.ETag != "" && !davsave.Same(req.ETag, co.ETag) {

@@ -600,7 +600,8 @@ export const ptBR = {
     messages: 'Mensagens',
     contacts: 'Contatos',
     calendar: 'Calendário',
-    tasks: 'Tarefas'
+    tasks: 'Tarefas',
+    label: 'Aplicativos'
   },
   userMenu: {
     settings: 'Configurações',

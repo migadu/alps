@@ -6,6 +6,7 @@ export default {
     saveEventFailed: '予定を保存できませんでした。',
     endBeforeStart: '終了日時を開始日時より前にすることはできません。',
     saveConflict: 'この予定は別の端末で変更されたため、編集内容は保存されませんでした。最新の内容を確認するには、編集画面を閉じて予定を開き直してください。',
+    deletedElsewhere: 'この予定は別の端末で削除されました。',
     loadFailed: 'カレンダーを読み込めませんでした。接続を確認して、もう一度お試しください。',
     months: {
       '0': '1月',
@@ -154,6 +155,7 @@ export default {
     someListsFailed: '一部のリストを読み込めなかったため、表示されていないタスクがあります。',
     saveFailed: 'タスクを保存できませんでした。',
     saveConflict: 'このタスクは別の端末で変更されたため、編集内容は保存されませんでした。最新の内容を確認するには、編集画面を閉じてタスクを開き直してください。',
+    deletedElsewhere: 'このタスクは別の端末で削除されました。',
     completeFailed: 'タスクを更新できませんでした。',
     deleteFailed: 'タスクを削除できませんでした。',
     createListFailed: 'リストを作成できませんでした。',

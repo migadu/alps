@@ -23,6 +23,7 @@ export default {
     saveFailed: 'Kişi kaydedilemedi.',
     loadFailed: 'Kişi yüklenemediği için henüz düzenlenemiyor.',
     saveConflict: 'Bu kişi başka bir cihazda değiştirildiği için düzenlemeniz kaydedilmedi. En son sürümü görmek için düzenlemeyi iptal edin.',
+    deletedElsewhere: 'Bu kişi başka bir cihazda silindi.',
     starFailed: {
       one: '{total} kişiden {count} tanesi güncellenemedi.',
       other: '{total} kişiden {count} tanesi güncellenemedi.'

@@ -13,7 +13,7 @@ import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/ui-confirm';
 import { renderIcon } from '../../../frontend/src/utils/ui';
-import { isSessionExpiry } from '../../../frontend/src/utils/fetch-utils';
+import { isGone, isSessionExpiry } from '../../../frontend/src/utils/fetch-utils';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
 import { taskTellsSomeone, calendarService, getCalendarColor } from './calendar-service';
@@ -391,11 +391,17 @@ export class TasksPage extends LitElement {
                 this.toast('tasks.movedToNext', { date: this.formatDue(saved) });
             }
         } catch (e) {
-            console.error('Failed to update task', e);
             // This row back as it was, and nothing else: a snapshot of the whole
             // list would also undo whatever changed while the tick was in flight.
             this.replaceTask(task.path, task);
-            this.failed('tasks.completeFailed', e);
+            if (isGone(e)) {
+                // Deleted on another device: the list read again drops it.
+                this.failed('tasks.deletedElsewhere', e);
+                void this.fetchTasks();
+            } else {
+                console.error('Failed to update task', e);
+                this.failed('tasks.completeFailed', e);
+            }
         } finally {
             const pending = new Set(this.pendingPaths);
             pending.delete(task.path);

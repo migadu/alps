@@ -591,7 +591,9 @@ export const en = {
     messages: 'Messages',
     contacts: 'Contacts',
     calendar: 'Calendar',
-    tasks: 'Tasks'
+    tasks: 'Tasks',
+    // The header's tabs, as a screen reader names their landmark.
+    label: 'Apps'
   },
   userMenu: {
     settings: 'Settings',

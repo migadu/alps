@@ -19,6 +19,7 @@ export default {
     saveFailed: '無法儲存聯絡人。',
     loadFailed: '無法載入聯絡人，因此暫時無法編輯。',
     saveConflict: '此聯絡人已在其他裝置上變更，因此未儲存您的編輯。請取消編輯以查看最新版本。',
+    deletedElsewhere: '此聯絡人已在其他裝置上刪除。',
     starFailed: {
       other: '{total} 位聯絡人中有 {count} 位無法更新。'
     },

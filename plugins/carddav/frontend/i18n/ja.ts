@@ -19,6 +19,7 @@ export default {
     saveFailed: '連絡先を保存できませんでした。',
     loadFailed: '連絡先を読み込めなかったため、まだ編集できません。',
     saveConflict: 'この連絡先は別の端末で変更されたため、編集内容は保存されませんでした。最新の内容を確認するには、編集をキャンセルしてください。',
+    deletedElsewhere: 'この連絡先は別の端末で削除されました。',
     starFailed: {
       other: '{total}件中{count}件の連絡先を更新できませんでした。'
     },

@@ -359,6 +359,17 @@ export async function readCalendarObject(uid: string, account = USER): Promise<s
   return (await checked(response, "read calendar object")).text();
 }
 
+/** Deletes a calendar object behind alps's back, as another device would. */
+export async function removeCalendarObject(uid: string, account = USER): Promise<void> {
+  await checked(
+    await fetch(`${DAV_URL}/caldav/${account.address}/calendars/default/${uid}.ics`, {
+      method: "DELETE",
+      headers: { Authorization: davAuth(account) },
+    }),
+    "remove calendar object",
+  );
+}
+
 /** Files a contact into the account's address book, as raw vCard; `lines` are further properties, as written. */
 export async function seedContact(opts: { uid: string; name: string; email: string; lines?: string[] }): Promise<void> {
   const body = [

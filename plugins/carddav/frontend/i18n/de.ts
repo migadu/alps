@@ -23,6 +23,7 @@ export default {
     saveFailed: 'Der Kontakt konnte nicht gespeichert werden.',
     loadFailed: 'Der Kontakt konnte nicht geladen werden und kann daher noch nicht bearbeitet werden.',
     saveConflict: 'Der Kontakt wurde auf einem anderen Gerät geändert, daher wurde Ihre Änderung nicht gespeichert. Brechen Sie die Bearbeitung ab, um die neueste Version zu sehen.',
+    deletedElsewhere: 'Der Kontakt wurde auf einem anderen Gerät gelöscht.',
     starFailed: {
       one: '{count} von {total} Kontakten konnte nicht aktualisiert werden.',
       other: '{count} von {total} Kontakten konnten nicht aktualisiert werden.'

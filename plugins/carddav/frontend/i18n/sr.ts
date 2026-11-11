@@ -27,6 +27,7 @@ export default {
     saveFailed: 'Kontakt nije mogao biti sačuvan.',
     loadFailed: 'Kontakt nije mogao biti učitan, pa se još ne može urediti.',
     saveConflict: 'Kontakt je izmenjen na drugom uređaju, pa vaša izmena nije sačuvana. Otkažite izmenu da biste videli najnoviju verziju.',
+    deletedElsewhere: 'Kontakt je obrisan na drugom uređaju.',
     starFailed: {
       one: 'Nije bilo moguće ažurirati {count} kontakt od ukupno {total}.',
       few: 'Nije bilo moguće ažurirati {count} kontakta od ukupno {total}.',

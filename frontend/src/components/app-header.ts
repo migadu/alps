@@ -1,4 +1,4 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -88,10 +88,21 @@ export class AppHeader extends LitElement {
       height: 28px;
     }
 
+    nav {
+      height: 100%;
+    }
+
     .nav-tabs {
       display: flex;
       height: 100%;
       gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .nav-tabs li {
+      display: flex;
     }
 
     .nav-tab {
@@ -102,6 +113,7 @@ export class AppHeader extends LitElement {
       color: var(--text-secondary, #4b5563);
       font-weight: 500;
       font-size: 14px;
+      text-decoration: none;
       cursor: pointer;
       border-bottom: 2px solid transparent;
       transition: all 0.2s;
@@ -111,9 +123,29 @@ export class AppHeader extends LitElement {
       color: var(--text-primary, #111827);
     }
 
-    .nav-tab.active {
+    /* Keyboard focus, in the accent. Drawn inside the tab, which fills the
+       header's height and so has no room outside. */
+    .nav-tab:focus-visible {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: -2px;
+    }
+
+    .nav-tab[aria-current='page'] {
       color: var(--accent-color, #2563eb);
       border-bottom-color: var(--accent-color, #2563eb);
+    }
+
+    /* Forced colours repaint every tab's underline, the transparent ones too,
+       in one colour, so every tab looked current. Only the current one keeps
+       it, in the system's highlight. */
+    @media (forced-colors: active) {
+      .nav-tab {
+        border-bottom-color: Canvas;
+      }
+
+      .nav-tab[aria-current='page'] {
+        border-bottom-color: Highlight;
+      }
     }
 
     .header-left-slot {
@@ -128,7 +160,11 @@ export class AppHeader extends LitElement {
       --alps-input-bg: var(--bg-secondary, #f9fafb);
     }
   `];
-  private handleTabClick(tab: string) {
+  private handleTabClick(e: MouseEvent, tab: string) {
+    // A click that asks for another tab or window is the browser's: the link
+    // opens the page there.
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
     // A plugin tab clicked on its own page goes nowhere. Its bare `#/<tab>` is
     // the page the user is already on under another spelling: setting it was
     // a history entry, which the page then completed in place to the very
@@ -160,24 +196,32 @@ export class AppHeader extends LitElement {
             <div class="logo">
               ${renderLogo()}
             </div>
-            <div class="nav-tabs">
-              <div 
-                class="nav-tab ${this.currentTab === 'messages' ? 'active' : ''}"
-                @click=${() => this.handleTabClick('messages')}
-                title=${this.i18nStore?.t('navigation.messages')}
-              >
-                ${this.i18nStore?.t('navigation.messages')}
-              </div>
-              ${registry.getNavTabs().map(tab => html`
-                <div 
-                  class="nav-tab ${this.currentTab === tab.id ? 'active' : ''}"
-                  @click=${() => this.handleTabClick(tab.id)}
-                  title=${this.i18nStore?.t(tab.labelKey) || tab.id}
-                >
-                  ${this.i18nStore?.t(tab.labelKey) || tab.id}
-                </div>
-              `)}
-            </div>
+            <!-- Links, so Tab reaches them and a screen reader hears where
+                 they go and which is the page on screen. -->
+            <nav aria-label=${this.i18nStore?.t('navigation.label') || 'Apps'}>
+              <ul class="nav-tabs" role="list">
+                <li>
+                  <a
+                    class="nav-tab"
+                    href="#/"
+                    aria-current=${this.currentTab === 'messages' ? 'page' : nothing}
+                    @click=${(e: MouseEvent) => this.handleTabClick(e, 'messages')}
+                    title=${this.i18nStore?.t('navigation.messages')}
+                  >${this.i18nStore?.t('navigation.messages')}</a>
+                </li>
+                ${registry.getNavTabs().map(tab => html`
+                  <li>
+                    <a
+                      class="nav-tab"
+                      href="#/${tab.id}"
+                      aria-current=${this.currentTab === tab.id ? 'page' : nothing}
+                      @click=${(e: MouseEvent) => this.handleTabClick(e, tab.id)}
+                      title=${this.i18nStore?.t(tab.labelKey) || tab.id}
+                    >${this.i18nStore?.t(tab.labelKey) || tab.id}</a>
+                  </li>
+                `)}
+              </ul>
+            </nav>
           ` : ''}
         </div>
 

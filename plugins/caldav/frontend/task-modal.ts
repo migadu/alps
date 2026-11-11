@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
-import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
+import { isGone, isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
 import '../../../frontend/src/components/ui-modal';
 import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-select';
@@ -266,13 +266,15 @@ export class TaskModal extends LitElement {
             this.open = false;
             this.dispatchEvent(new CustomEvent('saved', { detail: { task: saved, created } }));
         } catch (e) {
-            console.error('Failed to save task', e);
             // Refused, not failed: see the event editor, which answers the same
-            // refusal the same way.
-            const conflict = isVersionConflict(e);
+            // refusals the same way.
+            const gone = isGone(e);
+            const conflict = gone || isVersionConflict(e);
+            if (!gone) console.error('Failed to save task', e);
             if (conflict) this.dispatchEvent(new CustomEvent('conflict'));
+            const key = gone ? 'tasks.deletedElsewhere' : conflict ? 'tasks.saveConflict' : 'tasks.saveFailed';
             window.dispatchEvent(new CustomEvent('show-toast', {
-                detail: { message: this.i18nStore?.t(conflict ? 'tasks.saveConflict' : 'tasks.saveFailed'), type: 'error', duration: 8000 },
+                detail: { message: this.i18nStore?.t(key), type: 'error', duration: 8000 },
             }));
         } finally {
             this.saving = false;
