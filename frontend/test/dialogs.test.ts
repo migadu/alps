@@ -105,6 +105,30 @@ describe('ui-modal', () => {
     expect(cancels).toHaveLength(1);
   });
 
+  // The browser refuses only the first of two Escapes in a row: the second
+  // closes the dialog however its `cancel` is handled (browser test:
+  // e2e/modal-escape.spec.ts).
+  it('stays open, and says nothing, when it closes without being dismissible', async () => {
+    const modal = await mount('ui-modal');
+    const cancels = record(modal, 'cancel');
+    dialogOf(modal).close();
+    expect(dialogOf(modal).open).toBe(true);
+    expect(cancels).toHaveLength(0);
+
+    // Once it may be dismissed, a close is a cancel again.
+    await update(modal, { dismissible: true });
+    dialogOf(modal).close();
+    expect(dialogOf(modal).open).toBe(false);
+    expect(cancels).toHaveLength(1);
+  });
+
+  it('lays itself out only while open, so a closed dialog draws nothing', () => {
+    const sheet = readSources()['src/components/ui-modal.ts'];
+    const rule = (selector: string) => new RegExp(`${selector.replace(/[.[\]]/g, '\\$&')}\\s*\\{[^}]*\\}`).exec(sheet)?.[0] ?? '';
+    expect(rule('.modal-dialog')).not.toMatch(/display\s*:/);
+    expect(rule('.modal-dialog[open]')).toMatch(/display:\s*flex/);
+  });
+
   it('cancels on a backdrop press only when dismissible, and never from inside the card', async () => {
     const press = (target: Element) => target.dispatchEvent(new Event('pointerdown', { bubbles: true, composed: true }));
 
