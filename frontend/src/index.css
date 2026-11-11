@@ -135,33 +135,49 @@ h6 {
   height: 100%;
 }
 
-/* Custom Scrollbar for professional look */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* Scrollbars in the theme's colours. scrollbar-color is inherited, so this one
+   declaration reaches the scroll areas inside every component's shadow root,
+   which a ::-webkit-scrollbar selector in this sheet never matched; it is
+   also the only way Firefox takes them. A theme may set --scrollbar-thumb;
+   the fallbacks are grays that keep 3:1 against the light themes' pages and
+   the dark themes' pages, as a thumb must to show where the user has
+   scrolled to. The track is left to the page. */
+:root {
+  scrollbar-color: var(--scrollbar-thumb, #7d838c) transparent;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+.theme-dark {
+  scrollbar-color: var(--scrollbar-thumb, #8f959e) transparent;
 }
 
-/* A theme may set --scrollbar-thumb(-hover); the fallbacks are the grays the
-   other themes have always had. */
-::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb, #d1d5db);
-  border-radius: 4px;
-}
+/* For a browser without scrollbar-color. One that has it ignores these
+   wherever scrollbar-color applies, which is everywhere. */
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover, #9ca3af);
-}
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 
-.theme-dark ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb, #4b5563);
-}
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, #7d838c);
+    border-radius: 4px;
+  }
 
-.theme-dark ::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover, #6b7280);
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover, #5f656e);
+  }
+
+  .theme-dark ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, #8f959e);
+  }
+
+  .theme-dark ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover, #aab0b8);
+  }
 }
 
 .theme-dark {
