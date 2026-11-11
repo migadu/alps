@@ -16,6 +16,7 @@
 #   scripts/e2e.sh e2e/reading.spec.ts  # arguments go to Playwright; a file
 #                                       # argument is a regular expression, so
 #                                       # keep the e2e/ prefix
+#   E2E_PREVIEW=1 SORA_DIR=../sora-preview scripts/e2e.sh e2e/message-preview.spec.ts
 #
 # Environment:
 #   SORA_DIR          sora checkout                       (../sora)
@@ -25,6 +26,8 @@
 #                     (localhost, 5432, postgres, empty)
 #   E2E_KEEP_STATE=1  keep the database and state directory after the run
 #   E2E_SKIP_BUILD=1  test the frontend/dist already on disk
+#   E2E_PREVIEW=1     enable message previews (off by default); SORA_DIR must
+#                     point to a checkout that supports FETCH PREVIEW
 #   PW_CHROMIUM_PATH  a pre-installed Chromium to use instead of Playwright's
 set -euo pipefail
 
@@ -51,6 +54,16 @@ PG_PORT="${E2E_PG_PORT:-5432}"
 PG_USER="${E2E_PG_USER:-postgres}"
 PG_PASSWORD="${E2E_PG_PASSWORD:-}"
 PG_DB="alps_e2e_$ALPS_PORT"
+
+# Main sora need not support PREVIEW yet. Omit its config keys entirely unless
+# the run explicitly asks for it, then let the positive browser test require
+# support. The preview suite lists enough older mail to exceed normal budgets.
+SORA_PREVIEW_CONFIG=
+if [ "${E2E_PREVIEW:-0}" = 1 ]; then
+  SORA_PREVIEW_CONFIG='enable_preview = true
+limits.preview_s3_per_min = 0
+limits.preview_s3_node_per_min = 0'
+fi
 
 # Outside the repository: sora and alps write here constantly, and nothing in
 # it is worth keeping once the run is over.
@@ -264,6 +277,7 @@ addr = "127.0.0.1:$IMAP_PORT"
 insecure_auth = true
 tls = false
 limits.search_rate_limit_per_min = 1000000
+$SORA_PREVIEW_CONFIG
 
 [server.lookup_cache]
 enabled = false

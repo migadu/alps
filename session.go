@@ -164,9 +164,10 @@ type Session struct {
 	// Cache for mail data (mailbox lists, statuses, etc.)
 	cache *Cache
 
-	// The authentication verdicts read on any of the session's connections:
-	// see shareVerdicts.
+	// The authentication verdicts and message previews read on any of the
+	// session's connections: see shareVerdicts.
 	verdicts provider.VerdictCache
+	previews provider.PreviewCache
 
 	memoryDataLock sync.RWMutex
 	memoryData     map[string]interface{}
@@ -422,10 +423,14 @@ func (s *Session) connect() (provider.MailProvider, error) {
 // and a session does not keep one connection for good: it opens another when
 // the mail server drops it, and when it gives up on one a request left busy.
 // Each new one read every verdict again, from each stored message, while the
-// user's requests waited behind it.
+// user's requests waited behind it. Message previews are shared the same way,
+// so one read on the background connection answers the next listing.
 func (s *Session) shareVerdicts(p provider.MailProvider) {
 	if vs, ok := p.(provider.VerdictSharer); ok {
 		vs.ShareVerdicts(&s.verdicts)
+	}
+	if ps, ok := p.(provider.PreviewSharer); ok {
+		ps.SharePreviews(&s.previews)
 	}
 }
 
