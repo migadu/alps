@@ -20,9 +20,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapserver/imapmemserver"
 )
 
 // deliver files a message into mailbox behind alps's back, as mail arriving

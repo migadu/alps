@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapserver"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapserver"
 )
 
 // fetchLines is the FETCH commands among lines.

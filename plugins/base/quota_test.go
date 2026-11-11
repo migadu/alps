@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // quotaProvider is a connection to a mail server that keeps quotas, or does

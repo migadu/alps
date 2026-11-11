@@ -7,9 +7,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/migadu/alps"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 // A session keeps a folder's pages while the folder's counts stay as they

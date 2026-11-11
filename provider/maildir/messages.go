@@ -11,13 +11,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-maildir"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-message/textproto"
 	"github.com/migadu/alps/provider"
 	imapprovider "github.com/migadu/alps/provider/imap"
+	"github.com/migadu/go-imap"
 )
 
 func buildBodyStructure(e *message.Entity) imap.BodyStructure {
