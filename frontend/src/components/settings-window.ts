@@ -6,7 +6,7 @@ import type { SettingsState } from '../store/settings-store';
 import { themeFamily } from '../store/themes';
 import { i18nContext, I18nStore, intlTag } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
-import { deepActiveElement } from '../utils/active-element';
+import { deepActiveElement, isComposingKey } from '../utils/active-element';
 import './alps-category-item';
 import './alps-icon-btn';
 import './alps-input';
@@ -279,7 +279,7 @@ export class SettingsWindow extends LitElement {
    * not take the window with it), and a composer floating above this window.
    */
   private onDocumentKeydown = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (e.key !== 'Escape' || e.defaultPrevented || isComposingKey(e)) return;
     for (const node of e.composedPath()) {
       if (node instanceof HTMLDialogElement && node.open) return;
       if (node instanceof HTMLElement && node.localName === 'alps-floating-composer') return;
