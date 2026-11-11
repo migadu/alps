@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -265,19 +266,15 @@ func TestNotifyMsg_DoesNotBlockAndCopies(t *testing.T) {
 func TestBroadcast_ReachesEveryOtherMember(t *testing.T) {
 	const n = 5
 	const port = 17980
+	setupStarted := time.Now()
 	var mu sync.Mutex
 	got := make([]map[string]int, n)
 	nodes := make([]*Cluster, n)
 	for i := range nodes {
-		var peers []string
-		if i > 0 {
-			peers = []string{fmt.Sprintf("127.0.0.1:%d", port)}
-		}
 		c, err := NewCluster(Config{
 			NodeName:      fmt.Sprintf("node%d", i),
 			BindAddr:      "127.0.0.1",
 			BindPort:      port + i,
-			Peers:         peers,
 			AllowInsecure: true,
 			Logger:        testLogger(),
 		})
@@ -294,13 +291,57 @@ func TestBroadcast_ReachesEveryOtherMember(t *testing.T) {
 		nodes[i] = c
 	}
 
-	deadline := time.Now().Add(5 * time.Second)
-	for _, c := range nodes {
-		for c.NumMembers() != n && time.Now().Before(deadline) {
-			time.Sleep(50 * time.Millisecond)
+	membershipViews := func() string {
+		var views []string
+		for _, c := range nodes {
+			var members []string
+			for _, member := range c.ml.Members() {
+				members = append(members, member.Name+"@"+member.Address())
+			}
+			slices.Sort(members)
+			views = append(views, fmt.Sprintf("%s@%s: [%s]", c.LocalNodeName(), c.ml.LocalNode().Address(), strings.Join(members, ", ")))
 		}
-		if c.NumMembers() != n {
-			t.Fatalf("%s sees %d members, want %d", c.LocalNodeName(), c.NumMembers(), n)
+		return strings.Join(views, "\n")
+	}
+	join := func(from, to *Cluster) {
+		t.Helper()
+		started := time.Now()
+		joined, err := from.ml.Join([]string{to.ml.LocalNode().Address()})
+		// Join suppresses errors after any successful contact, so give it one
+		// address at a time and require that contact to have succeeded.
+		if err != nil || joined != 1 {
+			t.Fatalf("%s joining %s@%s: contacted %d hosts, want 1 (join %s, setup %s): %v\n%s",
+				from.LocalNodeName(), to.LocalNodeName(), to.ml.LocalNode().Address(), joined,
+				time.Since(started), time.Since(setupStarted), err, membershipViews())
+		}
+	}
+
+	// Join merges the caller's membership synchronously. First give the seed
+	// every node, then have each peer read that complete view. Joining only the
+	// seed during startup left earlier peers waiting for randomized gossip to
+	// learn later arrivals. This test needs all views complete before it
+	// exercises broadcast delivery.
+	for _, peer := range nodes[1:] {
+		join(nodes[0], peer)
+	}
+	for _, peer := range nodes[1:] {
+		join(peer, nodes[0])
+	}
+
+	wantMembers := make([]string, n)
+	for i, c := range nodes {
+		wantMembers[i] = c.LocalNodeName()
+	}
+	slices.Sort(wantMembers)
+	for _, c := range nodes {
+		var members []string
+		for _, member := range c.ml.Members() {
+			members = append(members, member.Name)
+		}
+		slices.Sort(members)
+		if !slices.Equal(members, wantMembers) {
+			t.Fatalf("membership setup incomplete after %s: %s sees %v, want %v\n%s",
+				time.Since(setupStarted), c.LocalNodeName(), members, wantMembers, membershipViews())
 		}
 	}
 
@@ -320,7 +361,7 @@ func TestBroadcast_ReachesEveryOtherMember(t *testing.T) {
 		}
 		return out
 	}
-	deadline = time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(3 * time.Second)
 	for len(missing()) > 0 && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}
