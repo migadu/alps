@@ -12,7 +12,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.101.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/emersion/go-ical v0.0.0-20250609112844-439c63cef608
-	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-maildir v0.6.0
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
@@ -23,6 +22,7 @@ require (
 	github.com/go-webauthn/webauthn v0.17.2
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/memberlist v0.5.4
+	github.com/migadu/go-imap v1.0.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.53.0
 	golang.org/x/text v0.39.0
@@ -75,8 +75,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/binaryregexp v0.2.0 // indirect
 )
-
-replace github.com/emersion/go-imap/v2 => github.com/migadu/go-imap/v2 v2.0.0-20261030090407-161f7836ef0e
 
 replace github.com/emersion/go-smtp => github.com/migadu/go-smtp v0.0.0-20260705231539-0ef684185ca4
 

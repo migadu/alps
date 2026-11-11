@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapclient"
-	"github.com/emersion/go-imap/v2/imapserver"
-	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
 	"github.com/fernet/fernet-go"
 	"github.com/migadu/alps"
 	imapprovider "github.com/migadu/alps/provider/imap"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapclient"
+	"github.com/migadu/go-imap/imapserver"
+	"github.com/migadu/go-imap/imapserver/imapmemserver"
 )
 
 // A check for new mail notices a message that arrives as another goes, and a

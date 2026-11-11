@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // A session does its mail work on one connection, one operation after another
