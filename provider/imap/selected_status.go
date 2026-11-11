@@ -1,9 +1,9 @@
 package imap
 
 import (
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 // keptStatus is the status the last STATUS answered of the mailbox selected

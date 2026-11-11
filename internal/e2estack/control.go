@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-sasl"
 	"github.com/migadu/alps/plugins/managesieve"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 // The control API is what browser tests call to put an account into a known
