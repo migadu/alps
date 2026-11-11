@@ -580,7 +580,8 @@ export const zhHans: TranslationDictionary = {
     messages: '邮件',
     contacts: '联系人',
     calendar: '日历',
-    tasks: '任务'
+    tasks: '任务',
+    label: '应用'
   },
   userMenu: {
     settings: '设置',

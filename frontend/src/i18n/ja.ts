@@ -576,7 +576,8 @@ export const ja = {
     messages: 'メール',
     contacts: '連絡先',
     calendar: 'カレンダー',
-    tasks: 'タスク'
+    tasks: 'タスク',
+    label: 'アプリ'
   },
   userMenu: {
     settings: '設定',

@@ -87,6 +87,50 @@ describe('a header tab clicked on its own page', () => {
   });
 });
 
+// The tabs were bare elements with a click handler: Tab never reached them,
+// and a screen reader read them as text, with no word of which was current.
+describe('the header tabs', () => {
+  it('are links in a named navigation landmark, the page on screen current', async () => {
+    const el = await on('#/calendar/month/2026-10', 'app-header', { currentTab: 'calendar' });
+    const nav = el.shadowRoot!.querySelector('nav');
+
+    expect(nav?.getAttribute('aria-label')).toBe('navigation.label');
+    const links = Array.from(nav!.querySelectorAll('a.nav-tab'));
+    expect(links.map(a => a.getAttribute('href'))).toEqual(['#/', '#/contacts', '#/calendar', '#/tasks']);
+    expect(links.filter(a => a.hasAttribute('aria-current')).map(a => [a.getAttribute('href'), a.getAttribute('aria-current')]))
+      .toEqual([['#/calendar', 'page']]);
+  });
+
+  it('marks the page chosen current', async () => {
+    const el = await on('#/calendar/month/2026-10', 'app-header', { currentTab: 'calendar' });
+
+    await choose(headerTab(el, 'tasks'));
+
+    expect(headerTab(el, 'tasks')!.getAttribute('aria-current')).toBe('page');
+    expect(headerTab(el, 'calendar')!.hasAttribute('aria-current')).toBe(false);
+  });
+
+  it('leave a click that asks for another tab or window to the browser', async () => {
+    const el = await on('#/calendar/month/2026-10', 'app-header', { currentTab: 'calendar' });
+    let changed = false;
+    el.addEventListener('change-tab', () => { changed = true; });
+    // What the header did with the click, read past it; then the test's own
+    // stop, since jsdom would follow the link here, in this window.
+    const leftToBrowser: boolean[] = [];
+    el.addEventListener('click', e => {
+      leftToBrowser.push(!e.defaultPrevented);
+      e.preventDefault();
+    });
+
+    for (const init of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }]) {
+      headerTab(el, 'tasks')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, ...init }));
+    }
+    expect(leftToBrowser).toEqual([true, true, true]);
+    expect(changed).toBe(false);
+    expect(window.location.hash).toBe('#/calendar/month/2026-10');
+  });
+});
+
 // The menu carries the pages on a phone, whose header has no tabs.
 describe('a user menu entry chosen on its own page', () => {
   it('leaves an open plugin page alone', async () => {

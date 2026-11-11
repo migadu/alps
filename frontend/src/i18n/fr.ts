@@ -520,7 +520,8 @@ export const fr = {
     messages: 'Messages',
     contacts: 'Contacts',
     calendar: 'Calendrier',
-    tasks: 'Tâches'
+    tasks: 'Tâches',
+    label: 'Applications'
   },
   userMenu: {
     settings: 'Paramètres',

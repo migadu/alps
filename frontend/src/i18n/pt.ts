@@ -591,7 +591,8 @@ export const pt = {
     messages: 'Mensagens',
     contacts: 'Contactos',
     calendar: 'Calendário',
-    tasks: 'Tarefas'
+    tasks: 'Tarefas',
+    label: 'Aplicações'
   },
   userMenu: {
     settings: 'Definições',
