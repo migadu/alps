@@ -18,6 +18,30 @@ test('an invalid Reply-To is refused with translated feedback and the previous a
   await expect(field).toHaveValue('');
 });
 
+// Typed one key at a time, as people type, the address is saved once, when the
+// field is left. Every key used to save what was typed so far: "r" was refused
+// as no address, and the refusal emptied the field before the next key.
+test('a Reply-To typed key by key is kept, and saved once the field is left', async ({ page }) => {
+  await login(page);
+  await page.goto('/#/settings/identity');
+  const field = page.locator('alps-setting-group[label="Reply-To Address"] input');
+  const puts: string[] = [];
+  page.on('request', r => {
+    if (new URL(r.url()).pathname === '/settings' && r.method() === 'PUT') puts.push(r.postData() ?? '');
+  });
+  await field.pressSequentially('reply@example.com', { delay: 50 });
+  await expect(field).toHaveValue('reply@example.com');
+  expect(puts, 'saved while still being typed').toEqual([]);
+
+  const saved = page.waitForResponse(r => new URL(r.url()).pathname === '/settings' && r.request().method() === 'PUT');
+  await field.press('Tab');
+  expect((await saved).status()).toBe(200);
+  expect(puts).toHaveLength(1);
+  expect(JSON.parse(puts[0])).toEqual({ reply_to: 'reply@example.com' });
+  await page.reload();
+  await expect(field).toHaveValue('reply@example.com');
+});
+
 test('a Unicode Reply-To name is saved and sent as an encoded address', async ({ page }) => {
   await login(page);
   await page.goto('/#/settings/identity');

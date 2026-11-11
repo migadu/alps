@@ -231,6 +231,30 @@ test("on a phone, Back closes Settings, from a section too", async ({ page }) =>
   expect(page.url()).toBe(mailbox);
 });
 
+test("Escape keeps the display name being typed", async ({ page }) => {
+  // The display name saves as the field is left, as the signature does, and
+  // Escape is a way of leaving it.
+  const name = `Window Name ${Date.now()}`;
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page);
+  try {
+    await openSettings(page, "#/settings/identity");
+    await page.locator('settings-window alps-setting-group[label="Display Name"] input').click();
+    await page.keyboard.type(name);
+    const saved = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === "/settings" && r.request().method() === "PUT",
+    );
+    await page.keyboard.press("Escape");
+    await expect(win(page)).toHaveCount(0);
+    const put = await saved;
+    expect(put.ok()).toBe(true);
+    expect(put.request().postDataJSON()).toEqual({ from: name });
+  } finally {
+    await page.goto("about:blank");
+    await resetSettings();
+  }
+});
+
 test("Escape keeps the signature being typed", async ({ page }) => {
   // The signature saves as the field loses focus. Escape would remove it with
   // focus still inside, and the change would never be heard.
