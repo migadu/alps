@@ -162,10 +162,12 @@ export class AlpsInput extends LitElement {
     }
   `];
 
+  /** The inner input's own `input` is composed, and reaches whoever listens
+   * on this element after the value is taken here: one for each key, so none
+   * is sent of its own. */
   private handleInput(e: Event) {
     const target = e.target as HTMLInputElement;
     this.value = target.value;
-    this.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
   }
 
   /** `change` when the value is committed, as a native input says it: what
