@@ -23,7 +23,7 @@ import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
 import { contactsService, sameAddressParts } from './contacts-service';
-import { isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
+import { HttpStatusError, isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
 import { motionStyles } from '../../../frontend/src/utils/motion';
@@ -668,7 +668,11 @@ export class ContactsPage extends LitElement {
           return true;
         }
       } catch (e) {
-        console.error('Failed to fetch contact details', e);
+        if (e instanceof HttpStatusError && e.status === 404) {
+          this.cardGone(path, generation);
+        } else {
+          console.error('Failed to fetch contact details', e);
+        }
       }
       return false;
     })();
@@ -678,6 +682,24 @@ export class ContactsPage extends LitElement {
       if (this.cardRead === read) this.cardRead = null;
     });
     return done;
+  }
+
+  /**
+   * The card at `path` was not there to read: deleted on another device since
+   * the list was read. Its row goes with a fresh read of the list, and if it
+   * is still the card open, it closes and the user is told why. A card opened
+   * since is left alone.
+   */
+  private cardGone(path: string, generation: number) {
+    if (this.cardGeneration === generation && this.selectedContact?.path === path) {
+      this.selectedContact = null;
+      this.isEditing = false;
+      this.leaveDeletedCard();
+      window.dispatchEvent(new CustomEvent('show-toast', {
+        detail: { message: this.i18nStore?.t('contacts.deletedElsewhere'), type: 'info', duration: 5000 }
+      }));
+    }
+    void this.fetchContacts();
   }
 
   /**

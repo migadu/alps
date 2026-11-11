@@ -23,6 +23,7 @@ export default {
     saveFailed: 'Kontakten kunne ikke gemmes.',
     loadFailed: 'Kontakten kunne ikke indlæses, så den kan ikke redigeres endnu.',
     saveConflict: 'Kontakten er blevet ændret på en anden enhed, så din ændring blev ikke gemt. Annuller redigeringen for at se den nyeste version.',
+    deletedElsewhere: 'Kontakten er blevet slettet på en anden enhed.',
     starFailed: {
       one: '{count} af {total} kontakter kunne ikke opdateres.',
       other: '{count} af {total} kontakter kunne ikke opdateres.'

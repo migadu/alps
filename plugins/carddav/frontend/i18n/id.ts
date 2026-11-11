@@ -19,6 +19,7 @@ export default {
     saveFailed: 'Kontak tidak dapat disimpan.',
     loadFailed: 'Kontak tidak dapat dimuat, sehingga belum dapat diedit.',
     saveConflict: 'Kontak ini diubah di perangkat lain, sehingga perubahan Anda tidak disimpan. Batalkan pengeditan untuk melihat versi terbaru.',
+    deletedElsewhere: 'Kontak ini dihapus di perangkat lain.',
     starFailed: {
       other: '{count} dari {total} kontak tidak dapat diperbarui.'
     },

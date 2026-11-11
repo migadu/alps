@@ -19,6 +19,7 @@ export default {
     saveFailed: '无法保存该联系人。',
     loadFailed: '无法加载该联系人，因此暂时无法对其进行编辑。',
     saveConflict: '该联系人在其他设备上已被修改，因此您的编辑未被保存。请取消编辑以查看最新版本。',
+    deletedElsewhere: '该联系人已在其他设备上被删除。',
     starFailed: {
       other: '{total} 个联系人中有 {count} 个无法更新。'
     },

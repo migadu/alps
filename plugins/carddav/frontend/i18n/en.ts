@@ -23,6 +23,7 @@ export default {
     saveFailed: 'The contact could not be saved.',
     loadFailed: 'The contact could not be loaded, so it cannot be edited yet.',
     saveConflict: 'This contact was changed on another device, so your edit was not saved. Cancel the edit to see the latest version.',
+    deletedElsewhere: 'This contact was deleted on another device.',
     starFailed: {
       one: '{count} of {total} contacts could not be updated.',
       other: '{count} of {total} contacts could not be updated.'

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-vcard"
+	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/carddav"
 	"github.com/google/uuid"
 	"github.com/migadu/alps"
@@ -283,6 +284,10 @@ func parseObjectPath(s string) (string, error) {
 // the stored one: most often the user's own phone saved the card while it was
 // open here.
 var errChangedElsewhere = alps.NewHTTPError(http.StatusPreconditionFailed, "changed elsewhere since it was opened")
+
+// errContactGone answers a read of a card that is no longer stored: most
+// often deleted on another device since the page listed it.
+var errContactGone = alps.NewHTTPError(http.StatusNotFound, "deleted elsewhere since it was listed")
 
 // deleteFailed answers a delete the CardDAV server did not carry out. A card
 // already gone is not one: davsave.Delete takes it as deleted, since that is
@@ -731,6 +736,10 @@ func registerRoutes(p *plugin) {
 
 		ao, err := c.GetAddressObject(ctx.Request.Context(), path)
 		if err != nil {
+			var refused *webdav.HTTPError
+			if errors.As(err, &refused) && refused.Code == http.StatusNotFound {
+				return errContactGone
+			}
 			return fmt.Errorf("failed to query CardDAV address: %v", err)
 		}
 
