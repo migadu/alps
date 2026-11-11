@@ -109,6 +109,45 @@ async function frameSettled(page: Page): Promise<void> {
   );
 }
 
+/**
+ * Builds a frame the test itself controls, grants it `allow-scripts`, feeds it
+ * the payload shape the message tests use, and returns what the payload
+ * reported back, or "NO MESSAGE".
+ */
+async function runInScriptFrame(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const iframe = document.createElement("iframe");
+    // `allow-scripts` WITHOUT `allow-same-origin`: the frame gets an opaque
+    // origin, so the parent cannot read its document at all — which is why
+    // the script reports back by message rather than by writing a marker
+    // the parent then reads. Granting both here would work, but that exact
+    // pair is the combination the HTML spec calls equivalent to removing
+    // the sandbox, and it has no place in a test file about containment.
+    iframe.setAttribute("sandbox", "allow-scripts");
+    iframe.srcdoc =
+      "<p id='safe'>This is the message.</p>" +
+      "<script>" +
+      "document.getElementById('safe').textContent = 'EXECUTED';" +
+      "parent.postMessage(document.getElementById('safe').textContent, '*');" +
+      "<\/script>";
+
+    const heard = new Promise<string>((resolve) => {
+      const onMessage = (event: MessageEvent) => {
+        if (event.source !== iframe.contentWindow) return;
+        window.removeEventListener("message", onMessage);
+        resolve(String(event.data));
+      };
+      window.addEventListener("message", onMessage);
+      setTimeout(() => resolve("NO MESSAGE"), 3000);
+    });
+
+    document.body.appendChild(iframe);
+    const result = await heard;
+    iframe.remove();
+    return result;
+  });
+}
+
 test.describe("the containment checks can actually detect execution", () => {
   test("the same payload DOES run when the sandbox permits scripts", async ({ page }) => {
     // A control, and the reason to trust every assertion below it.
@@ -116,49 +155,26 @@ test.describe("the containment checks can actually detect execution", () => {
     // "The script did not run" passes trivially if the payload was never
     // capable of running, if the marker selector is wrong, or if the frame
     // never loaded — so on its own it is close to worthless as evidence. This
-    // builds a frame the test itself controls, grants it `allow-scripts`, and
-    // feeds it the SAME payload shape, on an alps page and so under the same
-    // page Content-Security-Policy a `srcdoc` frame inherits. Seeing the marker
-    // appear here proves the technique is sensitive; not seeing it in the
-    // reader's frame is then a statement about the reader.
+    // grants a frame of the test's own `allow-scripts` and feeds it the SAME
+    // payload shape. Seeing the marker appear here proves the technique is
+    // sensitive; not seeing it in the reader's frame is then a statement about
+    // the reader.
     //
-    // Deliberately a throwaway frame on the login page: proving this by
-    // loosening the real component would leave a genuine hole in the tree if
-    // the run were interrupted.
+    // On a blank page, with no Content-Security-Policy: an alps page's policy
+    // refuses inline scripts, and a `srcdoc` frame inherits it, so there the
+    // payload would not run even with the sandbox open (next test). Never by
+    // loosening the real component, which would leave a genuine hole in the
+    // tree if the run were interrupted.
+    await page.goto("about:blank");
+    expect(await runInScriptFrame(page)).toBe("EXECUTED");
+  });
+
+  test("on an alps page, an inline script is refused even where the sandbox permits scripts", async ({ page }) => {
+    // The page's own policy is `script-src 'self'`, and a `srcdoc` frame
+    // inherits it: a layer beneath the sandbox and the sanitizer's own policy.
+    allowConsoleErrors(page, /violates the following Content Security Policy directive: "script-src 'self'"|violates the following Content Security Policy directive 'script-src 'self''/);
     await page.goto("/#/login");
-    const ran = await page.evaluate(async () => {
-      const iframe = document.createElement("iframe");
-      // `allow-scripts` WITHOUT `allow-same-origin`: the frame gets an opaque
-      // origin, so the parent cannot read its document at all — which is why
-      // the script reports back by message rather than by writing a marker
-      // the parent then reads. Granting both here would work, but that exact
-      // pair is the combination the HTML spec calls equivalent to removing
-      // the sandbox, and it has no place in a test file about containment.
-      iframe.setAttribute("sandbox", "allow-scripts");
-      iframe.srcdoc =
-        "<p id='safe'>This is the message.</p>" +
-        "<script>" +
-        "document.getElementById('safe').textContent = 'EXECUTED';" +
-        "parent.postMessage(document.getElementById('safe').textContent, '*');" +
-        "<\/script>";
-
-      const heard = new Promise<string>((resolve) => {
-        const onMessage = (event: MessageEvent) => {
-          if (event.source !== iframe.contentWindow) return;
-          window.removeEventListener("message", onMessage);
-          resolve(String(event.data));
-        };
-        window.addEventListener("message", onMessage);
-        setTimeout(() => resolve("NO MESSAGE"), 3000);
-      });
-
-      document.body.appendChild(iframe);
-      const result = await heard;
-      iframe.remove();
-      return result;
-    });
-
-    expect(ran).toBe("EXECUTED");
+    expect(await runInScriptFrame(page)).toBe("NO MESSAGE");
   });
 });
 
