@@ -83,6 +83,7 @@ type IMAPMessage struct {
 	// never sets.
 	Preview        string `json:"Preview,omitempty"`
 	PreviewPending bool   `json:"PreviewPending,omitempty"`
+	PreviewScope   string `json:"PreviewScope,omitempty"`
 	// UIDValidity is the UIDVALIDITY of Mailbox the message was read under,
 	// where the provider said; 0 where it is not known. It is set on the
 	// messages of a conversation the session keeps (handleGetThread), which

@@ -966,6 +966,11 @@ export class MessageList extends LitElement {
     this.previewsUnsupported = false;
   }
 
+  /** Each row carries its own epoch, including in a search across folders. */
+  private previewScopeOf(msg: any): string {
+    return msg?.PreviewScope || (this.currentMailbox !== '*' && this.listedUIDValidity ? String(this.listedUIDValidity) : '');
+  }
+
   /** Asks for the pending previews not asked for yet; one run at a time. */
   private async refreshPreviews() {
     if (this.previewsRunning) {
@@ -999,6 +1004,8 @@ export class MessageList extends LitElement {
       const uid = msg?.UID == null ? '' : String(msg.UID);
       const mailbox = this.mailboxOf(msg);
       if (!uid || !msg.PreviewPending || (shown !== '*' && mailbox !== shown)) continue;
+      const scope = this.previewScopeOf(msg);
+      if (scope) this.previewScopes.set(mailbox, scope);
       const key = messageKey(mailbox, uid);
       if (this.previewsAsked.has(key)) continue;
       this.previewsAsked.add(key);
@@ -1045,7 +1052,6 @@ export class MessageList extends LitElement {
         // next listing marks again what is pending.
         const prefix = messageKey(mailbox, '');
         this.previews = new Map([...this.previews].filter(([key]) => !key.startsWith(prefix)));
-        this.previewScopes.delete(mailbox);
         return;
       }
       if (answer.scope) this.previewScopes.set(mailbox, answer.scope);
@@ -1272,6 +1278,14 @@ export class MessageList extends LitElement {
       this.forgetMembers();
     }
     if (this.previewsSignIn !== signIns || changedProperties.has('currentMailbox') || changedProperties.has('listedUIDValidity')) {
+      this.forgetPreviews();
+    } else if (changedProperties.has('messages') && this.messages.some((msg) => {
+      const known = this.previewScopes.get(this.mailboxOf(msg));
+      const scope = this.previewScopeOf(msg);
+      return known && scope && known !== scope;
+    })) {
+      // Search results have no single listedUIDValidity. A new epoch in any
+      // row also invalidates in-flight answers and lets its UIDs be asked anew.
       this.forgetPreviews();
     }
     // An expanded row can survive a replacement listing or reconnect. Read its

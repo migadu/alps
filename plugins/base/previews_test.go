@@ -44,6 +44,7 @@ type listedPreviews struct {
 		UID            string
 		Preview        string
 		PreviewPending bool
+		PreviewScope   string
 	}
 }
 
@@ -79,7 +80,7 @@ func TestHTTP_PendingPreviews(t *testing.T) {
 	page := listInbox(t, s)
 	var uids []string
 	for _, m := range page.Messages {
-		if !m.PreviewPending || m.Preview != "" {
+		if !m.PreviewPending || m.Preview != "" || m.PreviewScope == "" {
 			t.Errorf("message %s: preview %q, pending %v; want pending", m.UID, m.Preview, m.PreviewPending)
 		}
 		uids = append(uids, m.UID)
@@ -91,6 +92,11 @@ func TestHTTP_PendingPreviews(t *testing.T) {
 	r.json(t, &previews)
 	if !previews.Supported || previews.Scope == "" {
 		t.Fatalf("previews %+v; want supported, with a scope", previews)
+	}
+	for _, m := range page.Messages {
+		if m.PreviewScope != previews.Scope {
+			t.Errorf("message %s: listing scope %q differs from hydration scope %q", m.UID, m.PreviewScope, previews.Scope)
+		}
 	}
 	if len(previews.Previews) != 2 || previews.Previews["1"] != "First message" || previews.Previews["2"] != "Second message" {
 		t.Fatalf("previews %v; want both texts and nothing for 99", previews.Previews)

@@ -306,6 +306,9 @@ type Message struct {
 	// asked for again through PreviewProvider.
 	Preview        string `json:"Preview,omitempty"`
 	PreviewPending bool   `json:"PreviewPending,omitempty"`
+	// PreviewScope identifies the mailbox epoch this row was read under, so
+	// a later preview response cannot attach a reused UID's text to this row.
+	PreviewScope string `json:"PreviewScope,omitempty"`
 }
 
 // MessageID is a provider-specific message identifier

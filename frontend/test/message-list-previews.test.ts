@@ -68,6 +68,45 @@ describe('message previews in the list', () => {
     expect(requests.flat().sort()).toEqual(messages.map((m) => m.UID).sort());
   });
 
+  it.each(['INBOX', '*'])('does not attach a preview from a recreated mailbox to the old listing (%s)', async (currentMailbox) => {
+    const requests = previewServer(() => ({ Previews: { '1': 'The replacement message' }, Scope: '2', Supported: true }));
+    const el = await mount(TAG, {
+      messages: [row(1, { Mailbox: 'INBOX', PreviewPending: true, PreviewScope: '1' })],
+      currentMailbox, listedUIDValidity: currentMailbox === '*' ? 0 : 1, totalMessages: 1, showSenderAvatars: false,
+    });
+    await waitFor(() => requests.length === 1, 'the old listing preview request');
+    await settle();
+    expect(previewTexts(el)).toEqual([]);
+
+    await update(el, {
+      messages: [row(1, { Mailbox: 'INBOX', PreviewPending: true, PreviewScope: '2' })],
+      listedUIDValidity: currentMailbox === '*' ? 0 : 2,
+    });
+    await waitFor(() => previewTexts(el).length === 1, 'the replacement listing preview');
+    expect(previewTexts(el)).toEqual(['The replacement message']);
+    expect(requests).toHaveLength(2);
+  });
+
+  it('ignores an old in-flight preview when a cross-folder search replaces the same UID', async () => {
+    let finish!: (response: Response) => void;
+    let requests = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (!String(url).includes('/previews?')) return new Response('{}');
+      requests++;
+      if (requests === 1) return new Promise<Response>((resolve) => { finish = resolve; });
+      return new Response(JSON.stringify({ Previews: { '1': 'Replacement text' }, Scope: '2', Supported: true }));
+    }));
+    const el = await mount(TAG, {
+      messages: [row(1, { Mailbox: 'Archive', PreviewPending: true, PreviewScope: '1' })],
+      currentMailbox: '*', totalMessages: 1, showSenderAvatars: false,
+    });
+    await waitFor(() => !!finish, 'the original preview request');
+    await update(el, { messages: [row(1, { Mailbox: 'Archive', PreviewPending: true, PreviewScope: '2' })] });
+    finish(new Response(JSON.stringify({ Previews: { '1': 'Old text' }, Scope: '1', Supported: true })));
+    await waitFor(() => requests === 2 && previewTexts(el).length === 1, 'the replacement preview');
+    expect(previewTexts(el)).toEqual(['Replacement text']);
+  });
+
   it('does not ask again in the same folder for a preview the server did not give', async () => {
     const requests = previewServer((uids) => ({ Previews: {}, Scope: '1', Supported: true }));
     const el = await mount(TAG, { messages: [row(1, { PreviewPending: true })], currentMailbox: 'INBOX', totalMessages: 1, showSenderAvatars: false });

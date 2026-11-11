@@ -36,6 +36,7 @@ func (p *IMAPProvider) convertListedMessage(msg *imapclient.FetchMessageBuffer, 
 	if !preview {
 		return m
 	}
+	m.PreviewScope = strconv.FormatUint(uint64(p.selectedUIDValidity), 10)
 	if msg.Preview != nil {
 		m.Preview = *msg.Preview
 		p.rememberPreview(mailbox, msg.UID, *msg.Preview)
