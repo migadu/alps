@@ -35,6 +35,7 @@ export const pt = {
       saved: "Ligação guardada.",
       reset: "Utilizar a ligação predefinida",
       remove: "Remover ligação",
+      removeConfirm: "Remover esta ligação DAV pessoal? A ligação predefinida configurada será utilizada, se estiver disponível.",
       resetDone: "Ligação predefinida reposta.",
       removed: "Ligação pessoal removida.",
       retry: "Tentar novamente",

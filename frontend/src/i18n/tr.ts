@@ -42,6 +42,7 @@ export const tr = {
       saved: "Bağlantı kaydedildi.",
       reset: "Varsayılan bağlantıyı kullan",
       remove: "Bağlantıyı kaldır",
+      removeConfirm: "Bu kişisel DAV bağlantısı kaldırılsın mı? Varsa yapılandırılmış varsayılan bağlantı kullanılacak.",
       resetDone: "Varsayılan bağlantı geri yüklendi.",
       removed: "Kişisel bağlantı kaldırıldı.",
       retry: "Yeniden dene",

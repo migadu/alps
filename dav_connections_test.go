@@ -56,12 +56,16 @@ func TestDAVConnectionCredentialsAreEncryptedAndSeparateFromSettings(t *testing.
 	dav := davDiscoveryServer(t, "radicale-user", "dav-secret")
 	store := &rawStore{entries: map[string]string{}}
 	s := davSession(t, store, davTestKey(t))
+	initial, err := s.DAVConnectionSettings("caldav", "https://default.example/dav/")
+	if err != nil || !initial.Configured || initial.PersonalConfigured {
+		t.Fatalf("administrator default is not a saved personal connection: %+v, %v", initial, err)
+	}
 	input := DAVConnectionInput{Server: personalDAVURL(dav), Username: "radicale-user", Password: "dav-secret"}
 	settings, err := s.SaveDAVConnection(context.Background(), "caldav", "https://default.example/dav/", input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !settings.PasswordConfigured || settings.UseMailCredentials || !settings.Configured {
+	if !settings.PasswordConfigured || settings.UseMailCredentials || !settings.Configured || !settings.PersonalConfigured {
 		t.Fatalf("public settings: %+v", settings)
 	}
 	key, _ := davStoreKey("caldav")
@@ -95,8 +99,9 @@ func TestDAVConnectionCredentialsAreEncryptedAndSeparateFromSettings(t *testing.
 	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", DAVConnectionInput{Server: input.Server + "another/", Username: input.Username}); !errors.Is(err, ErrDAVPasswordRequired) {
 		t.Fatalf("changed endpoint reused a password: %v", err)
 	}
-	if _, err := s.DeleteDAVConnection("caldav", "https://default.example/"); err != nil {
-		t.Fatal(err)
+	deleted, err := s.DeleteDAVConnection("caldav", "https://default.example/")
+	if err != nil || !deleted.Configured || deleted.PersonalConfigured {
+		t.Fatalf("reset should keep only the administrator default: %+v, %v", deleted, err)
 	}
 	reset, err := s.ResolveDAVConnection("caldav", "https://default.example/")
 	if err != nil || reset.Password != s.Password() || reset.Server != "https://default.example/" {
@@ -109,6 +114,15 @@ func TestDAVFailedValidationDoesNotReplaceSavedConnection(t *testing.T) {
 	store := &rawStore{entries: map[string]string{}}
 	s := davSession(t, store, davTestKey(t))
 	input := DAVConnectionInput{Server: personalDAVURL(dav), Username: "dav-user", Password: "good"}
+	input.Password = "incorrect"
+	if _, err := s.SaveDAVConnection(context.Background(), "carddav", "", input); !errors.Is(err, ErrDAVValidationFailed) {
+		t.Fatalf("bad initial password: %v", err)
+	}
+	settings, err := s.DAVConnectionSettings("carddav", "https://default.example/")
+	if err != nil || !settings.Configured || settings.PersonalConfigured {
+		t.Fatalf("failed initial save created a personal connection: %+v, %v", settings, err)
+	}
+	input.Password = "good"
 	if _, err := s.SaveDAVConnection(context.Background(), "carddav", "", input); err != nil {
 		t.Fatal(err)
 	}
@@ -120,6 +134,10 @@ func TestDAVFailedValidationDoesNotReplaceSavedConnection(t *testing.T) {
 	}
 	if store.entries[key] != before {
 		t.Fatal("failed validation overwrote the saved connection")
+	}
+	settings, err = s.DAVConnectionSettings("carddav", "")
+	if err != nil || !settings.PersonalConfigured {
+		t.Fatalf("failed replacement lost the saved personal connection: %+v, %v", settings, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -252,7 +270,7 @@ func TestDAVMailAuthenticationClearsCustomSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !settings.UseMailCredentials || settings.PasswordConfigured || settings.Username != "u" {
+	if !settings.UseMailCredentials || settings.PasswordConfigured || settings.Username != "u" || !settings.PersonalConfigured {
 		t.Fatalf("mail authentication: %+v", settings)
 	}
 	key, _ := davStoreKey("caldav")
@@ -262,6 +280,50 @@ func TestDAVMailAuthenticationClearsCustomSecrets(t *testing.T) {
 	connection, err := s.ResolveDAVConnection("caldav", "")
 	if err != nil || connection.Password != "p" || connection.Username != "u" {
 		t.Fatalf("resolved mail credentials: %+v, %v", connection, err)
+	}
+}
+
+func TestDAVPersonalConfiguredIncludesSavedMailAuthenticationAtTheDefault(t *testing.T) {
+	dav := davDiscoveryServer(t, "u", "p")
+	s := davSession(t, &rawStore{entries: map[string]string{}}, nil)
+	settings, err := s.SaveDAVConnection(context.Background(), "caldav", dav.URL, DAVConnectionInput{UseMailCredentials: true})
+	if err != nil || settings.Server != "" || !settings.Configured || !settings.PersonalConfigured || !settings.UseMailCredentials {
+		t.Fatalf("saved default connection: %+v, %v", settings, err)
+	}
+	settings, err = s.DeleteDAVConnection("caldav", dav.URL)
+	if err != nil || !settings.Configured || settings.PersonalConfigured {
+		t.Fatalf("removing a saved override should retain the effective default: %+v, %v", settings, err)
+	}
+}
+
+func TestDAVCorruptSavedRecordsAreDistinctFromStorageFailures(t *testing.T) {
+	key, _ := davStoreKey("caldav")
+	for name, record := range map[string]string{
+		"invalid JSON":              `{broken`,
+		"wrong record type":         `"not a record"`,
+		"wrong field type":          `{"version":"one"}`,
+		"unsupported version":       `{"version":2,"use_mail_credentials":true}`,
+		"missing custom credential": `{"version":1,"use_mail_credentials":false,"username":"u"}`,
+		"invalid endpoint":          `{"version":1,"use_mail_credentials":true,"server":"http://dav.example/"}`,
+		"null record":               `null`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := davSession(t, &rawStore{entries: map[string]string{key: record}}, nil)
+			if _, err := s.DAVConnectionSettings("caldav", ""); !errors.Is(err, ErrDAVCorruptSavedRecord) {
+				t.Fatalf("corrupt saved record not identified: %v", err)
+			}
+		})
+	}
+	for _, cause := range []error{errors.New("store unavailable"), context.DeadlineExceeded, errors.New("invalid saved DAV connection")} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			connects := 0
+			s := newStoreSession(&rawStore{entries: map[string]string{}, down: cause}, &connects)
+			t.Cleanup(func() { s.Close() })
+			_, err := s.DAVConnectionSettings("caldav", "")
+			if !errors.Is(err, cause) || errors.Is(err, ErrDAVCorruptSavedRecord) {
+				t.Fatalf("storage failure treated as a saved corrupt record: %v", err)
+			}
+		})
 	}
 }
 

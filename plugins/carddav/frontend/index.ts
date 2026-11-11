@@ -5,7 +5,7 @@ import { contactsService } from './contacts-service';
 registry.registerSettingsTab({
     id: 'carddav',
     pluginId: 'carddav',
-    labelKey: 'settings.dav.carddav',
+    labelKey: 'navigation.contacts',
     icon: 'users',
     component: 'alps-carddav-settings',
     load: () => import('../../../frontend/src/components/dav-connection-settings'),

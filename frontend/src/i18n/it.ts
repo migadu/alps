@@ -36,6 +36,7 @@ export const it = {
       saved: "Connessione salvata.",
       reset: "Usa connessione predefinita",
       remove: "Rimuovi connessione",
+      removeConfirm: "Rimuovere questa connessione DAV personale? Verrà usata la connessione predefinita configurata, se disponibile.",
       resetDone: "Connessione predefinita ripristinata.",
       removed: "Connessione personale rimossa.",
       retry: "Riprova",

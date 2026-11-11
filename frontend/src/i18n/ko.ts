@@ -42,6 +42,7 @@ export const ko = {
       saved: "연결을 저장했습니다.",
       reset: "기본 연결 사용",
       remove: "연결 삭제",
+      removeConfirm: "이 개인 DAV 연결을 삭제할까요? 설정된 기본 연결이 있으면 해당 연결을 사용합니다.",
       resetDone: "기본 연결로 복원했습니다.",
       removed: "개인 연결을 삭제했습니다.",
       retry: "다시 시도",

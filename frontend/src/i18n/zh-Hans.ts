@@ -44,6 +44,7 @@ export const zhHans: TranslationDictionary = {
       saved: "连接已保存。",
       reset: "使用默认连接",
       remove: "移除连接",
+      removeConfirm: "要移除此个人 DAV 连接吗？如果已配置的默认连接可用，将使用该连接。",
       resetDone: "已恢复默认连接。",
       removed: "已移除个人连接。",
       retry: "重试",

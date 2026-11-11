@@ -42,6 +42,7 @@ export const ja = {
       saved: "接続を保存しました。",
       reset: "既定の接続を使用",
       remove: "接続を削除",
+      removeConfirm: "この個人用DAV接続を削除しますか？設定済みの既定の接続がある場合は、その接続を使用します。",
       resetDone: "既定の接続に戻しました。",
       removed: "個人用の接続を削除しました。",
       retry: "再試行",

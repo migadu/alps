@@ -73,7 +73,13 @@ func handleDAVSettings(ctx *alps.Context) error {
 		case errors.Is(err, alps.ErrDAVValidationFailed):
 			code, status = "dav_auth_failed", http.StatusBadRequest
 		}
-		return ctx.JSON(status, map[string]string{"error": code})
+		response := map[string]any{"error": code}
+		if ctx.Request.Method == http.MethodGet && errors.Is(err, alps.ErrDAVCorruptSavedRecord) {
+			// Only a record that was actually read can establish this state.
+			// A failed storage connection does not justify offering removal.
+			response["personal_configured"] = true
+		}
+		return ctx.JSON(status, response)
 	}
 	return ctx.JSON(http.StatusOK, settings)
 }

@@ -42,6 +42,7 @@ export const id = {
       saved: "Koneksi disimpan.",
       reset: "Gunakan koneksi bawaan",
       remove: "Hapus koneksi",
+      removeConfirm: "Hapus koneksi DAV pribadi ini? Koneksi bawaan yang telah dikonfigurasi akan digunakan jika tersedia.",
       resetDone: "Koneksi bawaan dipulihkan.",
       removed: "Koneksi pribadi dihapus.",
       retry: "Coba lagi",

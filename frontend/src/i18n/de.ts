@@ -38,6 +38,7 @@ export const de: TranslationDictionary = {
       saved: "Verbindung gespeichert.",
       reset: "Standardverbindung verwenden",
       remove: "Verbindung entfernen",
+      removeConfirm: "Diese persönliche DAV-Verbindung entfernen? Falls verfügbar, wird die konfigurierte Standardverbindung verwendet.",
       resetDone: "Standardverbindung wiederhergestellt.",
       removed: "Persönliche Verbindung entfernt.",
       retry: "Erneut versuchen",

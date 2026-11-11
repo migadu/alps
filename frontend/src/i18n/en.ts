@@ -42,6 +42,7 @@ export const en = {
       saved: 'Connection saved.',
       reset: 'Use default connection',
       remove: 'Remove connection',
+      removeConfirm: 'Remove this personal DAV connection? The configured default will be used if available.',
       resetDone: 'Default connection restored.',
       removed: 'Personal connection removed.',
       retry: 'Try again',

@@ -1,4 +1,4 @@
-import { LitElement, html, css, nothing } from 'lit';
+import { LitElement, html, css, nothing, type PropertyValues } from 'lit';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { consume } from '@lit/context';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -29,8 +29,11 @@ export class AlpsInput extends LitElement {
    * own direction otherwise. */
   @property({ type: String, attribute: 'input-dir' }) inputDir: 'auto' | 'ltr' | 'rtl' | '' = '';
   @property({ type: String }) value = '';
+  @property({ type: String }) name = '';
   @property({ type: String }) placeholder = '';
   @property({ type: Boolean }) required = false;
+  @property({ type: Boolean, reflect: true }) disabled = false;
+  @property({ type: Number, attribute: 'maxlength' }) maxLength = -1;
   @property({ type: String }) autocomplete = '';
   @property({ type: String }) inputId = '';
   /**
@@ -182,10 +185,12 @@ export class AlpsInput extends LitElement {
   }
 
   private togglePassword() {
+    if (this.disabled) return;
     this.showPassword = !this.showPassword;
   }
 
   private handleClear() {
+    if (this.disabled) return;
     this.value = '';
     this.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
     this.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
@@ -193,6 +198,7 @@ export class AlpsInput extends LitElement {
   }
 
   private handleKeyDown(e: KeyboardEvent) {
+    if (this.disabled) return;
     if (e.key === 'Enter' && !isComposingKey(e)) {
       const form = this.closest('form');
       if (form) {
@@ -231,6 +237,11 @@ export class AlpsInput extends LitElement {
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
     this.stopLabelWatch?.();
     this.stopLabelWatch = null;
+    this.showPassword = false;
+  }
+
+  protected willUpdate(changed: PropertyValues<this>) {
+    if (changed.has('value') && !this.value) this.showPassword = false;
   }
 
   render() {
@@ -238,6 +249,8 @@ export class AlpsInput extends LitElement {
     const currentType = isPasswordType && this.showPassword ? 'text' : this.type;
     const effectiveIcon = this.icon || (this.type === 'email' ? 'at' : '');
     const inputDir = this.inputDir || (LTR_INPUT_TYPES.has(this.type) ? 'ltr' : 'auto');
+    const identifier = ['url', 'email', 'password'].includes(this.type)
+      || this.autocomplete.split(/\s+/).includes('username');
 
     return html`
       <div class="input-wrapper ${effectiveIcon ? 'has-left-icon' : ''} ${(isPasswordType || this.clearable) && this.value ? 'has-right-icon' : ''}">
@@ -252,11 +265,17 @@ export class AlpsInput extends LitElement {
           type=${currentType} 
           dir=${inputDir}
           .value=${this.value}
+          name=${this.name || nothing}
           placeholder=${this.placeholder}
           aria-label=${this.label || nothing}
           ?required=${this.required}
+          ?disabled=${this.disabled}
+          maxlength=${this.maxLength >= 0 ? this.maxLength : nothing}
           ?autofocus=${this.autofocus}
           autocomplete=${this.autocomplete}
+          autocorrect=${identifier ? 'off' : nothing}
+          autocapitalize=${identifier ? 'none' : nothing}
+          spellcheck=${identifier ? 'false' : nothing}
           @input=${this.handleInput}
           @change=${this.handleChange}
           @keydown=${this.handleKeyDown}
@@ -267,6 +286,8 @@ export class AlpsInput extends LitElement {
             type="button" 
             class="action-btn" 
             @click=${this.togglePassword}
+            ?disabled=${this.disabled}
+            aria-pressed=${this.showPassword}
             title=${this.showPassword ? (this.i18nStore?.t('general.hidePassword') || 'Hide password') : (this.i18nStore?.t('general.showPassword') || 'Show password')}
             tabindex="-1"
           >
@@ -277,6 +298,7 @@ export class AlpsInput extends LitElement {
             type="button" 
             class="action-btn" 
             @click=${this.handleClear}
+            ?disabled=${this.disabled}
             title=${this.i18nStore?.t('general.clear') || 'Clear'}
             tabindex="-1"
           >

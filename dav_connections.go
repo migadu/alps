@@ -22,6 +22,10 @@ var (
 	ErrDAVCredentialsRequired = errors.New("dav_credentials_required")
 	ErrDAVPasswordRequired    = errors.New("dav_password_required")
 	ErrDAVValidationFailed    = errors.New("dav_auth_failed")
+	// ErrDAVCorruptSavedRecord proves that a stored record was read but could
+	// not be decoded or accepted. Storage and network failures do not prove a
+	// personal connection exists and must not offer destructive recovery.
+	ErrDAVCorruptSavedRecord = errors.New("corrupt saved DAV connection")
 )
 
 const davConnectionTimeout = 10 * time.Second
@@ -34,6 +38,7 @@ type DAVSettings struct {
 	Username           string `json:"username"`
 	PasswordConfigured bool   `json:"password_configured"`
 	Configured         bool   `json:"configured"`
+	PersonalConfigured bool   `json:"personal_configured"`
 	CanSave            bool   `json:"can_save"`
 }
 
@@ -158,14 +163,19 @@ func (s *Session) readDAVConnection(service string) (*davConnectionRecord, error
 		return nil, nil
 	}
 	if err != nil {
+		var syntaxErr *json.SyntaxError
+		var typeErr *json.UnmarshalTypeError
+		if errors.As(err, &syntaxErr) || errors.As(err, &typeErr) {
+			return nil, fmt.Errorf("%w: %w", ErrDAVCorruptSavedRecord, err)
+		}
 		return nil, fmt.Errorf("read DAV connection: %w", err)
 	}
 	if record.Version != 1 || (!record.UseMailCredentials && (record.Username == "" || record.PasswordEnc == "" || record.PasswordServer == "")) || (record.UseMailCredentials && (record.Username != "" || record.PasswordEnc != "" || record.PasswordServer != "")) {
-		return nil, errors.New("invalid saved DAV connection")
+		return nil, fmt.Errorf("%w: invalid record fields or version", ErrDAVCorruptSavedRecord)
 	}
 	if record.Server != "" {
 		if _, err := ParseDAVServerURL(service, record.Server); err != nil {
-			return nil, errors.New("invalid saved DAV endpoint")
+			return nil, fmt.Errorf("%w: invalid endpoint", ErrDAVCorruptSavedRecord)
 		}
 	}
 	return &record, nil
@@ -178,6 +188,7 @@ func (s *Session) DAVConnectionSettings(service, defaultServer string) (DAVSetti
 	}
 	settings := DAVSettings{DefaultServer: publicDAVServer(defaultServer), UseMailCredentials: true, Username: s.Username(), CanSave: s.manager.loginKey != nil, Configured: defaultServer != ""}
 	if record != nil {
+		settings.PersonalConfigured = true
 		settings.Server = record.Server
 		settings.UseMailCredentials = record.UseMailCredentials
 		if !record.UseMailCredentials {

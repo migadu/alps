@@ -44,6 +44,7 @@ export const da: TranslationDictionary = {
       saved: "Forbindelsen er gemt.",
       reset: "Brug standardforbindelse",
       remove: "Fjern forbindelse",
+      removeConfirm: "Vil du fjerne denne personlige DAV-forbindelse? Den konfigurerede standardforbindelse bruges, hvis den er tilgængelig.",
       resetDone: "Standardforbindelsen er gendannet.",
       removed: "Den personlige forbindelse er fjernet.",
       retry: "Prøv igen",

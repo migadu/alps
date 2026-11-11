@@ -42,6 +42,7 @@ export const ptBR = {
       saved: "Conexão salva.",
       reset: "Usar conexão padrão",
       remove: "Remover conexão",
+      removeConfirm: "Remover esta conexão DAV pessoal? A conexão padrão configurada será usada, se estiver disponível.",
       resetDone: "Conexão padrão restaurada.",
       removed: "Conexão pessoal removida.",
       retry: "Tentar novamente",

@@ -12,8 +12,8 @@ By default, ALPS connects to the administrator-configured DAV server using the
 user's IMAP username and password. Existing installations with a unified backend
 identity system keep this behavior.
 
-When the corresponding plugin is enabled, **Settings → Calendar (CalDAV)** and
-**Settings → Contacts (CardDAV)** let each mail account configure its own
+When the corresponding plugin is enabled, **Settings → Calendar** and
+**Settings → Contacts** let each mail account configure its own
 connection independently:
 
 - Leave **Server URL** blank to use the configured server, or enter a personal
@@ -23,9 +23,10 @@ connection independently:
   mail credentials sends the mail password to that server.
 - **Save connection** checks authentication and discovers the user's DAV home
   before saving. A failed check leaves the previous saved connection intact.
-- **Use default connection** removes the personal server and credentials. The
-  configured server and mail credentials apply again. Without a default server,
-  the button is **Remove connection**, and navigation disappears after removal.
+- **Remove connection** appears after a personal connection has been saved.
+  Confirming removal deletes its server and credentials; the configured server
+  and mail credentials apply again when available. Without a default server,
+  navigation disappears after removal. Save and removal results appear as toasts.
 
 Saved passwords are never returned to the browser. An empty password field keeps
 the saved password only while the server and username stay the same. Changing

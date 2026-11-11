@@ -36,6 +36,7 @@ export const sr = {
       saved: "Veza je sačuvana.",
       reset: "Koristi podrazumevanu vezu",
       remove: "Ukloni vezu",
+      removeConfirm: "Ukloniti ovu ličnu DAV vezu? Ako je dostupna, koristiće se podešena podrazumevana veza.",
       resetDone: "Podrazumevana veza je vraćena.",
       removed: "Lična veza je uklonjena.",
       retry: "Pokušajte ponovo",

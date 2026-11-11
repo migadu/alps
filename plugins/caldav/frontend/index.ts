@@ -8,7 +8,7 @@ import { hasCalendarPart } from './invitation-service';
 registry.registerSettingsTab({
     id: 'caldav',
     pluginId: 'caldav',
-    labelKey: 'settings.dav.caldav',
+    labelKey: 'navigation.calendar',
     icon: 'calendar',
     component: 'alps-caldav-settings',
     load: () => import('../../../frontend/src/components/dav-connection-settings'),

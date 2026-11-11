@@ -36,6 +36,7 @@ export const fr = {
       saved: "Connexion enregistrée.",
       reset: "Utiliser la connexion par défaut",
       remove: "Supprimer la connexion",
+      removeConfirm: "Supprimer cette connexion DAV personnelle ? La connexion par défaut configurée sera utilisée si elle est disponible.",
       resetDone: "Connexion par défaut rétablie.",
       removed: "Connexion personnelle supprimée.",
       retry: "Réessayer",

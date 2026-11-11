@@ -4,6 +4,11 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { activeUsername, settingsContext, SettingsStore } from '../store/settings-store';
 import type { UnsavedChanges } from './settings-window';
+import type { AlpsInput } from './alps-input';
+import './alps-input';
+import './alps-button';
+import './alps-setting-group';
+import './ui-confirm';
 
 type Service = 'caldav' | 'carddav';
 
@@ -14,7 +19,13 @@ interface ConnectionSettings {
   username: string;
   password_configured: boolean;
   configured: boolean;
+  personal_configured: boolean;
   can_save: boolean;
+}
+
+interface Removal {
+  generation: number;
+  account: string;
 }
 
 class SettingsError extends Error {
@@ -43,11 +54,11 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
   @state() private useMailCredentials = true;
   @state() private username = '';
   @state() private password = '';
-  @state() private showPassword = false;
   @state() private loading = true;
   @state() private submitting = false;
   @state() private error = '';
-  @state() private status = '';
+  @state() private removal: Removal | null = null;
+  @state() private unreadablePersonal = false;
 
   private generation = 0;
   private account = '';
@@ -55,39 +66,15 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
   private mailCredentialsChosenForServer = false;
 
   static styles = css`
-    :host { display: block; max-width: 600px; color: var(--text-primary); }
-    h3 { margin-block: 0 0.5rem; font-size: 1rem; font-weight: 500; }
-    p { margin-block: 0 1rem; }
-    .description, .hint { color: var(--text-muted); font-size: 0.8125rem; line-height: 1.5; }
-    form, fieldset { display: flex; flex-direction: column; gap: 1rem; }
-    fieldset { min-inline-size: 0; border: 0; padding: 0; margin: 0; }
-    legend { padding: 0; margin-block-end: 0.75rem; font-size: 0.875rem; font-weight: 500; }
-    .field { display: flex; flex-direction: column; gap: 0.25rem; }
-    label { font-size: 0.875rem; }
-    input:not([type='checkbox']) {
-      box-sizing: border-box; inline-size: 100%; min-block-size: 48px;
-      padding: 0.5rem 0.75rem; border: 1px solid var(--border-color);
-      border-radius: var(--input-radius, 6px); background: var(--bg-primary);
-      color: var(--text-primary); font: inherit; font-size: max(1rem, 1em);
+    :host { display: block; }
+    .hint { color: var(--text-muted); font-size: 13px; line-height: 1.4; }
+    .checkbox-label {
+      display: flex; align-items: center; gap: 8px; cursor: pointer;
+      color: var(--text-primary); font-weight: 500;
     }
-    input:focus-visible, button:focus-visible {
-      outline: 2px solid var(--accent-color, #2563eb); outline-offset: 2px;
-    }
-    .check { display: flex; gap: 0.5rem; align-items: center; min-block-size: 48px; }
-    input[type='checkbox'] { inline-size: 1rem; block-size: 1rem; accent-color: var(--accent-color, #2563eb); }
-    .check label { display: flex; align-items: center; min-block-size: 48px; cursor: pointer; }
-    .password-field { display: flex; align-items: center; gap: 0.5rem; }
-    .password-field input { min-inline-size: 0; }
-    .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-    button {
-      min-block-size: 48px; padding: 0.5rem 1rem; border: 1px solid var(--border-color);
-      border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary);
-      font: inherit; font-size: 0.875rem; cursor: pointer;
-    }
-    button[type='submit'] { background: var(--accent-color, #2563eb); border-color: transparent; color: white; }
-    button:disabled { opacity: 0.6; cursor: default; }
-    .error { color: var(--danger-color, #dc2626); font-size: 0.875rem; }
-    .status { font-size: 0.875rem; }
+    input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .error { color: var(--danger-color, #dc2626); font-size: 13px; margin-block: 0 16px; }
     bdi { overflow-wrap: anywhere; }
   `;
 
@@ -112,9 +99,12 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     if (this.submitting) this.invalidateDAVPages();
     this.invalidate();
     this.password = '';
-    this.showPassword = false;
-    const password = this.shadowRoot?.querySelector<HTMLInputElement>('[name="password"]');
-    if (password) password.value = '';
+    const password = this.shadowRoot?.querySelector<AlpsInput>('alps-input[name="password"]');
+    if (password) {
+      password.value = '';
+      const input = password.shadowRoot?.querySelector('input');
+      if (input) input.value = '';
+    }
   }
 
   private t(key: string, params?: Record<string, unknown>): string {
@@ -145,6 +135,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
   private invalidate(): number {
     this.controller?.abort();
     this.controller = null;
+    this.removal = null;
     return ++this.generation;
   }
 
@@ -154,15 +145,16 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
 
   private clear() {
     this.saved = null;
-    this.server = this.username = this.password = this.error = this.status = '';
+    this.server = this.username = this.password = this.error = '';
     this.useMailCredentials = true;
-    this.showPassword = false;
     this.loading = true;
     this.submitting = false;
     this.mailCredentialsChosenForServer = false;
+    this.unreadablePersonal = false;
   }
 
   private apply(settings: ConnectionSettings) {
+    this.unreadablePersonal = false;
     const useMailCredentials = (settings.server || settings.default_server)
       ? settings.use_mail_credentials : false;
     // Pick the public fields rather than retaining the server's entire reply.
@@ -170,13 +162,13 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
       server: settings.server, default_server: settings.default_server,
       use_mail_credentials: useMailCredentials, username: settings.username,
       password_configured: settings.password_configured, configured: settings.configured,
+      personal_configured: settings.personal_configured,
       can_save: settings.can_save,
     };
     this.server = settings.server;
     this.username = settings.username;
     this.useMailCredentials = useMailCredentials;
     this.password = '';
-    this.showPassword = false;
     this.mailCredentialsChosenForServer = false;
   }
 
@@ -196,10 +188,16 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
       }
       const data = await response.json().catch(() => null);
       if (!this.current(generation)) return null;
-      if (!response.ok) throw new SettingsError(data?.error ?? 'dav_unavailable');
+      if (!response.ok) {
+        // Only the server can distinguish a known corrupt saved record from
+        // a failed read. The former still needs a way to remove the override.
+        if (method === 'GET' && data?.personal_configured === true) this.unreadablePersonal = true;
+        throw new SettingsError(data?.error ?? 'dav_unavailable');
+      }
       if (!data || typeof data.server !== 'string' || typeof data.default_server !== 'string'
         || typeof data.username !== 'string' || typeof data.use_mail_credentials !== 'boolean'
         || typeof data.password_configured !== 'boolean' || typeof data.configured !== 'boolean'
+        || typeof data.personal_configured !== 'boolean'
         || typeof data.can_save !== 'boolean') throw new SettingsError('dav_unavailable');
       return data as ConnectionSettings;
     } finally {
@@ -241,7 +239,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     this.invalidate();
     if (this.saved) this.apply(this.saved);
     this.submitting = false;
-    this.error = this.status = '';
+    this.error = '';
   }
 
   /** A retained password is valid only for the identity it was saved for. */
@@ -262,15 +260,14 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     }
     if (input.name === 'username') this.username = input.value;
     if (input.name === 'password') this.password = input.value;
-    this.error = this.status = '';
+    this.error = '';
   };
 
   private onCredentialsChanged = (event: Event) => {
     this.useMailCredentials = (event.target as HTMLInputElement).checked;
     this.mailCredentialsChosenForServer = this.useMailCredentials;
     this.password = '';
-    this.showPassword = false;
-    this.error = this.status = '';
+    this.error = '';
   };
 
   private save = async (event: SubmitEvent) => {
@@ -278,6 +275,13 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     if (this.submitting || !this.saved) return;
     const form = event.currentTarget as HTMLFormElement;
     if (!form.reportValidity()) return;
+    // Shared inputs live in their own shadow roots and are not associated
+    // with this form, so its native validation cannot see their constraints.
+    for (const input of form.querySelectorAll<AlpsInput>('alps-input')) {
+      if (input.reportValidity()) continue;
+      input.focus();
+      return;
+    }
     if (!this.useMailCredentials && !this.saved.can_save) {
       this.error = 'settings.dav.keyRequired';
       return;
@@ -290,10 +294,22 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     await this.mutate('PUT', body);
   };
 
-  private reset = async () => {
-    if (this.submitting || this.loading) return;
+  private askRemove = () => {
+    if (this.submitting || this.loading || !this.hasPersonalConnection || this.removal) return;
+    this.removal = { generation: this.generation, account: this.account };
+  };
+
+  private confirmRemove = async (removal: Removal) => {
+    if (this.removal !== removal || !this.current(removal.generation)
+      || removal.account !== this.account || removal.account !== this.currentAccount()
+      || !this.hasPersonalConnection || this.submitting) return;
+    this.removal = null;
     await this.mutate('DELETE');
   };
+
+  private get hasPersonalConnection(): boolean {
+    return this.saved?.personal_configured === true || this.unreadablePersonal;
+  }
 
   private invalidateDAVPages() {
     // A lost/cancelled reply does not prove the server did not save. Retained
@@ -307,13 +323,14 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
   private async mutate(method: 'PUT' | 'DELETE', body?: object) {
     const generation = this.invalidate();
     this.submitting = true;
-    this.error = this.status = '';
+    this.error = '';
     try {
       const settings = await this.request(method, generation, body);
       if (!settings || !this.current(generation)) return;
       this.apply(settings);
-      this.status = method === 'PUT' ? 'settings.dav.saved'
+      const success = method === 'PUT' ? 'settings.dav.saved'
         : settings.default_server ? 'settings.dav.resetDone' : 'settings.dav.removed';
+      window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.t(success) } }));
       window.dispatchEvent(new CustomEvent('dav-connections-updated', {
         detail: { service: this.service, configured: settings.configured },
       }));
@@ -334,69 +351,79 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
   }
 
   render() {
-    const id = `dav-${this.service}`;
+    const removal = this.removal;
     return html`
-      <h3 id="${id}-title">${this.t(`settings.dav.${this.service}`)}</h3>
-      <p class="description">${this.t('settings.dav.description')}</p>
+      ${removal ? html`
+        <ui-confirm
+          heading=${this.t('settings.dav.remove')}
+          message=${this.t('settings.dav.removeConfirm')}
+          confirmText=${this.t('settings.dav.remove')}
+          cancelText=${this.t('general.cancel')}
+          .isDanger=${true}
+          .dismissible=${true}
+          @confirm=${() => this.confirmRemove(removal)}
+          @cancel=${() => { if (this.removal === removal) this.removal = null; }}
+        ></ui-confirm>
+      ` : nothing}
       ${this.loading ? html`<p role="status">${this.t('settings.loading')}</p>` : nothing}
       ${this.error ? html`<p class="error" role="alert" tabindex="-1">${this.t(this.error)}</p>` : nothing}
       ${!this.loading && !this.saved ? html`
         <div class="actions">
-          <button type="button" ?disabled=${this.submitting} @click=${this.load}>${this.t('settings.dav.retry')}</button>
-          <button type="button" ?disabled=${this.submitting} @click=${this.reset}>${this.t('settings.dav.remove')}</button>
+          <alps-button variant="normal" ?disabled=${this.submitting} @click=${this.load}>${this.t('settings.dav.retry')}</alps-button>
+          ${this.unreadablePersonal ? html`
+            <alps-button class="remove" type="button" variant="danger" ?disabled=${this.submitting} @click=${this.askRemove}>
+              ${this.t('settings.dav.remove')}
+            </alps-button>
+          ` : nothing}
         </div>
       ` : nothing}
       ${this.saved ? html`
-        <form action="/settings/dav/${this.service}" method="post" aria-labelledby="${id}-title" @submit=${this.save}>
-          <fieldset ?disabled=${this.submitting}>
-            <legend>${this.t('settings.dav.connection')}</legend>
-            <div class="field">
-              <label for="${id}-server">${this.t('settings.dav.server')}</label>
-              <input id="${id}-server" name="server" type="url" .value=${this.server}
-                placeholder="https://dav.example.com/" ?required=${!this.saved.default_server}
-                maxlength="2048" autocomplete="url" autocorrect="off" autocapitalize="none" spellcheck="false"
-                aria-describedby="${id}-server-hint" @input=${this.onInput}>
-              <span class="hint" id="${id}-server-hint">${this.saved.default_server
-                ? html`${this.t('settings.dav.defaultServer')} <bdi dir="ltr">${this.saved.default_server}</bdi>`
-                : this.t('settings.dav.serverRequired')}</span>
-            </div>
-            <div class="check">
-              <input id="${id}-mail" name="use_mail_credentials" type="checkbox"
-                .checked=${this.useMailCredentials} @change=${this.onCredentialsChanged}>
-              <label for="${id}-mail">${this.t('settings.dav.useMailCredentials')}</label>
-            </div>
-            ${!this.saved.can_save ? html`<p class="hint">${this.t('settings.dav.keyRequired')}</p>` : nothing}
-            ${!this.useMailCredentials ? html`
-              <div class="field">
-                <label for="${id}-username">${this.t('settings.dav.username')}</label>
-                <input id="${id}-username" name="username" type="text" .value=${this.username}
-                  required maxlength="1024" autocomplete="section-${this.service} username"
-                  autocorrect="off" autocapitalize="none" spellcheck="false" @input=${this.onInput}>
-              </div>
-              <div class="field">
-                <label for="${id}-password">${this.t('settings.dav.password')}</label>
-                <div class="password-field">
-                  <input id="${id}-password" name="password" type=${this.showPassword ? 'text' : 'password'}
-                    .value=${this.password} ?required=${this.needsPassword} maxlength="4096"
-                    autocomplete="section-${this.service} current-password" aria-describedby="${id}-password-hint"
-                    @input=${this.onInput}>
-                  <button type="button" aria-pressed=${this.showPassword}
-                    aria-controls="${id}-password" @click=${() => { this.showPassword = !this.showPassword; }}>
-                    ${this.t(this.showPassword ? 'general.hidePassword' : 'general.showPassword')}
-                  </button>
-                </div>
-                <span class="hint" id="${id}-password-hint">${this.t(this.needsPassword
-                  ? 'settings.dav.enterPassword' : 'settings.dav.passwordConfigured')}</span>
-              </div>
+        <form action="/settings/dav/${this.service}" method="post"
+          aria-label=${this.t(`settings.dav.${this.service}`)} @submit=${this.save}>
+          <alps-setting-group label=${this.t('settings.dav.server')} description=${this.t('settings.dav.serverRequired')}>
+            <alps-input name="server" type="url" icon="globe" label=${this.t('settings.dav.server')}
+              .value=${this.server} ?required=${!this.saved.default_server} ?disabled=${this.submitting}
+              maxlength="2048" autocomplete="url" placeholder="https://dav.example.com/" @input=${this.onInput}
+            ></alps-input>
+            ${this.saved.default_server ? html`
+              <span class="hint">${this.t('settings.dav.defaultServer')} <bdi dir="ltr">${this.saved.default_server}</bdi></span>
             ` : nothing}
-            <div class="actions">
-              <button type="submit">${this.t(this.submitting ? 'settings.dav.saving' : 'settings.dav.save')}</button>
-              <button type="button" @click=${this.reset}>${this.t(this.saved.default_server ? 'settings.dav.reset' : 'settings.dav.remove')}</button>
-            </div>
-          </fieldset>
+          </alps-setting-group>
+          <alps-setting-group>
+            <label class="checkbox-label">
+              <input name="use_mail_credentials" type="checkbox" .checked=${this.useMailCredentials}
+                ?disabled=${this.submitting} @change=${this.onCredentialsChanged}>
+              ${this.t('settings.dav.useMailCredentials')}
+            </label>
+            ${!this.saved.can_save ? html`<span class="hint">${this.t('settings.dav.keyRequired')}</span>` : nothing}
+          </alps-setting-group>
+          ${!this.useMailCredentials ? html`
+            <alps-setting-group label=${this.t('settings.dav.username')}>
+              <alps-input name="username" type="text" icon="at" label=${this.t('settings.dav.username')}
+                .value=${this.username} required ?disabled=${this.submitting} maxlength="1024"
+                autocomplete="section-${this.service} username" @input=${this.onInput}
+              ></alps-input>
+            </alps-setting-group>
+            <alps-setting-group label=${this.t('settings.dav.password')}
+              description=${this.t(this.needsPassword ? 'settings.dav.enterPassword' : 'settings.dav.passwordConfigured')}>
+              <alps-input name="password" type="password" icon="key" label=${this.t('settings.dav.password')}
+                .value=${this.password} ?required=${this.needsPassword} ?disabled=${this.submitting} maxlength="4096"
+                autocomplete="section-${this.service} current-password" @input=${this.onInput}
+              ></alps-input>
+            </alps-setting-group>
+          ` : nothing}
+          <div class="actions">
+            <alps-button type="submit" variant="primary" ?disabled=${this.submitting} ?spinning=${this.submitting}>
+              ${this.t(this.submitting ? 'settings.dav.saving' : 'settings.dav.save')}
+            </alps-button>
+            ${this.saved.personal_configured ? html`
+              <alps-button class="remove" type="button" variant="danger" ?disabled=${this.submitting} @click=${this.askRemove}>
+                ${this.t('settings.dav.remove')}
+              </alps-button>
+            ` : nothing}
+          </div>
         </form>
       ` : nothing}
-      <p class="status" role="status">${this.status ? this.t(this.status) : ''}</p>
     `;
   }
 }

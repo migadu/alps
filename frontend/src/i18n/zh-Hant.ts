@@ -42,6 +42,7 @@ export const zhHant = {
       saved: "連線已儲存。",
       reset: "使用預設連線",
       remove: "移除連線",
+      removeConfirm: "要移除此個人 DAV 連線嗎？如果已設定的預設連線可用，將使用該連線。",
       resetDone: "已還原預設連線。",
       removed: "已移除個人連線。",
       retry: "重試",
