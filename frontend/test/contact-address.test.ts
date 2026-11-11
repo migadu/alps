@@ -63,7 +63,7 @@ async function type(el: El, label: string, value: string): Promise<void> {
   await host.updateComplete;
   const input = host.shadowRoot!.querySelector('input') as HTMLInputElement;
   input.value = value;
-  input.dispatchEvent(new Event('input'));
+  input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
   await el.updateComplete;
 }
 

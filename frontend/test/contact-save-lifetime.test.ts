@@ -32,7 +32,7 @@ async function type(el: El, value: string) {
   const host = Array.from(view.shadowRoot!.querySelectorAll('alps-input')).find((f) => (f as El).placeholder === 'contacts.name') as El;
   await host.updateComplete;
   const input = host.shadowRoot!.querySelector('input')!;
-  input.value = value; input.dispatchEvent(new Event('input')); await settle(el);
+  input.value = value; input.dispatchEvent(new Event('input', { bubbles: true, composed: true })); await settle(el);
 }
 it('a delayed create updates its own row without replacing the newly opened card', async () => {
   let finish!: (answer: any) => void;

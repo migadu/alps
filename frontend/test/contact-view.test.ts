@@ -123,7 +123,10 @@ async function set(el: View, part: Part, value: string): Promise<void> {
   await host!.updateComplete;
   const control = host!.shadowRoot!.querySelector('select, input') as HTMLInputElement | HTMLSelectElement;
   control.value = value;
-  control.dispatchEvent(new Event(control instanceof HTMLSelectElement ? 'change' : 'input'));
+  // An input's `input` bubbles and is composed, as the browser sends it.
+  control.dispatchEvent(control instanceof HTMLSelectElement
+    ? new Event('change')
+    : new Event('input', { bubbles: true, composed: true }));
   await el.updateComplete;
 }
 

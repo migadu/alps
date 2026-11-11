@@ -74,7 +74,7 @@ async function field(el: El, placeholder: string): Promise<HTMLInputElement> {
 async function type(el: El, placeholder: string, value: string): Promise<void> {
   const input = await field(el, placeholder);
   input.value = value;
-  input.dispatchEvent(new Event('input'));
+  input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
   await settle(el);
 }
 
