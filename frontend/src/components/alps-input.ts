@@ -165,8 +165,16 @@ export class AlpsInput extends LitElement {
   private handleInput(e: Event) {
     const target = e.target as HTMLInputElement;
     this.value = target.value;
-    // Dispatch standard input and change events so it behaves like a native input
     this.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  }
+
+  /** `change` when the value is committed, as a native input says it: what
+   * saves on `change` (the settings' display name and Reply-To) must not save
+   * every keystroke. The inner input's own is not composed, and stops at the
+   * shadow root. */
+  private handleChange(e: Event) {
+    const target = e.target as HTMLInputElement;
+    this.value = target.value;
     this.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
   }
 
@@ -247,7 +255,7 @@ export class AlpsInput extends LitElement {
           ?autofocus=${this.autofocus}
           autocomplete=${this.autocomplete}
           @input=${this.handleInput}
-          @change=${this.handleInput}
+          @change=${this.handleChange}
           @keydown=${this.handleKeyDown}
         />
 
