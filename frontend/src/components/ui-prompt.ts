@@ -7,6 +7,7 @@ import './alps-button';
 import './alps-input';
 import type { AlpsInput } from './alps-input';
 import { motionStyles } from '../utils/motion';
+import { isComposingKey } from '../utils/active-element';
 
 export interface PromptField {
   id: string;
@@ -156,7 +157,7 @@ export class UIPrompt extends LitElement {
   }
 
   private _handleKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !isComposingKey(e)) {
       e.preventDefault();
       this._handleSubmit();
     }
