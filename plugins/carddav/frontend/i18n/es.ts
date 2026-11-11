@@ -24,6 +24,11 @@ export default {
     loadFailed: 'No se pudo cargar el contacto, así que todavía no se puede editar.',
     saveConflict: 'El contacto se modificó en otro dispositivo, así que tu cambio no se guardó. Cancela la edición para ver la última versión.',
     deletedElsewhere: 'El contacto se eliminó en otro dispositivo.',
+    editDeletedElsewhere: 'El contacto se eliminó en otro dispositivo, así que tu cambio no se guardó. Lo que escribiste sigue en el formulario; cancela la edición para cerrarlo.',
+    deletedElsewhereCount: {
+      one: '{count} de {total} contactos se eliminó en otro dispositivo.',
+      other: '{count} de {total} contactos se eliminaron en otro dispositivo.'
+    },
     starFailed: {
       one: 'No se pudo actualizar {count} de {total} contactos.',
       other: 'No se pudieron actualizar {count} de {total} contactos.'

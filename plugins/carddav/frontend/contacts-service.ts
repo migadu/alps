@@ -1,4 +1,4 @@
-import { fetchWithTimeout, encodePathParam, HttpStatusError, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
+import { fetchWithTimeout, encodePathParam, HttpStatusError, isGone, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
 
 export interface ContactProperty {
   value: string;
@@ -83,6 +83,9 @@ export interface BulkOutcome {
   uncertain: number;
   /** The version each card that took the change is now at, by path. */
   etags?: Record<string, string>;
+  /** The cards among `failed` that were not there to write: deleted on
+   * another device since the page read them. Refused, and nothing to retry. */
+  gonePaths?: string[];
   /** The cards a delete removed. The counts say how many, and a caller that
    * acts on one card (the open one) needs to know whether it was that one. */
   deletedPaths?: string[];
@@ -95,7 +98,8 @@ function summarize(settled: PromiseSettledResult<unknown>[]): BulkOutcome {
     if (outcome.status === 'rejected') {
       failed += 1;
       if (outcomeUnknown(outcome.reason)) uncertain += 1;
-      console.error('Bulk contact operation failed for one item', outcome.reason);
+      // A card deleted elsewhere is not a failure to log: see isGone.
+      if (!isGone(outcome.reason)) console.error('Bulk contact operation failed for one item', outcome.reason);
     }
   }
   return { total: settled.length, done: settled.length - failed, failed, uncertain };
@@ -203,7 +207,8 @@ class ContactsService {
     settled.forEach((outcome, i) => {
       if (outcome.status === 'fulfilled' && outcome.value?.etag) etags[targets[i].path!] = outcome.value.etag;
     });
-    return { ...summarize(settled), etags };
+    const gonePaths = targets.filter((_, i) => settled[i].status === 'rejected' && isGone((settled[i] as PromiseRejectedResult).reason)).map(contact => contact.path!);
+    return { ...summarize(settled), etags, ...(gonePaths.length > 0 && { gonePaths }) };
   }
 
   async bulkDeleteContacts(paths: string[]): Promise<BulkOutcome> {

@@ -289,6 +289,18 @@ var errChangedElsewhere = alps.NewHTTPError(http.StatusPreconditionFailed, "chan
 // often deleted on another device since the page listed it.
 var errContactGone = alps.NewHTTPError(http.StatusNotFound, "deleted elsewhere since it was listed")
 
+// cardReadFailed answers a card the CardDAV server did not return. One that
+// is no longer stored is errContactGone, for a write that reads the card
+// first as for the read itself: the browser can then tell a contact deleted
+// elsewhere from an outage, which is all anything else is taken for.
+func cardReadFailed(err error) error {
+	var refused *webdav.HTTPError
+	if errors.As(err, &refused) && refused.Code == http.StatusNotFound {
+		return errContactGone
+	}
+	return fmt.Errorf("failed to query CardDAV address: %v", err)
+}
+
 // deleteFailed answers a delete the CardDAV server did not carry out. A card
 // already gone is not one: davsave.Delete takes it as deleted, since that is
 // what was asked for, and a second click or a delete made on another device
@@ -736,11 +748,7 @@ func registerRoutes(p *plugin) {
 
 		ao, err := c.GetAddressObject(ctx.Request.Context(), path)
 		if err != nil {
-			var refused *webdav.HTTPError
-			if errors.As(err, &refused) && refused.Code == http.StatusNotFound {
-				return errContactGone
-			}
-			return fmt.Errorf("failed to query CardDAV address: %v", err)
+			return cardReadFailed(err)
 		}
 
 		contact := extractContactData(ao.Card, ao.Path)
@@ -891,7 +899,7 @@ func registerRoutes(p *plugin) {
 		if addressObjectPath != "" {
 			ao, err = c.GetAddressObject(ctx.Request.Context(), addressObjectPath)
 			if err != nil {
-				return fmt.Errorf("failed to query CardDAV address: %v", err)
+				return cardReadFailed(err)
 			}
 			// Compared here as well as sent as If-Match below, because they
 			// cover different spans: If-Match only the moment between this read
@@ -1212,7 +1220,7 @@ func registerRoutes(p *plugin) {
 		for attempt := 1; ; attempt++ {
 			ao, err := c.GetAddressObject(ctx.Request.Context(), objectPath)
 			if err != nil {
-				return fmt.Errorf("failed to query CardDAV address: %v", err)
+				return cardReadFailed(err)
 			}
 			setCategories(ao.Card, req.Categories)
 			touchRevision(ao.Card)

@@ -20,6 +20,10 @@ export default {
     loadFailed: 'Kontak tidak dapat dimuat, sehingga belum dapat diedit.',
     saveConflict: 'Kontak ini diubah di perangkat lain, sehingga perubahan Anda tidak disimpan. Batalkan pengeditan untuk melihat versi terbaru.',
     deletedElsewhere: 'Kontak ini dihapus di perangkat lain.',
+    editDeletedElsewhere: 'Kontak ini dihapus di perangkat lain, sehingga perubahan Anda tidak disimpan. Yang Anda ketik masih ada di formulir; batalkan pengeditan untuk menutupnya.',
+    deletedElsewhereCount: {
+      other: '{count} dari {total} kontak dihapus di perangkat lain.'
+    },
     starFailed: {
       other: '{count} dari {total} kontak tidak dapat diperbarui.'
     },

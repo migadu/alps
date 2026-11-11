@@ -20,6 +20,10 @@ export default {
     loadFailed: '連絡先を読み込めなかったため、まだ編集できません。',
     saveConflict: 'この連絡先は別の端末で変更されたため、編集内容は保存されませんでした。最新の内容を確認するには、編集をキャンセルしてください。',
     deletedElsewhere: 'この連絡先は別の端末で削除されました。',
+    editDeletedElsewhere: 'この連絡先は別の端末で削除されたため、編集内容は保存されませんでした。入力した内容はフォームに残っています。閉じるには、編集をキャンセルしてください。',
+    deletedElsewhereCount: {
+      other: '{total}件中{count}件の連絡先は別の端末で削除されました。'
+    },
     starFailed: {
       other: '{total}件中{count}件の連絡先を更新できませんでした。'
     },

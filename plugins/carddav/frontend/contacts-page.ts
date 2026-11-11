@@ -23,7 +23,7 @@ import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
 import { contactsService, sameAddressParts } from './contacts-service';
-import { HttpStatusError, isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
+import { HttpStatusError, isGone, isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
 import { motionStyles } from '../../../frontend/src/utils/motion';
@@ -53,6 +53,8 @@ type ContactSaveTarget = {
   lifetime: number;
   username: string;
   conflicted: boolean;
+  /** Its card was deleted elsewhere: nothing more is sent for it. */
+  gone?: boolean;
   toolbarVersion?: { etag: string };
   creationId?: string;
   unconfirmed?: { before: any; payload: any };
@@ -647,6 +649,7 @@ export class ContactsPage extends LitElement {
     this.wholeCardPath = null;
     this.isEditing = false;
     this.conflictedPath = null;
+    this.gonePath = null;
     await this.readOpenCard(contact.path!);
   }
 
@@ -705,6 +708,36 @@ export class ContactsPage extends LitElement {
       window.dispatchEvent(new CustomEvent('show-toast', {
         detail: { message: this.i18nStore?.t('contacts.deletedElsewhere'), type: 'info', duration: 5000 }
       }));
+    }
+    void this.fetchContacts();
+  }
+
+  /**
+   * The cards at `paths` were not there to write: deleted on another device
+   * since the page read them. Their rows go at once, and with a fresh read of
+   * the list. The open card closes, as after a read that found it gone,
+   * unless its form is open: that stays as typed, with nothing more sent for
+   * it, until the edit is cancelled (see handleCancelEdit). Closing it here
+   * would throw away what the user typed, with no word of where it went.
+   */
+  private dropGone(paths: string[] = []) {
+    if (paths.length === 0) return;
+    const gone = (c: any) => !!c.path && paths.includes(c.path);
+    const whole = this.wholeBook === this.contacts;
+    this.contacts = this.contacts.filter(c => !gone(c));
+    this.wholeBook = whole ? this.contacts : this.wholeBook.filter(c => !gone(c));
+    if (paths.some(path => this.selectedContacts.has(path))) {
+      this.selectedContacts = new Set([...this.selectedContacts].filter(path => !paths.includes(path)));
+    }
+    const open = this.selectedContact;
+    if (open && gone(open)) {
+      if (this.isEditing) {
+        this.gonePath = open.path;
+      } else {
+        this.cardGeneration++;
+        this.selectedContact = null;
+        this.leaveDeletedCard();
+      }
     }
     void this.fetchContacts();
   }
@@ -773,6 +806,11 @@ export class ContactsPage extends LitElement {
         this.selectedContact = { ...this.selectedContact, categories };
       }
     } catch (err) {
+      if (isGone(err)) {
+        this.reportFailure('contacts.deletedElsewhere');
+        this.dropGone([contact.path]);
+        return;
+      }
       console.error('Failed to toggle star:', err);
       // Told apart as across a selection: see reportRefusals.
       this.reportFailure(outcomeUnknown(err) ? UNCONFIRMED.update[1] : 'contacts.starOneFailed');
@@ -971,10 +1009,11 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.map((c: string) => c === oldName ? newName : c);
           return { ...contact, categories };
         });
-        const { total, done, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+        const { total, done, failed, uncertain = 0, etags, gonePaths = [] } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.showWrittenCategories(contactsToModify, etags);
-        if (failed > 0) this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: failed - uncertain, total, uncertain });
+        if (failed > 0) this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: failed - uncertain, total, uncertain, gone: gonePaths.length });
+        this.dropGone(gonePaths);
         if (done === 0 && uncertain > 0) {
           this.pendingCategoryChanges.set(oldName, newName);
           this.saveAddedCategories();
@@ -1036,10 +1075,11 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.filter((c: string) => c !== oldName);
           return { ...contact, categories };
         });
-        const { total, done, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+        const { total, done, failed, uncertain = 0, etags, gonePaths = [] } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.showWrittenCategories(contactsToModify, etags);
-        if (failed > 0) this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: failed - uncertain, total, uncertain });
+        if (failed > 0) this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: failed - uncertain, total, uncertain, gone: gonePaths.length });
+        this.dropGone(gonePaths);
         if (done === 0 && uncertain > 0) {
           this.pendingCategoryChanges.set(oldName, undefined);
           this.saveAddedCategories();
@@ -1109,6 +1149,12 @@ export class ContactsPage extends LitElement {
       if (!this.selectedCategory) {
         this.writeHash('#/contacts/all', 'push');
       }
+    } else if (this.selectedContact?.path && this.selectedContact.path === this.gonePath) {
+      // The form was all that was left of a card deleted elsewhere.
+      this.gonePath = null;
+      this.cardGeneration++;
+      this.selectedContact = null;
+      this.leaveDeletedCard();
     } else if (this.selectedContact?.path && this.selectedContact.path === this.conflictedPath) {
       this.conflictedPath = null;
       void this.rereadOpenContact();
@@ -1126,6 +1172,10 @@ export class ContactsPage extends LitElement {
         this.selectedContact = data;
       }
     } catch (e) {
+      if (isGone(e)) {
+        this.cardGone(path, this.cardGeneration);
+        return;
+      }
       console.error('Failed to re-read the contact', e);
     }
     this.fetchContacts();
@@ -1180,6 +1230,22 @@ export class ContactsPage extends LitElement {
   private saveRunning = false;
   /** The card whose save was refused as changed elsewhere, until the edit is cancelled. */
   private conflictedPath: string | null = null;
+  /** The card whose save found it deleted elsewhere, until the edit is cancelled. */
+  private gonePath: string | null = null;
+
+  /**
+   * A form's save found its card deleted on another device.
+   *
+   * Every later autosave would be answered the same way, so nothing more is
+   * sent for it. While the form is still open it stays, holding what the user
+   * typed, and the message says so; the card leaves the list either way.
+   */
+  private saveFoundGone(target: ContactSaveTarget, path: string) {
+    target.gone = true;
+    const typing = this.showingSave(target) && this.isEditing;
+    this.reportFailure(typing ? 'contacts.editDeletedElsewhere' : 'contacts.deletedElsewhere');
+    this.dropGone([path]);
+  }
 
   /**
    * Saves the form, one request at a time.
@@ -1244,7 +1310,8 @@ export class ContactsPage extends LitElement {
     // After a refusal every autosave would be refused the same way, one error
     // per keystroke. Nothing is sent until the edit is cancelled, which shows
     // the stored card (handleCancelEdit).
-    if (target.conflicted || (editing && this.conflictedPath === before.path)) return;
+    // Nor after its card was found deleted elsewhere (saveFoundGone).
+    if (target.conflicted || target.gone || (editing && (this.conflictedPath === before.path || this.gonePath === before.path))) return;
     if (this.showingSave(target)) this.saving = true;
     try {
       // The editor has no field for the categories: the toolbar's star and
@@ -1331,9 +1398,11 @@ export class ContactsPage extends LitElement {
         this.wholeCardPath = savedContact.path;
       }
     } catch (e) {
-      console.error('Error saving contact', e);
+      if (!(editing && isGone(e))) console.error('Error saving contact', e);
       if (!this.ownsSave(target)) return;
-      if (outcomeUnknown(e) || (!editing && isVersionConflict(e))) {
+      if (editing && isGone(e)) {
+        this.saveFoundGone(target, before.path);
+      } else if (outcomeUnknown(e) || (!editing && isVersionConflict(e))) {
         target.unconfirmed = { before, payload };
         this.reportFailure(UNCONFIRMED.update[1]);
         await this.reconcileSave(target);
@@ -1362,6 +1431,13 @@ export class ContactsPage extends LitElement {
       // A new card absent from a successful read can be created again at its
       // same UUID path. If the first write arrives late, If-None-Match protects it.
       if (!fresh && pending.before.isTemporary) { target.unconfirmed = undefined; return true; }
+      // An existing card absent from it was deleted elsewhere; there is no
+      // newer version to show, which is what a conflict would promise.
+      if (!fresh) {
+        target.unconfirmed = undefined;
+        this.saveFoundGone(target, pending.before.path);
+        return false;
+      }
       if (fresh && ((!pending.before.isTemporary && pending.before.etag && fresh.etag === pending.before.etag) || confirmsContactSave(fresh, pending.payload))) {
         const showing = this.showingSave(target);
         target.contact = { ...fresh };
@@ -1427,7 +1503,7 @@ export class ContactsPage extends LitElement {
 
       this.contacts = [...this.contacts]; // Trigger re-render immediately
 
-      const { total, done, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+      const { total, done, failed, uncertain = 0, etags, gonePaths = [] } = await contactsService.bulkUpdateCategories(contactsToModify);
       this.applyETags(etags);
       if (failed > 0) {
         if (done === 0) {
@@ -1443,7 +1519,9 @@ export class ContactsPage extends LitElement {
           // Some cards took the change, and the snapshot would un-star them.
           this.fetchContacts();
         }
-        this.reportRefusals('contacts.starFailed', 'contacts.starOneFailed', { count: failed - uncertain, total, uncertain });
+        this.reportRefusals('contacts.starFailed', 'contacts.starOneFailed', { count: failed - uncertain, total, uncertain, gone: gonePaths.length });
+        // After the rollback above, which would put a deleted card's row back.
+        this.dropGone(gonePaths);
       }
     } catch (e) {
       console.error('Error toggling star', e);
@@ -1488,13 +1566,19 @@ export class ContactsPage extends LitElement {
    * refresh before trying again: the page reads the list again itself, but
    * that read can fail as the write did. One toast holds both, as a screen
    * reader reads out only the newest.
+   *
+   * `gone` of the cards counted in `count` were not there to write, deleted
+   * on another device (see dropGone). They are told apart too: "could not be
+   * updated" invites another try, and there is nothing left to try it on.
    */
-  private reportRefusals(counted: string, single: string, params: { count: number; total: number; uncertain?: number }, write: keyof typeof UNCONFIRMED = 'update') {
-    const { count, total, uncertain = 0 } = params;
+  private reportRefusals(counted: string, single: string, params: { count: number; total: number; uncertain?: number; gone?: number }, write: keyof typeof UNCONFIRMED = 'update') {
+    const { total, uncertain = 0, gone = 0 } = params;
+    const count = params.count - gone;
     const sentence = ([countedKey, singleKey]: readonly [string, string], n: number) =>
       (total === 1 ? this.i18nStore?.t(singleKey) : this.i18nStore?.t(countedKey, { count: n, total })) ?? '';
     const said: string[] = [];
     if (count > 0) said.push(sentence([counted, single], count));
+    if (gone > 0) said.push(sentence(['contacts.deletedElsewhereCount', 'contacts.deletedElsewhere'], gone));
     if (uncertain > 0) said.push(sentence(UNCONFIRMED[write], uncertain));
     // A Japanese or Chinese sentence ends in a full-width stop, with no space after it.
     this.showFailure(said.reduce((text, next) => text + (text && !/[。！？]$/.test(text) ? ' ' : '') + next, ''));
@@ -1606,12 +1690,13 @@ export class ContactsPage extends LitElement {
         return payload;
       }).filter(Boolean);
 
-      const { total, failed, uncertain = 0, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+      const { total, failed, uncertain = 0, etags, gonePaths = [] } = await contactsService.bulkUpdateCategories(contactsToModify);
       this.contacts = [...this.contacts]; // Trigger re-render
       this.applyETags(etags);
       if (failed > 0) {
         this.fetchContacts();
-        this.reportRefusals('contacts.categoryUpdateFailed', 'contacts.categoryUpdateOneFailed', { count: failed - uncertain, total, uncertain });
+        this.reportRefusals('contacts.categoryUpdateFailed', 'contacts.categoryUpdateOneFailed', { count: failed - uncertain, total, uncertain, gone: gonePaths.length });
+        this.dropGone(gonePaths);
       }
 
       if (this.selectedContact && this.selectedContacts.size <= 1 && this.selectedCategory !== '') {

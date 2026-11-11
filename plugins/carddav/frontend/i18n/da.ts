@@ -24,6 +24,11 @@ export default {
     loadFailed: 'Kontakten kunne ikke indlæses, så den kan ikke redigeres endnu.',
     saveConflict: 'Kontakten er blevet ændret på en anden enhed, så din ændring blev ikke gemt. Annuller redigeringen for at se den nyeste version.',
     deletedElsewhere: 'Kontakten er blevet slettet på en anden enhed.',
+    editDeletedElsewhere: 'Kontakten er blevet slettet på en anden enhed, så din ændring blev ikke gemt. Det, du har skrevet, står stadig i formularen; annuller redigeringen for at lukke den.',
+    deletedElsewhereCount: {
+      one: '{count} af {total} kontakter er blevet slettet på en anden enhed.',
+      other: '{count} af {total} kontakter er blevet slettet på en anden enhed.'
+    },
     starFailed: {
       one: '{count} af {total} kontakter kunne ikke opdateres.',
       other: '{count} af {total} kontakter kunne ikke opdateres.'

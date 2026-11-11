@@ -24,6 +24,11 @@ export default {
     loadFailed: 'Kişi yüklenemediği için henüz düzenlenemiyor.',
     saveConflict: 'Bu kişi başka bir cihazda değiştirildiği için düzenlemeniz kaydedilmedi. En son sürümü görmek için düzenlemeyi iptal edin.',
     deletedElsewhere: 'Bu kişi başka bir cihazda silindi.',
+    editDeletedElsewhere: 'Bu kişi başka bir cihazda silindiği için düzenlemeniz kaydedilmedi. Yazdıklarınız hâlâ formda; kapatmak için düzenlemeyi iptal edin.',
+    deletedElsewhereCount: {
+      one: '{total} kişiden {count} tanesi başka bir cihazda silindi.',
+      other: '{total} kişiden {count} tanesi başka bir cihazda silindi.'
+    },
     starFailed: {
       one: '{total} kişiden {count} tanesi güncellenemedi.',
       other: '{total} kişiden {count} tanesi güncellenemedi.'

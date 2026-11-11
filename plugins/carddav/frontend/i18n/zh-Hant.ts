@@ -20,6 +20,10 @@ export default {
     loadFailed: '無法載入聯絡人，因此暫時無法編輯。',
     saveConflict: '此聯絡人已在其他裝置上變更，因此未儲存您的編輯。請取消編輯以查看最新版本。',
     deletedElsewhere: '此聯絡人已在其他裝置上刪除。',
+    editDeletedElsewhere: '此聯絡人已在其他裝置上刪除，因此未儲存您的編輯。您輸入的內容仍在表單中；請取消編輯以關閉。',
+    deletedElsewhereCount: {
+      other: '{total} 位聯絡人中有 {count} 位已在其他裝置上刪除。'
+    },
     starFailed: {
       other: '{total} 位聯絡人中有 {count} 位無法更新。'
     },

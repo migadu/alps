@@ -28,6 +28,12 @@ export default {
     loadFailed: 'Kontakt nije mogao biti učitan, pa se još ne može urediti.',
     saveConflict: 'Kontakt je izmenjen na drugom uređaju, pa vaša izmena nije sačuvana. Otkažite izmenu da biste videli najnoviju verziju.',
     deletedElsewhere: 'Kontakt je obrisan na drugom uređaju.',
+    editDeletedElsewhere: 'Kontakt je obrisan na drugom uređaju, pa vaša izmena nije sačuvana. Ono što ste uneli i dalje je u obrascu; otkažite izmenu da biste ga zatvorili.',
+    deletedElsewhereCount: {
+      one: 'Kontakti obrisani na drugom uređaju: {count} od {total}.',
+      few: 'Kontakti obrisani na drugom uređaju: {count} od {total}.',
+      other: 'Kontakti obrisani na drugom uređaju: {count} od {total}.'
+    },
     starFailed: {
       one: 'Nije bilo moguće ažurirati {count} kontakt od ukupno {total}.',
       few: 'Nije bilo moguće ažurirati {count} kontakta od ukupno {total}.',
