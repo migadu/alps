@@ -420,9 +420,10 @@ test("the attachment preview keeps keyboard focus inside it", async ({ page }) =
 /**
  * And the last surface of the shape: an open dropdown menu.
  *
- * `alps-popup` shows a click-triggered menu with `showModal()`, exactly as a
- * dialog does, and moves focus between its entries on the arrows — the same
- * keys the list uses to move between messages.
+ * `alps-popup` shows a click-triggered menu as a popover over a page that
+ * stays live, and moves focus between its entries on the arrows — the same
+ * keys the list uses to move between messages, so the menu must take them
+ * before the page does.
  */
 test("an open dropdown menu owns the keyboard", async ({ page }) => {
   const subject = `Shortcuts menu ${unique()}`;

@@ -127,14 +127,14 @@ it('moves the same toasts through nested menus and modals without extending thei
   await vi.advanceTimersByTimeAsync(500);
   popup.open();
   await popup.updateComplete;
-  expect(popup.shadowRoot!.querySelector('dialog alps-toast')).toBe(original);
+  expect(popup.shadowRoot!.querySelector('.popup-content alps-toast')).toBe(original);
   const modal = document.createElement('ui-modal') as El;
   popup.append(modal);
   await modal.updateComplete;
   expect(modal.shadowRoot!.querySelector('dialog alps-toast')).toBe(original);
   await vi.advanceTimersByTimeAsync(500);
   modal.remove();
-  expect(popup.shadowRoot!.querySelector('dialog alps-toast')).toBe(original);
+  expect(popup.shadowRoot!.querySelector('.popup-content alps-toast')).toBe(original);
   popup.close();
   await popup.updateComplete;
   expect(root.shadowRoot!.querySelector('alps-toast')).toBe(original);
