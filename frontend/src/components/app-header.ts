@@ -4,6 +4,7 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registry } from '../plugin-registry';
 import { getMailboxLabel } from '../utils/ui';
+import { isComposingKey } from '../utils/active-element';
 import { matchesTabRoute } from '../utils/routes';
 import { pageHash } from '../utils/settings-history';
 import { logoStyles, renderLogo } from '../utils/branding';
@@ -187,7 +188,7 @@ export class AppHeader extends LitElement {
           .value=${this.searchQuery}
           .placeholder=${this.currentTab === 'contacts' ? (this.i18nStore?.t('contacts.title') || 'Contacts') : this.currentTab === 'calendar' ? (this.i18nStore?.t('calendar.title') || 'Search Calendar') : this.currentTab === 'tasks' ? this.i18nStore?.t('tasks.title') : (this.currentMailbox ? getMailboxLabel(this.currentMailbox, this.i18nStore, this.mailboxes) : (this.i18nStore?.t('search.placeholder')))}
           @keydown=${(e: KeyboardEvent) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !isComposingKey(e)) {
               e.preventDefault();
               this.dispatchEvent(new CustomEvent('search-submit', {
                 detail: { value: (e.target as HTMLInputElement).value },

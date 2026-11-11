@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/textproto"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 const (
@@ -2359,20 +2359,9 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 			return nil, err
 		}
 
-		uidMapping := make(map[provider.MessageID]provider.MessageID)
-		sawCopyUID := moveData != nil && moveData.SourceUIDs != nil && moveData.DestUIDs != nil
-		if sawCopyUID {
-			if srcUidSet, ok1 := moveData.SourceUIDs.(imap.UIDSet); ok1 {
-				if dstUidSet, ok2 := moveData.DestUIDs.(imap.UIDSet); ok2 {
-					srcNums, _ := srcUidSet.Nums()
-					dstNums, _ := dstUidSet.Nums()
-					if len(srcNums) == len(dstNums) {
-						for i := range srcNums {
-							uidMapping[IMAPUID(srcNums[i])] = IMAPUID(dstNums[i])
-						}
-					}
-				}
-			}
+		var uidMapping map[provider.MessageID]provider.MessageID
+		if moveData != nil {
+			uidMapping = copiedUIDs(moveData.UIDMapping, len(ids))
 		}
 
 		// MOVE is atomic (RFC 6851), and a COPYUID answer names the messages
@@ -2439,22 +2428,29 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 		return nil, err
 	}
 
-	uidMapping := make(map[provider.MessageID]provider.MessageID)
-	sawCopyUID := copyData != nil && len(copyData.SourceUIDs) > 0 && len(copyData.DestUIDs) > 0
-	if sawCopyUID {
-		srcNums, _ := copyData.SourceUIDs.Nums()
-		dstNums, _ := copyData.DestUIDs.Nums()
-		if len(srcNums) == len(dstNums) {
-			for i := range srcNums {
-				uidMapping[IMAPUID(srcNums[i])] = IMAPUID(dstNums[i])
-			}
-		}
+	var uidMapping map[provider.MessageID]provider.MessageID
+	if copyData != nil {
+		uidMapping = copiedUIDs(copyData.UIDMapping, len(ids))
 	}
 	if len(uidMapping) == 0 {
 		return nil, nil
 	}
 
 	return uidMapping, nil
+}
+
+// copiedUIDs pairs each source UID with its copy's, in COPYUID's copying
+// order. The client leaves a mapping it cannot read empty. A mapping pairs
+// only the messages asked for, so a longer one is not read.
+func copiedUIDs(m imap.UIDMapping, asked int) map[provider.MessageID]provider.MessageID {
+	uidMapping := make(map[provider.MessageID]provider.MessageID)
+	if m.Cardinality() > uint64(asked) {
+		return uidMapping
+	}
+	for src, dst := range m.All() {
+		uidMapping[IMAPUID(src)] = IMAPUID(dst)
+	}
+	return uidMapping
 }
 
 // An absent COPYUID is ambiguous even with UIDPLUS: RFC4315 permits its

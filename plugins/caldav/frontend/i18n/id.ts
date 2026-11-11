@@ -80,6 +80,7 @@ export default {
     week: 'Minggu',
     month: 'Bulan',
     year: 'Tahun',
+    view: 'Tampilan',
     today: 'Hari Ini',
     allDay: 'Sepanjang Hari',
     noTitle: '(Tanpa judul)',

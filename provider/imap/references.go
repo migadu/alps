@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-message/textproto"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // Bounds on FindByReferences: how many searches it makes, and how many IDs one

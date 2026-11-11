@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
+	"github.com/migadu/go-imap"
 )
 
 // A count alone cannot identify a folder's messages. Another client can flag

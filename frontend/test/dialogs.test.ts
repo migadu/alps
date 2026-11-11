@@ -271,6 +271,19 @@ describe('ui-prompt', () => {
     expect(submits).toHaveLength(1);
   });
 
+  it('leaves the Enter that picks an IME candidate to the IME', async () => {
+    // A folder named in Pinyin was submitted on the Enter that turned
+    // `wenjian` into 文件, before the candidate reached the field.
+    const el = await mount('ui-prompt', { fields: folderField() });
+    const submits = record(el, 'submit');
+    for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+      const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...init });
+      inputOf(el, 'name').dispatchEvent(enter);
+      expect(enter.defaultPrevented).toBe(false);
+    }
+    expect(submits).toHaveLength(0);
+  });
+
   it('submits once however fast the second press comes, until the owner is done', async () => {
     const el = await mount<HTMLElement & { busy: boolean }>('ui-prompt', { fields: folderField() });
     const submits = record(el, 'submit');

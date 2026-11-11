@@ -29,6 +29,18 @@ export function isMultilineTextEntry(el: Element | null): boolean {
   return el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable;
 }
 
+/**
+ * Whether a keystroke is the input method's, as the Enter that picks a Chinese
+ * or Japanese candidate and the Escape that drops one are. The IME takes it,
+ * and a field that acted on it as well submitted, or closed, while its text
+ * was still being composed. `isComposing` says so, except in Safari, which
+ * ends the composition before the key reaches the page; there the key's code
+ * is still 229, the IME's.
+ */
+export function isComposingKey(e: KeyboardEvent): boolean {
+  return e.isComposing || e.keyCode === 229;
+}
+
 /** The focused element, looking inside shadow roots. */
 export function deepActiveElement(): Element | null {
   let el: Element | null = document.activeElement;

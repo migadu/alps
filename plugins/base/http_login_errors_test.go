@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
+	"github.com/migadu/go-imap"
 
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"

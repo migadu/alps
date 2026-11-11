@@ -3,7 +3,7 @@ package imap
 import (
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
+	"github.com/migadu/go-imap"
 )
 
 // listsSubscriptions is a server whose LIST can report subscriptions: the

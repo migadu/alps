@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 func TestHTTP_EmptyingTrashKeepsColonSiblingParts(t *testing.T) {

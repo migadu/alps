@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 var errBadCredentials = errors.New("invalid credentials")

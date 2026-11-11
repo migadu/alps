@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // refusedThread is what a rate limiter answers a THREAD with.

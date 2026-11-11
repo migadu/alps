@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 var _ provider.FolderWatcher = (*IMAPProvider)(nil)

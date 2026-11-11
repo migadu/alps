@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-maildir"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 type Provider struct {

@@ -115,6 +115,21 @@ describe('the folder share dialog', () => {
     expect(shadow<El>(el, 'alps-input').value).toBe('');
   });
 
+  it('shares on Enter in the address field, but not on the Enter the IME takes', async () => {
+    const { share } = server([bob]);
+    const el = await dialog();
+    await type(el, 'carol@example.test');
+    const field = shadow<El>(el, 'alps-input');
+    for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true, cancelable: true, ...init }));
+    }
+    await el.updateComplete;
+    expect(share).not.toHaveBeenCalled();
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true, cancelable: true }));
+    await waitFor(() => !el.busy && share.mock.calls.length === 1, 'the grant to settle');
+    expect(share).toHaveBeenCalledWith('Shared/Team', 'carol@example.test', 'read_only');
+  });
+
   it('does not present stale access as current when the refresh after a change fails', async () => {
     const { read } = server([bob]);
     const el = await dialog();

@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 const FRONTEND = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(readFileSync(resolve(FRONTEND, 'public/site.webmanifest'), 'utf8'));
-const title = /<title>([^<]*)<\/title>/.exec(readFileSync(resolve(FRONTEND, 'index.html'), 'utf8'))?.[1];
+const page = readFileSync(resolve(FRONTEND, 'index.html'), 'utf8');
+const title = /<title>([^<]*)<\/title>/.exec(page)?.[1];
 
 describe('the web app manifest', () => {
   it('names the app as the page does', () => {
@@ -22,5 +23,11 @@ describe('the web app manifest', () => {
     // to its middle 80%, which cuts the petals off.
     expect(manifest.icons.length).toBeGreaterThan(0);
     for (const icon of manifest.icons) expect(icon.purpose, icon.src).toBe('any');
+  });
+});
+
+describe('the page before the app has booted', () => {
+  it('lets the canvas follow the system rather than always painting it white', () => {
+    expect(page).toMatch(/<meta name="color-scheme" content="light dark"/);
   });
 });

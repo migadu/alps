@@ -7,7 +7,7 @@
  * checkbox still needs Space as activation.
  */
 import { describe, expect, it } from 'vitest';
-import { consumesSpaceAsText, isMultilineTextEntry } from '../src/utils/active-element';
+import { consumesSpaceAsText, isComposingKey, isMultilineTextEntry } from '../src/utils/active-element';
 
 const input = (type?: string) => {
   const el = document.createElement('input');
@@ -71,5 +71,22 @@ describe('isMultilineTextEntry', () => {
     expect(isMultilineTextEntry(input('text'))).toBeFalsy();
     expect(isMultilineTextEntry(document.createElement('select'))).toBeFalsy();
     expect(isMultilineTextEntry(null)).toBe(false);
+  });
+});
+
+describe('isComposingKey', () => {
+  const key = (init: KeyboardEventInit) => new KeyboardEvent('keydown', { key: 'Enter', ...init });
+
+  it('is true for a key pressed during a composition', () => {
+    expect(isComposingKey(key({ isComposing: true }))).toBe(true);
+  });
+
+  it('is true for the IME key code, which Safari still reports once composition has ended', () => {
+    expect(isComposingKey(key({ keyCode: 229 }))).toBe(true);
+  });
+
+  it('is false for an Enter typed outside a composition', () => {
+    expect(isComposingKey(key({}))).toBe(false);
+    expect(isComposingKey(key({ keyCode: 13 }))).toBe(false);
   });
 });

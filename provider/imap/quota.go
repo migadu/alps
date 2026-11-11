@@ -6,8 +6,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 var _ provider.QuotaReader = (*IMAPProvider)(nil)

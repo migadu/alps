@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // quotaAnswer is what GET /quota answers. Supported says that the mail server
