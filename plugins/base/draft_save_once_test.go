@@ -9,10 +9,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapserver"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapserver"
 )
 
 // faults are what a lossy provider fails. Each count is how many more times

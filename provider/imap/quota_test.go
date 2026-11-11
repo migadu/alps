@@ -6,8 +6,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // storageQuota reads the provider's storage quota, failing the test on an

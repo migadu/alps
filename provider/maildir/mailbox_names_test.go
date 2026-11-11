@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-maildir"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // jailed is a provider whose maildir has a neighbour: another user's maildir
