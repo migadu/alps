@@ -102,6 +102,17 @@ describe('the window', () => {
     expect(press.defaultPrevented).toBe(true);
   });
 
+  it('leaves the Escape that drops an IME candidate to the IME', async () => {
+    const el = await page();
+    const closes = record(el, 'settings-close');
+    for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+      const press = escape(init);
+      rows(el)[0].dispatchEvent(press);
+      expect(press.defaultPrevented).toBe(false);
+    }
+    expect(closes).toHaveLength(0);
+  });
+
   it('leaves Escape to a dialog open inside it', async () => {
     // A confirm or a dropdown, open over a section: Escape closes THAT, and
     // one press must not take the whole window with it.

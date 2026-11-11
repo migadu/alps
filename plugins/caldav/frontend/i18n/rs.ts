@@ -30,6 +30,7 @@ export default {
         week: 'Недеља',
         month: 'Месец',
         year: 'Година',
+        view: 'Приказ',
         today: 'Данас',
         allDay: 'Цео дан',
         noTitle: '(Без наслова)',

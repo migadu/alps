@@ -80,6 +80,7 @@ export default {
     week: 'सप्ताह',
     month: 'महीना',
     year: 'वर्ष',
+    view: 'दृश्य',
     today: 'आज',
     allDay: 'पूरे दिन',
     noTitle: '(बिना शीर्षक)',

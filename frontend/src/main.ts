@@ -1,5 +1,6 @@
 import { Logger } from './utils/logger';
 import { installAppUpdate } from './services/app-update';
+import { capFocusZoomOnIOS } from './utils/viewport';
 import '@fontsource/inter/latin-400.css';
 import '@fontsource/inter/latin-500.css';
 import '@fontsource/inter/latin-600.css';
@@ -12,5 +13,6 @@ const plugins = import.meta.glob('../../plugins/*/frontend/index.ts', { eager: t
 Logger.info(`Loaded ${Object.keys(plugins).length} frontend plugins.`);
 
 installAppUpdate();
+capFocusZoomOnIOS();
 
 import './components/app-root';

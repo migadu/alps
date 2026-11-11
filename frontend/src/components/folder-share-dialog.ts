@@ -5,6 +5,7 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations, SHARE_LEVELS, type FolderShare, type ShareLevel, type SharingRefusal } from '../services/mailbox-operations';
 import { motionStyles } from '../utils/motion';
+import { isComposingKey } from '../utils/active-element';
 import type { AlpsInput } from './alps-input';
 import './ui-modal';
 import './ui-confirm';
@@ -322,7 +323,7 @@ export class FolderShareDialog extends LitElement {
               .value=${this.address}
               @input=${(e: Event) => { this.address = (e.target as HTMLInputElement).value; this.error = null; }}
               @keydown=${(e: KeyboardEvent) => {
-                if (e.key !== 'Enter') return;
+                if (e.key !== 'Enter' || isComposingKey(e)) return;
                 e.preventDefault();
                 void this.grant();
               }}

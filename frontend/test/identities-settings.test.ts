@@ -212,6 +212,20 @@ describe('what is typed and not saved', () => {
     expect(el.settingsStore.updates).toEqual([]);
   });
 
+  it('leaves the Escape that drops an IME candidate to the IME', async () => {
+    const el = await list();
+    await click(shadow(el, 'alps-button.add'), el);
+    type(el, 'name', 'Ada');
+    const input = shadowAll<El>(el, '.identity-form alps-input')[0].shadowRoot!.querySelector('input')!;
+    for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true, cancelable: true, ...init });
+      input.dispatchEvent(escape);
+      await el.updateComplete;
+      expect(escape.defaultPrevented).toBe(false);
+    }
+    expect(el.shadowRoot!.querySelector('.identity-form')).not.toBeNull();
+  });
+
   it('is what the Identity section answers the window with', async () => {
     const store = settingsStore();
     const win = await mount<El>('settings-window', { settingsStore: store, i18nStore, category: 'identity' });
