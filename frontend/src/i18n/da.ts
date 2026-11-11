@@ -593,7 +593,8 @@ export const da: TranslationDictionary = {
     messages: 'Beskeder',
     contacts: 'Kontakter',
     calendar: 'Kalender',
-    tasks: 'Opgaver'
+    tasks: 'Opgaver',
+    label: 'Apps'
   },
   userMenu: {
     settings: 'Indstillinger',

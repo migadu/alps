@@ -589,7 +589,8 @@ export const tr = {
     messages: 'İletiler',
     contacts: 'Kişiler',
     calendar: 'Takvim',
-    tasks: 'Görevler'
+    tasks: 'Görevler',
+    label: 'Uygulamalar'
   },
   userMenu: {
     settings: 'Ayarlar',

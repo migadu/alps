@@ -532,7 +532,8 @@ export const rs = {
     messages: 'Поруке',
     contacts: 'Контакти',
     calendar: 'Календар',
-    tasks: 'Задаци'
+    tasks: 'Задаци',
+    label: 'Апликације'
   },
   userMenu: {
     settings: 'Подешавања',

@@ -589,7 +589,8 @@ export const hi = {
     messages: 'संदेश',
     contacts: 'संपर्क',
     calendar: 'कैलेंडर',
-    tasks: 'कार्य'
+    tasks: 'कार्य',
+    label: 'ऐप्स'
   },
   userMenu: {
     settings: 'सेटिंग',
