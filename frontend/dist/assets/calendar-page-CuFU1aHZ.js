@@ -1,47 +1,86 @@
-import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpccnv.js";import{t as c}from"./vendor-Bey7gDeL.js";import{Ct as l,Dt as u,Nt as d,Ot as f,X as ee,_ as p,_t as m,a as h,g as te,h as g,ht as _,lt as v,m as y,o as b,s as x,st as S,ut as C,yt as w}from"./index-DAmCW9z4.js";import"./alps-address-input-B8Ao8ENJ.js";import{S as T,a as E,c as D,i as O,l as k,m as A,n as j,o as M,r as N,s as P,t as F,u as I}from"./task-modal-DbLvi3g2.js";var L=class extends r{constructor(...e){super(...e),this.options=[],this.value=``}static{this.styles=[C,o`
+import{_ as e,a as t,d as n,f as r,g as i,l as a,u as o,x as s,y as c}from"./lit-BYBpccnv.js";import{t as l}from"./vendor-Bey7gDeL.js";import{Ct as u,Dt as d,Nt as f,Ot as p,X as m,_ as h,_t as g,a as _,g as v,h as y,ht as b,lt as x,m as S,o as ee,s as C,st as w,ut as T,yt as E}from"./index-BFknOV-B.js";import"./alps-address-input-JjETgu1V.js";import{S as D,a as O,c as te,i as k,l as A,m as j,n as M,o as N,r as P,s as F,t as I,u as L}from"./task-modal-BnNirXI-.js";var R=0,z=class extends i{constructor(...e){super(...e),this.options=[],this.value=``,this.label=``,this.name=`alps-toggle-${++R}`}static{this.styles=[T,s`
     :host {
       display: inline-flex;
+    }
+
+    .group {
+      display: flex;
+      flex: 1;
+      box-sizing: border-box;
       background-color: var(--bg-secondary, #f3f4f6);
       border-radius: 6px;
       padding: 2px;
       border: 1px solid var(--border-color, #e5e7eb);
     }
 
-    button {
-      background: none;
-      border: none;
+    label {
+      position: relative;
       padding: 4px 16px;
       border-radius: 4px;
       cursor: pointer;
+      font-family: inherit;
       font-size: 13px;
       font-weight: 500;
+      line-height: normal;
+      text-align: center;
       color: var(--text-secondary, #4b5563);
       transition: all 0.2s;
     }
 
-    button.active {
+    label:has(:checked) {
       background-color: var(--bg-primary, #ffffff);
       color: var(--text-primary, #111827);
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
 
+    label:has(:focus-visible) {
+      outline: 2px solid var(--accent-color, #005A9E);
+      outline-offset: 2px;
+    }
+
+    /* Out of sight, not out of reach: the radio still takes the focus and
+       the keys, and the label is what shows. */
+    input {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    @media (forced-colors: active) {
+      label:has(:checked) {
+        forced-color-adjust: none;
+        background-color: Highlight;
+        color: HighlightText;
+      }
+    }
+
     :host([full-width]) {
       display: flex;
       width: 100%;
-      box-sizing: border-box;
     }
 
-    :host([full-width]) button {
+    :host([full-width]) label {
       flex: 1;
     }
-  `]}render(){return s`
-      ${this.options.map(e=>s`
-        <button 
-          class="${this.value===e.value?`active`:``}" 
-          @click=${()=>this._select(e.value)}
-        >${e.label}</button>
-      `)}
-    `}_select(e){this.value!==e&&(this.value=e,this.dispatchEvent(new CustomEvent(`change`,{detail:{value:e}})))}};v([a({type:Array})],L.prototype,`options`,void 0),v([a({type:String})],L.prototype,`value`,void 0),L=v([t(`alps-toggle`)],L);var R=class extends r{constructor(...e){super(...e),this.calendars=[],this.open=!1,this.scheduling=`email`,this.summary=``,this.location=``,this.calendarPath=``,this.description=``,this.startDate=``,this.startTime=``,this.endDate=``,this.endTime=``,this.isAllDay=!1,this.isSaving=!1,this.rruleFreq=``,this.originalRRule=``,this.attendees=[],this.askNotify=!1}static{this.styles=[C,ee,o`
+  `]}render(){return c`
+      <div class="group" role="radiogroup" aria-label=${this.label||e}>
+        ${this.options.map(e=>c`
+          <label>
+            <input
+              type="radio"
+              name=${this.name}
+              .value=${e.value}
+              .checked=${t(this.value===e.value)}
+              @change=${()=>this._select(e.value)}
+            >${e.label}
+          </label>
+        `)}
+      </div>
+    `}_select(e){this.value!==e&&(this.value=e,this.dispatchEvent(new CustomEvent(`change`,{detail:{value:e}})))}};x([o({type:Array})],z.prototype,`options`,void 0),x([o({type:String})],z.prototype,`value`,void 0),x([o({type:String})],z.prototype,`label`,void 0),z=x([n(`alps-toggle`)],z);var B=class extends i{constructor(...e){super(...e),this.calendars=[],this.open=!1,this.scheduling=`email`,this.summary=``,this.location=``,this.calendarPath=``,this.description=``,this.startDate=``,this.startTime=``,this.endDate=``,this.endTime=``,this.isAllDay=!1,this.isSaving=!1,this.rruleFreq=``,this.originalRRule=``,this.attendees=[],this.askNotify=!1}static{this.styles=[T,m,s`
             .form-group {
                 margin-bottom: 16px;
             }
@@ -83,7 +122,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                 border-color: var(--accent-color, #2563eb);
                 box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
             }
-        `]}updated(e){if(e.has(`open`)&&this.open){let e=e=>e.toString().padStart(2,`0`);if(this.askNotify=!1,this.attendees=(this.event?.attendees??[]).map(F),this.event){this.summary=this.event.summary||``,this.location=this.event.location||``,this.description=this.event.description||``,this.calendarPath=this.event.calendarPath||(this.calendars.length>0?this.calendars[0].path:``);let t=E(this.event);if(this.isAllDay=t,this.event.rrule?(this.originalRRule=this.event.rrule,this.event.rrule===`FREQ=DAILY`?this.rruleFreq=`DAILY`:this.event.rrule===`FREQ=WEEKLY`?this.rruleFreq=`WEEKLY`:this.event.rrule===`FREQ=MONTHLY`?this.rruleFreq=`MONTHLY`:this.event.rrule===`FREQ=YEARLY`?this.rruleFreq=`YEARLY`:this.rruleFreq=`CUSTOM`):(this.originalRRule=``,this.rruleFreq=``),t){let t=new Date(this.event.start);this.startDate=`${t.getUTCFullYear()}-${e(t.getUTCMonth()+1)}-${e(t.getUTCDate())}`,this.startTime=`00:00`;let n=new Date(this.event.end);n.setUTCDate(n.getUTCDate()-1),this.endDate=`${n.getUTCFullYear()}-${e(n.getUTCMonth()+1)}-${e(n.getUTCDate())}`,this.endDate<this.startDate&&(this.endDate=this.startDate),this.endTime=`00:00`}else{let t=new Date(this.event.start);this.startDate=`${t.getFullYear()}-${e(t.getMonth()+1)}-${e(t.getDate())}`,this.startTime=`${e(t.getHours())}:${e(t.getMinutes())}`;let n=new Date(this.event.end);this.endDate=`${n.getFullYear()}-${e(n.getMonth()+1)}-${e(n.getDate())}`,this.endTime=`${e(n.getHours())}:${e(n.getMinutes())}`}}else{this.summary=``,this.location=``,this.description=``,this.originalRRule=``,this.rruleFreq=``,this.calendarPath=this.calendars.length>0?this.calendars[0].path:``;let t=this.initialDate?new Date(this.initialDate):new Date;if(this.initialAllDay===void 0?this.initialDate&&t.getHours()===0&&t.getMinutes()===0:this.initialAllDay)this.isAllDay=!0,this.startDate=`${t.getFullYear()}-${e(t.getMonth()+1)}-${e(t.getDate())}`,this.startTime=`00:00`,this.endDate=this.startDate,this.endTime=`00:00`;else{this.isAllDay=!1,this.initialDate||(t.setMinutes(0,0,0),t.setHours(t.getHours()+1)),this.startDate=`${t.getFullYear()}-${e(t.getMonth()+1)}-${e(t.getDate())}`,this.startTime=`${e(t.getHours())}:${e(t.getMinutes())}`;let n=new Date(t.getTime()+3600*1e3);this.endDate=`${n.getFullYear()}-${e(n.getMonth()+1)}-${e(n.getDate())}`,this.endTime=`${e(n.getHours())}:${e(n.getMinutes())}`}}}}handleCancel(){this.open=!1,this.dispatchEvent(new CustomEvent(`close`))}formTimes(){if(this.isAllDay){let e=new Date(`${this.endDate}T00:00:00.000Z`);return e.setUTCDate(e.getUTCDate()+1),{startISO:`${this.startDate}T00:00:00.000Z`,endISO:e.toISOString()}}return{startISO:new Date(`${this.startDate}T${this.startTime||`00:00`}`).toISOString(),endISO:new Date(`${this.endDate}T${this.endTime||`00:00`}`).toISOString()}}setStart(e){Object.assign(this,e),this.startDate&&this.endDate<this.startDate&&(this.endDate=this.startDate),!this.isAllDay&&this.startDate&&this.endDate===this.startDate&&this.startTime&&this.endTime&&this.endTime<this.startTime&&(this.endTime=this.startTime)}endsBeforeStart(){if(this.isAllDay)return this.endDate<this.startDate;let{startISO:e,endISO:t}=this.formTimes();return new Date(t).getTime()<new Date(e).getTime()}get othersMeeting(){let e=this.event;return e?.role===`attendee`||!!e?.organizer&&e.role!==`organizer`}async handleSave(){if(this.shadowRoot?.querySelector(`alps-address-input.guests`)?.commitPending(),!this.summary.trim()||!this.startDate||!this.endDate)return;if(this.endsBeforeStart()){window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(`calendar.endBeforeStart`),type:`error`,duration:8e3}}));return}let e=!!this.event?.ended&&new Date(this.formTimes().endISO)<=new Date;if(this.event?.path&&!this.othersMeeting&&k({...this.event,ended:e},this.scheduling)){this.askNotify=!0;return}await this.save()}async save(e){this.askNotify=!1,this.isSaving=!0;try{let{startISO:t,endISO:n}=this.formTimes(),r;this.rruleFreq===`CUSTOM`?r=this.originalRRule:this.rruleFreq&&(r=`FREQ=${this.rruleFreq}`);let i={summary:this.summary,location:this.location,description:this.description,start:t,end:n,allDay:this.isAllDay,calendarPath:this.calendarPath,rrule:r,etag:this.event?.etag,attendees:this.othersMeeting?void 0:this.attendees.map(M).filter(e=>e!==null),notify:e,lang:this.i18nStore?.getLanguage?.()};(this.event&&this.event.path?await j.updateEvent(this.event.path,i):await j.createEvent(i))?.sendFailed&&window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(`invitations.notTold`),type:`error`,duration:8e3}})),this.open=!1,this.dispatchEvent(new CustomEvent(`saved`))}catch(e){console.error(`Failed to save event`,e);let t=_(e);t&&this.dispatchEvent(new CustomEvent(`conflict`)),window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(t?`calendar.saveConflict`:`calendar.saveEventFailed`),type:`error`,duration:8e3}}))}finally{this.isSaving=!1}}render(){return this.open?s`
+        `]}updated(e){if(e.has(`open`)&&this.open){let e=e=>e.toString().padStart(2,`0`);if(this.askNotify=!1,this.attendees=(this.event?.attendees??[]).map(I),this.event){this.summary=this.event.summary||``,this.location=this.event.location||``,this.description=this.event.description||``,this.calendarPath=this.event.calendarPath||(this.calendars.length>0?this.calendars[0].path:``);let t=O(this.event);if(this.isAllDay=t,this.event.rrule?(this.originalRRule=this.event.rrule,this.event.rrule===`FREQ=DAILY`?this.rruleFreq=`DAILY`:this.event.rrule===`FREQ=WEEKLY`?this.rruleFreq=`WEEKLY`:this.event.rrule===`FREQ=MONTHLY`?this.rruleFreq=`MONTHLY`:this.event.rrule===`FREQ=YEARLY`?this.rruleFreq=`YEARLY`:this.rruleFreq=`CUSTOM`):(this.originalRRule=``,this.rruleFreq=``),t){let t=new Date(this.event.start);this.startDate=`${t.getUTCFullYear()}-${e(t.getUTCMonth()+1)}-${e(t.getUTCDate())}`,this.startTime=`00:00`;let n=new Date(this.event.end);n.setUTCDate(n.getUTCDate()-1),this.endDate=`${n.getUTCFullYear()}-${e(n.getUTCMonth()+1)}-${e(n.getUTCDate())}`,this.endDate<this.startDate&&(this.endDate=this.startDate),this.endTime=`00:00`}else{let t=new Date(this.event.start);this.startDate=`${t.getFullYear()}-${e(t.getMonth()+1)}-${e(t.getDate())}`,this.startTime=`${e(t.getHours())}:${e(t.getMinutes())}`;let n=new Date(this.event.end);this.endDate=`${n.getFullYear()}-${e(n.getMonth()+1)}-${e(n.getDate())}`,this.endTime=`${e(n.getHours())}:${e(n.getMinutes())}`}}else{this.summary=``,this.location=``,this.description=``,this.originalRRule=``,this.rruleFreq=``,this.calendarPath=this.calendars.length>0?this.calendars[0].path:``;let t=this.initialDate?new Date(this.initialDate):new Date;if(this.initialAllDay===void 0?this.initialDate&&t.getHours()===0&&t.getMinutes()===0:this.initialAllDay)this.isAllDay=!0,this.startDate=`${t.getFullYear()}-${e(t.getMonth()+1)}-${e(t.getDate())}`,this.startTime=`00:00`,this.endDate=this.startDate,this.endTime=`00:00`;else{this.isAllDay=!1,this.initialDate||(t.setMinutes(0,0,0),t.setHours(t.getHours()+1)),this.startDate=`${t.getFullYear()}-${e(t.getMonth()+1)}-${e(t.getDate())}`,this.startTime=`${e(t.getHours())}:${e(t.getMinutes())}`;let n=new Date(t.getTime()+3600*1e3);this.endDate=`${n.getFullYear()}-${e(n.getMonth()+1)}-${e(n.getDate())}`,this.endTime=`${e(n.getHours())}:${e(n.getMinutes())}`}}}}handleCancel(){this.open=!1,this.dispatchEvent(new CustomEvent(`close`))}formTimes(){if(this.isAllDay){let e=new Date(`${this.endDate}T00:00:00.000Z`);return e.setUTCDate(e.getUTCDate()+1),{startISO:`${this.startDate}T00:00:00.000Z`,endISO:e.toISOString()}}return{startISO:new Date(`${this.startDate}T${this.startTime||`00:00`}`).toISOString(),endISO:new Date(`${this.endDate}T${this.endTime||`00:00`}`).toISOString()}}setStart(e){Object.assign(this,e),this.startDate&&this.endDate<this.startDate&&(this.endDate=this.startDate),!this.isAllDay&&this.startDate&&this.endDate===this.startDate&&this.startTime&&this.endTime&&this.endTime<this.startTime&&(this.endTime=this.startTime)}endsBeforeStart(){if(this.isAllDay)return this.endDate<this.startDate;let{startISO:e,endISO:t}=this.formTimes();return new Date(t).getTime()<new Date(e).getTime()}get othersMeeting(){let e=this.event;return e?.role===`attendee`||!!e?.organizer&&e.role!==`organizer`}async handleSave(){if(this.shadowRoot?.querySelector(`alps-address-input.guests`)?.commitPending(),!this.summary.trim()||!this.startDate||!this.endDate)return;if(this.endsBeforeStart()){window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(`calendar.endBeforeStart`),type:`error`,duration:8e3}}));return}let e=!!this.event?.ended&&new Date(this.formTimes().endISO)<=new Date;if(this.event?.path&&!this.othersMeeting&&A({...this.event,ended:e},this.scheduling)){this.askNotify=!0;return}await this.save()}async save(e){this.askNotify=!1,this.isSaving=!0;try{let{startISO:t,endISO:n}=this.formTimes(),r;this.rruleFreq===`CUSTOM`?r=this.originalRRule:this.rruleFreq&&(r=`FREQ=${this.rruleFreq}`);let i={summary:this.summary,location:this.location,description:this.description,start:t,end:n,allDay:this.isAllDay,calendarPath:this.calendarPath,rrule:r,etag:this.event?.etag,attendees:this.othersMeeting?void 0:this.attendees.map(N).filter(e=>e!==null),notify:e,lang:this.i18nStore?.getLanguage?.()};(this.event&&this.event.path?await M.updateEvent(this.event.path,i):await M.createEvent(i))?.sendFailed&&window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(`invitations.notTold`),type:`error`,duration:8e3}})),this.open=!1,this.dispatchEvent(new CustomEvent(`saved`))}catch(e){console.error(`Failed to save event`,e);let t=b(e);t&&this.dispatchEvent(new CustomEvent(`conflict`)),window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(t?`calendar.saveConflict`:`calendar.saveEventFailed`),type:`error`,duration:8e3}}))}finally{this.isSaving=!1}}render(){return this.open?c`
             <ui-modal 
                 heading="${this.event?this.i18nStore?.t(`calendar.editEvent`):this.i18nStore?.t(`calendar.newEvent`)}" 
                 width="450px"
@@ -102,7 +141,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                     ></alps-input>
                 </div>
 
-                ${this.calendars.length>1?s`
+                ${this.calendars.length>1?c`
                     <div class="form-group">
                         <label for="event-calendar">${this.i18nStore?.t(`calendar.calendar`)}</label>
                         <alps-select
@@ -116,11 +155,11 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                     </div>
                 `:``}
 
-                ${this.othersMeeting?s`
+                ${this.othersMeeting?c`
                     <div class="form-group organized-by">
-                        ${f(this.i18nStore,`invitations.organizedBy`,{name:this.event?.organizer?u(this.event.organizer.name,this.event.organizer.email):``})}
+                        ${p(this.i18nStore,`invitations.organizedBy`,{name:this.event?.organizer?d(this.event.organizer.name,this.event.organizer.email):``})}
                     </div>
-                `:s`
+                `:c`
                     <div class="form-group">
                         <label for="event-guests">${this.i18nStore?.t(`invitations.guests`)}</label>
                         <alps-address-input
@@ -144,7 +183,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                             @input=${e=>this.setStart({startDate:e.target.value})}
                         ></alps-input>
                     </div>
-                    ${this.isAllDay?``:s`
+                    ${this.isAllDay?``:c`
                     <div class="form-group">
                         <label for="event-start-time">${this.i18nStore?.t(`calendar.time`)}</label>
                         <!-- Named "Start time", though its label reads "Time": so is the end's. -->
@@ -170,7 +209,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                             @input=${e=>this.endDate=e.target.value}
                         ></alps-input>
                     </div>
-                    ${this.isAllDay?``:s`
+                    ${this.isAllDay?``:c`
                     <div class="form-group">
                         <label for="event-end-time">${this.i18nStore?.t(`calendar.time`)}</label>
                         <alps-input 
@@ -231,7 +270,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                 </div>
             </ui-modal>
 
-            ${this.askNotify?s`
+            ${this.askNotify?c`
                 <ui-confirm
                     heading=${this.i18nStore?.t(`invitations.notifyTitle`)}
                     message=${this.i18nStore?.t(`invitations.notifyChanges`)}
@@ -242,7 +281,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                     @cancel=${()=>{this.askNotify=!1}}
                 ></ui-confirm>
             `:``}
-        `:s``}};v([n({context:m})],R.prototype,`i18nStore`,void 0),v([a({type:Object})],R.prototype,`event`,void 0),v([a({type:Object})],R.prototype,`initialDate`,void 0),v([a({type:Boolean})],R.prototype,`initialAllDay`,void 0),v([a({type:Array})],R.prototype,`calendars`,void 0),v([a({type:Boolean})],R.prototype,`open`,void 0),v([a({type:String})],R.prototype,`scheduling`,void 0),v([i()],R.prototype,`summary`,void 0),v([i()],R.prototype,`location`,void 0),v([i()],R.prototype,`calendarPath`,void 0),v([i()],R.prototype,`description`,void 0),v([i()],R.prototype,`startDate`,void 0),v([i()],R.prototype,`startTime`,void 0),v([i()],R.prototype,`endDate`,void 0),v([i()],R.prototype,`endTime`,void 0),v([i()],R.prototype,`isAllDay`,void 0),v([i()],R.prototype,`isSaving`,void 0),v([i()],R.prototype,`rruleFreq`,void 0),v([i()],R.prototype,`originalRRule`,void 0),v([i()],R.prototype,`attendees`,void 0),v([i()],R.prototype,`askNotify`,void 0),R=v([t(`calendar-event-modal`)],R);var z=class extends r{constructor(...e){super(...e),this.events=[],this.showTitle=!1,this.weekStart=1,this.focusDay=null,this.dayHadFocus=!1}getFirstDayOfWeek(){return this.weekStart??1}static{this.styles=o`
+        `:c``}};x([r({context:g})],B.prototype,`i18nStore`,void 0),x([o({type:Object})],B.prototype,`event`,void 0),x([o({type:Object})],B.prototype,`initialDate`,void 0),x([o({type:Boolean})],B.prototype,`initialAllDay`,void 0),x([o({type:Array})],B.prototype,`calendars`,void 0),x([o({type:Boolean})],B.prototype,`open`,void 0),x([o({type:String})],B.prototype,`scheduling`,void 0),x([a()],B.prototype,`summary`,void 0),x([a()],B.prototype,`location`,void 0),x([a()],B.prototype,`calendarPath`,void 0),x([a()],B.prototype,`description`,void 0),x([a()],B.prototype,`startDate`,void 0),x([a()],B.prototype,`startTime`,void 0),x([a()],B.prototype,`endDate`,void 0),x([a()],B.prototype,`endTime`,void 0),x([a()],B.prototype,`isAllDay`,void 0),x([a()],B.prototype,`isSaving`,void 0),x([a()],B.prototype,`rruleFreq`,void 0),x([a()],B.prototype,`originalRRule`,void 0),x([a()],B.prototype,`attendees`,void 0),x([a()],B.prototype,`askNotify`,void 0),B=x([n(`calendar-event-modal`)],B);var V=class extends i{constructor(...e){super(...e),this.events=[],this.showTitle=!1,this.weekStart=1,this.focusDay=null,this.dayHadFocus=!1}getFirstDayOfWeek(){return this.weekStart??1}static{this.styles=s`
         :host {
             display: flex;
             flex-direction: column;
@@ -330,18 +369,18 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                 outline-offset: -2px;
             }
         }
-    `}getMonthGrid(){let e=this.getFirstDayOfWeek(),t=(new Date(this.year,this.month,1).getDay()-e+7)%7,n=1-t,r=new Date(this.year,this.month+1,0).getDate(),i=Math.ceil((r+t)/7)*7,a=[];for(let e=0;e<i;e++)a.push(new Date(this.year,this.month,n+e));return a}hasEventsForDate(e){if(!this.events||this.events.length===0)return!1;let t=new Date(e);t.setHours(0,0,0,0);let n=new Date(e);return n.setHours(23,59,59,999),this.events.some(e=>{if(E(e)){let n=e.start.split(`T`)[0],r=e.end.split(`T`)[0],i=new Date(n+`T00:00:00`),a=new Date(r+`T00:00:00`);return i<=t&&a>t}else{let r=new Date(e.start),i=new Date(e.end);return i.getTime()===t.getTime()&&r.getTime()<i.getTime()?!1:r<=n&&i>=t}})}handleDateClick(e){this.focusDay=e,this.dispatchEvent(new CustomEvent(`date-selected`,{detail:{date:e},bubbles:!0,composed:!0}))}tabStop(e){if((t=>!!t&&e.some(e=>e.getTime()===t.getTime()))(this.focusDay))return this.focusDay;let t=new Date;t.setHours(0,0,0,0);for(let e of[this.currentDate,t])if(e&&e.getFullYear()===this.year&&e.getMonth()===this.month)return new Date(this.year,this.month,e.getDate());return new Date(this.year,this.month,1)}handleDayKeyDown(e,t,n){if(e.key===`Enter`||e.key===` `){if(e.preventDefault(),e.key===` `&&e.repeat)return;this.handleDateClick(t);return}let r=getComputedStyle(this).direction===`rtl`?`ArrowLeft`:`ArrowRight`,i=r===`ArrowLeft`?`ArrowRight`:`ArrowLeft`,a=e.key===i?-1:e.key===r?1:e.key===`ArrowUp`?-7:e.key===`ArrowDown`?7:0;if(!a)return;e.preventDefault();let o=new Date(t.getFullYear(),t.getMonth(),t.getDate()+a);n.some(e=>e.getTime()===o.getTime())&&(this.focusDay=o,this.updateComplete.then(()=>this.renderRoot.querySelector(`.mini-day[tabindex="0"]`)?.focus()))}willUpdate(e){let t=e.get(`currentDate`);(e.has(`year`)||e.has(`month`)||e.has(`currentDate`)&&t?.getTime()!==this.currentDate?.getTime())&&(this.focusDay=null),this.dayHadFocus=!!this.renderRoot?.activeElement?.classList.contains(`mini-day`)}updated(e){this.dayHadFocus&&(e.has(`year`)||e.has(`month`))&&this.renderRoot.querySelector(`.mini-day[tabindex="0"]`)?.focus()}render(){let t=this.getMonthGrid(),n=this.getFirstDayOfWeek(),r=Array.from({length:7},(e,t)=>{let r=(n+t)%7;return this.i18nStore?.t(`calendar.daysNarrow.${r}`)}),i=new Date;i.setHours(0,0,0,0);let a=this.tabStop(t).getTime(),o=new Intl.DateTimeFormat(this.i18nStore?.getIntlLanguage?.(),{dateStyle:`full`}),c=this.i18nStore?.t(`calendar.months.${this.month}`);return s`
-            ${this.showTitle?s`<div class="year-month-title">${c}</div>`:``}
+    `}getMonthGrid(){let e=this.getFirstDayOfWeek(),t=(new Date(this.year,this.month,1).getDay()-e+7)%7,n=1-t,r=new Date(this.year,this.month+1,0).getDate(),i=Math.ceil((r+t)/7)*7,a=[];for(let e=0;e<i;e++)a.push(new Date(this.year,this.month,n+e));return a}hasEventsForDate(e){if(!this.events||this.events.length===0)return!1;let t=new Date(e);t.setHours(0,0,0,0);let n=new Date(e);return n.setHours(23,59,59,999),this.events.some(e=>{if(O(e)){let n=e.start.split(`T`)[0],r=e.end.split(`T`)[0],i=new Date(n+`T00:00:00`),a=new Date(r+`T00:00:00`);return i<=t&&a>t}else{let r=new Date(e.start),i=new Date(e.end);return i.getTime()===t.getTime()&&r.getTime()<i.getTime()?!1:r<=n&&i>=t}})}handleDateClick(e){this.focusDay=e,this.dispatchEvent(new CustomEvent(`date-selected`,{detail:{date:e},bubbles:!0,composed:!0}))}tabStop(e){if((t=>!!t&&e.some(e=>e.getTime()===t.getTime()))(this.focusDay))return this.focusDay;let t=new Date;t.setHours(0,0,0,0);for(let e of[this.currentDate,t])if(e&&e.getFullYear()===this.year&&e.getMonth()===this.month)return new Date(this.year,this.month,e.getDate());return new Date(this.year,this.month,1)}handleDayKeyDown(e,t,n){if(e.key===`Enter`||e.key===` `){if(e.preventDefault(),e.key===` `&&e.repeat)return;this.handleDateClick(t);return}let r=getComputedStyle(this).direction===`rtl`?`ArrowLeft`:`ArrowRight`,i=r===`ArrowLeft`?`ArrowRight`:`ArrowLeft`,a=e.key===i?-1:e.key===r?1:e.key===`ArrowUp`?-7:e.key===`ArrowDown`?7:0;if(!a)return;e.preventDefault();let o=new Date(t.getFullYear(),t.getMonth(),t.getDate()+a);n.some(e=>e.getTime()===o.getTime())&&(this.focusDay=o,this.updateComplete.then(()=>this.renderRoot.querySelector(`.mini-day[tabindex="0"]`)?.focus()))}willUpdate(e){let t=e.get(`currentDate`);(e.has(`year`)||e.has(`month`)||e.has(`currentDate`)&&t?.getTime()!==this.currentDate?.getTime())&&(this.focusDay=null),this.dayHadFocus=!!this.renderRoot?.activeElement?.classList.contains(`mini-day`)}updated(e){this.dayHadFocus&&(e.has(`year`)||e.has(`month`))&&this.renderRoot.querySelector(`.mini-day[tabindex="0"]`)?.focus()}render(){let t=this.getMonthGrid(),n=this.getFirstDayOfWeek(),r=Array.from({length:7},(e,t)=>{let r=(n+t)%7;return this.i18nStore?.t(`calendar.daysNarrow.${r}`)}),i=new Date;i.setHours(0,0,0,0);let a=this.tabStop(t).getTime(),o=new Intl.DateTimeFormat(this.i18nStore?.getIntlLanguage?.(),{dateStyle:`full`}),s=this.i18nStore?.t(`calendar.months.${this.month}`);return c`
+            ${this.showTitle?c`<div class="year-month-title">${s}</div>`:``}
             <div class="mini-grid">
-                ${r.map(e=>s`<div class="mini-day-name">${e}</div>`)}
-                ${t.map(n=>{let r=n.getMonth()!==this.month,c=n.getTime()===i.getTime(),l=this.hasEventsForDate(n),u=n.getDay()===0||n.getDay()===6;return s`
+                ${r.map(e=>c`<div class="mini-day-name">${e}</div>`)}
+                ${t.map(n=>{let r=n.getMonth()!==this.month,s=n.getTime()===i.getTime(),l=this.hasEventsForDate(n),u=n.getDay()===0||n.getDay()===6;return c`
                         <div 
-                            class="mini-day ${c?`today`:``} ${l?`has-event`:``} ${u?`weekend`:``}" 
+                            class="mini-day ${s?`today`:``} ${l?`has-event`:``} ${u?`weekend`:``}" 
                             style="${r?`opacity: 0.3`:``}"
                             role="button"
                             tabindex=${n.getTime()===a?`0`:`-1`}
                             aria-label=${o.format(n)}
-                            aria-current=${c?`date`:e}
+                            aria-current=${s?`date`:e}
                             @click=${()=>this.handleDateClick(n)}
                             @keydown=${e=>this.handleDayKeyDown(e,n,t)}
                         >
@@ -349,7 +388,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                         </div>
                     `})}
             </div>
-        `}};v([n({context:m})],z.prototype,`i18nStore`,void 0),v([a({type:Number})],z.prototype,`year`,void 0),v([a({type:Number})],z.prototype,`month`,void 0),v([a({type:Array})],z.prototype,`events`,void 0),v([a({type:Boolean})],z.prototype,`showTitle`,void 0),v([a({type:Number})],z.prototype,`weekStart`,void 0),v([a({type:Object})],z.prototype,`currentDate`,void 0),v([i()],z.prototype,`focusDay`,void 0),z=v([t(`calendar-mini-month`)],z);var B=class extends r{constructor(...e){super(...e),this.clock=new w(this)}static{this.styles=o`
+        `}};x([r({context:g})],V.prototype,`i18nStore`,void 0),x([o({type:Number})],V.prototype,`year`,void 0),x([o({type:Number})],V.prototype,`month`,void 0),x([o({type:Array})],V.prototype,`events`,void 0),x([o({type:Boolean})],V.prototype,`showTitle`,void 0),x([o({type:Number})],V.prototype,`weekStart`,void 0),x([o({type:Object})],V.prototype,`currentDate`,void 0),x([a()],V.prototype,`focusDay`,void 0),V=x([n(`calendar-mini-month`)],V);var H=class extends i{constructor(...e){super(...e),this.clock=new E(this)}static{this.styles=s`
         :host {
             display: block;
             padding: 12px;
@@ -496,37 +535,37 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
             --btn-padding: 4px 10px;
             --btn-font-size: 12px;
         }
-    `}formatEventDate(e){let t=e.start,n=E(e),r;return r=n?new Date(t.split(`T`)[0]+`T00:00:00`):new Date(t),`${this.i18nStore?.t(`calendar.days.${r.getDay()}`)}, ${this.i18nStore?.t(`calendar.monthsShort.${r.getMonth()}`)} ${r.getDate()}, ${r.getFullYear()}`}formatEventTimeRange(e){let t=new Date(e.start),n=new Date(e.end);if(E(e))return this.i18nStore?.t(`calendar.allDay`);let r={hour:`2-digit`,minute:`2-digit`,hour12:this.clock.hour12};return t.toDateString()===n.toDateString()?`${t.toLocaleTimeString(void 0,r)} - ${n.toLocaleTimeString(void 0,r)}`:`${t.toLocaleTimeString(void 0,r)} - ${this.i18nStore?.t(`calendar.monthsShort.${n.getMonth()}`)} ${n.getDate()} ${n.toLocaleTimeString(void 0,r)}`}handleEdit(e){e.stopPropagation();let t=this.closest(`alps-popup`);t&&t.close(),setTimeout(()=>{this.dispatchEvent(new CustomEvent(`edit-event`,{detail:{event:this.event},bubbles:!0,composed:!0}))},10)}handleDelete(e){e.stopPropagation();let t=this.closest(`alps-popup`);t&&t.close(),setTimeout(()=>{this.dispatchEvent(new CustomEvent(`delete-event`,{detail:{event:this.event},bubbles:!0,composed:!0}))},10)}handleComplete(e){e.stopPropagation();let t=this.closest(`alps-popup`);t&&t.close(),setTimeout(()=>{this.dispatchEvent(new CustomEvent(`complete-task`,{detail:{task:this.event.task},bubbles:!0,composed:!0}))},10)}handleRespond(e,t){e.stopPropagation();let n=this.closest(`alps-popup`);n&&n.close(),setTimeout(()=>{this.dispatchEvent(new CustomEvent(`respond-event`,{detail:{event:this.event,status:t},bubbles:!0,composed:!0}))},10)}answerable(e){return!e.ended&&new Date(e.end)>new Date}renderMeeting(e){if(!e.organizer&&!e.attendees?.length)return``;let t=e=>this.i18nStore?.t(e),n=e=>u(e.name,e.email),r=(n,r)=>s`
+    `}formatEventDate(e){let t=e.start,n=O(e),r;return r=n?new Date(t.split(`T`)[0]+`T00:00:00`):new Date(t),`${this.i18nStore?.t(`calendar.days.${r.getDay()}`)}, ${this.i18nStore?.t(`calendar.monthsShort.${r.getMonth()}`)} ${r.getDate()}, ${r.getFullYear()}`}formatEventTimeRange(e){let t=new Date(e.start),n=new Date(e.end);if(O(e))return this.i18nStore?.t(`calendar.allDay`);let r={hour:`2-digit`,minute:`2-digit`,hour12:this.clock.hour12};return t.toDateString()===n.toDateString()?`${t.toLocaleTimeString(void 0,r)} - ${n.toLocaleTimeString(void 0,r)}`:`${t.toLocaleTimeString(void 0,r)} - ${this.i18nStore?.t(`calendar.monthsShort.${n.getMonth()}`)} ${n.getDate()} ${n.toLocaleTimeString(void 0,r)}`}handleEdit(e){e.stopPropagation();let t=this.closest(`alps-popup`);t&&t.close(),setTimeout(()=>{this.dispatchEvent(new CustomEvent(`edit-event`,{detail:{event:this.event},bubbles:!0,composed:!0}))},10)}handleDelete(e){e.stopPropagation();let t=this.closest(`alps-popup`);t&&t.close(),setTimeout(()=>{this.dispatchEvent(new CustomEvent(`delete-event`,{detail:{event:this.event},bubbles:!0,composed:!0}))},10)}handleComplete(e){e.stopPropagation();let t=this.closest(`alps-popup`);t&&t.close(),setTimeout(()=>{this.dispatchEvent(new CustomEvent(`complete-task`,{detail:{task:this.event.task},bubbles:!0,composed:!0}))},10)}handleRespond(e,t){e.stopPropagation();let n=this.closest(`alps-popup`);n&&n.close(),setTimeout(()=>{this.dispatchEvent(new CustomEvent(`respond-event`,{detail:{event:this.event,status:t},bubbles:!0,composed:!0}))},10)}answerable(e){return!e.ended&&new Date(e.end)>new Date}renderMeeting(e){if(!e.organizer&&!e.attendees?.length)return``;let t=e=>this.i18nStore?.t(e),n=e=>d(e.name,e.email),r=(n,r)=>c`
             <alps-button
                 class="answer-${n}"
                 variant=${e.status===n?`primary`:`normal`}
                 aria-pressed=${e.status===n?`true`:`false`}
                 @click=${e=>this.handleRespond(e,n)}
             >${t(r)}</alps-button>
-        `;return s`
+        `;return c`
             <div class="card meeting">
-                ${e.organizer?s`
+                ${e.organizer?c`
                     <div class="card-label">${t(`invitations.organizer`)}</div>
                     <div class="description-text">${n(e.organizer)}</div>
                 `:``}
-                ${e.attendees?.length?s`
+                ${e.attendees?.length?c`
                     <div class="card-label">${t(`invitations.guests`)}</div>
                     <ul class="people">
-                        ${e.attendees.map(e=>s`<li><span>${n(e)}</span><span class="status">${t(`invitations.statuses.${S(e.status)}`)}</span></li>`)}
+                        ${e.attendees.map(e=>c`<li><span>${n(e)}</span><span class="status">${t(`invitations.statuses.${w(e.status)}`)}</span></li>`)}
                     </ul>
                 `:``}
-                ${e.role===`attendee`?s`
+                ${e.role===`attendee`?c`
                     <div class="card-label">${t(`invitations.yourAnswer`)}</div>
-                    ${this.answerable(e)?s`
+                    ${this.answerable(e)?c`
                         <div class="answers">
                             ${r(`accepted`,`invitations.accept`)}
                             ${r(`tentative`,`invitations.maybe`)}
                             ${r(`declined`,`invitations.decline`)}
                         </div>
-                    `:s`<div class="description-text answer-status">${t(`invitations.statuses.${S(e.status)}`)}</div>`}
+                    `:c`<div class="description-text answer-status">${t(`invitations.statuses.${w(e.status)}`)}</div>`}
                 `:``}
             </div>
-        `}renderTask(e){let t=this.event,n=A(e);return s`
+        `}renderTask(e){let t=this.event,n=j(e);return c`
             <div class="header">
                 <div class="title-container">
                     <div class="color-dot" style="background-color: ${t.color||`var(--accent-color, #2563eb)`}"></div>
@@ -542,15 +581,15 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
             <div class="card">
                 <div class="card-label">${this.i18nStore?.t(`tasks.due`)}</div>
                 <div class="date-primary">${this.formatEventDate(t)}</div>
-                ${n&&!e.allDay?s`<div class="date-secondary">${n.toLocaleTimeString([],{hour:`2-digit`,minute:`2-digit`,hour12:this.clock.hour12})}</div>`:``}
+                ${n&&!e.allDay?c`<div class="date-secondary">${n.toLocaleTimeString([],{hour:`2-digit`,minute:`2-digit`,hour12:this.clock.hour12})}</div>`:``}
             </div>
 
-            ${e.description?s`
+            ${e.description?c`
             <div class="card">
                 <div class="card-label">${this.i18nStore?.t(`tasks.notes`)}</div>
                 <div class="description-text" dir="auto">${e.description}</div>
             </div>`:``}
-        `}render(){if(!this.event)return s``;if(this.event.task)return this.renderTask(this.event.task);let e=this.event;return s`
+        `}render(){if(!this.event)return c``;if(this.event.task)return this.renderTask(this.event.task);let e=this.event;return c`
             <div class="header">
                 <div class="title-container">
                     <div class="color-dot" style="background-color: ${e.color||`var(--accent-color, #2563eb)`}"></div>
@@ -569,18 +608,18 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
 
             ${this.renderMeeting(e)}
 
-            ${e.location?s`
+            ${e.location?c`
             <div class="card">
                 <div class="card-label">${this.i18nStore?.t(`calendar.location`)}</div>
                 <div class="description-text" dir="auto">${e.location}</div>
             </div>`:``}
 
-            ${e.description?s`
+            ${e.description?c`
             <div class="card">
                 <div class="card-label">${this.i18nStore?.t(`calendar.notes`)}</div>
                 <div class="description-text" dir="auto">${e.description}</div>
             </div>`:``}
-        `}};v([n({context:m})],B.prototype,`i18nStore`,void 0),v([a({type:Object})],B.prototype,`event`,void 0),B=v([t(`calendar-event-preview`)],B);var V=class extends r{constructor(...e){super(...e),this.clock=new w(this),this.days=[],this.events=[],this.scrolled=!1,this.now=new Date}connectedCallback(){super.connectedCallback(),this.now=new Date,this.nowTimer=window.setInterval(()=>{this.now=new Date},6e4)}disconnectedCallback(){super.disconnectedCallback(),this.nowTimer!==void 0&&(clearInterval(this.nowTimer),this.nowTimer=void 0)}static{this.styles=[C,o`
+        `}};x([r({context:g})],H.prototype,`i18nStore`,void 0),x([o({type:Object})],H.prototype,`event`,void 0),H=x([n(`calendar-event-preview`)],H);var U=class extends i{constructor(...e){super(...e),this.clock=new E(this),this.days=[],this.events=[],this.scrolled=!1,this.now=new Date}connectedCallback(){super.connectedCallback(),this.now=new Date,this.nowTimer=window.setInterval(()=>{this.now=new Date},6e4)}disconnectedCallback(){super.disconnectedCallback(),this.nowTimer!==void 0&&(clearInterval(this.nowTimer),this.nowTimer=void 0)}static{this.styles=[T,s`
         :host {
             display: flex;
             flex-direction: column;
@@ -841,14 +880,14 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
             border-radius: 50%;
             background-color: var(--error, #ef4444);
         }
-    `]}getEventsForDate(e,t){return this.events?this.events.filter(n=>{let r=E(n);if(t!==r)return!1;let i=new Date(e);i.setHours(0,0,0,0);let a=new Date(e);if(a.setHours(23,59,59,999),r){let e=n.start.split(`T`)[0],t=n.end.split(`T`)[0],r=new Date(e+`T00:00:00`),a=new Date(t+`T00:00:00`);return r<=i&&a>i}else{let e=new Date(n.start),t=new Date(n.end);return t.getTime()===i.getTime()&&e.getTime()<t.getTime()?!1:e<=a&&t>=i}}):[]}handleColumnClick(e,t){let n=e.currentTarget.getBoundingClientRect(),r=e.clientY-n.top,i=Math.floor(r/48),a=new Date(t);a.setHours(i,0,0,0),this.dispatchEvent(new CustomEvent(`create-event`,{detail:{date:a,allDay:!1},bubbles:!0,composed:!0}))}handleAllDayCellClick(e){let t=new Date(e);t.setHours(0,0,0,0),this.dispatchEvent(new CustomEvent(`create-event`,{detail:{date:t,allDay:!0},bubbles:!0,composed:!0}))}handleScroll(e){let t=e.target;this.scrolled=t.scrollTop>0}render(){let e=Array.from({length:24},(e,t)=>t),t=new Date(this.now);return t.setHours(0,0,0,0),s`
+    `]}getEventsForDate(e,t){return this.events?this.events.filter(n=>{let r=O(n);if(t!==r)return!1;let i=new Date(e);i.setHours(0,0,0,0);let a=new Date(e);if(a.setHours(23,59,59,999),r){let e=n.start.split(`T`)[0],t=n.end.split(`T`)[0],r=new Date(e+`T00:00:00`),a=new Date(t+`T00:00:00`);return r<=i&&a>i}else{let e=new Date(n.start),t=new Date(n.end);return t.getTime()===i.getTime()&&e.getTime()<t.getTime()?!1:e<=a&&t>=i}}):[]}handleColumnClick(e,t){let n=e.currentTarget.getBoundingClientRect(),r=e.clientY-n.top,i=Math.floor(r/48),a=new Date(t);a.setHours(i,0,0,0),this.dispatchEvent(new CustomEvent(`create-event`,{detail:{date:a,allDay:!1},bubbles:!0,composed:!0}))}handleAllDayCellClick(e){let t=new Date(e);t.setHours(0,0,0,0),this.dispatchEvent(new CustomEvent(`create-event`,{detail:{date:t,allDay:!0},bubbles:!0,composed:!0}))}handleScroll(e){let t=e.target;this.scrolled=t.scrollTop>0}render(){let e=Array.from({length:24},(e,t)=>t),t=new Date(this.now);return t.setHours(0,0,0,0),c`
             <div class="time-grid-container">
                 <div class="time-grid-scroll" @scroll=${this.handleScroll}>
                     <div class="header-wrapper ${this.scrolled?`scrolled`:``}">
                         <div class="time-grid-header">
                             <div class="time-axis-spacer"></div>
                             <div class="time-grid-days">
-                                ${this.days.map(e=>{let n=e.getFullYear()===t.getFullYear()&&e.getMonth()===t.getMonth()&&e.getDate()===t.getDate();return s`
+                                ${this.days.map(e=>{let n=e.getFullYear()===t.getFullYear()&&e.getMonth()===t.getMonth()&&e.getDate()===t.getDate();return c`
                                         <div class="time-grid-day-header">
                                             <span class="time-grid-day-name">${this.i18nStore?.t(`calendar.daysShort.${e.getDay()}`)}</span>
                                             <span class="time-grid-day-number ${n?`today`:``}">${e.getDate()}</span>
@@ -860,15 +899,15 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                         <div class="all-day-row">
                             <div class="all-day-label">${this.i18nStore?.t(`calendar.allDay`)?.toLowerCase()}</div>
                             <div class="all-day-content">
-                                ${this.days.map(e=>s`
+                                ${this.days.map(e=>c`
                                         <div class="all-day-cell" @click=${()=>this.handleAllDayCellClick(e)} style="cursor: pointer;">
-                                            ${this.getEventsForDate(e,!0).map(e=>s`
+                                            ${this.getEventsForDate(e,!0).map(e=>c`
                                                 <alps-popup align="start" position="bottom" style="width: 100%; display: block;" @click=${e=>e.stopPropagation()}>
                                                     <div slot="trigger"
                                                         class="event-chip ${e.task?`task`:``} ${e.status===`declined`?`declined`:``}" 
                                                         style=${e.task?`border-color: ${e.color}`:e.color?`background-color: ${e.color}`:``}
                                                         title="${e.summary||this.i18nStore?.t(`calendar.noTitle`)}">
-                                                        ${e.task?d(`checkCircle`):``}<bdi>${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</bdi>
+                                                        ${e.task?f(`checkCircle`):``}<bdi>${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</bdi>
                                                     </div>
                                                     <calendar-event-preview .event=${e}></calendar-event-preview>
                                                 </alps-popup>
@@ -881,21 +920,21 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
 
                     <div class="time-grid-body">
                         <div class="time-axis">
-                            ${e.map(e=>s`
+                            ${e.map(e=>c`
                                 <div class="time-label" style="top: ${e*48}px">${new Date(2e3,0,1,e).toLocaleTimeString(void 0,{hour:`2-digit`,minute:`2-digit`,hour12:this.clock.hour12})}</div>
                             `)}
                         </div>
                         <div class="time-grid-columns">
-                            ${this.days.map(e=>{let n=this.getEventsForDate(e,!1),r=new Date(e);r.setHours(0,0,0,0);let i=new Date(e);return i.setHours(23,59,59,999),s`
+                            ${this.days.map(e=>{let n=this.getEventsForDate(e,!1),r=new Date(e);r.setHours(0,0,0,0);let i=new Date(e);return i.setHours(23,59,59,999),c`
                                     <div class="time-column" @click=${t=>this.handleColumnClick(t,e)} style="cursor: pointer;">
-                                        ${r.getTime()===t.getTime()?s`
+                                        ${r.getTime()===t.getTime()?c`
                                             <div class="now-line" style="top: ${(this.now.getHours()+this.now.getMinutes()/60)*48}px"></div>
                                         `:``}
-                                        ${n.map(e=>{let t=new Date(e.start),n=new Date(e.end),a=t<r?r:t,o=n>i?i:n,c=t<=r?0:a.getHours()*48+a.getMinutes()/60*48,l=n>i?1152:o.getHours()*48+o.getMinutes()/60*48,u=l<=c&&o>a?(o.getTime()-a.getTime())/36e5*48:l-c;return u<20&&(u=20),c+u>1152&&(u=1152-c),s`
+                                        ${n.map(e=>{let t=new Date(e.start),n=new Date(e.end),a=t<r?r:t,o=n>i?i:n,s=t<=r?0:a.getHours()*48+a.getMinutes()/60*48,l=n>i?1152:o.getHours()*48+o.getMinutes()/60*48,u=l<=s&&o>a?(o.getTime()-a.getTime())/36e5*48:l-s;return u<20&&(u=20),s+u>1152&&(u=1152-s),c`
                                                 <alps-popup 
                                                     class="time-event-popup"
                                                     align="start" position="bottom" 
-                                                    style="top: ${c}px; height: ${u}px;"
+                                                    style="top: ${s}px; height: ${u}px;"
                                                     @click=${e=>e.stopPropagation()}>
                                                     <div slot="trigger"
                                                         class="time-event ${e.status===`declined`?`declined`:``}" 
@@ -912,30 +951,30 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                     </div>
                 </div>
             </div>
-        `}};v([n({context:m})],V.prototype,`i18nStore`,void 0),v([a({type:Array})],V.prototype,`days`,void 0),v([a({type:Array})],V.prototype,`events`,void 0),v([i()],V.prototype,`scrolled`,void 0),v([i()],V.prototype,`now`,void 0),V=v([t(`calendar-time-grid`)],V);var H=class extends r{constructor(...e){super(...e),this.events=[]}static{this.styles=o`
+        `}};x([r({context:g})],U.prototype,`i18nStore`,void 0),x([o({type:Array})],U.prototype,`days`,void 0),x([o({type:Array})],U.prototype,`events`,void 0),x([a()],U.prototype,`scrolled`,void 0),x([a()],U.prototype,`now`,void 0),U=x([n(`calendar-time-grid`)],U);var W=class extends i{constructor(...e){super(...e),this.events=[]}static{this.styles=s`
         :host {
             display: flex;
             height: 100%;
             width: 100%;
         }
-    `}render(){return s`
+    `}render(){return c`
             <calendar-time-grid 
                 .days=${[this.date]} 
                 .events=${this.events}
             ></calendar-time-grid>
-        `}};v([a({type:Object})],H.prototype,`date`,void 0),v([a({type:Array})],H.prototype,`events`,void 0),H=v([t(`calendar-day-view`)],H);var U=class extends r{constructor(...e){super(...e),this.events=[],this.weekStart=1}getFirstDayOfWeek(){return this.weekStart??1}static{this.styles=o`
+        `}};x([o({type:Object})],W.prototype,`date`,void 0),x([o({type:Array})],W.prototype,`events`,void 0),W=x([n(`calendar-day-view`)],W);var G=class extends i{constructor(...e){super(...e),this.events=[],this.weekStart=1}getFirstDayOfWeek(){return this.weekStart??1}static{this.styles=s`
         :host {
             display: flex;
             height: 100%;
             width: 100%;
         }
-    `}getWeekDays(){let e=I(this.date,this.getFirstDayOfWeek()),t=e.getFullYear(),n=e.getMonth(),r=e.getDate();return Array.from({length:7},(e,i)=>new Date(t,n,r+i))}render(){return s`
+    `}getWeekDays(){let e=L(this.date,this.getFirstDayOfWeek()),t=e.getFullYear(),n=e.getMonth(),r=e.getDate();return Array.from({length:7},(e,i)=>new Date(t,n,r+i))}render(){return c`
             <calendar-time-grid 
                 .days=${this.getWeekDays()} 
                 .events=${this.events}
                 .i18nStore=${this.i18nStore}
             ></calendar-time-grid>
-        `}};v([n({context:m}),a({attribute:!1})],U.prototype,`i18nStore`,void 0),v([a({type:Object})],U.prototype,`date`,void 0),v([a({type:Array})],U.prototype,`events`,void 0),v([a({type:Number})],U.prototype,`weekStart`,void 0),U=v([t(`calendar-week-view`)],U);var W=class extends r{constructor(...e){super(...e),this.events=[],this.weekStart=1}getFirstDayOfWeek(){return this.weekStart??1}static{this.styles=o`
+        `}};x([r({context:g}),o({attribute:!1})],G.prototype,`i18nStore`,void 0),x([o({type:Object})],G.prototype,`date`,void 0),x([o({type:Array})],G.prototype,`events`,void 0),x([o({type:Number})],G.prototype,`weekStart`,void 0),G=x([n(`calendar-week-view`)],G);var K=class extends i{constructor(...e){super(...e),this.events=[],this.weekStart=1}getFirstDayOfWeek(){return this.weekStart??1}static{this.styles=s`
         :host {
             display: flex;
             flex-direction: column;
@@ -1054,32 +1093,32 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
         .event-chip.all-day {
             background-color: #f59e0b;
         }
-    `}getMonthGrid(){let e=this.date.getFullYear(),t=this.date.getMonth(),n=this.getFirstDayOfWeek(),r=(new Date(e,t,1).getDay()-n+7)%7,i=1-r,a=new Date(e,t+1,0).getDate(),o=Math.ceil((a+r)/7)*7,s=[];for(let n=0;n<o;n++)s.push(new Date(e,t,i+n));return s}getEventsForDate(e,t){return this.events?this.events.filter(n=>{let r=E(n);if(t!==r)return!1;let i=new Date(e);i.setHours(0,0,0,0);let a=new Date(e);if(a.setHours(23,59,59,999),r){let e=n.start.split(`T`)[0],t=n.end.split(`T`)[0],r=new Date(e+`T00:00:00`),a=new Date(t+`T00:00:00`);return r<=i&&a>i}else{let e=new Date(n.start),t=new Date(n.end);return t.getTime()===i.getTime()&&e.getTime()<t.getTime()?!1:e<=a&&t>=i}}):[]}handleCellClick(e){this.dispatchEvent(new CustomEvent(`create-event`,{detail:{date:e,allDay:!0},bubbles:!0,composed:!0}))}render(){let e=this.getMonthGrid(),t=this.getFirstDayOfWeek(),n=Array.from({length:7},(e,n)=>{let r=(t+n)%7;return this.i18nStore?.t(`calendar.daysShort.${r}`)}),r=new Date;return r.setHours(0,0,0,0),s`
+    `}getMonthGrid(){let e=this.date.getFullYear(),t=this.date.getMonth(),n=this.getFirstDayOfWeek(),r=(new Date(e,t,1).getDay()-n+7)%7,i=1-r,a=new Date(e,t+1,0).getDate(),o=Math.ceil((a+r)/7)*7,s=[];for(let n=0;n<o;n++)s.push(new Date(e,t,i+n));return s}getEventsForDate(e,t){return this.events?this.events.filter(n=>{let r=O(n);if(t!==r)return!1;let i=new Date(e);i.setHours(0,0,0,0);let a=new Date(e);if(a.setHours(23,59,59,999),r){let e=n.start.split(`T`)[0],t=n.end.split(`T`)[0],r=new Date(e+`T00:00:00`),a=new Date(t+`T00:00:00`);return r<=i&&a>i}else{let e=new Date(n.start),t=new Date(n.end);return t.getTime()===i.getTime()&&e.getTime()<t.getTime()?!1:e<=a&&t>=i}}):[]}handleCellClick(e){this.dispatchEvent(new CustomEvent(`create-event`,{detail:{date:e,allDay:!0},bubbles:!0,composed:!0}))}render(){let e=this.getMonthGrid(),t=this.getFirstDayOfWeek(),n=Array.from({length:7},(e,n)=>{let r=(t+n)%7;return this.i18nStore?.t(`calendar.daysShort.${r}`)}),r=new Date;return r.setHours(0,0,0,0),c`
             <div class="month-view">
                 <div class="month-header">
-                    ${n.map(e=>s`<div class="month-header-cell">${e}</div>`)}
+                    ${n.map(e=>c`<div class="month-header-cell">${e}</div>`)}
                 </div>
                 <div class="month-grid">
-                    ${e.map(e=>{let t=e.getMonth()!==this.date.getMonth(),n=e.getTime()===r.getTime(),i=this.getEventsForDate(e,!0).concat(this.getEventsForDate(e,!1));return s`
+                    ${e.map(e=>{let t=e.getMonth()!==this.date.getMonth(),n=e.getTime()===r.getTime(),i=this.getEventsForDate(e,!0).concat(this.getEventsForDate(e,!1));return c`
                             <div class="month-cell ${t?`other-month`:``}" @click=${()=>this.handleCellClick(e)} style="cursor: pointer;">
                                 <div class="date-number ${n?`today`:``}">${e.getDate()}</div>
-                                ${i.slice(0,4).map(e=>s`
+                                ${i.slice(0,4).map(e=>c`
                                     <alps-popup align="start" position="bottom" style="width: 100%; display: block;" @click=${e=>e.stopPropagation()}>
                                         <div slot="trigger"
-                                            class="event-chip ${E(e)?`all-day`:``} ${e.task?`task`:``} ${e.status===`declined`?`declined`:``}" 
+                                            class="event-chip ${O(e)?`all-day`:``} ${e.task?`task`:``} ${e.status===`declined`?`declined`:``}" 
                                             style=${e.task?`border-color: ${e.color}`:e.color?`background-color: ${e.color}`:``}
                                             title="${e.summary||this.i18nStore?.t(`calendar.noTitle`)}">
-                                            ${e.task?d(`checkCircle`):``}<bdi>${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</bdi>
+                                            ${e.task?f(`checkCircle`):``}<bdi>${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</bdi>
                                         </div>
                                         <calendar-event-preview .event=${e}></calendar-event-preview>
                                     </alps-popup>
                                 `)}
-                                ${i.length>4?s`<div style="font-size: 11px; color: var(--text-muted); padding-inline-start: 4px;">${this.i18nStore?.t(`calendar.moreEvents`,{count:i.length-4})}</div>`:``}
+                                ${i.length>4?c`<div style="font-size: 11px; color: var(--text-muted); padding-inline-start: 4px;">${this.i18nStore?.t(`calendar.moreEvents`,{count:i.length-4})}</div>`:``}
                             </div>
                         `})}
                 </div>
             </div>
-        `}};v([n({context:m})],W.prototype,`i18nStore`,void 0),v([a({type:Object})],W.prototype,`date`,void 0),v([a({type:Array})],W.prototype,`events`,void 0),v([a({type:Number})],W.prototype,`weekStart`,void 0),W=v([t(`calendar-month-view`)],W);var G=class extends r{constructor(...e){super(...e),this.events=[]}static{this.styles=o`
+        `}};x([r({context:g})],K.prototype,`i18nStore`,void 0),x([o({type:Object})],K.prototype,`date`,void 0),x([o({type:Array})],K.prototype,`events`,void 0),x([o({type:Number})],K.prototype,`weekStart`,void 0),K=x([n(`calendar-month-view`)],K);var q=class extends i{constructor(...e){super(...e),this.events=[]}static{this.styles=s`
         :host {
             display: flex;
             height: 100%;
@@ -1120,9 +1159,9 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
         @media (min-width: 1200px) {
             .year-view { grid-template-columns: repeat(4, 1fr); }
         }
-    `}render(){return s`
+    `}render(){return c`
             <div class="year-view">
-                ${Array.from({length:12},(e,t)=>t).map(e=>s`
+                ${Array.from({length:12},(e,t)=>t).map(e=>c`
                     <calendar-mini-month 
                         .year=${this.year} 
                         .month=${e} 
@@ -1132,7 +1171,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                     ></calendar-mini-month>
                 `)}
             </div>
-        `}};v([a({type:Number})],G.prototype,`year`,void 0),v([a({type:Array})],G.prototype,`events`,void 0),v([a({type:Number})],G.prototype,`weekStart`,void 0),G=v([t(`calendar-year-view`)],G);var K=class extends r{constructor(...e){super(...e),this.clock=new w(this),this.events=[]}static{this.styles=[C,o`
+        `}};x([o({type:Number})],q.prototype,`year`,void 0),x([o({type:Array})],q.prototype,`events`,void 0),x([o({type:Number})],q.prototype,`weekStart`,void 0),q=x([n(`calendar-year-view`)],q);var J=class extends i{constructor(...e){super(...e),this.clock=new E(this),this.events=[]}static{this.styles=[T,s`
         :host {
             display: flex;
             flex-direction: column;
@@ -1240,13 +1279,13 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
             overflow: hidden;
             text-overflow: ellipsis;
         }
-    `]}render(){return this.events.length===0?s`
+    `]}render(){return this.events.length===0?c`
                 <div class="list-container">
                     <div class="no-results">${this.i18nStore?.t(`calendar.noResults`)}</div>
                 </div>
-            `:s`
+            `:c`
             <div class="list-container">
-                ${[...this.events].sort((e,t)=>new Date(e.start).getTime()-new Date(t.start).getTime()).map(e=>{let t=E(e),n=t?new Date(e.start.split(`T`)[0]+`T00:00:00`):new Date(e.start);return s`
+                ${[...this.events].sort((e,t)=>new Date(e.start).getTime()-new Date(t.start).getTime()).map(e=>{let t=O(e),n=t?new Date(e.start.split(`T`)[0]+`T00:00:00`):new Date(e.start);return c`
                         <alps-popup align="start" position="bottom" style="width: 100%; display: block;" @click=${e=>e.stopPropagation()}>
                             <div slot="trigger" class="event-item ${e.status===`declined`?`declined`:``}">
                                 <div class="event-date">
@@ -1261,7 +1300,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                                         <div class="color-dot" style="background-color: ${e.color||`#2563eb`}"></div>
                                         <bdi>${e.summary||this.i18nStore?.t(`calendar.noTitle`)}</bdi>
                                     </h3>
-                                    ${e.location?s`
+                                    ${e.location?c`
                                         <div class="event-location">
                                             📍 ${e.location}
                                         </div>
@@ -1272,7 +1311,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                         </alps-popup>
                     `})}
             </div>
-        `}};v([n({context:m})],K.prototype,`i18nStore`,void 0),v([a({type:Array})],K.prototype,`events`,void 0),K=v([t(`calendar-list-view`)],K);var q=class extends r{constructor(...e){super(...e),this.selectedDate=new Date,this.events=[],this.viewDate=new Date}static{this.styles=o`
+        `}};x([r({context:g})],J.prototype,`i18nStore`,void 0),x([o({type:Array})],J.prototype,`events`,void 0),J=x([n(`calendar-list-view`)],J);var Y=class extends i{constructor(...e){super(...e),this.selectedDate=new Date,this.events=[],this.viewDate=new Date}static{this.styles=s`
         :host {
             display: flex;
             flex-direction: column;
@@ -1305,7 +1344,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
             text-overflow: ellipsis;
             text-align: center;
         }
-    `}updated(e){e.has(`selectedDate`)&&this.selectedDate&&(this.viewDate=new Date(this.selectedDate))}changeMonth(e){this.viewDate=new Date(this.viewDate.getFullYear(),this.viewDate.getMonth()+e,1)}render(){let e=this.viewDate.getFullYear(),t=this.viewDate.getMonth(),n=this.i18nStore?.t(`calendar.months.${t}`);return s`
+    `}updated(e){e.has(`selectedDate`)&&this.selectedDate&&(this.viewDate=new Date(this.selectedDate))}changeMonth(e){this.viewDate=new Date(this.viewDate.getFullYear(),this.viewDate.getMonth()+e,1)}render(){let e=this.viewDate.getFullYear(),t=this.viewDate.getMonth(),n=this.i18nStore?.t(`calendar.months.${t}`);return c`
             <div class="mini-calendar-wrapper">
                 <div class="mini-header">
                     <alps-icon-btn icon="caretLeft" title=${this.i18nStore?.t(`calendar.previousMonth`)} @click=${()=>this.changeMonth(-1)}></alps-icon-btn>
@@ -1324,7 +1363,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                     .weekStart=${this.weekStart}
                 ></calendar-mini-month>
             </div>
-        `}};v([n({context:m})],q.prototype,`i18nStore`,void 0),v([a({type:Object})],q.prototype,`selectedDate`,void 0),v([a({type:Array})],q.prototype,`events`,void 0),v([a({type:Number})],q.prototype,`weekStart`,void 0),v([i()],q.prototype,`viewDate`,void 0),q=v([t(`alps-sidebar-calendar`)],q);var J=class extends r{constructor(...e){super(...e),this._handleI18nChange=()=>this.requestUpdate(),this.label=`Today`}static{this.styles=[C,o`
+        `}};x([r({context:g})],Y.prototype,`i18nStore`,void 0),x([o({type:Object})],Y.prototype,`selectedDate`,void 0),x([o({type:Array})],Y.prototype,`events`,void 0),x([o({type:Number})],Y.prototype,`weekStart`,void 0),x([a()],Y.prototype,`viewDate`,void 0),Y=x([n(`alps-sidebar-calendar`)],Y);var X=class extends i{constructor(...e){super(...e),this._handleI18nChange=()=>this.requestUpdate(),this.label=`Today`}static{this.styles=[T,s`
         :host {
             display: inline-flex;
         }
@@ -1380,19 +1419,19 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                 background-color: var(--bg-secondary, #f3f4f6);
             }
         }
-    `]}handlePrevious(){this.dispatchEvent(new CustomEvent(`previous`,{bubbles:!0,composed:!0}))}handleNext(){this.dispatchEvent(new CustomEvent(`next`,{bubbles:!0,composed:!0}))}handleCenter(){this.dispatchEvent(new CustomEvent(`center`,{bubbles:!0,composed:!0}))}connectedCallback(){super.connectedCallback(),this.i18nStore?.addEventListener(`change`,this._handleI18nChange)}disconnectedCallback(){super.disconnectedCallback(),this.i18nStore?.removeEventListener(`change`,this._handleI18nChange)}render(){return s`
+    `]}handlePrevious(){this.dispatchEvent(new CustomEvent(`previous`,{bubbles:!0,composed:!0}))}handleNext(){this.dispatchEvent(new CustomEvent(`next`,{bubbles:!0,composed:!0}))}handleCenter(){this.dispatchEvent(new CustomEvent(`center`,{bubbles:!0,composed:!0}))}connectedCallback(){super.connectedCallback(),this.i18nStore?.addEventListener(`change`,this._handleI18nChange)}disconnectedCallback(){super.disconnectedCallback(),this.i18nStore?.removeEventListener(`change`,this._handleI18nChange)}render(){return c`
             <div class="nav-buttons">
                 <button @click=${this.handlePrevious} aria-label=${this.i18nStore?.t(`general.previous`)||`Previous`}>
-                    ${d(`caretLeft`)}
+                    ${f(`caretLeft`)}
                 </button>
                 <button @click=${this.handleCenter}>
                     ${this.label}
                 </button>
                 <button @click=${this.handleNext} aria-label=${this.i18nStore?.t(`general.next`)||`Next`}>
-                    ${d(`caretRight`)}
+                    ${f(`caretRight`)}
                 </button>
             </div>
-        `}};v([n({context:m})],J.prototype,`i18nStore`,void 0),v([a({type:String})],J.prototype,`label`,void 0),J=v([t(`alps-nav-buttons`)],J);var Y=250,X=500,Z=120,Q=`alps.calendar.showTasks`;function ne(){try{return localStorage.getItem(Q)!==`false`}catch{return!0}}function re(e){try{localStorage.setItem(Q,String(e))}catch{}}var $=class extends r{constructor(...e){super(...e),this.calendars=[],this.events=[],this.currentDate=new Date,this.viewMode=`month`,this.loading=!0,this.isSpinning=!1,this.modalOpen=!1,this.activeCalendars=new Set,this.knownCalendarPaths=new Set,this.showTasks=ne(),this.taskModalOpen=!1,this.searchQuery=``,this.sidebarWidth=250,this.sidebarCollapsed=!1,this.isMobile=window.innerWidth<=768,this.mobileSidebarOpen=!1,this.promptOpen=!1,this.promptFields=[],this.syncIntervalTimer=null,this.fetchSeq=0,this.promptMode=null,this.promptTarget=null,this.calendarToDelete=null,this.eventToDelete=null,this.scheduling=`email`,this.activeKebabMenu=null,this.isSidebarDragging=!1,this._lastWeekStart=1,this._handleSettingsChange=()=>{if(this.settingsStore){let e=this.settingsStore.getState();this.sidebarCollapsed=e.sidebarCollapsed;let t=this.getFirstDayOfWeek(),n=t!==this._lastWeekStart;if(this._lastWeekStart=t,this.syncIntervalTimer&&=(clearInterval(this.syncIntervalTimer),null),e.checkMailInterval&&e.checkMailInterval>0){let t=e.checkMailInterval*60*1e3;this.syncIntervalTimer=setInterval(()=>{this.fetchData()},t)}n&&this.viewMode===`week`&&this.fetchData(),this.requestUpdate()}},this.handleHashChange=()=>{this.parseHash()&&this.fetchData()},this.handleResize=()=>{this.isMobile=window.innerWidth<=768},this.handleSpinIteration=()=>{this.loading||(this.isSpinning=!1)}}static{this.styles=[C,te,y,p,o`
+        `}};x([r({context:g})],X.prototype,`i18nStore`,void 0),x([o({type:String})],X.prototype,`label`,void 0),X=x([n(`alps-nav-buttons`)],X);var Z=250,ne=500,re=120,Q=`alps.calendar.showTasks`;function ie(){try{return localStorage.getItem(Q)!==`false`}catch{return!0}}function ae(e){try{localStorage.setItem(Q,String(e))}catch{}}var $=class extends i{constructor(...e){super(...e),this.calendars=[],this.events=[],this.currentDate=new Date,this.viewMode=`month`,this.loading=!0,this.isSpinning=!1,this.modalOpen=!1,this.activeCalendars=new Set,this.knownCalendarPaths=new Set,this.showTasks=ie(),this.taskModalOpen=!1,this.searchQuery=``,this.sidebarWidth=250,this.sidebarCollapsed=!1,this.isMobile=window.innerWidth<=768,this.mobileSidebarOpen=!1,this.promptOpen=!1,this.promptFields=[],this.syncIntervalTimer=null,this.fetchSeq=0,this.promptMode=null,this.promptTarget=null,this.calendarToDelete=null,this.eventToDelete=null,this.scheduling=`email`,this.activeKebabMenu=null,this.isSidebarDragging=!1,this._lastWeekStart=1,this._handleSettingsChange=()=>{if(this.settingsStore){let e=this.settingsStore.getState();this.sidebarCollapsed=e.sidebarCollapsed;let t=this.getFirstDayOfWeek(),n=t!==this._lastWeekStart;if(this._lastWeekStart=t,this.syncIntervalTimer&&=(clearInterval(this.syncIntervalTimer),null),e.checkMailInterval&&e.checkMailInterval>0){let t=e.checkMailInterval*60*1e3;this.syncIntervalTimer=setInterval(()=>{this.fetchData()},t)}n&&this.viewMode===`week`&&this.fetchData(),this.requestUpdate()}},this.handleHashChange=()=>{this.parseHash()&&this.fetchData()},this.handleResize=()=>{this.isMobile=window.innerWidth<=768},this.handleSpinIteration=()=>{this.loading||(this.isSpinning=!1)}}static{this.styles=[T,v,S,h,s`
         :host {
             display: flex;
             flex-direction: column;
@@ -1659,7 +1698,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
             overflow: hidden;
             position: relative;
         }
-    `]}getFirstDayOfWeek(){return this.settingsStore?.getState()?.weekStart??1}async connectedCallback(){super.connectedCallback(),window.addEventListener(`resize`,this.handleResize),window.addEventListener(`hashchange`,this.handleHashChange),this.settingsStore&&(this._lastWeekStart=this.getFirstDayOfWeek(),this.settingsStore.addEventListener(`change`,this._handleSettingsChange),this._handleSettingsChange()),this.parseHash(h()??``),await this.fetchData()}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(`resize`,this.handleResize),window.removeEventListener(`hashchange`,this.handleHashChange),this.settingsStore&&this.settingsStore.removeEventListener(`change`,this._handleSettingsChange),this.syncIntervalTimer&&=(clearInterval(this.syncIntervalTimer),null),this.fetchSeq++}reportFailure(e){window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(e),type:`error`,duration:5e3}}))}parseHash(e=window.location.hash){if(!e.startsWith(`#/calendar`))return!1;let[t,n]=e.substring(1).split(`?`),r=t.split(`/`),i=!1;if(r.length>=3){let e=r[2];[`day`,`week`,`month`,`year`].includes(e)&&this.viewMode!==e&&(this.viewMode=e,i=!0)}if(r.length>=4){let e=r[3],t=new Date(this.currentDate);if(this.viewMode===`year`){let n=parseInt(e,10);isNaN(n)||t.setFullYear(n)}else if(this.viewMode===`month`){let[n,r]=e.split(`-`);n&&r&&(t=new Date(parseInt(n,10),parseInt(r,10)-1,1))}else{let[n,r,i]=e.split(`-`);n&&r&&i&&(t=new Date(parseInt(n,10),parseInt(r,10)-1,parseInt(i,10)))}(t.getFullYear()!==this.currentDate.getFullYear()||t.getMonth()!==this.currentDate.getMonth()||t.getDate()!==this.currentDate.getDate())&&(this.currentDate=t,i=!0)}let a=``;return n&&(a=new URLSearchParams(`?`+n).get(`q`)||``),this.searchQuery!==a&&(this.searchQuery=a,i=!0),!x(window.location.hash)&&(t===`/calendar`||t===`/calendar/`)&&history.replaceState(history.state,``,this.hashFor(this.viewMode,this.currentDate,this.searchQuery)),i}hashFor(e,t,n=``){let r=t.getFullYear(),i=String(t.getMonth()+1).padStart(2,`0`),a=String(t.getDate()).padStart(2,`0`),o=`#/calendar/${e}`;return e===`year`?o+=`/${r}`:e===`month`?o+=`/${r}-${i}`:o+=`/${r}-${i}-${a}`,n&&(o+=`?q=${encodeURIComponent(n)}`),o}navigate(e,t,n=``){let r=this.hashFor(e,t,n);if(b(r)){this.parseHash(r)&&this.fetchData();return}window.location.hash===r?this.fetchData():window.location.hash=r}async fetchData(){if(!this.isConnected)return;let e=++this.fetchSeq;this.loading=!0,this.isSpinning=!0;let t=this.showTasks&&!this.searchQuery?T.fetchTasks(`active`).catch(t=>(console.error(`Failed to load tasks for the calendar`,t),e===this.fetchSeq&&this.reportFailure(`tasks.loadFailed`),null)):Promise.resolve(null);try{let n=await j.fetchCalendars();if(e!==this.fetchSeq)return;this.scheduling=n.scheduling===`server`?`server`:`email`;let r,i,a=this.currentDate.getFullYear(),o=this.currentDate.getMonth();this.viewMode===`year`?(r=new Date(a,0,1),i=new Date(a+1,0,1)):this.viewMode===`month`?(r=new Date(a,o,1),i=new Date(a,o+1,0),r.setDate(r.getDate()-14),i.setDate(i.getDate()+14)):this.viewMode===`week`?(r=I(this.currentDate,this.getFirstDayOfWeek()),i=new Date(r),i.setDate(r.getDate()+7)):(r=new Date(this.currentDate),r.setHours(0,0,0,0),i=new Date(this.currentDate),i.setHours(23,59,59,999));let s=await j.fetchEvents(r,i,this.searchQuery);if(e!==this.fetchSeq)return;let l=s.events||[],u=[];for(let e of l)if(e.rrule)try{let t=new Date(e.start),n=new Date(e.end).getTime()-t.getTime(),a=c.parseString(e.rrule);a.dtstart=t;let o=new c(a).between(r,i,!0);for(let t of o)u.push({...e,start:t.toISOString(),end:new Date(t.getTime()+n).toISOString()})}catch(t){console.error(`Failed to parse rrule for event`,e.uid,t),u.push(e)}else u.push(e);let d=(await t)?.tasks??[];if(e!==this.fetchSeq)return;this.events=[...u,...P(d)].map(e=>({...e,color:e.color||N(e.calendarPath||e.path)})),this.calendars=n.calendars.filter(O).map(e=>({...e,color:e.color||N(e.path)}));let f=new Set(this.calendars.map(e=>e.path));this.activeCalendars=new Set([...[...this.activeCalendars].filter(e=>f.has(e)),...[...f].filter(e=>!this.knownCalendarPaths.has(e))]),this.knownCalendarPaths=f}catch(t){console.error(t),e===this.fetchSeq&&this.reportFailure(`calendar.loadFailed`)}finally{e===this.fetchSeq&&(this.loading=!1)}}changeDate(e,t){let n=new Date(this.currentDate),r=t||this.viewMode;if(r===`year`||r===`month`){let t=r===`year`?e*12:e,i=new Date(n.getFullYear(),n.getMonth()+t+1,0).getDate();n=new Date(n.getFullYear(),n.getMonth()+t,Math.min(n.getDate(),i))}else r===`week`?n.setDate(n.getDate()+e*7):n.setDate(n.getDate()+e);this.navigate(r,n)}openCreateModal(e,t){this.selectedEvent=void 0,this.initialDate=e,this.initialAllDay=t,this.modalOpen=!0,this.isMobile&&(this.mobileSidebarOpen=!1)}openEditModal(e){if(e.task){this.editingTask=e.task,this.taskModalOpen=!0;return}this.selectedEvent=e,this.initialDate=void 0,this.initialAllDay=void 0,this.modalOpen=!0}handleModalClose(){this.modalOpen=!1,this.selectedEvent=void 0,this.initialDate=void 0,this.initialAllDay=void 0}async handleModalSaved(){this.modalOpen=!1,this.selectedEvent=void 0,this.initialDate=void 0,this.initialAllDay=void 0,await this.fetchData()}viewShows(e){let t=this.currentDate;if(this.viewMode===`year`)return e.getFullYear()===t.getFullYear();if(this.viewMode===`month`)return e.getFullYear()===t.getFullYear()&&e.getMonth()===t.getMonth();if(this.viewMode===`week`){let n=I(t,this.getFirstDayOfWeek()),r=new Date(n);return r.setDate(n.getDate()+7),e>=n&&e<r}return e.toDateString()===t.toDateString()}dayForViewSwitch(e){if(e===`day`||e===`week`){let e=new Date;if(this.viewShows(e))return e}return this.currentDate}goToToday(){this.navigate(`day`,new Date)}setViewMode(e){this.navigate(e,this.dayForViewSwitch(e))}handleDateSelected(e){this.navigate(`day`,e),g(this.renderRoot),this.isMobile&&(this.mobileSidebarOpen=!1)}handleAddCalendar(){this.promptFields=[{id:`name`,label:this.i18nStore?.t(`calendar.calendarName`),autofocus:!0}],this.promptMode=`add`,this.promptOpen=!0}handleRenameCalendar(e){this.promptFields=[{id:`name`,label:this.i18nStore?.t(`calendar.calendarName`),value:e.name,autofocus:!0}],this.promptMode=`rename`,this.promptTarget=e,this.promptOpen=!0}handleDeleteCalendar(e){this.calendarToDelete=e}async _executeDeleteCalendar(){if(!this.calendarToDelete)return;let e=this.calendarToDelete;this.calendarToDelete=null;try{if(await j.deleteCalendar(e.path),this.calendars=this.calendars.filter(t=>t.path!==e.path),this.activeCalendars.has(e.path)){let t=new Set(this.activeCalendars);t.delete(e.path),this.activeCalendars=t}await this.fetchData()}catch(e){console.error(`Failed to delete calendar`,e),this.reportFailure(`calendar.deleteCalendarFailed`)}}async _executeDeleteEvent(e=!0){if(!this.eventToDelete)return;let t=this.eventToDelete;this.eventToDelete=null;try{t.task?(await T.deleteTask(t.task.path,{notify:e,lang:this.i18nStore?.getLanguage?.()}))?.sendFailed&&this.reportFailure(`invitations.notTold`):(await j.deleteEvent(t.path,{notify:e,lang:this.i18nStore?.getLanguage?.()}))?.sendFailed&&this.reportFailure(`invitations.notTold`),await this.fetchData()}catch(e){console.error(`Failed to delete event`,e),this.reportFailure(t.task?`tasks.deleteFailed`:`calendar.deleteEventFailed`)}}isShown(e){return e.task?this.showTasks&&(!this.calendars.some(t=>t.path===e.calendarPath)||this.activeCalendars.has(e.calendarPath)):this.activeCalendars.has(e.calendarPath)}toggleTasks(){this.showTasks=!this.showTasks,re(this.showTasks),this.fetchData()}async respondToEvent(e,t){try{(await j.respondToEvent(e,t,this.i18nStore?.getLanguage?.())).sendFailed&&this.reportFailure(`invitations.sendFailed`),await this.fetchData()}catch(e){console.error(`Failed to answer the invitation`,e);let t=_(e);this.reportFailure(t?`invitations.changedElsewhere`:`invitations.answerFailed`),t&&await this.fetchData()}}async completeTask(e){try{(await T.completeTask(e.path,!0,this.i18nStore?.getLanguage?.()))?.sendFailed&&this.reportFailure(`invitations.notTold`),await this.fetchData()}catch(e){console.error(`Failed to update task`,e),this.reportFailure(`tasks.completeFailed`)}}closeTaskModal(){this.taskModalOpen=!1,this.editingTask=void 0}handleCheckboxKeyDown(e,t){e.key!==` `&&e.key!==`Enter`||(e.preventDefault(),!e.repeat&&t())}toggleCalendar(e){let t=new Set(this.activeCalendars);t.has(e)?t.delete(e):t.add(e),this.activeCalendars=t}async handlePromptSubmit(e){this.promptOpen=!1;let t=e.detail.name;if(t)try{this.promptMode===`add`?await j.createCalendar(t):this.promptMode===`rename`&&this.promptTarget&&await j.renameCalendar(this.promptTarget.path,t),await this.fetchData()}catch(e){console.error(`Failed to save calendar`,e),this.reportFailure(`calendar.saveCalendarFailed`)}}handlePromptCancel(){this.promptOpen=!1}get username(){return this.settingsStore?.getState().loginUsername||``}render(){let e=this.i18nStore?.t(`calendar.months.${this.currentDate.getMonth()}`),t=this.currentDate.getFullYear(),n=``;n=this.searchQuery?this.i18nStore?.t(`calendar.searchResults`):this.viewMode===`year`?t.toString():this.viewMode===`day`?`${this.currentDate.getDate()} ${e}`:e;let r=this.events.filter(e=>this.isShown(e));return s`
+    `]}getFirstDayOfWeek(){return this.settingsStore?.getState()?.weekStart??1}async connectedCallback(){super.connectedCallback(),window.addEventListener(`resize`,this.handleResize),window.addEventListener(`hashchange`,this.handleHashChange),this.settingsStore&&(this._lastWeekStart=this.getFirstDayOfWeek(),this.settingsStore.addEventListener(`change`,this._handleSettingsChange),this._handleSettingsChange()),this.parseHash(_()??``),await this.fetchData()}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(`resize`,this.handleResize),window.removeEventListener(`hashchange`,this.handleHashChange),this.settingsStore&&this.settingsStore.removeEventListener(`change`,this._handleSettingsChange),this.syncIntervalTimer&&=(clearInterval(this.syncIntervalTimer),null),this.fetchSeq++}reportFailure(e){window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(e),type:`error`,duration:5e3}}))}parseHash(e=window.location.hash){if(!e.startsWith(`#/calendar`))return!1;let[t,n]=e.substring(1).split(`?`),r=t.split(`/`),i=!1;if(r.length>=3){let e=r[2];[`day`,`week`,`month`,`year`].includes(e)&&this.viewMode!==e&&(this.viewMode=e,i=!0)}if(r.length>=4){let e=r[3],t=new Date(this.currentDate);if(this.viewMode===`year`){let n=parseInt(e,10);isNaN(n)||t.setFullYear(n)}else if(this.viewMode===`month`){let[n,r]=e.split(`-`);n&&r&&(t=new Date(parseInt(n,10),parseInt(r,10)-1,1))}else{let[n,r,i]=e.split(`-`);n&&r&&i&&(t=new Date(parseInt(n,10),parseInt(r,10)-1,parseInt(i,10)))}(t.getFullYear()!==this.currentDate.getFullYear()||t.getMonth()!==this.currentDate.getMonth()||t.getDate()!==this.currentDate.getDate())&&(this.currentDate=t,i=!0)}let a=``;return n&&(a=new URLSearchParams(`?`+n).get(`q`)||``),this.searchQuery!==a&&(this.searchQuery=a,i=!0),!C(window.location.hash)&&(t===`/calendar`||t===`/calendar/`)&&history.replaceState(history.state,``,this.hashFor(this.viewMode,this.currentDate,this.searchQuery)),i}hashFor(e,t,n=``){let r=t.getFullYear(),i=String(t.getMonth()+1).padStart(2,`0`),a=String(t.getDate()).padStart(2,`0`),o=`#/calendar/${e}`;return e===`year`?o+=`/${r}`:e===`month`?o+=`/${r}-${i}`:o+=`/${r}-${i}-${a}`,n&&(o+=`?q=${encodeURIComponent(n)}`),o}navigate(e,t,n=``){let r=this.hashFor(e,t,n);if(ee(r)){this.parseHash(r)&&this.fetchData();return}window.location.hash===r?this.fetchData():window.location.hash=r}async fetchData(){if(!this.isConnected)return;let e=++this.fetchSeq;this.loading=!0,this.isSpinning=!0;let t=this.showTasks&&!this.searchQuery?D.fetchTasks(`active`).catch(t=>(console.error(`Failed to load tasks for the calendar`,t),e===this.fetchSeq&&this.reportFailure(`tasks.loadFailed`),null)):Promise.resolve(null);try{let n=await M.fetchCalendars();if(e!==this.fetchSeq)return;this.scheduling=n.scheduling===`server`?`server`:`email`;let r,i,a=this.currentDate.getFullYear(),o=this.currentDate.getMonth();this.viewMode===`year`?(r=new Date(a,0,1),i=new Date(a+1,0,1)):this.viewMode===`month`?(r=new Date(a,o,1),i=new Date(a,o+1,0),r.setDate(r.getDate()-14),i.setDate(i.getDate()+14)):this.viewMode===`week`?(r=L(this.currentDate,this.getFirstDayOfWeek()),i=new Date(r),i.setDate(r.getDate()+7)):(r=new Date(this.currentDate),r.setHours(0,0,0,0),i=new Date(this.currentDate),i.setHours(23,59,59,999));let s=await M.fetchEvents(r,i,this.searchQuery);if(e!==this.fetchSeq)return;let c=s.events||[],u=[];for(let e of c)if(e.rrule)try{let t=new Date(e.start),n=new Date(e.end).getTime()-t.getTime(),a=l.parseString(e.rrule);a.dtstart=t;let o=new l(a).between(r,i,!0);for(let t of o)u.push({...e,start:t.toISOString(),end:new Date(t.getTime()+n).toISOString()})}catch(t){console.error(`Failed to parse rrule for event`,e.uid,t),u.push(e)}else u.push(e);let d=(await t)?.tasks??[];if(e!==this.fetchSeq)return;this.events=[...u,...F(d)].map(e=>({...e,color:e.color||P(e.calendarPath||e.path)})),this.calendars=n.calendars.filter(k).map(e=>({...e,color:e.color||P(e.path)}));let f=new Set(this.calendars.map(e=>e.path));this.activeCalendars=new Set([...[...this.activeCalendars].filter(e=>f.has(e)),...[...f].filter(e=>!this.knownCalendarPaths.has(e))]),this.knownCalendarPaths=f}catch(t){console.error(t),e===this.fetchSeq&&this.reportFailure(`calendar.loadFailed`)}finally{e===this.fetchSeq&&(this.loading=!1)}}changeDate(e,t){let n=new Date(this.currentDate),r=t||this.viewMode;if(r===`year`||r===`month`){let t=r===`year`?e*12:e,i=new Date(n.getFullYear(),n.getMonth()+t+1,0).getDate();n=new Date(n.getFullYear(),n.getMonth()+t,Math.min(n.getDate(),i))}else r===`week`?n.setDate(n.getDate()+e*7):n.setDate(n.getDate()+e);this.navigate(r,n)}openCreateModal(e,t){this.selectedEvent=void 0,this.initialDate=e,this.initialAllDay=t,this.modalOpen=!0,this.isMobile&&(this.mobileSidebarOpen=!1)}openEditModal(e){if(e.task){this.editingTask=e.task,this.taskModalOpen=!0;return}this.selectedEvent=e,this.initialDate=void 0,this.initialAllDay=void 0,this.modalOpen=!0}handleModalClose(){this.modalOpen=!1,this.selectedEvent=void 0,this.initialDate=void 0,this.initialAllDay=void 0}async handleModalSaved(){this.modalOpen=!1,this.selectedEvent=void 0,this.initialDate=void 0,this.initialAllDay=void 0,await this.fetchData()}viewShows(e){let t=this.currentDate;if(this.viewMode===`year`)return e.getFullYear()===t.getFullYear();if(this.viewMode===`month`)return e.getFullYear()===t.getFullYear()&&e.getMonth()===t.getMonth();if(this.viewMode===`week`){let n=L(t,this.getFirstDayOfWeek()),r=new Date(n);return r.setDate(n.getDate()+7),e>=n&&e<r}return e.toDateString()===t.toDateString()}dayForViewSwitch(e){if(e===`day`||e===`week`){let e=new Date;if(this.viewShows(e))return e}return this.currentDate}goToToday(){this.navigate(`day`,new Date)}setViewMode(e){this.navigate(e,this.dayForViewSwitch(e))}handleDateSelected(e){this.navigate(`day`,e),y(this.renderRoot),this.isMobile&&(this.mobileSidebarOpen=!1)}handleAddCalendar(){this.promptFields=[{id:`name`,label:this.i18nStore?.t(`calendar.calendarName`),autofocus:!0}],this.promptMode=`add`,this.promptOpen=!0}handleRenameCalendar(e){this.promptFields=[{id:`name`,label:this.i18nStore?.t(`calendar.calendarName`),value:e.name,autofocus:!0}],this.promptMode=`rename`,this.promptTarget=e,this.promptOpen=!0}handleDeleteCalendar(e){this.calendarToDelete=e}async _executeDeleteCalendar(){if(!this.calendarToDelete)return;let e=this.calendarToDelete;this.calendarToDelete=null;try{if(await M.deleteCalendar(e.path),this.calendars=this.calendars.filter(t=>t.path!==e.path),this.activeCalendars.has(e.path)){let t=new Set(this.activeCalendars);t.delete(e.path),this.activeCalendars=t}await this.fetchData()}catch(e){console.error(`Failed to delete calendar`,e),this.reportFailure(`calendar.deleteCalendarFailed`)}}async _executeDeleteEvent(e=!0){if(!this.eventToDelete)return;let t=this.eventToDelete;this.eventToDelete=null;try{t.task?(await D.deleteTask(t.task.path,{notify:e,lang:this.i18nStore?.getLanguage?.()}))?.sendFailed&&this.reportFailure(`invitations.notTold`):(await M.deleteEvent(t.path,{notify:e,lang:this.i18nStore?.getLanguage?.()}))?.sendFailed&&this.reportFailure(`invitations.notTold`),await this.fetchData()}catch(e){console.error(`Failed to delete event`,e),this.reportFailure(t.task?`tasks.deleteFailed`:`calendar.deleteEventFailed`)}}isShown(e){return e.task?this.showTasks&&(!this.calendars.some(t=>t.path===e.calendarPath)||this.activeCalendars.has(e.calendarPath)):this.activeCalendars.has(e.calendarPath)}toggleTasks(){this.showTasks=!this.showTasks,ae(this.showTasks),this.fetchData()}async respondToEvent(e,t){try{(await M.respondToEvent(e,t,this.i18nStore?.getLanguage?.())).sendFailed&&this.reportFailure(`invitations.sendFailed`),await this.fetchData()}catch(e){console.error(`Failed to answer the invitation`,e);let t=b(e);this.reportFailure(t?`invitations.changedElsewhere`:`invitations.answerFailed`),t&&await this.fetchData()}}async completeTask(e){try{(await D.completeTask(e.path,!0,this.i18nStore?.getLanguage?.()))?.sendFailed&&this.reportFailure(`invitations.notTold`),await this.fetchData()}catch(e){console.error(`Failed to update task`,e),this.reportFailure(`tasks.completeFailed`)}}closeTaskModal(){this.taskModalOpen=!1,this.editingTask=void 0}handleCheckboxKeyDown(e,t){e.key!==` `&&e.key!==`Enter`||(e.preventDefault(),!e.repeat&&t())}toggleCalendar(e){let t=new Set(this.activeCalendars);t.has(e)?t.delete(e):t.add(e),this.activeCalendars=t}async handlePromptSubmit(e){this.promptOpen=!1;let t=e.detail.name;if(t)try{this.promptMode===`add`?await M.createCalendar(t):this.promptMode===`rename`&&this.promptTarget&&await M.renameCalendar(this.promptTarget.path,t),await this.fetchData()}catch(e){console.error(`Failed to save calendar`,e),this.reportFailure(`calendar.saveCalendarFailed`)}}handlePromptCancel(){this.promptOpen=!1}get username(){return this.settingsStore?.getState().loginUsername||``}render(){let e=this.i18nStore?.t(`calendar.months.${this.currentDate.getMonth()}`),t=this.currentDate.getFullYear(),n=``;n=this.searchQuery?this.i18nStore?.t(`calendar.searchResults`):this.viewMode===`year`?t.toString():this.viewMode===`day`?`${this.currentDate.getDate()} ${e}`:e;let r=this.events.filter(e=>this.isShown(e));return c`
             <app-header 
                 currentTab="calendar"
                 .username=${this.username}
@@ -1677,7 +1716,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                         .collapsed=${this.sidebarCollapsed&&!this.isMobile}
                         .width=${this.sidebarWidth}
                         @toggle-collapse=${()=>{let e=!this.sidebarCollapsed;this.sidebarCollapsed=e,this.settingsStore&&this.settingsStore.updateSettings({sidebarCollapsed:e})}}
-                        @sidebar-resize=${e=>{let t=e.detail.newWidth;t<Z?(this.sidebarCollapsed||(this.sidebarCollapsed=!0,this.settingsStore&&this.settingsStore.updateSettings({sidebarCollapsed:!0})),this.sidebarWidth=Y):(this.sidebarCollapsed&&(this.sidebarCollapsed=!1,this.settingsStore&&this.settingsStore.updateSettings({sidebarCollapsed:!1})),this.sidebarWidth=Math.min(Math.max(t,180),X))}}
+                        @sidebar-resize=${e=>{let t=e.detail.newWidth;t<re?(this.sidebarCollapsed||(this.sidebarCollapsed=!0,this.settingsStore&&this.settingsStore.updateSettings({sidebarCollapsed:!0})),this.sidebarWidth=Z):(this.sidebarCollapsed&&(this.sidebarCollapsed=!1,this.settingsStore&&this.settingsStore.updateSettings({sidebarCollapsed:!1})),this.sidebarWidth=Math.min(Math.max(t,180),ne))}}
                         @drag-start=${()=>this.isSidebarDragging=!0}
                         @drag-end=${()=>this.isSidebarDragging=!1}
                         @close-sidebar=${()=>this.mobileSidebarOpen=!1}
@@ -1697,7 +1736,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                             <div class="sidebar-scroll-content">
                                 <div class="calendars-list">
                                     <alps-sidebar-heading heading=${this.i18nStore?.t(`calendar.myCalendars`)??``}></alps-sidebar-heading>
-                                    ${this.calendars.map(e=>s`
+                                    ${this.calendars.map(e=>c`
                                         <div class="calendar-item" @click=${()=>this.toggleCalendar(e.path)}>
                                             <!-- The calendar's checkbox: one Tab stop, named by
                                                  the calendar. Not the whole row, which also
@@ -1709,7 +1748,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                                                 @keydown=${t=>this.handleCheckboxKeyDown(t,()=>this.toggleCalendar(e.path))}
                                             >
                                                 <div class="calendar-checkbox ${this.activeCalendars.has(e.path)?`checked`:``}" style="--cal-color: ${e.color}">
-                                                    ${this.activeCalendars.has(e.path)?d(`check`):``}
+                                                    ${this.activeCalendars.has(e.path)?f(`check`):``}
                                                 </div>
                                                 <span><bdi>${e.name}</bdi></span>
                                             </div>
@@ -1723,11 +1762,11 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                                                 >
                                                     <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" title=${this.i18nStore?.t(`general.moreOptions`)}></alps-icon-btn>
                                                     <button class="dropdown-item" @click=${t=>{let n=t.target.closest(`alps-popup`);n&&n.close(),this.handleRenameCalendar(e)}}>
-                                                        ${d(`pen`)} <span class="item-text">${this.i18nStore?.t(`calendar.rename`)}</span>
+                                                        ${f(`pen`)} <span class="item-text">${this.i18nStore?.t(`calendar.rename`)}</span>
                                                     </button>
-                                                    ${this.calendars.length>1&&!(e.path===`default`||e.path.endsWith(`/default`)||e.path.endsWith(`/default/`))?s`
+                                                    ${this.calendars.length>1&&!(e.path===`default`||e.path.endsWith(`/default`)||e.path.endsWith(`/default/`))?c`
                                                         <button class="dropdown-item text-danger" @click=${t=>{let n=t.target.closest(`alps-popup`);n&&n.close(),this.handleDeleteCalendar(e)}}>
-                                                            ${d(`trash`)} <span class="item-text">${this.i18nStore?.t(`calendar.delete`)}</span>
+                                                            ${f(`trash`)} <span class="item-text">${this.i18nStore?.t(`calendar.delete`)}</span>
                                                         </button>
                                                     `:``}
                                                 </alps-popup>
@@ -1742,7 +1781,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                                             @keydown=${e=>this.handleCheckboxKeyDown(e,()=>this.toggleTasks())}
                                         >
                                             <div class="calendar-checkbox ${this.showTasks?`checked`:``}" style="--cal-color: var(--text-secondary, #4b5563)">
-                                                ${this.showTasks?d(`check`):``}
+                                                ${this.showTasks?f(`check`):``}
                                             </div>
                                             <span>${this.i18nStore?.t(`tasks.title`)}</span>
                                         </div>
@@ -1766,9 +1805,10 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                         <div class="toolbar-left">
                             <h2>${n} <span class="sub-title">${this.viewMode===`year`?``:t}</span></h2>
                         </div>
-                        ${this.isMobile?``:s`
+                        ${this.isMobile?``:c`
                         <div class="toolbar-center">
                             <alps-toggle 
+                                label=${this.i18nStore?.t(`calendar.view`)}
                                 .options=${[{label:this.i18nStore?.t(`calendar.day`),value:`day`},{label:this.i18nStore?.t(`calendar.week`),value:`week`},{label:this.i18nStore?.t(`calendar.month`),value:`month`},{label:this.i18nStore?.t(`calendar.year`),value:`year`}]}
                                 .value=${this.viewMode}
                                 @change=${e=>this.setViewMode(e.detail.value)}
@@ -1793,14 +1833,14 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                     </div>
 
                     <div class="calendar-body" @complete-task=${e=>void this.completeTask(e.detail.task)} @respond-event=${e=>void this.respondToEvent(e.detail.event,e.detail.status)}>
-                        ${this.searchQuery?s`
+                        ${this.searchQuery?c`
                             <calendar-list-view
                                 .events=${r}
                                 @edit-event=${e=>this.openEditModal(e.detail.event)}
                                 @delete-event=${e=>this.eventToDelete=e.detail.event}
                             ></calendar-list-view>
-                        `:s`
-                            ${this.viewMode===`year`?s`
+                        `:c`
+                            ${this.viewMode===`year`?c`
                                 <calendar-year-view 
                                 .year=${t} 
                                 .events=${r}
@@ -1808,7 +1848,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                                 @date-selected=${e=>this.handleDateSelected(e.detail.date)}
                             ></calendar-year-view>
                         `:``}
-                        ${this.viewMode===`month`?s`
+                        ${this.viewMode===`month`?c`
                             <calendar-month-view 
                                 .date=${this.currentDate} 
                                 .events=${r}
@@ -1818,7 +1858,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                                 @delete-event=${e=>this.eventToDelete=e.detail.event}
                             ></calendar-month-view>
                         `:``}
-                        ${this.viewMode===`week`?s`
+                        ${this.viewMode===`week`?c`
                             <calendar-week-view 
                                 .date=${this.currentDate} 
                                 .events=${r}
@@ -1828,7 +1868,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                                 @delete-event=${e=>this.eventToDelete=e.detail.event}
                             ></calendar-week-view>
                         `:``}
-                            ${this.viewMode===`day`?s`
+                            ${this.viewMode===`day`?c`
                                 <calendar-day-view 
                                     .date=${this.currentDate} 
                                     .events=${r}
@@ -1839,11 +1879,12 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                             `:``}
                         `}
                     </div>
-                    ${this.isMobile?s`
+                    ${this.isMobile?c`
                         <div class="mobile-bottom-header">
                             <div class="mobile-bottom-actions">
                                 <alps-toggle 
                                     full-width
+                                    label=${this.i18nStore?.t(`calendar.view`)}
                                     .options=${[{label:this.i18nStore?.t(`calendar.day`),value:`day`},{label:this.i18nStore?.t(`calendar.week`),value:`week`},{label:this.i18nStore?.t(`calendar.month`),value:`month`},{label:this.i18nStore?.t(`calendar.year`),value:`year`}]}
                                     .value=${this.viewMode}
                                     @change=${e=>this.setViewMode(e.detail.value)}
@@ -1875,7 +1916,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                 @conflict=${this.fetchData}
             ></calendar-event-modal>
 
-            ${this.promptOpen?s`
+            ${this.promptOpen?c`
                 <ui-prompt 
                     heading="${this.promptMode===`add`?this.i18nStore?.t(`calendar.addCalendar`):this.i18nStore?.t(`calendar.renameCalendar`)}" 
                     .fields=${this.promptFields}
@@ -1884,7 +1925,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                 ></ui-prompt>
             `:``}
 
-            ${this.calendarToDelete?s`
+            ${this.calendarToDelete?c`
                 <ui-confirm
                     heading="${this.i18nStore?.t(`calendar.deleteCalendar`)}"
                     .message=${this.i18nStore?.t(`calendar.deleteCalendarConfirm`,{name:this.calendarToDelete.name})??``}
@@ -1895,7 +1936,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                 ></ui-confirm>
             `:``}
 
-            ${this.eventToDelete&&(this.eventToDelete.task?D(this.eventToDelete.task,this.scheduling):k(this.eventToDelete,this.scheduling))?s`
+            ${this.eventToDelete&&(this.eventToDelete.task?te(this.eventToDelete.task,this.scheduling):A(this.eventToDelete,this.scheduling))?c`
                 <ui-confirm
                     class="delete-meeting"
                     heading="${this.i18nStore?.t(this.eventToDelete.task?`tasks.deleteTask`:`calendar.deleteEvent`)}"
@@ -1907,7 +1948,7 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                     @secondary=${()=>this._executeDeleteEvent(!1)}
                     @cancel=${()=>this.eventToDelete=null}
                 ></ui-confirm>
-            `:this.eventToDelete?s`
+            `:this.eventToDelete?c`
                 <ui-confirm
                     heading="${this.i18nStore?.t(this.eventToDelete.task?`tasks.deleteTask`:`calendar.deleteEvent`)}"
                     .message=${this.i18nStore?.t(this.eventToDelete.task?`tasks.deleteTaskConfirm`:`calendar.deleteEventConfirm`)??``}
@@ -1917,4 +1958,4 @@ import{_ as e,d as t,f as n,g as r,l as i,u as a,x as o,y as s}from"./lit-BYBpcc
                     @cancel=${()=>this.eventToDelete=null}
                 ></ui-confirm>
             `:``}
-        `}};v([n({context:m})],$.prototype,`i18nStore`,void 0),v([n({context:l})],$.prototype,`settingsStore`,void 0),v([i()],$.prototype,`calendars`,void 0),v([i()],$.prototype,`events`,void 0),v([i()],$.prototype,`currentDate`,void 0),v([i()],$.prototype,`viewMode`,void 0),v([i()],$.prototype,`loading`,void 0),v([i()],$.prototype,`isSpinning`,void 0),v([i()],$.prototype,`modalOpen`,void 0),v([i()],$.prototype,`selectedEvent`,void 0),v([i()],$.prototype,`initialDate`,void 0),v([i()],$.prototype,`initialAllDay`,void 0),v([i()],$.prototype,`activeCalendars`,void 0),v([i()],$.prototype,`showTasks`,void 0),v([i()],$.prototype,`taskModalOpen`,void 0),v([i()],$.prototype,`editingTask`,void 0),v([i()],$.prototype,`searchQuery`,void 0),v([i()],$.prototype,`sidebarWidth`,void 0),v([i()],$.prototype,`sidebarCollapsed`,void 0),v([i()],$.prototype,`isMobile`,void 0),v([i()],$.prototype,`mobileSidebarOpen`,void 0),v([i()],$.prototype,`promptOpen`,void 0),v([i()],$.prototype,`promptFields`,void 0),v([i()],$.prototype,`promptMode`,void 0),v([i()],$.prototype,`promptTarget`,void 0),v([i()],$.prototype,`calendarToDelete`,void 0),v([i()],$.prototype,`eventToDelete`,void 0),v([i()],$.prototype,`scheduling`,void 0),v([i()],$.prototype,`activeKebabMenu`,void 0),v([i()],$.prototype,`isSidebarDragging`,void 0),$=v([t(`calendar-page`)],$);export{$ as CalendarPage};
+        `}};x([r({context:g})],$.prototype,`i18nStore`,void 0),x([r({context:u})],$.prototype,`settingsStore`,void 0),x([a()],$.prototype,`calendars`,void 0),x([a()],$.prototype,`events`,void 0),x([a()],$.prototype,`currentDate`,void 0),x([a()],$.prototype,`viewMode`,void 0),x([a()],$.prototype,`loading`,void 0),x([a()],$.prototype,`isSpinning`,void 0),x([a()],$.prototype,`modalOpen`,void 0),x([a()],$.prototype,`selectedEvent`,void 0),x([a()],$.prototype,`initialDate`,void 0),x([a()],$.prototype,`initialAllDay`,void 0),x([a()],$.prototype,`activeCalendars`,void 0),x([a()],$.prototype,`showTasks`,void 0),x([a()],$.prototype,`taskModalOpen`,void 0),x([a()],$.prototype,`editingTask`,void 0),x([a()],$.prototype,`searchQuery`,void 0),x([a()],$.prototype,`sidebarWidth`,void 0),x([a()],$.prototype,`sidebarCollapsed`,void 0),x([a()],$.prototype,`isMobile`,void 0),x([a()],$.prototype,`mobileSidebarOpen`,void 0),x([a()],$.prototype,`promptOpen`,void 0),x([a()],$.prototype,`promptFields`,void 0),x([a()],$.prototype,`promptMode`,void 0),x([a()],$.prototype,`promptTarget`,void 0),x([a()],$.prototype,`calendarToDelete`,void 0),x([a()],$.prototype,`eventToDelete`,void 0),x([a()],$.prototype,`scheduling`,void 0),x([a()],$.prototype,`activeKebabMenu`,void 0),x([a()],$.prototype,`isSidebarDragging`,void 0),$=x([n(`calendar-page`)],$);export{$ as CalendarPage};

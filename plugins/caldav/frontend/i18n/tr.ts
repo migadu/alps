@@ -80,6 +80,7 @@ export default {
     week: 'Hafta',
     month: 'Ay',
     year: 'Yıl',
+    view: 'Görünüm',
     today: 'Bugün',
     allDay: 'Tüm Gün',
     noTitle: '(Başlık yok)',
