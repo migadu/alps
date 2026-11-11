@@ -273,7 +273,10 @@ export class AlpsPopup extends LitElement {
     // A press on the trigger of an open menu is a click outside it where the
     // browser cannot tell the popover where it was opened from: the press
     // already closed it, and the click must not open it again.
-    const wasOpen = this._openAtPointerDown ?? this.openState;
+    // Keyboard and assistive-technology clicks have no pointer press. A
+    // pointer gesture abandoned before its click must not decide their state.
+    const wasOpen = e instanceof MouseEvent && e.detail > 0
+      ? this._openAtPointerDown ?? this.openState : this.openState;
     this._openAtPointerDown = null;
     if (wasOpen) {
       if (this.openState) this.close();
@@ -307,9 +310,10 @@ export class AlpsPopup extends LitElement {
   };
 
   /**
-   * Where the focus goes back to when the menu closes: what had it when the
-   * menu opened. A popover gives it back only when it was inside the popover
-   * itself, and a menu's items are slotted, so closing from one dropped the
+   * Where the focus goes back to when the menu closes: what had it when a
+   * click menu opened, or a hover submenu's trigger. A popover gives it back
+   * only when it was inside the popover itself, and a menu's items are slotted,
+   * so closing from one dropped the
    * focus on the page. Not after a click outside, which put the focus where
    * the user wanted it.
    */
@@ -335,7 +339,11 @@ export class AlpsPopup extends LitElement {
   }
 
   private _showContent(content: HTMLElement) {
-    if (this.triggerOn === 'click') this._returnFocus = this._getActiveElement() as HTMLElement | null;
+    // A manual submenu has no native focus restoration. If its focused item
+    // closes it, return to its trigger in the still-open parent menu.
+    this._returnFocus = this.triggerOn === 'hover'
+      ? this._triggerElements().find((el): el is HTMLElement => el instanceof HTMLElement) ?? null
+      : this._getActiveElement() as HTMLElement | null;
     if (popoverSupported()) {
       // `source` makes the trigger part of the menu for light dismiss, so a
       // press on it does not close the menu before the click toggles it.

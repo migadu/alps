@@ -36,7 +36,7 @@ const contentOf = (el: Popup) => shadow<HTMLElement>(el, '.popup-content');
 const byId = (id: string) => document.getElementById(id) as HTMLElement;
 
 async function clickTrigger(el: Popup) {
-  shadow(el, '.trigger').click();
+  shadow(el, '.trigger').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
   await el.updateComplete;
 }
 
@@ -115,6 +115,19 @@ describe('opening and closing', () => {
     expect(el.openState).toBe(false);
     // The next click opens it, as ever.
     await clickTrigger(el);
+    expect(el.openState).toBe(true);
+  });
+
+  it('ignores an abandoned pointer press when the trigger is later activated from the keyboard', async () => {
+    const el = await popup();
+    await clickTrigger(el);
+    shadow(el, '.trigger').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    // That press was dragged away, so it never clicked the trigger. Escape
+    // closes the menu; the keyboard's later click must use its current state.
+    key(document.body, 'Escape');
+    await el.updateComplete;
+    byId('trigger').click();
+    await el.updateComplete;
     expect(el.openState).toBe(true);
   });
 
@@ -242,6 +255,24 @@ describe('without the Popover API', () => {
 });
 
 describe('hover menus', () => {
+  it('returns focus from a closed submenu to its trigger in the open parent', async () => {
+    const el = await popup({}, '<alps-popup triggerOn="hover" id="sub"><button slot="trigger" id="sub-trigger">Order</button><button id="sub-item">Top</button></alps-popup>');
+    const sub = byId('sub') as Popup;
+    await clickTrigger(el);
+    sub.dispatchEvent(new MouseEvent('mouseenter'));
+    await sub.updateComplete;
+    // jsdom has no keyboard/pointer focus-visible heuristic.
+    const trigger = byId('sub-trigger');
+    const matches = trigger.matches.bind(trigger);
+    vi.spyOn(trigger, 'matches').mockImplementation(selector => selector === ':focus-visible' ? true : matches(selector));
+    byId('sub-item').focus();
+    key(byId('sub-item'), 'Escape');
+    await sub.updateComplete;
+    expect(sub.openState).toBe(false);
+    expect(el.openState).toBe(true);
+    expect(document.activeElement).toBe(byId('sub-trigger'));
+  });
+
   it('open on pointer entry as a manual popover, outside the layers a toast goes into', async () => {
     const showPopover = vi.spyOn(HTMLElement.prototype, 'showPopover');
     const el = await popup({ triggerOn: 'hover' });
