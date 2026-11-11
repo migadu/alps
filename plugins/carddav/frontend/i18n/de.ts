@@ -24,6 +24,11 @@ export default {
     loadFailed: 'Der Kontakt konnte nicht geladen werden und kann daher noch nicht bearbeitet werden.',
     saveConflict: 'Der Kontakt wurde auf einem anderen Gerät geändert, daher wurde Ihre Änderung nicht gespeichert. Brechen Sie die Bearbeitung ab, um die neueste Version zu sehen.',
     deletedElsewhere: 'Der Kontakt wurde auf einem anderen Gerät gelöscht.',
+    editDeletedElsewhere: 'Der Kontakt wurde auf einem anderen Gerät gelöscht, daher wurde Ihre Änderung nicht gespeichert. Ihre Eingaben stehen noch im Formular; brechen Sie die Bearbeitung ab, um es zu schließen.',
+    deletedElsewhereCount: {
+      one: '{count} von {total} Kontakten wurde auf einem anderen Gerät gelöscht.',
+      other: '{count} von {total} Kontakten wurden auf einem anderen Gerät gelöscht.'
+    },
     starFailed: {
       one: '{count} von {total} Kontakten konnte nicht aktualisiert werden.',
       other: '{count} von {total} Kontakten konnten nicht aktualisiert werden.'

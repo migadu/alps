@@ -28,6 +28,12 @@ export default {
     loadFailed: 'Não foi possível carregar o contato, por isso ele ainda não pode ser editado.',
     saveConflict: 'Este contato foi alterado em outro dispositivo, por isso sua edição não foi salva. Cancele a edição para ver a versão mais recente.',
     deletedElsewhere: 'Este contato foi excluído em outro dispositivo.',
+    editDeletedElsewhere: 'Este contato foi excluído em outro dispositivo, por isso sua edição não foi salva. O que você digitou continua no formulário; cancele a edição para fechá-lo.',
+    deletedElsewhereCount: {
+      one: '{count} de {total} contatos foi excluído em outro dispositivo.',
+      many: '{count} de {total} contatos foram excluídos em outro dispositivo.',
+      other: '{count} de {total} contatos foram excluídos em outro dispositivo.'
+    },
     starFailed: {
       one: 'Não foi possível atualizar {count} de {total} contatos.',
       many: 'Não foi possível atualizar {count} de {total} contatos.',

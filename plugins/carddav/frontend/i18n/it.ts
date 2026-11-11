@@ -24,6 +24,11 @@ export default {
     loadFailed: 'Non è stato possibile caricare il contatto, quindi non può ancora essere modificato.',
     saveConflict: 'Il contatto è stato modificato su un altro dispositivo, quindi la modifica non è stata salvata. Annulla la modifica per vedere l\'ultima versione.',
     deletedElsewhere: 'Il contatto è stato eliminato su un altro dispositivo.',
+    editDeletedElsewhere: 'Il contatto è stato eliminato su un altro dispositivo, quindi la modifica non è stata salvata. Ciò che hai scritto è ancora nel modulo; annulla la modifica per chiuderlo.',
+    deletedElsewhereCount: {
+      one: '{count} contatto su {total} è stato eliminato su un altro dispositivo.',
+      other: '{count} contatti su {total} sono stati eliminati su un altro dispositivo.'
+    },
     starFailed: {
       one: 'Non è stato possibile aggiornare {count} contatto su {total}.',
       other: 'Non è stato possibile aggiornare {count} contatti su {total}.'

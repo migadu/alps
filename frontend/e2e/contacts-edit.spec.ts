@@ -6,12 +6,50 @@
 // birthday or address: Edit pressed before the read answered filled the
 // form from it, and the first save wrote the card back without them.
 
-import { expect, login, readContact, resetDav, seedContact, test } from "./fixtures";
+import { allowConsoleErrors, expect, login, readContact, removeContact, resetDav, seedContact, test, toast } from "./fixtures";
 
 const run = Date.now();
 
 test.afterEach(async () => {
   await resetDav();
+});
+
+test("a contact deleted elsewhere keeps the typed form until cancellation, without another save", async ({ page }) => {
+  const uid = `e2e-gone-edit-${run}`;
+  const name = `Deleted edit ${run}`;
+  await seedContact({ uid, name, email: `deleted.edit.${run}@example.test` });
+  await login(page);
+  await page.goto("/#/contacts");
+  const row = page.locator("alps-contacts-list .contact-item", { hasText: name });
+  const read = page.waitForResponse(r => r.request().method() === "GET" && /\/contacts\/[^/?]+$/.test(new URL(r.url()).pathname));
+  await row.click();
+  expect((await read).status()).toBe(200);
+  const view = page.locator("alps-contact-view");
+  await view.locator('alps-icon-btn[title="Edit Contact"]').click();
+  const nickname = view.locator('input[placeholder="Nickname"]');
+  await expect(nickname).toBeVisible();
+  await removeContact(uid);
+  allowConsoleErrors(page, /Failed to load resource: the server responded with a status of 404/);
+  const edits: string[] = [];
+  page.on("request", request => {
+    if (request.method() === "POST" && /\/contacts\/.+\/edit$/.test(new URL(request.url()).pathname)) edits.push(request.url());
+  });
+  const refused = page.waitForResponse(r => r.request().method() === "POST" && /\/contacts\/.+\/edit$/.test(new URL(r.url()).pathname));
+  await nickname.fill("Keep this local draft");
+  expect((await refused).status()).toBe(404);
+  await expect(toast(page, /What you typed is still in the form/)).toBeVisible();
+  await expect(nickname).toHaveValue("Keep this local draft");
+  await expect(row).toHaveCount(0);
+
+  // Cancel flushes the form's pending debounce. Even that explicit flush must
+  // not send another save after the server has confirmed that the card is gone.
+  await nickname.fill("Keep this newer local draft");
+  await view.locator('alps-icon-btn[title="Cancel"]').click();
+  await expect(nickname).toHaveCount(0);
+  await expect(view).toContainText("Select a contact to view details");
+  await expect(page).toHaveURL(/#\/contacts\/all$/);
+  expect(edits).toHaveLength(1);
+  expect(await readContact(uid)).toBeNull();
 });
 
 test("an edit started before the card is read keeps the card's other fields", async ({ page }) => {

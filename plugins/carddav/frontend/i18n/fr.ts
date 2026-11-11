@@ -24,6 +24,11 @@ export default {
     loadFailed: 'Le contact n\'a pas pu être chargé, il ne peut donc pas encore être modifié.',
     saveConflict: 'Le contact a été modifié sur un autre appareil, votre modification n\'a donc pas été enregistrée. Annulez la modification pour voir la dernière version.',
     deletedElsewhere: 'Le contact a été supprimé sur un autre appareil.',
+    editDeletedElsewhere: 'Le contact a été supprimé sur un autre appareil, votre modification n\'a donc pas été enregistrée. Ce que vous avez saisi est toujours dans le formulaire ; annulez la modification pour le fermer.',
+    deletedElsewhereCount: {
+      one: '{count} contact sur {total} a été supprimé sur un autre appareil.',
+      other: '{count} contacts sur {total} ont été supprimés sur un autre appareil.'
+    },
     starFailed: {
       one: 'Impossible de mettre à jour {count} contact sur {total}.',
       other: 'Impossible de mettre à jour {count} contacts sur {total}.'
