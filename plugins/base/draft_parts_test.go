@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapserver"
-	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
 	"github.com/fernet/fernet-go"
 	"github.com/migadu/alps"
 	imapprovider "github.com/migadu/alps/provider/imap"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapserver"
+	"github.com/migadu/go-imap/imapserver/imapmemserver"
 )
 
 // imapTraffic is what crossed the wire to the in-memory IMAP server, both ways.

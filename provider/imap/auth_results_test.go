@@ -3,7 +3,7 @@ package imap
 import (
 	"testing"
 
-	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 func authResultsFetch(block string) *imapclient.FetchMessageBuffer {

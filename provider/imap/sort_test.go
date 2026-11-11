@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
+	"github.com/migadu/go-imap"
 )
 
 // sortCommands and envelopeFetches match the commands alps sends, not the

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps"
+	"github.com/migadu/go-imap"
 )
 
 // base64Of is about n bytes of base64 text in lines of 76, as a mail client

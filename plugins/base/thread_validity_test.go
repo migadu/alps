@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
+	"github.com/migadu/go-imap"
 )
 
 // A folder list can forget an unsubscribed folder's status and validator.

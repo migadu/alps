@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
+	"github.com/migadu/go-imap"
 )
 
 // notifyServer is a raw IMAP server that can watch mailboxes (NOTIFY) and

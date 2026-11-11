@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/emersion/go-imap/v2"
+	"github.com/migadu/go-imap"
 )
 
 func searchCriteriaHeader(k, v string) *imap.SearchCriteria {

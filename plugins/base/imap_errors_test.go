@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
+	"github.com/migadu/go-imap"
 )
 
 func TestMailboxErrorStatus(t *testing.T) {

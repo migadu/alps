@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // Search results cache metadata without a folder page. Concurrent idempotent

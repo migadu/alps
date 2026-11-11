@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 // STATUS responses can follow the FETCH responses of a later pipelined
