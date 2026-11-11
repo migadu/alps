@@ -43,7 +43,20 @@ Playwright reads a file argument as a regular expression over the path, so a bar
 | `E2E_PG_HOST` / `E2E_PG_PORT` / `E2E_PG_USER` / `E2E_PG_PASSWORD` | `localhost` / `5432` / `postgres` / empty | The PostgreSQL server |
 | `E2E_SKIP_BUILD` | unset | Test the `frontend/dist` already on disk instead of rebuilding it |
 | `E2E_KEEP_STATE` | unset | Keep the database and state directory after the run |
+| `E2E_PREVIEW` | unset | Set to `1` to enable FETCH PREVIEW and run the positive preview test; requires a PREVIEW-capable `SORA_DIR` |
 | `PW_CHROMIUM_PATH` | unset | Use an already installed Chromium binary |
+
+The default run leaves message previews off and tests that a server without them
+shows no previews or extra requests. To test previews, point `SORA_DIR` at a
+checkout that implements FETCH PREVIEW and opt in explicitly:
+
+```sh
+E2E_PREVIEW=1 SORA_DIR=../sora-preview scripts/e2e.sh e2e/message-preview.spec.ts
+```
+
+An opted-in run requires preview support; it fails if the server cannot supply it.
+Without the opt-in, the generated config contains no PREVIEW-specific keys, so
+the default suite also runs against older sora checkouts.
 
 Two runs on different `E2E_PORT`s share nothing — servers, database, state and logs are all keyed
 by the port — so they can run side by side. Only the frontend build is serialized, because

@@ -194,7 +194,7 @@ func (s *Session) doBackgroundMail(ctx context.Context, f func(provider.MailProv
 	case err = <-done:
 	}
 
-	if err != nil && isNetworkError(err) {
+	if connectionLost(p, err) {
 		// Gone, as a connection the server has timed out is. The next
 		// background operation opens another.
 		s.dropBackground()

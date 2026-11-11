@@ -5,6 +5,7 @@ import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags 
 import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
 import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
+import { fetchPreviews, PREVIEW_BATCH } from '../services/message-previews';
 import { fetchWithTimeout, foregroundSettled } from '../utils/fetch-utils';
 import { mailboxOf, messageKey } from '../utils/message-key';
 import { addressText, addressWarning, displayAddress, mixedScriptStyles } from '../utils/address-display';
@@ -171,6 +172,23 @@ export class MessageList extends LitElement {
   private verdictGeneration = 0;
   private verdictsRunning = false;
   private verdictsRerun = false;
+  // Previews of the rows a listing marked PreviewPending: the mail server had
+  // none to hand, since it would have had to fetch the message's body to say.
+  // They are asked for after the list shows, a few at a time and one request
+  // at a time, and each once per visit to a folder: a message the server still
+  // gives none for is not asked about again until the folder is shown again.
+  // The session keeps the answers on the server too, so the next listing
+  // carries them; the list keeps only the folder shown.
+  @state() private previews = new Map<string, string>();
+  private previewScopes = new Map<string, string>();
+  private previewsAsked = new Set<string>();
+  /** The sign-in the previews were answered in (see signIns). */
+  private previewsSignIn = signIns;
+  private previewGeneration = 0;
+  private previewsRunning = false;
+  private previewsRerun = false;
+  /** The mail server said it offers no previews: nothing more is asked. */
+  private previewsUnsupported = false;
   private _shouldScrollToTop = false;
   // The highest UID each mailbox had on screen when the user asked to check for
   // new mail, held until that check's answer lands; null when none is waiting.
@@ -935,6 +953,129 @@ export class MessageList extends LitElement {
     return verdict ? { ...msg, ...verdict } : msg;
   }
 
+  /**
+   * Another folder is shown, or another account signed in: drops the previews
+   * and stops any request still asking for them.
+   */
+  private forgetPreviews() {
+    this.previewGeneration++;
+    this.previewsSignIn = signIns;
+    this.previews = new Map();
+    this.previewScopes = new Map();
+    this.previewsAsked = new Set();
+    this.previewsUnsupported = false;
+  }
+
+  /** Each row carries its own epoch, including in a search across folders. */
+  private previewScopeOf(msg: any): string {
+    return msg?.PreviewScope || (this.currentMailbox !== '*' && this.listedUIDValidity ? String(this.listedUIDValidity) : '');
+  }
+
+  /** Asks for the pending previews not asked for yet; one run at a time. */
+  private async refreshPreviews() {
+    if (this.previewsRunning) {
+      this.previewsRerun = true;
+      return;
+    }
+    this.previewsRunning = true;
+    try {
+      await this.askPreviews();
+    } finally {
+      this.previewsRunning = false;
+      if (this.previewsRerun) {
+        this.previewsRerun = false;
+        this.refreshPreviews();
+      }
+    }
+  }
+
+  private async askPreviews() {
+    const shown = this.currentMailbox;
+    if (!shown || this.densityMode === 'ultra-compact' || this.previewsUnsupported) return;
+    const generation = this.previewGeneration;
+    const signIn = signIns;
+    const current = () => shown === this.currentMailbox && generation === this.previewGeneration && signIn === signIns;
+
+    // Each message is asked about in its own mailbox, and only a row of the
+    // folder shown: one from the previous folder, still on screen until the
+    // new list arrives, would be asked about under the wrong mailbox.
+    const byMailbox = new Map<string, string[]>();
+    for (const msg of this.messages || []) {
+      const uid = msg?.UID == null ? '' : String(msg.UID);
+      const mailbox = this.mailboxOf(msg);
+      if (!uid || !msg.PreviewPending || (shown !== '*' && mailbox !== shown)) continue;
+      const scope = this.previewScopeOf(msg);
+      if (scope) this.previewScopes.set(mailbox, scope);
+      const key = messageKey(mailbox, uid);
+      if (this.previewsAsked.has(key)) continue;
+      this.previewsAsked.add(key);
+      if (!byMailbox.has(mailbox)) byMailbox.set(mailbox, []);
+      byMailbox.get(mailbox)!.push(uid);
+    }
+    const queue: { mailbox: string; uid: string }[] = [];
+    for (const [mailbox, uids] of byMailbox) for (const uid of uids) queue.push({ mailbox, uid });
+    const unask = (from: number) => {
+      for (const q of queue.slice(from)) this.previewsAsked.delete(messageKey(q.mailbox, q.uid));
+    };
+
+    let i = 0;
+    while (i < queue.length) {
+      // As for verdicts: nothing is sent while a request the user waits on is
+      // out, nor while a folder's list is loading, which would wait behind it.
+      await foregroundSettled();
+      if (!current()) return;
+      if (this.loading) {
+        unask(i);
+        return;
+      }
+      const mailbox = queue[i].mailbox;
+      let j = i;
+      while (j < queue.length && j - i < PREVIEW_BATCH && queue[j].mailbox === mailbox) j++;
+      const batch = queue.slice(i, j).map((q) => q.uid);
+
+      let answer;
+      try {
+        answer = await fetchPreviews(mailbox, batch);
+      } catch {
+        // The rows stay without a preview, and the next reload asks again.
+        if (current()) unask(i);
+        return;
+      }
+      if (!current()) return;
+      if (!answer.supported) {
+        this.previewsUnsupported = true;
+        return;
+      }
+      const known = this.previewScopes.get(mailbox);
+      if (answer.scope && known && answer.scope !== known) {
+        // The mailbox's UIDs now name other messages: drop its previews. The
+        // next listing marks again what is pending.
+        const prefix = messageKey(mailbox, '');
+        this.previews = new Map([...this.previews].filter(([key]) => !key.startsWith(prefix)));
+        return;
+      }
+      if (answer.scope) this.previewScopes.set(mailbox, answer.scope);
+      if (answer.previews.size > 0) {
+        const next = new Map(this.previews);
+        for (const [uid, text] of answer.previews) next.set(messageKey(mailbox, uid), text);
+        this.previews = next;
+      }
+      i = j;
+    }
+  }
+
+  /** The preview a row shows: the listing's own, or one asked for since. */
+  private previewOf(msg: any): string {
+    if (typeof msg?.Preview === 'string' && msg.Preview) return msg.Preview;
+    return this.previews.get(this.keyOf(msg)) ?? '';
+  }
+
+  /** A row's preview line, under the subject. Its text is the message's, so its direction is its own. */
+  private renderPreview(msg: any) {
+    const preview = this.previewOf(msg);
+    return preview ? html`<div class="message-preview" dir="auto">${preview}</div>` : nothing;
+  }
+
   private isThreadExpanded(uid: string): boolean {
     return this.expandedThreads.has(uid);
   }
@@ -1136,6 +1277,17 @@ export class MessageList extends LitElement {
     if (this.membersSignIn !== signIns || changedProperties.has('currentMailbox') || changedProperties.has('listedUIDValidity')) {
       this.forgetMembers();
     }
+    if (this.previewsSignIn !== signIns || changedProperties.has('currentMailbox') || changedProperties.has('listedUIDValidity')) {
+      this.forgetPreviews();
+    } else if (changedProperties.has('messages') && this.messages.some((msg) => {
+      const known = this.previewScopes.get(this.mailboxOf(msg));
+      const scope = this.previewScopeOf(msg);
+      return known && scope && known !== scope;
+    })) {
+      // Search results have no single listedUIDValidity. A new epoch in any
+      // row also invalidates in-flight answers and lets its UIDs be asked anew.
+      this.forgetPreviews();
+    }
     // An expanded row can survive a replacement listing or reconnect. Read its
     // current members when they arrive, without fetching the dimmed old folder.
     if (this.isConnected && (this.membersNeedRead || changedProperties.has('messages') || changedProperties.has('loading'))) {
@@ -1251,6 +1403,10 @@ export class MessageList extends LitElement {
       changedProperties.has('showSenderAvatars') || changedProperties.has('densityMode') ||
       (changedProperties.has('loading') && !this.loading)) {
       this.refreshVerdicts();
+    }
+    if (changedProperties.has('messages') || changedProperties.has('currentMailbox') || changedProperties.has('densityMode') ||
+      (changedProperties.has('loading') && !this.loading)) {
+      this.refreshPreviews();
     }
     if (changedProperties.has('densityMode')) {
       this.classList.remove('density-loose', 'density-normal', 'density-compact', 'density-ultra-compact');
@@ -1801,6 +1957,7 @@ export class MessageList extends LitElement {
           </div>
           ${sizeStr ? html`<div class="message-size"><bdi>${sizeStr}</bdi></div>` : ''}
         </div>
+        ${this.renderPreview(msg)}
       </div>
     </div>
     `;

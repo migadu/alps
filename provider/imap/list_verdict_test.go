@@ -31,7 +31,11 @@ type memServer struct {
 	// refuseSubscribe makes SUBSCRIBE answer NO, as a server that keeps no
 	// subscriptions of its own may.
 	refuseSubscribe bool
-	traffic         lockedBuffer
+	// previewsNotToHand makes the server answer PREVIEW (LAZY) with no
+	// preview, as a server does for a message whose body it would have to
+	// fetch; PREVIEW without LAZY is still answered.
+	previewsNotToHand bool
+	traffic           lockedBuffer
 	// addr is where the account is served, for a test that logs in to it a
 	// second time, as another mail program would.
 	addr string
@@ -58,11 +62,23 @@ func (b *lockedBuffer) String() string {
 // server's own answer is a fixed placeholder.
 type threadedSession struct {
 	imapserver.Session
-	threads         []imap.ThreadData
-	threadErr       error
-	sortErr         error
-	searchErr       error
-	refuseSubscribe bool
+	threads           []imap.ThreadData
+	threadErr         error
+	sortErr           error
+	searchErr         error
+	refuseSubscribe   bool
+	previewsNotToHand bool
+}
+
+// Fetch passes FETCH through. With previewsNotToHand, a PREVIEW (LAZY) is
+// answered without the item, which a client reads as it reads NIL.
+func (s *threadedSession) Fetch(ctx context.Context, w *imapserver.FetchWriter, numSet imap.NumSet, options *imap.FetchOptions) error {
+	if s.previewsNotToHand && options.Preview != nil && options.Preview.Lazy {
+		withoutPreview := *options
+		withoutPreview.Preview = nil
+		options = &withoutPreview
+	}
+	return s.Session.Fetch(ctx, w, numSet, options)
 }
 
 // Subscribe passes SUBSCRIBE through, or refuses it when the test says so.
@@ -135,7 +151,7 @@ func memIMAP(t *testing.T, s *memServer, messages ...string) *IMAPProvider {
 	}
 	srv := imapserver.New(&imapserver.Options{
 		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
-			return &threadedSession{Session: mem.NewSession(), threads: s.threads, threadErr: s.threadErr, sortErr: s.sortErr, searchErr: s.searchErr, refuseSubscribe: s.refuseSubscribe}, nil, nil
+			return &threadedSession{Session: mem.NewSession(), threads: s.threads, threadErr: s.threadErr, sortErr: s.sortErr, searchErr: s.searchErr, refuseSubscribe: s.refuseSubscribe, previewsNotToHand: s.previewsNotToHand}, nil, nil
 		},
 		Caps:         caps,
 		InsecureAuth: true,

@@ -50,6 +50,7 @@ type IMAPProvider struct {
 	selectedUIDValidity uint32
 	selectedUIDNext     imap.UID
 	verdicts            *provider.VerdictCache // the session's, once it is shared: see ShareVerdicts
+	previews            *provider.PreviewCache // the session's, once it is shared: see SharePreviews
 	dateCache           map[string]*mailboxDates
 	threads             map[string]*threadCache
 	// sorts are the mailboxes' messages in date order, for listing them flat
@@ -99,6 +100,7 @@ func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
 		store:     store,
 		debug:     debug,
 		verdicts:  &provider.VerdictCache{},
+		previews:  &provider.PreviewCache{},
 		dateCache: make(map[string]*mailboxDates),
 	}
 }
@@ -142,6 +144,16 @@ func (p *IMAPProvider) Close() error {
 		return p.client.Close()
 	}
 	return nil
+}
+
+// ConnectionLost reports whether the client's connection has ended: the mail
+// server dropped it, said BYE, or it was logged out. The client enters the
+// logout state before it fails the commands still out, so an operation that
+// failed for the connection's end finds it there. A command sent after fails
+// with an unexpected EOF of the client's own, which the provider's errors
+// often carry only as text ("failed to select mailbox: unexpected EOF").
+func (p *IMAPProvider) ConnectionLost() bool {
+	return p.client != nil && p.client.State() == imap.ConnStateLogout
 }
 
 // ListMailboxes returns all mailboxes
@@ -1245,12 +1257,14 @@ func (p *IMAPProvider) threadedPage(mailbox string, criteria *imap.SearchCriteri
 		}
 	}
 
+	preview := p.listingPreview()
 	repCmd := p.client.Fetch(repSet, &imap.FetchOptions{
 		Flags:         true,
 		Envelope:      true,
 		UID:           true,
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		Preview:       preview,
 	})
 	type fetched struct {
 		msgs []*imapclient.FetchMessageBuffer
@@ -1291,7 +1305,7 @@ func (p *IMAPProvider) threadedPage(mailbox string, criteria *imap.SearchCriteri
 		if !ok {
 			continue
 		}
-		converted := p.convertIMAPMessage(fetchMsg, mailbox)
+		converted := p.convertListedMessage(fetchMsg, mailbox, preview != nil)
 		converted.ThreadCount = len(g.UIDs)
 		converted.ThreadUIDs = make([]string, len(g.UIDs))
 		for idx, u := range g.UIDs {
@@ -1406,6 +1420,7 @@ func (p *IMAPProvider) listByNumber(mailbox string, sortOrder string, page, page
 		UID:           true,
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		Preview:       p.listingPreview(),
 	}
 	imapMsgs, err := p.client.Fetch(seqSet, &options).Collect()
 	if err != nil {
@@ -1414,7 +1429,7 @@ func (p *IMAPProvider) listByNumber(mailbox string, sortOrder string, page, page
 
 	msgs := make([]provider.Message, 0, len(imapMsgs))
 	for _, msg := range imapMsgs {
-		converted := p.convertIMAPMessage(msg, mailbox)
+		converted := p.convertListedMessage(msg, mailbox, options.Preview != nil)
 		converted.ThreadUIDs = []string{converted.ID.String()}
 		msgs = append(msgs, converted)
 	}
@@ -1610,6 +1625,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		UID:           true,
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		Preview:       p.listingPreview(),
 	}
 	results, err := p.client.Fetch(imap.UIDSetNum(uids...), &options).Collect()
 	if err != nil {
@@ -1622,7 +1638,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		if !ok {
 			continue
 		}
-		msgs[i] = p.convertIMAPMessage(msg, mailbox)
+		msgs[i] = p.convertListedMessage(msg, mailbox, options.Preview != nil)
 	}
 
 	var validMsgs []provider.Message
@@ -3062,6 +3078,7 @@ func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, pag
 		UID:           true,
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		Preview:       p.listingPreview(),
 		BodySection: []*imap.FetchItemBodySection{
 			bodySection, referencesBodySection,
 		},
@@ -3090,7 +3107,7 @@ func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, pag
 
 		for _, item := range items {
 			if fetchMsg, ok := msgMap[item.candidate.uid]; ok {
-				pageMsgs[item.origIndex] = p.convertIMAPMessage(fetchMsg, mboxName)
+				pageMsgs[item.origIndex] = p.convertListedMessage(fetchMsg, mboxName, fullFetchOptions.Preview != nil)
 			}
 		}
 	}

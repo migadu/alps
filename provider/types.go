@@ -301,6 +301,14 @@ type Message struct {
 	ThreadCount   int       `json:"ThreadCount,omitempty"`
 	ThreadUIDs    []string  `json:"ThreadUIDs,omitempty"`
 	SubMessages   []Message `json:"SubMessages,omitempty"`
+	// Preview is the start of the message's text, for a listing. PreviewPending
+	// says the listing asked for it and the server had none to hand; it can be
+	// asked for again through PreviewProvider.
+	Preview        string `json:"Preview,omitempty"`
+	PreviewPending bool   `json:"PreviewPending,omitempty"`
+	// PreviewScope identifies the mailbox epoch this row was read under, so
+	// a later preview response cannot attach a reused UID's text to this row.
+	PreviewScope string `json:"PreviewScope,omitempty"`
 }
 
 // MessageID is a provider-specific message identifier
@@ -445,6 +453,16 @@ type AuthVerdictProvider interface {
 	AuthVerdicts(mailbox string, ids []MessageID) (verdicts map[string]AuthVerdict, scope string, err error)
 }
 
+// PreviewProvider is implemented by a provider that can read message previews
+// on request, for the messages a listing marked PreviewPending.
+type PreviewProvider interface {
+	// Previews returns the previews of the messages among ids that exist in
+	// mailbox, keyed by the ID's String(), and a scope as AuthVerdicts does. A
+	// message whose preview the server could not produce is left out, and
+	// supported is false when the server offers no previews at all.
+	Previews(mailbox string, ids []MessageID) (previews map[string]string, scope string, supported bool, err error)
+}
+
 // MailboxStatusBatcher is implemented by a provider that can ask for several
 // mailboxes' status in one round trip. A provider without it is asked one
 // mailbox at a time.
@@ -453,6 +471,15 @@ type MailboxStatusBatcher interface {
 	// order. Where errs holds an error, that mailbox's status could not be
 	// read and its entry in statuses is nil.
 	GetMailboxStatuses(names []string) (statuses []*MailboxStatus, errs []error)
+}
+
+// ConnectionReporter is implemented by a provider that knows when its
+// connection to the mail server has ended. A session then opens another,
+// whatever the error of the operation that found it gone says. A provider
+// without it is taken for gone only when that error says so.
+type ConnectionReporter interface {
+	// ConnectionLost reports whether the provider's connection has ended.
+	ConnectionLost() bool
 }
 
 // ServiceRouter is implemented by provider Options that resolve backends per

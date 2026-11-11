@@ -53,6 +53,21 @@ func isNetworkError(err error) bool {
 		strings.Contains(errStr, "broken pipe")
 }
 
+// connectionLost reports whether err, the error of an operation on p, means
+// p's connection is gone and another is to be opened: err says so, or p does.
+// p's own word is the one to go by when err carries the connection's end as
+// text alone, wrapped with %v, as most IMAP commands' errors do.
+func connectionLost(p provider.MailProvider, err error) bool {
+	if err == nil {
+		return false
+	}
+	if isNetworkError(err) {
+		return true
+	}
+	r, ok := p.(provider.ConnectionReporter)
+	return ok && r.ConnectionLost()
+}
+
 // generateToken creates a cryptographically secure random session token.
 // Token space: 32 bytes = 256 bits = 2^256 possible values (~1.16 × 10^77)
 // Collision probability: With 1 billion active sessions, probability < 10^-60
@@ -149,9 +164,10 @@ type Session struct {
 	// Cache for mail data (mailbox lists, statuses, etc.)
 	cache *Cache
 
-	// The authentication verdicts read on any of the session's connections:
-	// see shareVerdicts.
+	// The authentication verdicts and message previews read on any of the
+	// session's connections: see shareVerdicts.
 	verdicts provider.VerdictCache
+	previews provider.PreviewCache
 
 	memoryDataLock sync.RWMutex
 	memoryData     map[string]interface{}
@@ -407,10 +423,14 @@ func (s *Session) connect() (provider.MailProvider, error) {
 // and a session does not keep one connection for good: it opens another when
 // the mail server drops it, and when it gives up on one a request left busy.
 // Each new one read every verdict again, from each stored message, while the
-// user's requests waited behind it.
+// user's requests waited behind it. Message previews are shared the same way,
+// so one read on the background connection answers the next listing.
 func (s *Session) shareVerdicts(p provider.MailProvider) {
 	if vs, ok := p.(provider.VerdictSharer); ok {
 		vs.ShareVerdicts(&s.verdicts)
+	}
+	if ps, ok := p.(provider.PreviewSharer); ok {
+		ps.SharePreviews(&s.previews)
 	}
 }
 
@@ -507,7 +527,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 
 	// A failed connection is closed. Replay is allowed only for operations
 	// whose caller permits it.
-	if err != nil && isNetworkError(err) {
+	if connectionLost(s.provider, err) {
 		s.provider.Close()
 		s.provider = nil
 		// A mutation is not replayed, nor work whose request is gone.
