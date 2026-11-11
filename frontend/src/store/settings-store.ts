@@ -1018,6 +1018,10 @@ export class SettingsStore extends EventTarget {
     } else {
       document.body.classList.remove('theme-dark');
     }
+    // What the browser draws itself — form controls, date pickers, scrollbars,
+    // the canvas — follows `color-scheme`, not the theme's colours. Set on the
+    // root, it reaches every shadow root, and `light-dark()` follows it.
+    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
 
     // Apply color family theme variables
     const theme = THEME_BUNDLES[`${themeFamily(this.state.colorFamily)}-${isDark ? 'dark' : 'light'}`];

@@ -5,6 +5,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
 import { focusOnLabelClick } from '../utils/label-focus';
 import { motionStyles } from '../utils/motion';
+import { isComposingKey } from '../utils/active-element';
 
 /** Values written left to right whatever the interface language: addresses,
  * passwords, numbers, dates. */
@@ -192,7 +193,7 @@ export class AlpsInput extends LitElement {
   }
 
   private handleKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !isComposingKey(e)) {
       const form = this.closest('form');
       if (form) {
         e.preventDefault();

@@ -80,6 +80,7 @@ export default {
     week: 'Semana',
     month: 'Mês',
     year: 'Ano',
+    view: 'Visualização',
     today: 'Hoje',
     allDay: 'Dia inteiro',
     noTitle: '(Sem título)',

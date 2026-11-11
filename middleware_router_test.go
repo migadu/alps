@@ -11,6 +11,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// cspDirective is the directive of a policy that starts with name, as it is
+// written, or "" when the policy has none.
+func cspDirective(policy, name string) string {
+	for _, directive := range strings.Split(policy, ";") {
+		directive = strings.TrimSpace(directive)
+		if directive == name || strings.HasPrefix(directive, name+" ") {
+			return directive
+		}
+	}
+	return ""
+}
+
 // TestSecurityHeadersAppliedToStaticAssets verifies that baseline security
 // headers reach every response, including static files served via StaticFS.
 // StaticFS registers its handler directly on the mux, bypassing the Use/Pre
@@ -39,6 +51,10 @@ func TestSecurityHeadersAppliedToStaticAssets(t *testing.T) {
 				"CSP must be set on %q, including static assets", path)
 			assert.Contains(t, w.Header().Get("Content-Security-Policy"), "frame-src 'self' blob:",
 				"the attachment preview frames PDFs from blob: URLs on %q", path)
+			assert.Equal(t, "script-src 'self'", cspDirective(w.Header().Get("Content-Security-Policy"), "script-src"),
+				"scripts come from alps alone on %q", path)
+			assert.Equal(t, "frame-ancestors 'self'", cspDirective(w.Header().Get("Content-Security-Policy"), "frame-ancestors"),
+				"only alps may frame its pages on %q", path)
 			assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"),
 				"nosniff must be set on %q", path)
 			assert.Equal(t, "off", w.Header().Get("X-DNS-Prefetch-Control"),
