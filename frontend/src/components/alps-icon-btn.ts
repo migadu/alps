@@ -1,4 +1,4 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
 import { motionStyles } from '../utils/motion';
@@ -10,6 +10,9 @@ export class AlpsIconBtn extends LitElement {
   @property({ type: Boolean }) disabled = false;
   @property({ type: Boolean, reflect: true }) active = false;
   @property({ type: Boolean }) spinning = false;
+  /** Whether the menu this button opens is open. Unset for a button that
+   * opens none: the state belongs on the button, which is in here. */
+  @property({ attribute: false }) expanded?: boolean;
 
   static styles = [motionStyles, css`
     :host {
@@ -83,6 +86,7 @@ export class AlpsIconBtn extends LitElement {
       <button 
         type="button"
         title=${this.title}
+        aria-expanded=${this.expanded === undefined ? nothing : String(this.expanded)}
         ?disabled=${this.disabled}
         class=${this.spinning ? 'spinning' : ''}
         part="button"

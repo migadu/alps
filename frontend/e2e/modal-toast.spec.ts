@@ -18,7 +18,7 @@ for (const layer of ['menu', 'modal', 'nested modal']) {
         (kind === 'nested modal' ? popup : root).append(modal);
       }
     }, layer);
-    const top = layer === 'menu' ? page.locator('#toast-menu dialog') : page.locator('#toast-dialog dialog');
+    const top = layer === 'menu' ? page.locator('#toast-menu .popup-content') : page.locator('#toast-dialog dialog');
     await expect(top).toBeVisible();
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('show-toast', { detail: {
       message: 'Take this back', actionLabel: 'Undo', duration: 10000,
