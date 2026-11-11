@@ -45,7 +45,8 @@ test("a contact deleted elsewhere keeps the typed form until cancellation, witho
   // not send another save after the server has confirmed that the card is gone.
   await nickname.fill("Keep this newer local draft");
   await view.locator('alps-icon-btn[title="Cancel"]').click();
-  await expect(view).toHaveCount(0);
+  await expect(nickname).toHaveCount(0);
+  await expect(view).toContainText("Select a contact to view details");
   await expect(page).toHaveURL(/#\/contacts\/all$/);
   expect(edits).toHaveLength(1);
   expect(await readContact(uid)).toBeNull();
