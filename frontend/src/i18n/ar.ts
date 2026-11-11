@@ -641,7 +641,8 @@ export const ar = {
     messages: 'الرسائل',
     contacts: 'جهات الاتصال',
     calendar: 'التقويم',
-    tasks: 'المهام'
+    tasks: 'المهام',
+    label: 'التطبيقات'
   },
   userMenu: {
     settings: 'الإعدادات',

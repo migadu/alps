@@ -576,7 +576,8 @@ export const zhHant = {
     messages: '郵件',
     contacts: '聯絡人',
     calendar: '行事曆',
-    tasks: '工作'
+    tasks: '工作',
+    label: '應用程式'
   },
   userMenu: {
     settings: '設定',

@@ -576,7 +576,8 @@ export const ko = {
     messages: '메일',
     contacts: '연락처',
     calendar: '캘린더',
-    tasks: '작업'
+    tasks: '작업',
+    label: '앱'
   },
   userMenu: {
     settings: '설정',

@@ -615,7 +615,8 @@ export const ru = {
     messages: 'Письма',
     contacts: 'Контакты',
     calendar: 'Календарь',
-    tasks: 'Задачи'
+    tasks: 'Задачи',
+    label: 'Приложения'
   },
   userMenu: {
     settings: 'Настройки',

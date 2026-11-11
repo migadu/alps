@@ -23,6 +23,7 @@ export default {
     saveFailed: 'Não foi possível guardar o contacto.',
     loadFailed: 'Não foi possível carregar o contacto, pelo que ainda não pode ser editado.',
     saveConflict: 'O contacto foi alterado noutro dispositivo, por isso a sua alteração não foi guardada. Cancele a edição para ver a versão mais recente.',
+    deletedElsewhere: 'O contacto foi eliminado noutro dispositivo.',
     starFailed: {
       one: 'Não foi possível atualizar {count} de {total} contactos.',
       other: 'Não foi possível atualizar {count} de {total} contactos.'

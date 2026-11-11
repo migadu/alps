@@ -593,6 +593,9 @@ func (p *plugin) openTask(ctx *alps.Context) (*caldav.Client, []caldav.Calendar,
 	}
 	co, err := c.GetCalendarObject(ctx.Request.Context(), objectPath)
 	if err != nil {
+		if notFound(err) {
+			return nil, nil, nil, nil, errGone
+		}
 		return nil, nil, nil, nil, fmt.Errorf("failed to get CalDAV task: %v", err)
 	}
 	todo := masterTask(co.Data)

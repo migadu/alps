@@ -27,6 +27,7 @@ export default {
     saveFailed: 'Não foi possível salvar o contato.',
     loadFailed: 'Não foi possível carregar o contato, por isso ele ainda não pode ser editado.',
     saveConflict: 'Este contato foi alterado em outro dispositivo, por isso sua edição não foi salva. Cancele a edição para ver a versão mais recente.',
+    deletedElsewhere: 'Este contato foi excluído em outro dispositivo.',
     starFailed: {
       one: 'Não foi possível atualizar {count} de {total} contatos.',
       many: 'Não foi possível atualizar {count} de {total} contatos.',

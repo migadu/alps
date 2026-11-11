@@ -22,7 +22,7 @@ require (
 	github.com/go-webauthn/webauthn v0.17.2
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/memberlist v0.5.4
-	github.com/migadu/go-imap v1.1.1-0.20261111112034-03ad6c30304b
+	github.com/migadu/go-imap v1.1.1-0.20261111115326-888b15766111
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.53.0
 	golang.org/x/text v0.39.0
@@ -79,3 +79,5 @@ require (
 replace github.com/emersion/go-smtp => github.com/migadu/go-smtp v0.0.0-20260705231539-0ef684185ca4
 
 replace github.com/emersion/go-message => github.com/migadu/go-message v0.0.0-20260705121217-8814c0e56d68
+
+replace github.com/emersion/go-webdav => github.com/migadu/go-webdav v0.7.1-0.20261111105943-f1282393c036

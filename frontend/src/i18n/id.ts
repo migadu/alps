@@ -576,7 +576,8 @@ export const id = {
     messages: 'Pesan',
     contacts: 'Kontak',
     calendar: 'Kalender',
-    tasks: 'Tugas'
+    tasks: 'Tugas',
+    label: 'Aplikasi'
   },
   userMenu: {
     settings: 'Pengaturan',

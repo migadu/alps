@@ -125,10 +125,10 @@ func TestSessionVerdictsAreSharedWithTheBackgroundConnection(t *testing.T) {
 	testSessionVerdictsAcrossConnections(t, true)
 }
 
-func testSessionVerdictsAcrossConnections(t *testing.T, background bool) {
+// signInTo signs ada in to the mail server ln serves, as the session manager
+// returned would sign in a user, on IMAP connections to it.
+func signInTo(t *testing.T, ln *droppingListener) (*SessionManager, *Session) {
 	t.Helper()
-	traffic := &verdictTraffic{}
-	ln := serveVerdictMail(t, traffic)
 	connect := func(username, password string) (provider.MailProvider, error) {
 		c, err := imapclient.DialInsecure(ln.Addr().String(), nil)
 		if err != nil {
@@ -148,6 +148,14 @@ func testSessionVerdictsAcrossConnections(t *testing.T, background bool) {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
+	return sm, s
+}
+
+func testSessionVerdictsAcrossConnections(t *testing.T, background bool) {
+	t.Helper()
+	traffic := &verdictTraffic{}
+	ln := serveVerdictMail(t, traffic)
+	sm, s := signInTo(t, ln)
 
 	ids := []provider.MessageID{imapprovider.IMAPUID(1), imapprovider.IMAPUID(2)}
 	if err := s.DoMail(func(p provider.MailProvider) error {

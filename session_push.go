@@ -559,7 +559,7 @@ func (s *Session) idleFailed(p provider.MailProvider, err error) time.Duration {
 	pause := s.manager.pushRetry << min(w.failures, 6)
 	w.watching = nil
 	w.mu.Unlock()
-	if isNetworkError(err) {
+	if connectionLost(p, err) {
 		s.dropBackground()
 		p.Close()
 	} else {

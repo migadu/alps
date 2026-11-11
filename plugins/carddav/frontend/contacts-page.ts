@@ -23,7 +23,7 @@ import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
 import { contactsService, sameAddressParts } from './contacts-service';
-import { isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
+import { HttpStatusError, isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
 import { motionStyles } from '../../../frontend/src/utils/motion';
@@ -108,7 +108,7 @@ export class ContactsPage extends LitElement {
    */
   private wholeCardPath: string | null = null;
   /** The read of the open card on its way, which Edit waits for. */
-  private cardRead: { path: string; generation: number; done: Promise<boolean> } | null = null;
+  private cardRead: { path: string; generation: number; lifetime: number; username: string; done: Promise<boolean> } | null = null;
   private cardGeneration = 0;
   private mergedBook: { contacts: any[]; wholeBook: any[]; open: any; merged: any[] } | null = null;
 
@@ -656,10 +656,16 @@ export class ContactsPage extends LitElement {
    */
   private readOpenCard(path: string): Promise<boolean> {
     const generation = this.cardGeneration;
-    if (this.cardRead?.path === path && this.cardRead.generation === generation) return this.cardRead.done;
+    const lifetime = this.saveLifetime;
+    const username = activeUsername() ?? this.username;
+    // A late read belongs to the page and account that sent it, as a save
+    // does. It must not announce an old card or start a new account's listing.
+    const ownsRead = () => this.saveActive && lifetime === this.saveLifetime && username === (activeUsername() ?? this.username);
+    if (this.cardRead?.path === path && this.cardRead.generation === generation && this.cardRead.lifetime === lifetime && this.cardRead.username === username) return this.cardRead.done;
     const done = (async () => {
       try {
         const data = await contactsService.fetchContact(path);
+        if (!ownsRead()) return false;
         // A reopened path is a new selection: an older read must not replace
         // its current card or enable editing with an obsolete snapshot.
         if (this.cardGeneration === generation && this.selectedContact?.path === data.path) {
@@ -668,16 +674,39 @@ export class ContactsPage extends LitElement {
           return true;
         }
       } catch (e) {
-        console.error('Failed to fetch contact details', e);
+        if (!ownsRead()) return false;
+        if (e instanceof HttpStatusError && e.status === 404) {
+          this.cardGone(path, generation);
+        } else {
+          console.error('Failed to fetch contact details', e);
+        }
       }
       return false;
     })();
-    const read = { path, generation, done };
+    const read = { path, generation, lifetime, username, done };
     this.cardRead = read;
     void done.finally(() => {
       if (this.cardRead === read) this.cardRead = null;
     });
     return done;
+  }
+
+  /**
+   * The card at `path` was not there to read: deleted on another device since
+   * the list was read. Its row goes with a fresh read of the list, and if it
+   * is still the card open, it closes and the user is told why. A card opened
+   * since is left alone.
+   */
+  private cardGone(path: string, generation: number) {
+    if (this.cardGeneration === generation && this.selectedContact?.path === path) {
+      this.selectedContact = null;
+      this.isEditing = false;
+      this.leaveDeletedCard();
+      window.dispatchEvent(new CustomEvent('show-toast', {
+        detail: { message: this.i18nStore?.t('contacts.deletedElsewhere'), type: 'info', duration: 5000 }
+      }));
+    }
+    void this.fetchContacts();
   }
 
   /**
