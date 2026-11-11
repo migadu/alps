@@ -80,6 +80,7 @@ export default {
     week: '週',
     month: '月',
     year: '年',
+    view: '檢視',
     today: '今天',
     allDay: '全天',
     noTitle: '（無標題）',

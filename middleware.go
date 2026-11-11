@@ -386,7 +386,10 @@ func setSecurityHeaders(h http.Header) {
 	// `img-src`/`font-src data:` are required for placeholder resources in sandboxed iframes.
 	// `frame-src blob:` lets the attachment preview show a PDF it fetched itself: the
 	// part is served as a download, which a frame pointed at its URL would save.
-	h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; frame-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'")
+	// `script-src 'self'`: the app is its own bundled scripts only; the shell
+	// loads one module and runs no script of its own.
+	// `frame-ancestors 'self'`: only alps itself may show its pages in a frame.
+	h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; frame-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; frame-ancestors 'self'")
 	// DNS prefetching has privacy implications.
 	h.Set("X-DNS-Prefetch-Control", "off")
 	// Never allow browsers to MIME-sniff a response away from its declared type.

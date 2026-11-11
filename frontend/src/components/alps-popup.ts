@@ -1,7 +1,7 @@
 import { modalOpened, modalClosed, topModal } from '../utils/modal-layers';
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { consumesSpaceAsText, isMultilineTextEntry } from '../utils/active-element';
+import { consumesSpaceAsText, isComposingKey, isMultilineTextEntry } from '../utils/active-element';
 import { motionStyles } from '../utils/motion';
 
 export const popupStyles = css`
@@ -458,6 +458,7 @@ export class AlpsPopup extends LitElement {
   };
 
   private _handleMenuKey(e: KeyboardEvent, inside: boolean) {
+    if (isComposingKey(e)) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       this.close();

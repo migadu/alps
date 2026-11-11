@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-message/charset"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 // sanitizingWriter wraps an io.Writer and redacts sensitive information from IMAP debug logs

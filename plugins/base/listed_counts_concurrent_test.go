@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps"
+	"github.com/migadu/go-imap"
 )
 
 // Concurrent status answers for distinct folders must retain every folder's

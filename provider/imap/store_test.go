@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 type storedSettings struct {

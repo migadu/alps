@@ -78,7 +78,7 @@ async function typeNickname(el: El, saved: ReturnType<typeof vi.spyOn>): Promise
   await nickname.updateComplete;
   const input = nickname.shadowRoot!.querySelector('input')!;
   input.value = 'Amazing Grace';
-  input.dispatchEvent(new Event('input'));
+  input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
   await waitFor(() => saved.mock.calls.length > 0, 'the autosave', 2000);
   return saved.mock.calls[0][1];
 }
