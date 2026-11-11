@@ -610,7 +610,11 @@ func (p *IMAPProvider) selectMailbox(mailbox string) (*imap.SelectData, error) {
 	}
 	data, err := p.client.Select(mailbox, nil).Wait()
 	if err != nil {
-		return nil, fmt.Errorf("failed to select mailbox: %v", err)
+		// Wrapped, so that a session tells a lost connection from a refusal
+		// and opens another: the client forgets the mailbox selected when
+		// its connection ends, so SELECT is the first command to fail after
+		// the mail server drops it.
+		return nil, fmt.Errorf("failed to select mailbox: %w", err)
 	}
 	p.selectedUIDValidity = data.UIDValidity
 	p.selectedUIDNext = data.UIDNext
