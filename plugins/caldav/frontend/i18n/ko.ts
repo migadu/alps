@@ -80,6 +80,7 @@ export default {
     week: '주',
     month: '월',
     year: '년',
+    view: '보기',
     today: '오늘',
     allDay: '종일',
     noTitle: '(제목 없음)',

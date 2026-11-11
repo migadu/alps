@@ -5,6 +5,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
 import { focusOnLabelClick } from '../utils/label-focus';
 import { motionStyles } from '../utils/motion';
+import { isComposingKey } from '../utils/active-element';
 
 /** Values written left to right whatever the interface language: addresses,
  * passwords, numbers, dates. */
@@ -162,11 +163,21 @@ export class AlpsInput extends LitElement {
     }
   `];
 
+  /** The inner input's own `input` is composed, and reaches whoever listens
+   * on this element after the value is taken here: one for each key, so none
+   * is sent of its own. */
   private handleInput(e: Event) {
     const target = e.target as HTMLInputElement;
     this.value = target.value;
-    // Dispatch standard input and change events so it behaves like a native input
-    this.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  }
+
+  /** `change` when the value is committed, as a native input says it: what
+   * saves on `change` (the settings' display name and Reply-To) must not save
+   * every keystroke. The inner input's own is not composed, and stops at the
+   * shadow root. */
+  private handleChange(e: Event) {
+    const target = e.target as HTMLInputElement;
+    this.value = target.value;
     this.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
   }
 
@@ -182,7 +193,7 @@ export class AlpsInput extends LitElement {
   }
 
   private handleKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !isComposingKey(e)) {
       const form = this.closest('form');
       if (form) {
         e.preventDefault();
@@ -247,7 +258,7 @@ export class AlpsInput extends LitElement {
           ?autofocus=${this.autofocus}
           autocomplete=${this.autocomplete}
           @input=${this.handleInput}
-          @change=${this.handleInput}
+          @change=${this.handleChange}
           @keydown=${this.handleKeyDown}
         />
 

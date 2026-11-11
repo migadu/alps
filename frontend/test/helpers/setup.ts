@@ -9,6 +9,7 @@ import {
   installDialogSupport,
   installExecCommand,
   installMatchMedia,
+  installPopoverSupport,
   installResizeObserver,
   installScrollIntoView,
 } from './dom';
@@ -16,5 +17,6 @@ import {
 installScrollIntoView();
 installResizeObserver();
 installDialogSupport();
+installPopoverSupport();
 installMatchMedia();
 installExecCommand();

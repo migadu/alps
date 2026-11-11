@@ -172,6 +172,42 @@ export function installDialogSupport(): void {
 }
 
 /**
+ * jsdom has no Popover API, and alps-popup shows its menus as popovers.
+ * showPopover() and hidePopover() keep the state and fire `toggle` with its
+ * `newState`, as a browser does (synchronously here), so a light dismiss can
+ * be played by hiding the popover. `popover` reflects its attribute, which is
+ * what alps-popup tests for.
+ */
+export function installPopoverSupport(): void {
+  const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+  if (Object.hasOwn(HTMLElement.prototype, 'popover')) return;
+  const showing = new WeakSet<HTMLElement>();
+  const toggle = (el: HTMLElement, newState: 'open' | 'closed') => {
+    const event = new Event('toggle');
+    Object.assign(event, { oldState: newState === 'open' ? 'closed' : 'open', newState });
+    el.dispatchEvent(event);
+  };
+  Object.defineProperty(HTMLElement.prototype, 'popover', {
+    configurable: true,
+    get(this: HTMLElement) { return this.getAttribute('popover'); },
+    set(this: HTMLElement, value: string | null) {
+      if (value === null) this.removeAttribute('popover');
+      else this.setAttribute('popover', value);
+    },
+  });
+  proto.showPopover = function (this: HTMLElement) {
+    if (!this.hasAttribute('popover')) throw new DOMException('Not a popover', 'NotSupportedError');
+    if (showing.has(this)) throw new DOMException('Already showing', 'InvalidStateError');
+    showing.add(this);
+    toggle(this, 'open');
+  };
+  proto.hidePopover = function (this: HTMLElement) {
+    if (!showing.delete(this)) return;
+    toggle(this, 'closed');
+  };
+}
+
+/**
  * jsdom has no document.execCommand. ProseMirror calls it for an editor inside
  * a shadow root when it believes it is on Safari, which jsdom's navigator.vendor
  * suggests, and the throw escapes from a frame callback no test can await.

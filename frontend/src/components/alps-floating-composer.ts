@@ -24,6 +24,7 @@ import './alps-emoji-selector-popup.js';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { Logger } from '../utils/logger';
+import { isComposingKey } from '../utils/active-element';
 import { appendReplyFields } from '../utils/reply-context';
 import { registry } from '../plugin-registry';
 import { MessageCache } from '../utils/message-cache';
@@ -1996,7 +1997,7 @@ export class AlpsFloatingComposer extends LitElement {
               ${(this.instance.format || 'html') === 'html' ? html`
                 <alps-popup id="linkPopup" align="start" position="top">
                   <alps-icon-btn slot="trigger" title=${this.i18nStore?.t('floatingComposer.insertLink')} icon="linkSimple" @mousedown=${(e: Event) => e.preventDefault()} @click=${this._handleLinkClick}></alps-icon-btn>
-                  <div class="popup-form" @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleLinkSubmit(); }}>
+                  <div class="popup-form" @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' && !isComposingKey(e)) this._handleLinkSubmit(); }}>
                     ${this.linkPromptFields.map(f => html`
                       <div class="field-group">
                         <!-- A label's "for" cannot reach the input inside alps-input's shadow root, so a click on the label focuses the field here. -->

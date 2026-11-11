@@ -29,7 +29,7 @@ test("Back walks through the user's own moves inside the calendar", async ({ pag
   await page.locator('.nav-tab[title="Calendar"]').click();
   await expect(page).toHaveURL(CALENDAR_VIEW);
 
-  await page.locator("calendar-page alps-toggle").getByRole("button", { name: "Week", exact: true }).click();
+  await page.locator("calendar-page alps-toggle").getByRole("radio", { name: "Week", exact: true }).check();
   await expect(page).toHaveURL(/#\/calendar\/week\/\d{4}-\d{2}-\d{2}$/);
 
   await page.goBack();

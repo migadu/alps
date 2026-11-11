@@ -70,7 +70,7 @@ async function type(el: El, placeholder: string, value: string): Promise<void> {
   await host.updateComplete;
   const input = host.shadowRoot!.querySelector('input')!;
   input.value = value;
-  input.dispatchEvent(new Event('input'));
+  input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
   await settle(el);
 }
 

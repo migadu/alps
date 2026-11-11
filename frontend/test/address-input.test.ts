@@ -19,8 +19,8 @@ async function typeText(el: AddressInput, value: string) {
   await el.updateComplete;
 }
 
-async function press(el: AddressInput, key: string): Promise<KeyboardEvent> {
-  const event = new KeyboardEvent('keydown', { key, bubbles: true, composed: true, cancelable: true });
+async function press(el: AddressInput, key: string, init: KeyboardEventInit = {}): Promise<KeyboardEvent> {
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, composed: true, cancelable: true, ...init });
   inputOf(el).dispatchEvent(event);
   await el.updateComplete;
   return event;
@@ -47,6 +47,19 @@ describe('committing an address', () => {
     expect(el.addresses).toEqual(['ada@example.com']);
     expect(inputOf(el).value).toBe('');
     expect(changes.map((e) => e.detail.addresses)).toEqual([['ada@example.com']]);
+  });
+
+  it('commits nothing on a key the IME takes', async () => {
+    const el = await mount<AddressInput>('alps-address-input');
+    await typeText(el, 'ada@example.com');
+    for (const key of ['Enter', ' ', ',']) {
+      expect((await press(el, key, { isComposing: true })).defaultPrevented).toBe(false);
+      expect((await press(el, key, { keyCode: 229 })).defaultPrevented).toBe(false);
+    }
+    expect(el.addresses).toEqual([]);
+    expect(inputOf(el).value).toBe('ada@example.com');
+    await press(el, 'Enter');
+    expect(el.addresses).toEqual(['ada@example.com']);
   });
 
   it('commits on a space or a comma that completes an address', async () => {
@@ -280,6 +293,26 @@ describe('suggestions', () => {
     await press(el, 'ArrowDown');
     await press(el, 'Enter');
     expect(el.addresses).toEqual(['Alice <alice@example.com>', 'alan@example.com']);
+  });
+
+  it('leaves the arrows and Enter to the IME while a name is being composed', async () => {
+    // The name typed to find a contact by is still being converted: the
+    // arrows walk the IME's candidates and its Enter picks one, and neither
+    // may pick a contact.
+    vi.useFakeTimers();
+    registry.registerHook('composer:suggest', async () => [{ name: 'Alice', address: 'alice@example.com' }]);
+    const el = await mount<AddressInput>('alps-address-input');
+    await typeText(el, 'al');
+    await vi.advanceTimersByTimeAsync(300);
+    await el.updateComplete;
+    await press(el, 'ArrowDown');
+    expect(items(el)[0].classList.contains('active')).toBe(true);
+
+    expect((await press(el, 'ArrowDown', { isComposing: true })).defaultPrevented).toBe(false);
+    expect((await press(el, 'Enter', { isComposing: true })).defaultPrevented).toBe(false);
+    expect((await press(el, 'Enter', { keyCode: 229 })).defaultPrevented).toBe(false);
+    expect(el.addresses).toEqual([]);
+    expect(items(el)).toHaveLength(1);
   });
 
   it('closes the list on Escape and keeps the text', async () => {
