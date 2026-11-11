@@ -34,6 +34,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  localStorage.removeItem('alps_active_user');
   history.replaceState(null, '', '#/');
 });
 
@@ -95,5 +96,44 @@ describe('a contact whose card is gone when it is read', () => {
     expect(el.selectedContact?.path).toBe(ada.path);
     expect(toasts).toHaveLength(0);
     expect(errors).not.toHaveBeenCalled();
+  });
+
+  it.each(['disconnect', 'account change', 'stored identity'])('ignores the old read after %s', async (ending) => {
+    let refuse!: (error: Error) => void;
+    const el = await page(() => new Promise((_, reject) => { refuse = reject; }));
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    history.replaceState(null, '', '#/contacts/all/uG');
+    const reading = el.selectContact(grace, false);
+    await settle(el);
+    const listReads = (contactsService.fetchContacts as unknown as ReturnType<typeof vi.spyOn>).mock.calls.length;
+
+    if (ending === 'disconnect') el.remove();
+    else if (ending === 'account change') window.dispatchEvent(new Event('alps-active-user-changed'));
+    else localStorage.setItem('alps_active_user', 'another@example.test');
+    refuse(new HttpStatusError(404, 'Not Found'));
+    await reading;
+    await settle(el);
+
+    expect(toasts).toHaveLength(0);
+    expect((contactsService.fetchContacts as unknown as ReturnType<typeof vi.spyOn>).mock.calls.length).toBe(listReads);
+    expect(errors).not.toHaveBeenCalled();
+  });
+
+  it('starts a fresh read of the same path for the next account', async () => {
+    let finish!: (card: any) => void;
+    let reads = 0;
+    const el = await page(() => ++reads === 1
+      ? new Promise(resolve => { finish = resolve; })
+      : Promise.resolve({ ...grace, name: 'New account card' }));
+    const oldRead = el.selectContact(grace, false);
+    await settle(el);
+    window.dispatchEvent(new Event('alps-active-user-changed'));
+    const newRead = el.readOpenCard(grace.path);
+    finish({ ...grace, name: 'Old account card' });
+    await Promise.all([oldRead, newRead]);
+    await settle(el);
+
+    expect(reads).toBe(2);
+    expect(el.selectedContact.name).toBe('New account card');
   });
 });
