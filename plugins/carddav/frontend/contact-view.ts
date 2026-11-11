@@ -16,6 +16,7 @@ import '../../../frontend/src/components/alps-popup';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { isolatedCaption } from '../../../frontend/src/utils/bidi';
 import { writtenAddress } from '../../../frontend/src/utils/address-display';
+import { isComposingKey } from '../../../frontend/src/utils/active-element';
 import { ADDRESS_PARTS, type AddressParts } from './contacts-service';
 import { motionStyles } from '../../../frontend/src/utils/motion';
 
@@ -675,7 +676,7 @@ export class AlpsContactView extends LitElement {
               .value=${this.newCategoryName} 
               @input=${(e: any) => this.newCategoryName = e.target.value}
               @keydown=${(e: KeyboardEvent) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' && !isComposingKey(e)) {
                   e.preventDefault();
                   this.handleAddCategory();
                 }

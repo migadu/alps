@@ -30,6 +30,7 @@ export default {
         week: '周',
         month: '月',
         year: '年',
+        view: '视图',
         today: '今天',
         allDay: '全天',
         noTitle: '(无标题)',

@@ -30,6 +30,7 @@ export default {
         week: 'Nedelja',
         month: 'Mesec',
         year: 'Godina',
+        view: 'Prikaz',
         today: 'Danas',
         allDay: 'Ceo dan',
         noTitle: '(Bez naslova)',

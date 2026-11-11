@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // A THREAD command on the wire, whichever algorithm was chosen.

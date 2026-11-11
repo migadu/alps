@@ -7,8 +7,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // The access list of a folder is MYRIGHTS and GETACL, sent together, its

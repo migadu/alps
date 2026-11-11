@@ -70,11 +70,17 @@ export class UIModal extends LitElement {
       height: 100vh;
       max-width: none;
       max-height: none;
-      display: flex;
       align-items: center;
       justify-content: center;
     }
-    
+
+    /* Only while open: a display of its own overrides the closed dialog's
+       display: none, and a closed one went on drawing its card over the
+       page, outside the top layer and with nothing behind it made inert. */
+    .modal-dialog[open] {
+      display: flex;
+    }
+
     .modal-dialog::backdrop {
       background: var(--modal-backdrop, rgba(255, 255, 255, 0.8));
     }
@@ -134,6 +140,11 @@ export class UIModal extends LitElement {
    * dialog element — not to be confused with the `cancel` CustomEvent this
    * component dispatches on ITSELF, which is a different event on a different
    * target.
+   *
+   * It does not stop every Escape: the browser lets a page refuse a close
+   * request once per user activation, and Escape is no activation, so a second
+   * press in a row (or a second Android back) closes the dialog regardless.
+   * `_handleDialogClose` opens it again.
    */
   private _handleEscape = (e: Event) => {
     if (!this.dismissible) e.preventDefault();
@@ -145,7 +156,14 @@ export class UIModal extends LitElement {
   }
 
   private _handleDialogClose = () => {
-    modalClosed(this.shadowRoot?.querySelector('dialog'));
+    const dialog = this.shadowRoot?.querySelector('dialog');
+    // A modal that may not be dismissed closed anyway (see _handleEscape): it
+    // stays, modal as it was, and its owner hears nothing.
+    if (!this.dismissible && this.isConnected && dialog && !dialog.open) {
+      dialog.showModal();
+      return;
+    }
+    modalClosed(dialog);
     this.dispatchEvent(new CustomEvent('cancel', { bubbles: true, composed: true }));
   };
 

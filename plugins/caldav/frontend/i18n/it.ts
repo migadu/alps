@@ -30,6 +30,7 @@ export default {
         week: 'Settimana',
         month: 'Mese',
         year: 'Anno',
+        view: 'Vista',
         today: 'Oggi',
         allDay: 'Tutto il giorno',
         noTitle: '(Nessun titolo)',

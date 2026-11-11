@@ -15,8 +15,8 @@ import (
 	"net/http/cookiejar"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapserver"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapserver"
 )
 
 // conversationSession answers THREAD with the one conversation the tests

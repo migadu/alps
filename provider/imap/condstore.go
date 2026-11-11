@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // TrackChanges: see provider.ChangeTracker. It turns on CONDSTORE (RFC 7162)

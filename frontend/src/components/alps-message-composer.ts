@@ -15,6 +15,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import { renderIcon } from '../utils/ui';
+import { isComposingKey } from '../utils/active-element';
 import { popupStyles } from './alps-popup';
 import './alps-popup';
 import './alps-input.js';
@@ -1591,11 +1592,11 @@ export class AlpsMessageComposer extends LitElement {
               <div class="bubble-edit">
                 <div class="field-row">
                   <label for="bubble-text">${this.i18nStore?.t('messageComposer.text')}</label>
-                  <alps-input id="bubble-text" inputId="bubbleText" label=${this.i18nStore?.t('messageComposer.text')} .value=${this.activeLinkText} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._applyBubbleLink(e); e.stopPropagation(); }}></alps-input>
+                  <alps-input id="bubble-text" inputId="bubbleText" label=${this.i18nStore?.t('messageComposer.text')} .value=${this.activeLinkText} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' && !isComposingKey(e)) this._applyBubbleLink(e); e.stopPropagation(); }}></alps-input>
                 </div>
                 <div class="field-row">
                   <label for="bubble-link">${this.i18nStore?.t('messageComposer.link')}</label>
-                  <alps-input type="url" id="bubble-link" inputId="bubbleUrl" label=${this.i18nStore?.t('messageComposer.link')} .value=${this.activeLinkUrl} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._applyBubbleLink(e); e.stopPropagation(); }}></alps-input>
+                  <alps-input type="url" id="bubble-link" inputId="bubbleUrl" label=${this.i18nStore?.t('messageComposer.link')} .value=${this.activeLinkUrl} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' && !isComposingKey(e)) this._applyBubbleLink(e); e.stopPropagation(); }}></alps-input>
                 </div>
                 <div class="bubble-actions">
                   <alps-button variant="text" @click=${(e: Event) => { e.preventDefault(); this.bubbleMenuState = 'view'; }}>${this.i18nStore?.t('general.cancel')}</alps-button>

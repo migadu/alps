@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 func flagCache(t *testing.T, unseen uint32, pages map[string][]provider.Message) *alps.Cache {

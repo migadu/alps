@@ -8,6 +8,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registry } from '../plugin-registry';
 import { popupStyles } from './alps-popup.js';
 import { motionStyles } from '../utils/motion';
+import { isComposingKey } from '../utils/active-element';
 
 @customElement('alps-address-input')
 export class AlpsAddressInput extends LitElement {
@@ -173,6 +174,10 @@ export class AlpsAddressInput extends LitElement {
   }
 
   private _handleKeyDown(e: KeyboardEvent) {
+    // Every key of a composition is the IME's: Enter picks its candidate, the
+    // arrows walk its list and Space converts, while the text is not yet the
+    // address or the name to look one up by.
+    if (isComposingKey(e)) return;
     const inputVal = this.inputText.trim();
 
     if (this.suggestions.length > 0) {

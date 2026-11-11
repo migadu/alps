@@ -5,10 +5,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/migadu/alps/provider"
 	imapprovider "github.com/migadu/alps/provider/imap"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 // Adapter functions to convert between alps provider types and plugin types

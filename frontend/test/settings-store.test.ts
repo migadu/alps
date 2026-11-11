@@ -1030,6 +1030,34 @@ describe('a switch of the system between light and dark', () => {
     expect(document.body.classList.contains('theme-dark')).toBe(false);
     expect(changes).toHaveLength(0);
   });
+
+  // The browser draws form controls, date pickers and scrollbars in the scheme
+  // it is told, not in the theme's colours: a dark theme left them light.
+  describe('tells the browser the scheme it painted', () => {
+    afterEach(() => document.documentElement.style.removeProperty('color-scheme'));
+
+    it('follows the system in Auto', () => {
+      const os = system(false);
+      localStorage.setItem('alps_settings', JSON.stringify({ themeMode: 'auto' }));
+      new SettingsStore();
+      expect(document.documentElement.style.colorScheme).toBe('light');
+
+      os.switchTo('dark');
+      expect(document.documentElement.style.colorScheme).toBe('dark');
+    });
+
+    it('keeps a theme of its own whatever the system is', () => {
+      system(true);
+      localStorage.setItem('alps_settings', JSON.stringify({ themeMode: 'light' }));
+      new SettingsStore();
+      expect(document.documentElement.style.colorScheme).toBe('light');
+
+      localStorage.setItem('alps_settings', JSON.stringify({ themeMode: 'dark' }));
+      system(false);
+      new SettingsStore();
+      expect(document.documentElement.style.colorScheme).toBe('dark');
+    });
+  });
 });
 
 describe('colour themes', () => {

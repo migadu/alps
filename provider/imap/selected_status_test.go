@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 // statusesSent matches a STATUS the provider sends.

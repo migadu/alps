@@ -1,0 +1,466 @@
+import{_ as e,d as t,f as n,g as r,l as i,s as a,u as o,x as s,y as c}from"./lit-BYBpccnv.js";import{Ot as l,Pt as u,a as d,bt as f,dt as p,g as m,h,ht as g,m as _,o as v,s as y,ut as b,vt as x,wt as S}from"./index-DpAsszEA.js";import{S as C,_ as w,b as T,c as E,d as D,f as O,g as k,h as A,n as j,p as M,r as N,v as P,x as F,y as I}from"./task-modal-ZxWjgcjV.js";var L={overdue:`tasks.groups.overdue`,today:`tasks.groups.today`,week:`tasks.groups.week`,undated:`tasks.groups.undated`,later:`tasks.groups.later`,completed:`tasks.groups.completed`},R={high:`tasks.priorities.high`,medium:`tasks.priorities.medium`,low:`tasks.priorities.low`},z={high:`!!!`,medium:`!!`,low:`!`},B=class extends r{constructor(...e){super(...e),this.clock=new f(this),this.tasks=[],this.pendingPaths=new Set,this.settling=new Set,this.searching=!1,this.loading=!1,this.focusedIndex=-1}static{this.styles=s`
+        :host {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+        .scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 24px 24px;
+            outline: none;
+        }
+        .empty {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 48px 16px;
+            color: var(--text-muted, #6b7280);
+            font-size: 14px;
+        }
+        .group {
+            margin: 16px 0 4px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--text-muted, #6b7280);
+        }
+        .group.overdue {
+            color: var(--error, #ef4444);
+        }
+        .row {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--border-color, #e5e7eb);
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .row:hover,
+        .row.focused {
+            background: var(--bg-tertiary, #f3f4f6);
+        }
+        /* The keyboard cursor, drawn as the mail list draws its own: an
+           outline, which forced colors keep where they repaint the background. */
+        .scroll:focus-within .row.focused {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
+        }
+        .check {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            margin-top: 1px;
+            padding: 0;
+            border: 2px solid var(--text-muted, #9ca3af);
+            border-radius: 50%;
+            background: transparent;
+            color: #fff;
+            cursor: pointer;
+        }
+        .check:hover {
+            border-color: var(--accent-color, #2563eb);
+        }
+        .check:disabled {
+            opacity: 0.5;
+            cursor: progress;
+        }
+        .row.done .check {
+            background: var(--accent-fill, #2563eb);
+            border-color: var(--accent-fill, #2563eb);
+        }
+        .check svg {
+            width: 12px;
+            height: 12px;
+            fill: currentColor;
+        }
+        .body {
+            flex: 1;
+            min-width: 0;
+        }
+        .title {
+            font-size: 14px;
+            color: var(--text-primary, #111827);
+            overflow-wrap: anywhere;
+        }
+        .row.done .title,
+        .row.cancelled .title {
+            text-decoration: line-through;
+            color: var(--text-muted, #6b7280);
+        }
+        .meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-top: 2px;
+            font-size: 12px;
+            color: var(--text-secondary, #4b5563);
+        }
+        /* Which list a task is in: its colour is the only mark of it in the
+           row. Drawn by its background alone, which forced colors repaint as
+           the page: kept. */
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            forced-color-adjust: none;
+        }
+        .due.overdue {
+            color: var(--error, #ef4444);
+            font-weight: 500;
+        }
+        .repeats svg {
+            display: block;
+            width: 12px;
+            height: 12px;
+            fill: currentColor;
+        }
+        .priority {
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+        .priority.high {
+            color: var(--error, #ef4444);
+        }
+        .priority.medium {
+            color: #d97706;
+        }
+        .priority.low {
+            color: var(--text-muted, #6b7280);
+        }
+        .chip {
+            padding: 0 6px;
+            border-radius: 4px;
+            background: var(--bg-tertiary, #f3f4f6);
+        }
+        @media (max-width: 768px) {
+            .scroll {
+                padding: 4px 12px 16px;
+            }
+        }
+    `}groups(){let e=this.now??new Date,t=new Map;for(let n of this.tasks){let r=this.settling.has(n.path)?k({...n,status:`needs-action`},e):k(n,e),i=t.get(r);i?i.push(n):t.set(r,[n])}for(let[e,n]of t)n.sort(e===`completed`?O:M);return D.filter(e=>t.has(e)).map(e=>[e,t.get(e)])}toggle(e){this.pendingPaths.has(e.path)||this.dispatchEvent(new CustomEvent(`toggle-complete`,{detail:{task:e,done:e.status!==`completed`}}))}open(e){this.dispatchEvent(new CustomEvent(`open-task`,{detail:{task:e}}))}handleFocus(){let e=this.groups().reduce((e,[,t])=>e+t.length,0);e&&(this.focusedIndex=Math.min(Math.max(this.focusedIndex,0),e-1))}handleKeyDown(e){if(e.target!==e.currentTarget)return;let t=this.groups().flatMap(([,e])=>e);if(t.length===0)return;let n=Math.min(this.focusedIndex,t.length-1);switch(e.key){case`ArrowDown`:this.focusedIndex=Math.min(t.length-1,n+1);break;case`ArrowUp`:this.focusedIndex=Math.max(0,n-1);break;case`Home`:this.focusedIndex=0;break;case`End`:this.focusedIndex=t.length-1;break;case`Enter`:if(n<0)return;e.preventDefault(),this.open(t[n]);return;case` `:if(n<0)return;e.preventDefault(),this.toggle(t[n]);return;default:return}e.preventDefault(),this.updateComplete.then(()=>{this.renderRoot.querySelector(`.row.focused`)?.scrollIntoView?.({block:`nearest`})})}renderRow(e,t,n){let r=e=>this.i18nStore?.t(e)??e,i=e.status===`completed`,a=e.status===`cancelled`,o=T(e.priority),s=this.now??new Date;return c`
+            <div
+                class="row ${i?`done`:``} ${a?`cancelled`:``} ${this.focusedIndex===t?`focused`:``}"
+                @click=${()=>{this.focusedIndex=t,this.open(e)}}
+            >
+                <button
+                    class="check"
+                    role="checkbox"
+                    aria-checked=${i?`true`:`false`}
+                    aria-label=${r(i?`tasks.markNotDone`:`tasks.markDone`)}
+                    ?disabled=${this.pendingPaths.has(e.path)}
+                    @click=${t=>{t.stopPropagation(),this.toggle(e)}}
+                >
+                    ${i?u(`check`):``}
+                </button>
+                <div class="body">
+                    <div class="title"><bdi>${e.title||r(`tasks.untitled`)}</bdi></div>
+                    <div class="meta">
+                        ${e.color?c`<span class="dot" style="background: ${e.color}"></span>`:``}
+                        ${a?c`<span class="chip">${r(`tasks.statuses.cancelled`)}</span>`:``}
+                        ${e.due?c`<span class="due ${n===`overdue`?`overdue`:``}">${A(e,s,r(`tasks.today`),P(this.i18nStore?.getLanguage?.()),this.clock.hour12?`12`:`24`)}</span>`:``}
+                        ${e.rrule?c`<span class="repeats" role="img" aria-label=${r(`tasks.repeats`)} title=${r(`tasks.repeats`)}>${u(`arrowsClockwise`)}</span>`:``}
+                        ${e.role===`attendee`&&e.organizer?c`<span class="assigned">${r(`tasks.assignedBy`)} ${l(e.organizer.name,e.organizer.email)}</span>`:e.role===`organizer`&&e.attendees?.length?c`<span class="assigned">${r(`tasks.assignedTo`)} ${e.attendees.map((e,t)=>c`${t?`, `:``}${l(e.name,e.email)}`)}</span>`:``}
+                        ${o?c`<span class="priority ${o}" role="img" aria-label=${r(R[o])} title=${r(R[o])}>${z[o]}</span>`:``}
+                    </div>
+                </div>
+            </div>
+        `}render(){if(this.loading&&this.tasks.length===0)return c`<div class="empty"><alps-loader></alps-loader></div>`;let e=this.groups();if(e.length===0)return c`<div class="empty">${this.i18nStore?.t(this.searching?`tasks.noResults`:`tasks.noTasks`)}</div>`;let t=-1;return c`
+            <div class="scroll" tabindex="0" @focus=${this.handleFocus} @keydown=${this.handleKeyDown}>
+                ${e.map(([e,n])=>c`
+                        <div class="group ${e}">${this.i18nStore?.t(L[e])}</div>
+                        ${a(n,e=>e.path,n=>this.renderRow(n,++t,e))}
+                    `)}
+            </div>
+        `}};b([n({context:x})],B.prototype,`i18nStore`,void 0),b([o({type:Array})],B.prototype,`tasks`,void 0),b([o({attribute:!1})],B.prototype,`pendingPaths`,void 0),b([o({attribute:!1})],B.prototype,`settling`,void 0),b([o({type:Boolean})],B.prototype,`searching`,void 0),b([o({type:Boolean})],B.prototype,`loading`,void 0),b([o({attribute:!1})],B.prototype,`now`,void 0),b([i()],B.prototype,`focusedIndex`,void 0),B=b([t(`tasks-list`)],B);var V=250,H=500,U=120,W=[{id:`all`,icon:`listBullets`,label:`tasks.allTasks`},{id:`today`,icon:`calendarBlank`,label:`tasks.today`},{id:`upcoming`,icon:`calendar`,label:`tasks.upcoming`},{id:`undated`,icon:`tray`,label:`tasks.undated`},{id:`completed`,icon:`checkCircle`,label:`tasks.completed`}],G=class extends r{constructor(...e){super(...e),this.tasks=[],this.lists=[],this.selectedList=`all`,this.selectedCalendar=``,this.searchQuery=``,this.loading=!0,this.loadedScope=``,this.pendingPaths=new Set,this.settling=new Set,this.modalOpen=!1,this.taskToDelete=null,this.scheduling=`email`,this.isSpinning=!1,this.listPromptOpen=!1,this.sidebarWidth=V,this.sidebarCollapsed=!1,this.isSidebarDragging=!1,this.isMobile=window.innerWidth<=768,this.mobileSidebarOpen=!1,this.syncTimer=null,this.readEpoch=0,this.mutationEpoch=0,this.handleSettingsChange=()=>{if(!this.settingsStore)return;let e=this.settingsStore.getState();this.sidebarCollapsed=e.sidebarCollapsed,this.syncTimer&&=(clearInterval(this.syncTimer),null),e.checkMailInterval&&e.checkMailInterval>0&&(this.syncTimer=setInterval(()=>void this.fetchTasks(),e.checkMailInterval*60*1e3))},this.handleResize=()=>{this.isMobile=window.innerWidth<=768},this.handleHashChange=()=>{this.parseHash()&&this.fetchTasks()}}static{this.styles=[p,m,_,s`
+            :host {
+                display: flex;
+                flex-direction: column;
+                width: 100%;
+                height: 100%;
+            }
+            .app-container.collapsed .main-content {
+                position: relative;
+                z-index: 25;
+                border-inline-start: 1px solid var(--border-color, #e5e7eb);
+                box-shadow: rgba(95, 95, 95, 0.1) calc(-4px * var(--ui-inline-direction, 1)) 0 4px -2px;
+            }
+            .layout {
+                display: flex;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+                background-color: var(--bg-primary, #ffffff);
+            }
+            .sidebar-content {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            .sidebar-scroll-content {
+                display: flex;
+                flex-direction: column;
+                gap: 24px;
+                height: 100%;
+                padding: 16px;
+                box-sizing: border-box;
+                overflow-y: auto;
+            }
+            .nav-item {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                width: 100%;
+                height: 36px;
+                margin-bottom: 2px;
+                padding: 0 8px;
+                box-sizing: border-box;
+                border: none;
+                border-radius: 6px;
+                background: transparent;
+                color: var(--text-primary, #111827);
+                font-family: inherit;
+                font-size: 14px;
+                text-align: start;
+                cursor: pointer;
+                user-select: none;
+            }
+            .nav-item:hover {
+                background: var(--bg-tertiary, #f3f4f6);
+            }
+            .nav-item.active {
+                background: var(--bg-tertiary, #f3f4f6);
+                font-weight: 600;
+            }
+            .nav-item svg {
+                flex-shrink: 0;
+                width: 18px;
+                height: 18px;
+                fill: currentColor;
+                color: var(--text-secondary, #4b5563);
+            }
+            .nav-item .label {
+                flex: 1;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .nav-item .count {
+                font-size: 12px;
+                color: var(--text-muted, #6b7280);
+            }
+            /* A list's colour, the one its tasks' dots wear. Drawn by its
+               background alone, which forced colors repaint as the page:
+               kept. */
+            .list-dot {
+                flex-shrink: 0;
+                width: 10px;
+                height: 10px;
+                margin: 0 4px;
+                border-radius: 50%;
+                forced-color-adjust: none;
+            }
+            .main-content {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                background-color: var(--bg-primary, #ffffff);
+            }
+            .toolbar {
+                display: flex;
+                flex-shrink: 0;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                height: 57px;
+                padding: 0 24px;
+                box-sizing: border-box;
+                border-bottom: 1px solid var(--border-color, #e5e7eb);
+            }
+            .toolbar h2 {
+                margin: 0;
+                overflow: hidden;
+                font-size: 24px;
+                font-weight: 600;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .toolbar .sub-title {
+                font-weight: 300;
+                color: var(--text-secondary, #4b5563);
+            }
+            @media (max-width: 768px) {
+                .toolbar {
+                    padding: 0 12px;
+                }
+                .toolbar h2 {
+                    font-size: 18px;
+                }
+            }
+        `]}connectedCallback(){super.connectedCallback(),window.addEventListener(`resize`,this.handleResize),window.addEventListener(`hashchange`,this.handleHashChange),this.settingsStore&&(this.settingsStore.addEventListener(`change`,this.handleSettingsChange),this.handleSettingsChange()),this.parseHash(d()??``),this.fetchTasks()}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(`resize`,this.handleResize),window.removeEventListener(`hashchange`,this.handleHashChange),this.settingsStore?.removeEventListener(`change`,this.handleSettingsChange),this.syncTimer&&=(clearInterval(this.syncTimer),null)}get wantedScope(){return this.searchQuery?`all`:F(this.selectedList)}parseHash(e=window.location.hash){if(!e.startsWith(`#/tasks`))return!1;let[t,n=``]=e.slice(1).split(`?`),r=t.split(`/`)[2]??``,i=new URLSearchParams(n),a=i.get(`list`)??``,o=i.get(`q`)??``,s=r;return W.some(e=>e.id===r)||(s=`all`,y(window.location.hash)||history.replaceState(history.state,``,this.hashFor(s,a,o))),(s!==this.selectedList||a!==this.selectedCalendar||o!==this.searchQuery)&&(this.settling=new Set),this.selectedList=s,this.selectedCalendar=a,this.searchQuery=o,this.wantedScope!==this.loadedScope}hashFor(e,t,n){let r=new URLSearchParams;t&&r.set(`list`,t),n&&r.set(`q`,n);let i=r.toString();return`#/tasks/${e}${i?`?${i}`:``}`}navigate(e,t=this.selectedCalendar,n=this.searchQuery){let r=this.hashFor(e,t,n);if(v(r)){this.parseHash(r)&&this.fetchTasks();return}window.location.hash!==r&&(window.location.hash=r)}async fetchTasks(){let e=++this.readEpoch,t=this.mutationEpoch,n=this.wantedScope;this.loading=!0,this.isSpinning=!0;try{let r=await C.fetchTasks(n===`all`?void 0:n);if(e!==this.readEpoch)return;if(t!==this.mutationEpoch){this.fetchTasks();return}this.lists=r.calendars.map(e=>({...e,color:N(e.path)})),this.tasks=r.tasks.map(e=>({...e,color:N(e.calendarPath)})),this.loadedScope=n,this.scheduling=r.scheduling===`server`?`server`:`email`,this.settling=new Set,r.failedCalendars>0&&this.toast(`tasks.someListsFailed`,void 0,`error`)}catch(t){if(e!==this.readEpoch)return;console.error(`Failed to load tasks`,t),this.failed(`tasks.loadFailed`,t)}finally{e===this.readEpoch&&(this.loading=!1)}}shows(e,t=new Date){if(this.selectedCalendar&&e.calendarPath!==this.selectedCalendar)return!1;let n=this.searchQuery.trim().toLowerCase();return n?e.title.toLowerCase().includes(n)||(e.description??``).toLowerCase().includes(n):w(e,this.selectedList,t)}get visibleTasks(){let e=new Date;return this.tasks.filter(t=>this.shows(t,e)||this.settling.has(t.path))}countFor(e){if(this.loadedScope!==`all`&&this.loadedScope!==F(e))return null;let t=new Date;return this.tasks.filter(n=>(!this.selectedCalendar||n.calendarPath===this.selectedCalendar)&&w(n,e,t)).length}replaceTask(e,t){this.mutationEpoch++;let n={...t,color:N(t.calendarPath)};this.tasks=this.tasks.map(t=>t.path===e?n:t)}async handleToggleComplete(e,t){if(!this.pendingPaths.has(e.path)){this.pendingPaths=new Set(this.pendingPaths).add(e.path),this.settling=new Set(this.settling).add(e.path),this.replaceTask(e.path,{...e,status:t?`completed`:`needs-action`});try{let n=await C.completeTask(e.path,t,this.i18nStore?.getLanguage?.());this.replaceTask(e.path,n),n.sendFailed&&this.toast(`invitations.notTold`,void 0,`error`),t&&!I(n)&&this.toast(`tasks.movedToNext`,{date:this.formatDue(n)})}catch(t){console.error(`Failed to update task`,t),this.replaceTask(e.path,e),this.failed(`tasks.completeFailed`,t)}finally{let t=new Set(this.pendingPaths);t.delete(e.path),this.pendingPaths=t}}}handleSaved(e){let{task:t,created:n}=e.detail;this.closeModal(),this.mutationEpoch++;let r={...t,color:N(t.calendarPath)};if(this.tasks=n?[r,...this.tasks]:this.tasks.map(e=>e.path===r.path?r:e),!this.shows(r))if(n){let e=this.selectedCalendar===r.calendarPath?this.selectedCalendar:``;this.navigate(I(r)?`completed`:`all`,e,``)}else this.settling=new Set(this.settling).add(r.path)}async confirmDelete(e=!0){let t=this.taskToDelete;if(t){this.taskToDelete=null;try{(await C.deleteTask(t.path,{notify:e,lang:this.i18nStore?.getLanguage?.()}))?.sendFailed&&this.toast(`invitations.notTold`,void 0,`error`),this.mutationEpoch++,this.tasks=this.tasks.filter(e=>e.path!==t.path)}catch(e){console.error(`Failed to delete task`,e),this.failed(`tasks.deleteFailed`,e)}}}async handleListPromptSubmit(e){this.listPromptOpen=!1;let t=String(e.detail?.name??``).trim();if(t)try{await j.createCalendar(t,[`VTODO`]),await this.fetchTasks()}catch(e){console.error(`Failed to create list`,e),this.failed(`tasks.createListFailed`,e)}}openCreate(){this.editingTask=void 0,this.modalOpen=!0,this.mobileSidebarOpen=!1}openEdit(e){this.editingTask=e,this.modalOpen=!0}closeModal(){this.modalOpen=!1,this.editingTask=void 0}selectList(e){this.mobileSidebarOpen=!1,h(this.renderRoot),this.navigate(e,this.selectedCalendar,``)}selectCalendar(e){this.mobileSidebarOpen=!1,h(this.renderRoot),this.navigate(this.selectedList,this.selectedCalendar===e?``:e,this.searchQuery)}formatDue(e){return A(e,new Date,this.i18nStore?.t(`tasks.today`)??`Today`,P(this.i18nStore?.getLanguage?.()),this.settingsStore?.getState().hourFormat)}failed(e,t){g(t)||this.toast(e,void 0,`error`)}toast(e,t,n){window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(e,t),type:n,duration:5e3}}))}handleSidebarResize(e){let t=e.detail.newWidth,n=t<U;n!==this.sidebarCollapsed&&(this.sidebarCollapsed=n,this.settingsStore?.updateSettings({sidebarCollapsed:n})),this.sidebarWidth=n?V:Math.min(Math.max(t,180),H)}get username(){return this.settingsStore?.getState().loginUsername||``}render(){let t=e=>this.i18nStore?.t(e)??e,n=W.find(e=>e.id===this.selectedList)??W[0],r=this.lists.find(e=>e.path===this.selectedCalendar)?.name??``,i=this.selectedCalendar||this.lists[0]?.path||``;return c`
+            <app-header
+                currentTab="tasks"
+                .username=${this.username}
+                .isMobile=${this.isMobile}
+                .searchQuery=${this.searchQuery}
+                @toggle-sidebar=${()=>{this.mobileSidebarOpen=!this.mobileSidebarOpen}}
+                @search-submit=${e=>this.navigate(this.selectedList,this.selectedCalendar,e.detail.value)}
+            ></app-header>
+            <div
+                class="app-container ${this.sidebarCollapsed&&!this.isMobile?`collapsed`:``} ${this.isSidebarDragging?`dragging`:``}"
+                style="${!this.sidebarCollapsed&&!this.isMobile?`--sidebar-width: ${this.sidebarWidth}px;`:``}"
+            >
+                <div class="layout">
+                    <alps-sidebar
+                        class="${this.isMobile?`mobile-sidebar`:`desktop-sidebar`} ${this.mobileSidebarOpen?`open`:``}"
+                        .isMobile=${this.isMobile}
+                        .isOpen=${this.mobileSidebarOpen}
+                        .collapsed=${this.sidebarCollapsed&&!this.isMobile}
+                        .width=${this.sidebarWidth}
+                        @toggle-collapse=${()=>{this.sidebarCollapsed=!this.sidebarCollapsed,this.settingsStore?.updateSettings({sidebarCollapsed:this.sidebarCollapsed})}}
+                        @sidebar-resize=${this.handleSidebarResize}
+                        @drag-start=${()=>{this.isSidebarDragging=!0}}
+                        @drag-end=${()=>{this.isSidebarDragging=!1}}
+                        @close-sidebar=${()=>{this.mobileSidebarOpen=!1}}
+                    >
+                        <!-- Frame and content follow the strip state
+                             alps-sidebar provides: collapsed, they keep the
+                             smart lists and the lists, dimmed, inert and
+                             behind the main view. -->
+                        <alps-sidebar-frame class="sidebar-wrapper">
+                            <alps-toolbar class="sidebar-header">
+                                <alps-create-button
+                                    icon="plusBold"
+                                    ?disabled=${this.lists.length===0}
+                                    @click=${()=>this.openCreate()}
+                                >${t(`tasks.addTask`)}</alps-create-button>
+                            </alps-toolbar>
+                            <!-- A navigation landmark named for the tab. The
+                                 smart lists inside are a plain group: an
+                                 unnamed navigation of their own, nested in it,
+                                 left the task lists outside. -->
+                            <alps-sidebar-content class="sidebar-content" role="navigation" aria-label=${t(`navigation.tasks`)}>
+                                <div class="sidebar-scroll-content">
+                                    <div class="smart-lists">
+                                        ${W.map(n=>{let r=this.countFor(n.id),i=n.id===this.selectedList&&!this.searchQuery;return c`
+                                                <button
+                                                    class="nav-item smart-list ${i?`active`:``}"
+                                                    data-list=${n.id}
+                                                    aria-current=${i?`page`:e}
+                                                    title=${t(n.label)}
+                                                    @click=${()=>this.selectList(n.id)}
+                                                >
+                                                    ${u(n.icon)}
+                                                    <span class="label">${t(n.label)}</span>
+                                                    ${r?c`<span class="count">${r}</span>`:``}
+                                                </button>
+                                            `})}
+                                    </div>
+                                    ${this.lists.length>0?c`
+                                        <div class="calendar-lists">
+                                            <alps-sidebar-heading heading=${t(`tasks.lists`)}></alps-sidebar-heading>
+                                            ${this.lists.map(t=>c`
+                                                <button
+                                                    class="nav-item task-list ${t.path===this.selectedCalendar?`active`:``}"
+                                                    data-path=${t.path}
+                                                    aria-current=${t.path===this.selectedCalendar?`true`:e}
+                                                    @click=${()=>this.selectCalendar(t.path)}
+                                                >
+                                                    <span class="list-dot" style="background: ${t.color}"></span>
+                                                    <span class="label"><bdi>${t.name}</bdi></span>
+                                                </button>
+                                            `)}
+                                        </div>
+                                    `:``}
+                                </div>
+                            </alps-sidebar-content>
+                        </alps-sidebar-frame>
+                        <alps-icon-btn
+                            slot="footer-actions"
+                            icon="folderPlus"
+                            title=${t(`tasks.newList`)}
+                            @click=${()=>{this.listPromptOpen=!0}}
+                        ></alps-icon-btn>
+                    </alps-sidebar>
+
+                    <div class="main-content">
+                        <div class="toolbar">
+                            <h2>
+                                ${this.searchQuery?t(`tasks.searchResults`):t(n.label)}
+                                ${r?c`<span class="sub-title"><bdi>${r}</bdi></span>`:``}
+                            </h2>
+                            <alps-icon-btn
+                                icon="arrowsClockwise"
+                                title=${t(`mailboxPage.refresh`)}
+                                ?spinning=${this.isSpinning}
+                                @animationiteration=${()=>{this.loading||(this.isSpinning=!1)}}
+                                @click=${()=>void this.fetchTasks()}
+                            ></alps-icon-btn>
+                        </div>
+                        <tasks-list
+                            .tasks=${this.visibleTasks}
+                            .pendingPaths=${this.pendingPaths}
+                            .settling=${this.settling}
+                            ?searching=${!!this.searchQuery}
+                            ?loading=${this.loading}
+                            @toggle-complete=${e=>void this.handleToggleComplete(e.detail.task,e.detail.done)}
+                            @open-task=${e=>this.openEdit(e.detail.task)}
+                        ></tasks-list>
+                    </div>
+                </div>
+            </div>
+
+            <task-modal
+                .open=${this.modalOpen}
+                .task=${this.editingTask}
+                .lists=${this.lists}
+                .defaultList=${i}
+                .scheduling=${this.scheduling}
+                @close=${()=>this.closeModal()}
+                @saved=${this.handleSaved}
+                @conflict=${()=>void this.fetchTasks()}
+                @delete=${e=>{this.closeModal(),this.taskToDelete=e.detail.task}}
+            ></task-modal>
+
+            ${this.listPromptOpen?c`
+                <ui-prompt
+                    heading=${t(`tasks.newList`)}
+                    .fields=${[{id:`name`,label:t(`tasks.listName`),autofocus:!0}]}
+                    @submit=${this.handleListPromptSubmit}
+                    @cancel=${()=>{this.listPromptOpen=!1}}
+                ></ui-prompt>
+            `:``}
+
+            ${this.taskToDelete&&E(this.taskToDelete,this.scheduling)?c`
+                <ui-confirm
+                    class="delete-assigned"
+                    heading=${t(`tasks.deleteTask`)}
+                    message=${t(this.taskToDelete.role===`organizer`?`tasks.deleteTellAssignees`:`tasks.deleteTellAssigner`)}
+                    confirmText=${t(`invitations.deleteAndTell`)}
+                    secondaryText=${t(`invitations.deleteOnly`)}
+                    isDanger
+                    @confirm=${()=>void this.confirmDelete(!0)}
+                    @secondary=${()=>void this.confirmDelete(!1)}
+                    @cancel=${()=>{this.taskToDelete=null}}
+                ></ui-confirm>
+            `:this.taskToDelete?c`
+                <ui-confirm
+                    heading=${t(`tasks.deleteTask`)}
+                    message=${t(`tasks.deleteTaskConfirm`)}
+                    confirmText=${t(`tasks.delete`)}
+                    isDanger
+                    @confirm=${()=>void this.confirmDelete()}
+                    @cancel=${()=>{this.taskToDelete=null}}
+                ></ui-confirm>
+            `:``}
+        `}};b([n({context:x})],G.prototype,`i18nStore`,void 0),b([n({context:S})],G.prototype,`settingsStore`,void 0),b([i()],G.prototype,`tasks`,void 0),b([i()],G.prototype,`lists`,void 0),b([i()],G.prototype,`selectedList`,void 0),b([i()],G.prototype,`selectedCalendar`,void 0),b([i()],G.prototype,`searchQuery`,void 0),b([i()],G.prototype,`loading`,void 0),b([i()],G.prototype,`loadedScope`,void 0),b([i()],G.prototype,`pendingPaths`,void 0),b([i()],G.prototype,`settling`,void 0),b([i()],G.prototype,`modalOpen`,void 0),b([i()],G.prototype,`editingTask`,void 0),b([i()],G.prototype,`taskToDelete`,void 0),b([i()],G.prototype,`scheduling`,void 0),b([i()],G.prototype,`isSpinning`,void 0),b([i()],G.prototype,`listPromptOpen`,void 0),b([i()],G.prototype,`sidebarWidth`,void 0),b([i()],G.prototype,`sidebarCollapsed`,void 0),b([i()],G.prototype,`isSidebarDragging`,void 0),b([i()],G.prototype,`isMobile`,void 0),b([i()],G.prototype,`mobileSidebarOpen`,void 0),G=b([t(`tasks-page`)],G);export{G as TasksPage};

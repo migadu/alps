@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // A target sign-in can fail before a password is checked, or linking can
