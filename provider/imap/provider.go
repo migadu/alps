@@ -144,6 +144,16 @@ func (p *IMAPProvider) Close() error {
 	return nil
 }
 
+// ConnectionLost reports whether the client's connection has ended: the mail
+// server dropped it, said BYE, or it was logged out. The client enters the
+// logout state before it fails the commands still out, so an operation that
+// failed for the connection's end finds it there. A command sent after fails
+// with an unexpected EOF of the client's own, which the provider's errors
+// often carry only as text ("failed to select mailbox: unexpected EOF").
+func (p *IMAPProvider) ConnectionLost() bool {
+	return p.client != nil && p.client.State() == imap.ConnStateLogout
+}
+
 // ListMailboxes returns all mailboxes
 func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 	// RETURN is LIST-EXTENDED syntax (RFC 5258), which IMAP4rev2 includes and
@@ -610,11 +620,7 @@ func (p *IMAPProvider) selectMailbox(mailbox string) (*imap.SelectData, error) {
 	}
 	data, err := p.client.Select(mailbox, nil).Wait()
 	if err != nil {
-		// Wrapped, so that a session tells a lost connection from a refusal
-		// and opens another: the client forgets the mailbox selected when
-		// its connection ends, so SELECT is the first command to fail after
-		// the mail server drops it.
-		return nil, fmt.Errorf("failed to select mailbox: %w", err)
+		return nil, fmt.Errorf("failed to select mailbox: %v", err)
 	}
 	p.selectedUIDValidity = data.UIDValidity
 	p.selectedUIDNext = data.UIDNext
