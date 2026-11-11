@@ -1150,6 +1150,7 @@ export class CalendarPage extends LitElement {
                         ${!this.isMobile ? html`
                         <div class="toolbar-center">
                             <alps-toggle 
+                                label=${this.i18nStore?.t('calendar.view')}
                                 .options=${[
                 { label: this.i18nStore?.t('calendar.day'), value: 'day' },
                 { label: this.i18nStore?.t('calendar.week'), value: 'week' },
@@ -1230,6 +1231,7 @@ export class CalendarPage extends LitElement {
                             <div class="mobile-bottom-actions">
                                 <alps-toggle 
                                     full-width
+                                    label=${this.i18nStore?.t('calendar.view')}
                                     .options=${[
                                         { label: this.i18nStore?.t('calendar.day'), value: 'day' },
                                         { label: this.i18nStore?.t('calendar.week'), value: 'week' },
