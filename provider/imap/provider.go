@@ -610,7 +610,7 @@ func (p *IMAPProvider) selectMailbox(mailbox string) (*imap.SelectData, error) {
 	}
 	data, err := p.client.Select(mailbox, nil).Wait()
 	if err != nil {
-		return nil, fmt.Errorf("failed to select mailbox: %v", err)
+		return nil, fmt.Errorf("failed to select mailbox: %w", err)
 	}
 	p.selectedUIDValidity = data.UIDValidity
 	p.selectedUIDNext = data.UIDNext
