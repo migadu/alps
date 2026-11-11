@@ -42,8 +42,8 @@ type plugin struct {
 	alps.GoPlugin
 	url          *url.URL
 	srv          *alps.Server
-	urlCache     sync.Map // raw endpoint -> *url.URL
-	homeSetCache map[string]string
+	urlCache     sync.Map          // raw endpoint -> *url.URL
+	homeSetCache map[string]string // resolved connection identity -> home set
 	cacheMutex   sync.RWMutex
 	debug        bool
 }
@@ -71,28 +71,79 @@ func (p *plugin) urlFor(username string) *url.URL {
 	return u
 }
 
-func (p *plugin) client(ctx context.Context, session *alps.Session) (*carddav.Client, error) {
-	u := p.urlFor(usernameOf(session))
-	if u == nil {
-		return nil, fmt.Errorf("CardDAV server is not configured")
-	}
-	return newClient(u, session, p.debug)
+// connectionKey keeps every operation in one HTTP request on the same DAV
+// account, even if another request changes its saved connection concurrently.
+type connectionKey struct{}
+
+type requestConnection struct {
+	url      *url.URL
+	client   *http.Client
+	cacheKey string
 }
 
-// httpClient authenticates as the session, for the requests go-webdav's client
-// has no method for.
-func (p *plugin) httpClient(session *alps.Session) *http.Client {
-	return &http.Client{Transport: &authRoundTripper{server: http.DefaultTransport, session: session, debug: p.debug}}
+func (p *plugin) connection(ctx context.Context, session *alps.Session) (*requestConnection, error) {
+	if conn, ok := ctx.Value(connectionKey{}).(*requestConnection); ok {
+		return conn, nil
+	}
+	fallback := ""
+	if u := p.urlFor(usernameOf(session)); u != nil {
+		fallback = u.String()
+	}
+	resolved := alps.ResolvedDAVConnection{Server: fallback}
+	if session != nil {
+		var err error
+		resolved, err = session.ResolveDAVConnection(provider.ServiceCardDAV, fallback)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if resolved.Server == "" {
+		return nil, fmt.Errorf("CardDAV server is not configured")
+	}
+	u, err := parseCardDAVURL(resolved.Server)
+	if err != nil {
+		return nil, err
+	}
+	hc, err := alps.DAVHTTPClient(resolved)
+	if err != nil {
+		return nil, err
+	}
+	hc.Transport = &authRoundTripper{server: hc.Transport, debug: p.debug}
+	return &requestConnection{url: u, client: hc, cacheKey: resolved.CacheKey}, nil
+}
+
+func (p *plugin) addRoute(method, path string, handler alps.HandlerFunc) {
+	p.GoPlugin.AddRoute(method, path, func(ctx *alps.Context) error {
+		conn, err := p.connection(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+		ctx.Request = ctx.Request.WithContext(context.WithValue(ctx.Request.Context(), connectionKey{}, conn))
+		return handler(ctx)
+	})
+}
+
+func (p *plugin) requestConnection(ctx *alps.Context) *requestConnection {
+	return ctx.Request.Context().Value(connectionKey{}).(*requestConnection)
+}
+
+// httpClient shares the request's resolved credentials with go-webdav's client.
+func (p *plugin) httpClient(ctx *alps.Context) *http.Client {
+	return p.requestConnection(ctx).client
 }
 
 func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Session) (*carddav.Client, *carddav.AddressBook, error) {
-	c, err := p.client(ctx, session)
+	conn, err := p.connection(ctx, session)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
+	}
+	c, err := newClient(conn.url, conn.client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
 	}
 
 	p.cacheMutex.RLock()
-	homeSet, ok := p.homeSetCache[session.Username()]
+	homeSet, ok := p.homeSetCache[conn.cacheKey]
 	p.cacheMutex.RUnlock()
 
 	if !ok {
@@ -111,7 +162,7 @@ func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Sessio
 			// Clear cache to prevent unbounded growth
 			p.homeSetCache = make(map[string]string)
 		}
-		p.homeSetCache[session.Username()] = homeSet
+		p.homeSetCache[conn.cacheKey] = homeSet
 		p.cacheMutex.Unlock()
 	}
 
@@ -175,7 +226,21 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 
 	registerRoutes(p)
 
-	return p.Plugin(), nil
+	return &davPlugin{Plugin: p.Plugin(), plugin: p}, nil
+}
+
+// davPlugin exposes the same normalized administrator endpoint the request
+// handlers use, so settings do not mistake failed discovery for a connection.
+type davPlugin struct {
+	alps.Plugin
+	plugin *plugin
+}
+
+func (p *davPlugin) DAVDefaultServer(username string) string {
+	if u := p.plugin.urlFor(username); u != nil {
+		return u.String()
+	}
+	return ""
 }
 
 func init() {

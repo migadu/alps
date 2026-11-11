@@ -330,13 +330,13 @@ func (p *plugin) putCard(ctx *alps.Context, c *carddav.Client, objectPath string
 	if err := encodeCard(&buf, card); err != nil {
 		return "", fmt.Errorf("failed to encode address object: %v", err)
 	}
-	target := davsave.URL(p.urlFor(ctx.Session.Username()), objectPath)
+	target := davsave.URL(p.requestConnection(ctx).url, objectPath)
 	var newETag string
 	var err error
 	if createOnly {
-		newETag, err = davsave.Create(ctx.Request.Context(), p.httpClient(ctx.Session), target, vcard.MIMEType, buf.Bytes())
+		newETag, err = davsave.Create(ctx.Request.Context(), p.httpClient(ctx), target, vcard.MIMEType, buf.Bytes())
 	} else {
-		newETag, err = davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), target, vcard.MIMEType, buf.Bytes(), etag)
+		newETag, err = davsave.Put(ctx.Request.Context(), p.httpClient(ctx), target, vcard.MIMEType, buf.Bytes(), etag)
 	}
 	if errors.Is(err, davsave.ErrConflict) {
 		return "", errChangedElsewhere
@@ -682,7 +682,7 @@ func touchRevision(card vcard.Card) {
 }
 
 func registerRoutes(p *plugin) {
-	p.GET("/contacts", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodGet, "/contacts", func(ctx *alps.Context) error {
 		queryText := ctx.QueryParam("query")
 
 		c, addressBook, err := p.clientWithAddressBook(ctx.Request.Context(), ctx.Session)
@@ -735,7 +735,7 @@ func registerRoutes(p *plugin) {
 		})
 	})
 
-	p.GET("/contacts/{path}", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodGet, "/contacts/{path}", func(ctx *alps.Context) error {
 		path, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
@@ -1179,8 +1179,8 @@ func registerRoutes(p *plugin) {
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": objectPath, "etag": etag})
 	}
 
-	p.POST("/contacts/create", updateContact)
-	p.POST("/contacts/{path}/edit", updateContact)
+	p.addRoute(http.MethodPost, "/contacts/create", updateContact)
+	p.addRoute(http.MethodPost, "/contacts/{path}/edit", updateContact)
 
 	// A field gesture rather than a form save: starring, or adding, renaming or
 	// removing a category, on one card or across a selection. Those went through
@@ -1192,7 +1192,7 @@ func registerRoutes(p *plugin) {
 	// again and the categories set on top of that, once: the gesture has no
 	// opinion about the rest of the card, so there is nothing to lose by
 	// re-applying it. A second refusal in a row is reported.
-	p.POST("/contacts/{path}/categories", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodPost, "/contacts/{path}/categories", func(ctx *alps.Context) error {
 		var req struct {
 			Categories []string `json:"categories"`
 		}
@@ -1235,7 +1235,7 @@ func registerRoutes(p *plugin) {
 		}
 	})
 
-	p.DELETE("/contacts/{path}", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodDelete, "/contacts/{path}", func(ctx *alps.Context) error {
 		rawPath, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
@@ -1262,7 +1262,7 @@ func registerRoutes(p *plugin) {
 		// davsave.Delete rather than go-webdav's RemoveAll, whose error keeps
 		// the server's status in a type nothing outside go-webdav can read:
 		// see deleteFailed.
-		err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), path), "", nil)
+		err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx), davsave.URL(p.requestConnection(ctx).url, path), "", nil)
 		if err != nil {
 			return deleteFailed("address object", err)
 		}

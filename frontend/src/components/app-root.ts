@@ -198,6 +198,7 @@ export class AppRoot extends LitElement {
     window.addEventListener('dragover', this._handleGlobalDragOver);
     window.addEventListener('drop', this._handleGlobalDrop);
     window.addEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
+    window.addEventListener('dav-connections-updated', this._handleDAVConnectionsUpdated);
     // Reconnection may have missed a registry update while the shell's
     // listeners were detached. Apply the current list before showing pages.
     this._handlePluginsUpdated();
@@ -248,6 +249,22 @@ export class AppRoot extends LitElement {
     this._fetchSessionData();
   };
 
+  private _handleDAVConnectionsUpdated = (event: Event) => {
+    const { service, configured } = (event as CustomEvent).detail ?? {};
+    if (service !== 'caldav' && service !== 'carddav') return;
+    // Kept pages can hold the previous server's objects and editors. A new
+    // connection starts with fresh pages, including the mail reader's calendar
+    // invitation banner, rather than carrying those objects into another DAV
+    // account at the same paths.
+    for (const route of registry.routes) {
+      if (route.pluginId === service) this.pluginPages.delete(route.path);
+    }
+    if (service === 'caldav') this.mailboxPage = null;
+    if (typeof configured === 'boolean') registry.setDAVConnectionConfigured(service, configured);
+    this.requestUpdate();
+    void this._fetchSessionData();
+  };
+
   private sessionDataGeneration = 0;
 
   private async _fetchSessionData() {
@@ -260,7 +277,7 @@ export class AppRoot extends LitElement {
         // this account's answer, even if its request finishes afterwards.
         if (!this.isConnected || generation !== this.sessionDataGeneration) return;
         if (data.EnabledPlugins) {
-          registry.setEnabledPlugins(data.EnabledPlugins);
+          registry.setEnabledPlugins(data.EnabledPlugins, data.ActivePlugins ?? data.EnabledPlugins);
         }
       }
     } catch (e) {
@@ -288,6 +305,7 @@ export class AppRoot extends LitElement {
     window.removeEventListener('dragover', this._handleGlobalDragOver);
     window.removeEventListener('drop', this._handleGlobalDrop);
     window.removeEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
+    window.removeEventListener('dav-connections-updated', this._handleDAVConnectionsUpdated);
     window.removeEventListener(PLUGIN_LOAD_FAILED_EVENT, this._handlePluginLoadFailed);
     window.removeEventListener(UPDATE_AVAILABLE_EVENT, this._handleUpdateAvailable);
     registerBusyProbe(null);

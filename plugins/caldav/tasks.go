@@ -607,7 +607,7 @@ func (p *plugin) openTask(ctx *alps.Context) (*caldav.Client, []caldav.Calendar,
 }
 
 func registerTaskRoutes(p *plugin) {
-	p.GET("/calendar/tasks", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodGet, "/calendar/tasks", func(ctx *alps.Context) error {
 		scope := ctx.QueryParam("scope")
 		if scope != "" && scope != "active" && scope != "closed" {
 			return alps.NewHTTPError(http.StatusBadRequest, "scope must be active or closed")
@@ -663,7 +663,7 @@ func registerTaskRoutes(p *plugin) {
 		})
 	})
 
-	p.POST("/calendar/tasks", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodPost, "/calendar/tasks", func(ctx *alps.Context) error {
 		var in TaskInput
 		if err := ctx.BindJSON(&in); err != nil {
 			return ctx.RespondBindError(err)
@@ -722,7 +722,7 @@ func registerTaskRoutes(p *plugin) {
 		return p.respondTask(ctx, calendars, acct, objectPath, etag, cal, saved)
 	})
 
-	p.POST("/calendar/tasks/{path}/edit", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodPost, "/calendar/tasks/{path}/edit", func(ctx *alps.Context) error {
 		var in TaskInput
 		if err := ctx.BindJSON(&in); err != nil {
 			return ctx.RespondBindError(err)
@@ -778,7 +778,7 @@ func registerTaskRoutes(p *plugin) {
 	// On a task assigned to the user the tick is also their answer, and goes
 	// to the organizer. On one they assigned it is their own record, and
 	// mails nobody.
-	p.POST("/calendar/tasks/{path}/complete", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodPost, "/calendar/tasks/{path}/complete", func(ctx *alps.Context) error {
 		var req struct {
 			Done bool   `json:"done"`
 			Lang string `json:"lang"`

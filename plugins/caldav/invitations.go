@@ -725,7 +725,7 @@ func (p *plugin) sendReply(ctx *alps.Context, acct *schedulingAccount, cal *ical
 }
 
 func registerInvitationRoutes(p *plugin) {
-	p.GET("/calendar/invitation", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodGet, "/calendar/invitation", func(ctx *alps.Context) error {
 		inv, err := p.inspectInvitation(ctx, ctx.QueryParam("mailbox"), ctx.QueryParam("uid"))
 		if err != nil {
 			return err
@@ -735,7 +735,7 @@ func registerInvitationRoutes(p *plugin) {
 
 	// Answering an invitation: the answer goes into the calendar copy (made
 	// from the invitation if there is none yet), and to the organizer.
-	p.POST("/calendar/invitation/respond", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodPost, "/calendar/invitation/respond", func(ctx *alps.Context) error {
 		var req invitationRequest
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
@@ -790,7 +790,7 @@ func registerInvitationRoutes(p *plugin) {
 	// Applying what a message says to the calendar: an organizer's update or
 	// cancellation, an attendee's reply to the user's meeting, or a published
 	// event added.
-	p.POST("/calendar/invitation/apply", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodPost, "/calendar/invitation/apply", func(ctx *alps.Context) error {
 		var req invitationRequest
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
@@ -823,7 +823,7 @@ func registerInvitationRoutes(p *plugin) {
 				// otherwise answers an attendee's delete with a decline, to
 				// an organizer who has just cancelled.
 				header := http.Header{"Schedule-Reply": {"F"}}
-				err := davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), inv.copy.Path), inv.copy.ETag, header)
+				err := davsave.Delete(ctx.Request.Context(), p.httpClient(ctx), davsave.URL(p.requestConnection(ctx).url, inv.copy.Path), inv.copy.ETag, header)
 				if err != nil {
 					return deleteFailed("calendar object", err)
 				}

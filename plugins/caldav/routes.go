@@ -342,7 +342,7 @@ func (p *plugin) putCalendar(ctx *alps.Context, c *caldav.Client, objectPath str
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
 		return "", fmt.Errorf("failed to encode calendar object: %v", err)
 	}
-	newETag, err := davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), objectPath), ical.MIMEType, buf.Bytes(), etag)
+	newETag, err := davsave.Put(ctx.Request.Context(), p.httpClient(ctx), davsave.URL(p.requestConnection(ctx).url, objectPath), ical.MIMEType, buf.Bytes(), etag)
 	if errors.Is(err, davsave.ErrConflict) {
 		return "", errChangedElsewhere
 	}
@@ -360,7 +360,7 @@ func (p *plugin) putCalendar(ctx *alps.Context, c *caldav.Client, objectPath str
 }
 
 func registerRoutes(p *plugin) {
-	p.GET("/calendar/calendars", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodGet, "/calendar/calendars", func(ctx *alps.Context) error {
 		c, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
 		if err != nil {
 			return err
@@ -384,7 +384,7 @@ func registerRoutes(p *plugin) {
 		})
 	})
 
-	p.POST("/calendar/calendars", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodPost, "/calendar/calendars", func(ctx *alps.Context) error {
 		var req struct {
 			Name string `json:"name"`
 			// Components, when given, is all the new collection takes, out of
@@ -411,7 +411,7 @@ func registerRoutes(p *plugin) {
 		}
 
 		p.cacheMutex.RLock()
-		homeSet, ok := p.homeSetCache[ctx.Session.Username()]
+		homeSet, ok := p.homeSetCache[p.requestConnection(ctx).cacheKey]
 		p.cacheMutex.RUnlock()
 
 		if !ok || homeSet == "" {
@@ -425,7 +425,7 @@ func registerRoutes(p *plugin) {
 				// calendars were listed where go-webdav resolves that href,
 				// the endpoint itself, and the first one is made there: at
 				// its path, or at the root when it has none.
-				homeSet = path.Join("/", resolveDAVPath(p.urlFor(ctx.Session.Username()), homeSet))
+				homeSet = path.Join("/", resolveDAVPath(p.requestConnection(ctx).url, homeSet))
 			} else {
 				return fmt.Errorf("failed to determine calendar home set")
 			}
@@ -434,18 +434,13 @@ func registerRoutes(p *plugin) {
 		newID := uuid.New().String()
 		newPath := path.Join(homeSet, newID) + "/"
 
-		targetURL := *p.urlFor(ctx.Session.Username())
-		targetURL.Path = resolveDAVPath(p.urlFor(ctx.Session.Username()), newPath)
+		targetURL := *p.requestConnection(ctx).url
+		targetURL.Path = resolveDAVPath(p.requestConnection(ctx).url, newPath)
 		if !strings.HasSuffix(targetURL.Path, "/") {
 			targetURL.Path += "/"
 		}
 
-		rt := authRoundTripper{
-			server:  http.DefaultTransport,
-			session: ctx.Session,
-			debug:   p.debug,
-		}
-		hc := &http.Client{Transport: &rt}
+		hc := p.httpClient(ctx)
 
 		send := func(method, xmlPayload string) (*http.Response, error) {
 			httpReq, err := http.NewRequestWithContext(ctx.Request.Context(), method, targetURL.String(), strings.NewReader(xmlPayload))
@@ -487,7 +482,7 @@ func registerRoutes(p *plugin) {
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": newPath})
 	})
 
-	p.PATCH("/calendar/calendars/{path}", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodPatch, "/calendar/calendars/{path}", func(ctx *alps.Context) error {
 		var req struct {
 			Name string `json:"name"`
 		}
@@ -516,8 +511,8 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		targetURL := *p.urlFor(ctx.Session.Username())
-		targetURL.Path = resolveDAVPath(p.urlFor(ctx.Session.Username()), calPath)
+		targetURL := *p.requestConnection(ctx).url
+		targetURL.Path = resolveDAVPath(p.requestConnection(ctx).url, calPath)
 		if !strings.HasSuffix(targetURL.Path, "/") {
 			targetURL.Path += "/"
 		}
@@ -531,12 +526,7 @@ func registerRoutes(p *plugin) {
   </D:set>
 </D:propertyupdate>`, xmlEscape(req.Name))
 
-		rt := authRoundTripper{
-			server:  http.DefaultTransport,
-			session: ctx.Session,
-			debug:   p.debug,
-		}
-		hc := &http.Client{Transport: &rt}
+		hc := p.httpClient(ctx)
 
 		httpReq, err := http.NewRequestWithContext(ctx.Request.Context(), "PROPPATCH", targetURL.String(), strings.NewReader(xmlPayload))
 		if err != nil {
@@ -571,7 +561,7 @@ func registerRoutes(p *plugin) {
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 	})
 
-	p.DELETE("/calendar/calendars/{path}", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodDelete, "/calendar/calendars/{path}", func(ctx *alps.Context) error {
 		calPath, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
@@ -596,7 +586,7 @@ func registerRoutes(p *plugin) {
 		// davsave.Delete rather than go-webdav's RemoveAll, whose error keeps
 		// the server's status in a type nothing outside go-webdav can read:
 		// see deleteFailed.
-		err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), calPath), "", nil)
+		err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx), davsave.URL(p.requestConnection(ctx).url, calPath), "", nil)
 		if err != nil {
 			return deleteFailed("calendar", err)
 		}
@@ -604,7 +594,7 @@ func registerRoutes(p *plugin) {
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 	})
 
-	p.GET("/calendar/events", func(ctx *alps.Context) error {
+	p.addRoute(http.MethodGet, "/calendar/events", func(ctx *alps.Context) error {
 		startStr := ctx.QueryParam("start")
 		endStr := ctx.QueryParam("end")
 		queryStr := ctx.QueryParam("query")
@@ -865,8 +855,8 @@ func registerRoutes(p *plugin) {
 		return ctx.JSON(http.StatusOK, saved)
 	}
 
-	p.POST("/calendar/events", updateEvent)
-	p.POST("/calendar/events/{path}/edit", updateEvent)
+	p.addRoute(http.MethodPost, "/calendar/events", updateEvent)
+	p.addRoute(http.MethodPost, "/calendar/events/{path}/edit", updateEvent)
 
 	deleteObject := func(ctx *alps.Context) error {
 		path, err := parseObjectPath(ctx.Param("path"))
@@ -897,7 +887,7 @@ func registerRoutes(p *plugin) {
 		}
 
 		// header is nil unless the delete needs scheduling headers.
-		err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), path), "", header)
+		err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx), davsave.URL(p.requestConnection(ctx).url, path), "", header)
 		if err != nil {
 			return deleteFailed("calendar object", err)
 		}
@@ -909,15 +899,15 @@ func registerRoutes(p *plugin) {
 		return ctx.JSON(http.StatusOK, saved)
 	}
 
-	p.DELETE("/calendar/events/{path}", deleteObject)
+	p.addRoute(http.MethodDelete, "/calendar/events/{path}", deleteObject)
 	// A task is removed as an event is: one object inside one of the user's
 	// calendars.
-	p.DELETE("/calendar/tasks/{path}", deleteObject)
+	p.addRoute(http.MethodDelete, "/calendar/tasks/{path}", deleteObject)
 
 	// Answering an invitation already in the calendar, as the reader answers
 	// one in a message.
-	p.POST("/calendar/events/{path}/respond", p.respondToCopy)
-	p.POST("/calendar/tasks/{path}/respond", p.respondToCopy)
+	p.addRoute(http.MethodPost, "/calendar/events/{path}/respond", p.respondToCopy)
+	p.addRoute(http.MethodPost, "/calendar/tasks/{path}/respond", p.respondToCopy)
 
 	registerTaskRoutes(p)
 	registerInvitationRoutes(p)

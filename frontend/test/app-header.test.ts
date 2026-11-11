@@ -9,7 +9,7 @@
  * The header's tabs and the user menu's entries (the tabs on a phone) both
  * did it.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import '../src/components/app-header';
 import '../src/components/user-profile-menu';
 import { registry } from '../src/plugin-registry';
@@ -25,8 +25,11 @@ registry.registerNavTab({ id: 'tasks', pluginId: 'caldav', labelKey: 'navigation
 
 const i18nStore = Object.assign(new EventTarget(), { t: (key: string) => key, getLanguage: () => 'en' });
 
+beforeEach(() => registry.setEnabledPlugins(['caldav', 'carddav']));
+
 afterEach(() => {
   cleanup();
+  registry.setEnabledPlugins(null);
   history.replaceState(null, '', '#/');
 });
 

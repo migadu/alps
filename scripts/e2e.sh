@@ -28,6 +28,7 @@
 #   E2E_SKIP_BUILD=1  test the frontend/dist already on disk
 #   E2E_PREVIEW=1     enable message previews (off by default); SORA_DIR must
 #                     point to a checkout that supports FETCH PREVIEW
+#   E2E_DAV_PERSONAL=1 enable DAV plugins without default servers for setup tests
 #   PW_CHROMIUM_PATH  a pre-installed Chromium to use instead of Playwright's
 set -euo pipefail
 
@@ -300,10 +301,19 @@ api_key = "$ADMIN_KEY"
 tls = false
 EOF
 
+DAV_CALDAV_DEFAULT="server = \"http+insecure://127.0.0.1:$DAV_PORT/caldav/\""
+DAV_CARDDAV_DEFAULT="server = \"http+insecure://127.0.0.1:$DAV_PORT/carddav/\""
+if [ "${E2E_DAV_PERSONAL:-0}" = 1 ]; then
+  DAV_CALDAV_DEFAULT=
+  DAV_CARDDAV_DEFAULT=
+fi
+
 cat >"$STATE/alps.toml" <<EOF
 [server]
 addr = "127.0.0.1:$ALPS_PORT"
 temp_dir = "$STATE/alps-tmp"
+# A fixed test-only key lets the DAV tests persist independent passwords.
+login_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 # On, unlike a deployment's default, so that every spec runs with the server's
 # change numbers (CONDSTORE); e2e/condstore.spec.ts is about them.
 condstore = true
@@ -344,11 +354,11 @@ enabled = true
 
 [plugin.caldav]
 enabled = true
-server = "http+insecure://127.0.0.1:$DAV_PORT/caldav/"
+$DAV_CALDAV_DEFAULT
 
 [plugin.carddav]
 enabled = true
-server = "http+insecure://127.0.0.1:$DAV_PORT/carddav/"
+$DAV_CARDDAV_DEFAULT
 
 [plugin.managesieve]
 enabled = true

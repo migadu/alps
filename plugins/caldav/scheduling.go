@@ -144,17 +144,17 @@ func (a *schedulingAccount) party() itip.Party {
 // as no: alps then sends the messages itself, which is what it would do for a
 // server that never heard of RFC 6638.
 func (p *plugin) scheduling(ctx *alps.Context, c *caldav.Client) *schedulingAccount {
-	username := ctx.Session.Username()
+	cacheKey := p.requestConnection(ctx).cacheKey
 	p.cacheMutex.RLock()
-	cached := p.accounts[username]
-	homeSet := p.homeSetCache[username]
+	cached := p.accounts[cacheKey]
+	homeSet := p.homeSetCache[cacheKey]
 	p.cacheMutex.RUnlock()
 
 	acct := &schedulingAccount{email: strings.ToLower(ctx.Session.Address()), fetched: time.Now()}
 	if cached != nil && time.Since(cached.fetched) < schedulingTTL {
 		acct.server, acct.addresses, acct.email, acct.fetched = cached.server, cached.addresses, cached.email, cached.fetched
 	} else {
-		hc := p.httpClient(ctx.Session)
+		hc := p.httpClient(ctx)
 		if homeSet != "" {
 			acct.server = p.advertisesAutoSchedule(ctx, hc, homeSet)
 		}
@@ -176,7 +176,7 @@ func (p *plugin) scheduling(ctx *alps.Context, c *caldav.Client) *schedulingAcco
 		if len(p.accounts) > 1000 {
 			p.accounts = make(map[string]*schedulingAccount)
 		}
-		p.accounts[username] = acct
+		p.accounts[cacheKey] = acct
 		p.cacheMutex.Unlock()
 	}
 
@@ -191,7 +191,7 @@ func (p *plugin) scheduling(ctx *alps.Context, c *caldav.Client) *schedulingAcco
 // advertisesAutoSchedule asks the calendar home what it supports: RFC 6638
 // §2 has a scheduling server name calendar-auto-schedule in its DAV header.
 func (p *plugin) advertisesAutoSchedule(ctx *alps.Context, hc *http.Client, homeSet string) bool {
-	req, err := http.NewRequestWithContext(ctx.Request.Context(), http.MethodOptions, davsave.URL(p.urlFor(ctx.Session.Username()), homeSet), nil)
+	req, err := http.NewRequestWithContext(ctx.Request.Context(), http.MethodOptions, davsave.URL(p.requestConnection(ctx).url, homeSet), nil)
 	if err != nil {
 		return false
 	}
@@ -216,7 +216,7 @@ func (p *plugin) advertisesAutoSchedule(ctx *alps.Context, hc *http.Client, home
 func (p *plugin) calendarUserAddresses(ctx *alps.Context, hc *http.Client, principal string) []string {
 	body := `<?xml version="1.0" encoding="utf-8"?>
 <D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop><C:calendar-user-address-set/></D:prop></D:propfind>`
-	req, err := http.NewRequestWithContext(ctx.Request.Context(), "PROPFIND", davsave.URL(p.urlFor(ctx.Session.Username()), principal), strings.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx.Request.Context(), "PROPFIND", davsave.URL(p.requestConnection(ctx).url, principal), strings.NewReader(body))
 	if err != nil {
 		return nil
 	}

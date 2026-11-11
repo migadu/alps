@@ -21,6 +21,7 @@ const i18nStore = {
 };
 
 beforeEach(() => {
+    registry.setEnabledPlugins(['caldav']);
     // The meetings below are on 16 September 2026; today is the 14th.
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-09-14T12:00:00Z'));
@@ -30,6 +31,7 @@ afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     cleanup();
+    registry.setEnabledPlugins(null);
 });
 
 const calendarPart = { Type: 'text', Subtype: 'calendar', Params: { method: 'REQUEST' } };

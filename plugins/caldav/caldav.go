@@ -8,18 +8,14 @@ import (
 	"regexp"
 
 	"github.com/emersion/go-webdav/caldav"
-	"github.com/migadu/alps"
 )
 
 type authRoundTripper struct {
-	server  http.RoundTripper
-	session *alps.Session
-	debug   bool
+	server http.RoundTripper
+	debug  bool
 }
 
 func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	rt.session.SetHTTPBasicAuth(req)
-
 	if rt.debug {
 		b, _ := httputil.DumpRequestOut(req, true)
 		bStr := string(b)
@@ -39,11 +35,6 @@ func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	return resp, err
 }
 
-func newClient(u *url.URL, session *alps.Session, debug bool) (*caldav.Client, error) {
-	rt := authRoundTripper{
-		server:  http.DefaultTransport,
-		session: session,
-		debug:   debug,
-	}
-	return caldav.NewClient(&http.Client{Transport: &rt}, u.String())
+func newClient(u *url.URL, client *http.Client) (*caldav.Client, error) {
+	return caldav.NewClient(client, u.String())
 }

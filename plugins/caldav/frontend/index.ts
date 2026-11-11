@@ -5,6 +5,15 @@ import { registry } from '../../../frontend/src/plugin-registry';
 import './calendar-invitation-banner';
 import { hasCalendarPart } from './invitation-service';
 
+registry.registerSettingsTab({
+    id: 'caldav',
+    pluginId: 'caldav',
+    labelKey: 'settings.dav.caldav',
+    icon: 'calendar',
+    component: 'alps-caldav-settings',
+    load: () => import('../../../frontend/src/components/dav-connection-settings'),
+});
+
 registry.registerRoute({
     path: '/calendar/*',
     component: 'calendar-page',

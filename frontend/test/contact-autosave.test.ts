@@ -16,6 +16,7 @@ afterEach(() => {
 });
 
 it('saves each recipient under the name as written', async () => {
+  registry.setEnabledPlugins(['carddav']);
   const created = vi.spyOn(contactsService, 'createContact').mockResolvedValue({});
 
   await registry.invokeHookAsync('composer:send', {

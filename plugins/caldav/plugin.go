@@ -18,6 +18,9 @@ import (
 // A var so tests can shorten it.
 var sanityCheckTimeout = 10 * time.Second
 
+// A variable so startup discovery failures can be exercised without DNS.
+var discoverCalDAVURL = caldav.DiscoverContextURL
+
 func sanityCheckURL(u *url.URL) error {
 	req, err := http.NewRequest(http.MethodOptions, u.String(), nil)
 	if err != nil {
@@ -42,9 +45,9 @@ type plugin struct {
 	alps.GoPlugin
 	url          *url.URL
 	srv          *alps.Server
-	urlCache     sync.Map // raw endpoint -> *url.URL
-	homeSetCache map[string]string
-	// accounts caches what the server says about scheduling, per user; see
+	urlCache     sync.Map          // raw endpoint -> *url.URL
+	homeSetCache map[string]string // resolved connection identity -> home set
+	// accounts caches what the server says about scheduling, per connection; see
 	// schedulingAccount.
 	accounts   map[string]*schedulingAccount
 	cacheMutex sync.RWMutex
@@ -96,18 +99,65 @@ func parseCalDAVURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-func (p *plugin) client(ctx context.Context, session *alps.Session) (*caldav.Client, error) {
-	u := p.urlFor(usernameOf(session))
-	if u == nil {
-		return nil, fmt.Errorf("CalDAV server is not configured")
-	}
-	return newClient(u, session, p.debug)
+// connectionKey keeps every operation in one HTTP request on the same DAV
+// account, even if another request changes its saved connection concurrently.
+type connectionKey struct{}
+
+type requestConnection struct {
+	url      *url.URL
+	client   *http.Client
+	cacheKey string
 }
 
-// httpClient authenticates as the session, for the requests go-webdav's client
-// has no method for.
-func (p *plugin) httpClient(session *alps.Session) *http.Client {
-	return &http.Client{Transport: &authRoundTripper{server: http.DefaultTransport, session: session, debug: p.debug}}
+func (p *plugin) connection(ctx context.Context, session *alps.Session) (*requestConnection, error) {
+	if conn, ok := ctx.Value(connectionKey{}).(*requestConnection); ok {
+		return conn, nil
+	}
+	fallback := ""
+	if u := p.urlFor(usernameOf(session)); u != nil {
+		fallback = u.String()
+	}
+	resolved := alps.ResolvedDAVConnection{Server: fallback}
+	if session != nil {
+		var err error
+		resolved, err = session.ResolveDAVConnection(provider.ServiceCalDAV, fallback)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if resolved.Server == "" {
+		return nil, fmt.Errorf("CalDAV server is not configured")
+	}
+	u, err := parseCalDAVURL(resolved.Server)
+	if err != nil {
+		return nil, err
+	}
+	hc, err := alps.DAVHTTPClient(resolved)
+	if err != nil {
+		return nil, err
+	}
+	hc.Transport = &authRoundTripper{server: hc.Transport, debug: p.debug}
+	return &requestConnection{url: u, client: hc, cacheKey: resolved.CacheKey}, nil
+}
+
+func (p *plugin) addRoute(method, path string, handler alps.HandlerFunc) {
+	p.GoPlugin.AddRoute(method, path, func(ctx *alps.Context) error {
+		conn, err := p.connection(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+		ctx.Request = ctx.Request.WithContext(context.WithValue(ctx.Request.Context(), connectionKey{}, conn))
+		return handler(ctx)
+	})
+}
+
+func (p *plugin) requestConnection(ctx *alps.Context) *requestConnection {
+	return ctx.Request.Context().Value(connectionKey{}).(*requestConnection)
+}
+
+// httpClient shares the request's resolved credentials with go-webdav's client.
+func (p *plugin) httpClient(ctx *alps.Context) *http.Client {
+	return p.requestConnection(ctx).client
 }
 
 // clientWithCalendars is a client for the session's server, with the
@@ -121,13 +171,17 @@ func (p *plugin) httpClient(session *alps.Session) *http.Client {
 // one itself: a new event, task or invitation copy with none to go into is
 // refused with a conflict, and a path is checked against the calendars listed.
 func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session) (*caldav.Client, []caldav.Calendar, error) {
-	c, err := p.client(ctx, session)
+	conn, err := p.connection(ctx, session)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create CalDAV client: %v", err)
+	}
+	c, err := newClient(conn.url, conn.client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create CalDAV client: %v", err)
 	}
 
 	p.cacheMutex.RLock()
-	homeSet, ok := p.homeSetCache[session.Username()]
+	homeSet, ok := p.homeSetCache[conn.cacheKey]
 	p.cacheMutex.RUnlock()
 
 	if !ok {
@@ -146,7 +200,7 @@ func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session)
 			// Clear cache to prevent unbounded growth
 			p.homeSetCache = make(map[string]string)
 		}
-		p.homeSetCache[session.Username()] = homeSet
+		p.homeSetCache[conn.cacheKey] = homeSet
 		p.cacheMutex.Unlock()
 	}
 
@@ -179,22 +233,29 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 			u.Scheme = "http"
 		}
 		if u.Scheme == "" {
-			s, err := caldav.DiscoverContextURL(context.Background(), u.Host)
+			s, err := discoverCalDAVURL(context.Background(), u.Host)
 			if err != nil {
 				srv.Logger().Printf("caldav: failed to discover CalDAV server: %v", err)
-				return nil, nil
-			}
-			u, err = url.Parse(s)
-			if err != nil {
-				return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
+				if !cfg.Enabled {
+					return nil, nil
+				}
+				// Explicit enablement also permits personal connections. A failed
+				// administrator default must not hide their settings or endpoints.
+				u = nil
+			} else {
+				u, err = url.Parse(s)
+				if err != nil {
+					return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
+				}
 			}
 		}
 
-		if err := sanityCheckURL(u); err != nil {
-			srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
+		if u != nil {
+			if err := sanityCheckURL(u); err != nil {
+				srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
+			}
+			srv.Logger().Printf("Configured CalDAV server: %v", u)
 		}
-
-		srv.Logger().Printf("Configured CalDAV server: %v", u)
 	}
 
 	p := &plugin{
@@ -208,7 +269,21 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 
 	registerRoutes(p)
 
-	return p.Plugin(), nil
+	return &davPlugin{Plugin: p.Plugin(), plugin: p}, nil
+}
+
+// davPlugin exposes the same normalized administrator endpoint the request
+// handlers use, so settings do not mistake failed discovery for a connection.
+type davPlugin struct {
+	alps.Plugin
+	plugin *plugin
+}
+
+func (p *davPlugin) DAVDefaultServer(username string) string {
+	if u := p.plugin.urlFor(username); u != nil {
+		return u.String()
+	}
+	return ""
 }
 
 func init() {

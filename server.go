@@ -160,6 +160,24 @@ func (s *Server) LoadedPluginNames() []string {
 	return names
 }
 
+// DAVDefaultServer returns the endpoint the loaded plugin actually uses after
+// parsing and discovery. Settings and connection validation must use that same
+// endpoint, including when a provider's invalid route falls back to the global
+// server or startup discovery could not find one.
+func (s *Server) DAVDefaultServer(service, username string) string {
+	for _, p := range s.plugins {
+		if p.Name() == service {
+			if defaults, ok := p.(interface{ DAVDefaultServer(string) string }); ok {
+				return defaults.DAVDefaultServer(username)
+			}
+		}
+	}
+	if endpoint := s.ServiceURLFor(service, username); endpoint != "" {
+		return endpoint
+	}
+	return s.Options.Plugins[service].Server
+}
+
 // ParseServerURL parses a connection string into a url.URL.
 // If the string lacks a scheme, it prepends // to ensure correct parsing of the hostname.
 func ParseServerURL(str string) (*url.URL, error) {
