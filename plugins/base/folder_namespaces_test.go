@@ -14,8 +14,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapserver"
+	"github.com/migadu/go-imap"
+	"github.com/migadu/go-imap/imapserver"
 )
 
 // aclState is the access lists of a scripted IMAP server, shared by every

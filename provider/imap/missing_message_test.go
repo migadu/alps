@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 // A UID the server no longer holds, or never held, is answered with an empty

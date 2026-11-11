@@ -3,8 +3,8 @@ package imap
 import (
 	"log"
 
-	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap/imapclient"
 )
 
 // readSubscriptions drains LSUB as soon as it is sent. Its replies may arrive

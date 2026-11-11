@@ -19,13 +19,13 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-message/textproto"
 	"github.com/emersion/go-smtp"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-imap"
 )
 
 func registerRoutes(p *alps.GoPlugin) {
