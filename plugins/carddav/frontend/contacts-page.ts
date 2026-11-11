@@ -353,6 +353,7 @@ export class ContactsPage extends LitElement {
     this.saveActive = false;
     this.saveLifetime++;
     this.readEpoch++;
+    this.goneCards.clear();
     this.queuedSaves = [];
     this.saveTargets = new WeakMap();
     this.toolbarVersions.clear();
@@ -672,6 +673,7 @@ export class ContactsPage extends LitElement {
         // A reopened path is a new selection: an older read must not replace
         // its current card or enable editing with an obsolete snapshot.
         if (this.cardGeneration === generation && this.selectedContact?.path === data.path) {
+          this.goneCards.delete(data.path);
           this.selectedContact = data;
           this.wholeCardPath = data.path;
           return true;
@@ -722,6 +724,10 @@ export class ContactsPage extends LitElement {
    */
   private dropGone(paths: string[] = []) {
     if (paths.length === 0) return;
+    for (const path of paths) this.goneCards.add(path);
+    for (const job of this.queuedSaves) {
+      if (paths.includes(job.target.contact.path)) job.target.gone = true;
+    }
     const gone = (c: any) => !!c.path && paths.includes(c.path);
     const whole = this.wholeBook === this.contacts;
     this.contacts = this.contacts.filter(c => !gone(c));
@@ -784,6 +790,7 @@ export class ContactsPage extends LitElement {
   async handleToggleStar(e: Event, contact: any) {
     e.stopPropagation();
     if (contact.isTemporary) return;
+    const ownsWork = this.contactWorkOwner();
 
     let categories = contact.categories ? [...contact.categories] : [];
     const isStarred = categories.includes(CATEGORY_FAVORITES);
@@ -799,6 +806,7 @@ export class ContactsPage extends LitElement {
 
     try {
       const saved = await contactsService.updateCategories(contact.path, categories);
+      if (!ownsWork()) return;
       this.applyETags(saved.etag ? { [contact.path]: saved.etag } : undefined);
 
       // Update selected contact if it's the one we're viewing
@@ -806,6 +814,7 @@ export class ContactsPage extends LitElement {
         this.selectedContact = { ...this.selectedContact, categories };
       }
     } catch (err) {
+      if (!ownsWork()) return;
       if (isGone(err)) {
         this.reportFailure('contacts.deletedElsewhere');
         this.dropGone([contact.path]);
@@ -979,6 +988,7 @@ export class ContactsPage extends LitElement {
   }
 
   private async handleRenameCategorySubmit(e: CustomEvent) {
+    const ownsWork = this.contactWorkOwner();
     const newName = e.detail.name?.trim();
     if (!newName || !this.categoryToRename || newName === this.categoryToRename) {
       this.categoryToRename = null;
@@ -996,7 +1006,9 @@ export class ContactsPage extends LitElement {
     let contactsToUpdate: any[];
     try {
       contactsToUpdate = await this.cardsCarrying(oldName);
+      if (!ownsWork()) return;
     } catch (e) {
+      if (!ownsWork()) return;
       console.error('Could not read the address book for a category change', e);
       // No card was read, so there is nothing to count.
       this.reportFailure('contacts.categoryRenameOneFailed');
@@ -1010,6 +1022,7 @@ export class ContactsPage extends LitElement {
           return { ...contact, categories };
         });
         const { total, done, failed, uncertain = 0, etags, gonePaths = [] } = await contactsService.bulkUpdateCategories(contactsToModify);
+        if (!ownsWork()) return;
         this.applyETags(etags);
         this.showWrittenCategories(contactsToModify, etags);
         if (failed > 0) this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: failed - uncertain, total, uncertain, gone: gonePaths.length });
@@ -1025,6 +1038,7 @@ export class ContactsPage extends LitElement {
         this.pendingCategoryChanges.delete(oldName);
         this.saveAddedCategories();
       } catch (e) {
+        if (!ownsWork()) return;
         console.error('Error renaming category', e);
         this.fetchContacts();
         // Thrown before any outcome came back, so none of the cards counts as done.
@@ -1032,7 +1046,7 @@ export class ContactsPage extends LitElement {
         this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: tried, total: tried });
         return;
       } finally {
-        this.saving = false;
+        if (ownsWork()) this.saving = false;
       }
     }
 
@@ -1051,6 +1065,7 @@ export class ContactsPage extends LitElement {
   }
 
   private async handleDeleteCategorySubmit() {
+    const ownsWork = this.contactWorkOwner();
     if (!this.categoryToDelete) return;
     const oldName = this.categoryToDelete;
     this.categoryToDelete = null;
@@ -1062,7 +1077,9 @@ export class ContactsPage extends LitElement {
     let contactsToUpdate: any[];
     try {
       contactsToUpdate = await this.cardsCarrying(oldName);
+      if (!ownsWork()) return;
     } catch (e) {
+      if (!ownsWork()) return;
       console.error('Could not read the address book for a category change', e);
       // No card was read, so there is nothing to count.
       this.reportFailure('contacts.categoryDeleteOneFailed');
@@ -1076,6 +1093,7 @@ export class ContactsPage extends LitElement {
           return { ...contact, categories };
         });
         const { total, done, failed, uncertain = 0, etags, gonePaths = [] } = await contactsService.bulkUpdateCategories(contactsToModify);
+        if (!ownsWork()) return;
         this.applyETags(etags);
         this.showWrittenCategories(contactsToModify, etags);
         if (failed > 0) this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: failed - uncertain, total, uncertain, gone: gonePaths.length });
@@ -1091,6 +1109,7 @@ export class ContactsPage extends LitElement {
         this.pendingCategoryChanges.delete(oldName);
         this.saveAddedCategories();
       } catch (e) {
+        if (!ownsWork()) return;
         console.error('Error deleting category', e);
         this.fetchContacts();
         // Thrown before any outcome came back, so none of the cards counts as done.
@@ -1098,7 +1117,7 @@ export class ContactsPage extends LitElement {
         this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: tried, total: tried });
         return;
       } finally {
-        this.saving = false;
+        if (ownsWork()) this.saving = false;
       }
     }
 
@@ -1166,14 +1185,23 @@ export class ContactsPage extends LitElement {
   private async rereadOpenContact() {
     const path = this.selectedContact?.path;
     if (!path) return;
+    const generation = this.cardGeneration;
+    const ownsWork = this.contactWorkOwner();
     try {
       const data = await contactsService.fetchContact(path);
-      if (this.selectedContact?.path === path && !this.isEditing) {
+      if (!ownsWork()) return;
+      if (this.cardGeneration === generation && this.selectedContact?.path === path && !this.isEditing) {
         this.selectedContact = data;
       }
     } catch (e) {
+      if (!ownsWork()) return;
       if (isGone(e)) {
-        this.cardGone(path, this.cardGeneration);
+        if (this.cardGeneration === generation && this.selectedContact?.path === path && this.isEditing) {
+          this.reportFailure('contacts.editDeletedElsewhere');
+          this.dropGone([path]);
+        } else {
+          this.cardGone(path, generation);
+        }
         return;
       }
       console.error('Failed to re-read the contact', e);
@@ -1212,6 +1240,7 @@ export class ContactsPage extends LitElement {
   private handleSaveOwnerChange = () => {
     this.saveLifetime++;
     this.readEpoch++;
+    this.goneCards.clear();
     this.queuedSaves = [];
     this.saveTargets = new WeakMap();
     this.toolbarVersions.clear();
@@ -1223,6 +1252,13 @@ export class ContactsPage extends LitElement {
     return target.lifetime === this.saveLifetime && target.username === (activeUsername() ?? this.username);
   }
 
+  /** Late toolbar and re-read results belong to the page and account that sent them. */
+  private contactWorkOwner(): () => boolean {
+    const lifetime = this.saveLifetime;
+    const username = activeUsername() ?? this.username;
+    return () => this.saveActive && lifetime === this.saveLifetime && username === (activeUsername() ?? this.username);
+  }
+
   private showingSave(target: ContactSaveTarget): boolean {
     return this.ownsSave(target) && target.generation === this.cardGeneration && !!this.selectedContact
       && (this.selectedContact === target.original || this.selectedContact.path === target.contact.path);
@@ -1232,6 +1268,8 @@ export class ContactsPage extends LitElement {
   private conflictedPath: string | null = null;
   /** The card whose save found it deleted elsewhere, until the edit is cancelled. */
   private gonePath: string | null = null;
+  /** Old forms can flush after navigation. A fresh full-card read permits a recreated path again. */
+  private goneCards = new Set<string>();
 
   /**
    * A form's save found its card deleted on another device.
@@ -1258,6 +1296,7 @@ export class ContactsPage extends LitElement {
    */
   private async handleSave(payload: any, source = this.selectedContact) {
     if (!source || !this.saveActive) return;
+    if (source.path && this.goneCards.has(source.path)) return;
     let target = this.saveTargets.get(source);
     if (!target || !this.ownsSave(target)) {
       const showing = this.selectedContact && (this.selectedContact === source || (source.path && source.path === this.selectedContact.path));
@@ -1296,6 +1335,7 @@ export class ContactsPage extends LitElement {
   }
 
   private async saveOnce(payload: any, target: ContactSaveTarget) {
+    if (target.gone || this.goneCards.has(target.contact.path)) return;
     if (target.unconfirmed && !await this.reconcileSave(target)) return;
     // Another card can hold the queue while this card's toolbar completes a
     // write. Advance to that acknowledged version before sending its form.
@@ -1369,6 +1409,10 @@ export class ContactsPage extends LitElement {
           ...(payload.address_parts && { address_parts_from: {} }),
         });
       }
+
+      // A toolbar response may have found this card deleted while its older
+      // save's successful answer waited. Do not put that old copy back.
+      if (editing && this.goneCards.has(before.path)) return;
 
       const savedContact = { ...before, ...payload, path: data.path || (editing ? before.path : ''), etag: data.etag };
       delete savedContact.isTemporary;
@@ -1465,6 +1509,7 @@ export class ContactsPage extends LitElement {
   }
 
   private async handleToggleStarEvent() {
+    const ownsWork = this.contactWorkOwner();
     const pathsToUpdate = this.gestureTargets;
     if (pathsToUpdate.length === 0) return;
 
@@ -1476,12 +1521,13 @@ export class ContactsPage extends LitElement {
     // Taken before the optimistic paint, so a refusal of every card has
     // something true to go back to without asking the server, which may be
     // exactly what cannot be reached.
-    const previousContacts = this.contacts.map((c: any) => ({ ...c }));
-    const previousSelected = this.selectedContact ? { ...this.selectedContact } : null;
+    const previousCategories = new Map<string, any>();
+    const optimisticCategories = new Map<string, string[]>();
     try {
       const contactsToModify = pathsToUpdate.map((path) => {
         const contact = this.findContact(path);
         if (!contact) return;
+        previousCategories.set(path, contact.categories);
 
         let categories = contact.categories ? [...contact.categories] : [];
         if (isStarred) {
@@ -1489,6 +1535,7 @@ export class ContactsPage extends LitElement {
         } else {
           if (!categories.includes(CATEGORY_FAVORITES)) categories.push(CATEGORY_FAVORITES);
         }
+        optimisticCategories.set(path, categories);
 
         // Optimistic UI update
         const contactIndex = this.contacts.findIndex((c: any) => c.path === path);
@@ -1504,14 +1551,19 @@ export class ContactsPage extends LitElement {
       this.contacts = [...this.contacts]; // Trigger re-render immediately
 
       const { total, done, failed, uncertain = 0, etags, gonePaths = [] } = await contactsService.bulkUpdateCategories(contactsToModify);
+      if (!ownsWork()) return;
       this.applyETags(etags);
       if (failed > 0) {
         if (done === 0) {
           // Nothing is known to have been written, so both panes go back at
           // once. A re-read alone would leave the star lit until it answered,
           // and for good when it failed too, as it does offline.
-          this.contacts = previousContacts;
-          this.selectedContact = previousSelected;
+          // Only this gesture's still-painted categories go back. A different
+          // card opened meanwhile, or a newer edit to either card, stays.
+          const rollback = (card: any) => card && optimisticCategories.has(card.path) && card.categories === optimisticCategories.get(card.path)
+            ? { ...card, categories: previousCategories.get(card.path) } : card;
+          this.contacts = this.contacts.map(rollback);
+          this.selectedContact = rollback(this.selectedContact);
           // But a timeout or a lost response may hide a star that was written,
           // and only a read can tell.
           if (uncertain > 0) this.fetchContacts();
@@ -1524,12 +1576,13 @@ export class ContactsPage extends LitElement {
         this.dropGone(gonePaths);
       }
     } catch (e) {
+      if (!ownsWork()) return;
       console.error('Error toggling star', e);
       // As for a category update: nothing reported an outcome, so every card
       // tried counts as failed.
       this.reportRefusals('contacts.starFailed', 'contacts.starOneFailed', { count: pathsToUpdate.length, total: pathsToUpdate.length });
     } finally {
-      this.saving = false;
+      if (ownsWork()) this.saving = false;
     }
   }
 
@@ -1651,6 +1704,7 @@ export class ContactsPage extends LitElement {
   }
 
   private async handleUpdateCategories(e: CustomEvent) {
+    const ownsWork = this.contactWorkOwner();
     let cat = e.detail.category;
     if (typeof cat === 'string') {
       cat = cat.trim();
@@ -1691,6 +1745,7 @@ export class ContactsPage extends LitElement {
       }).filter(Boolean);
 
       const { total, failed, uncertain = 0, etags, gonePaths = [] } = await contactsService.bulkUpdateCategories(contactsToModify);
+      if (!ownsWork()) return;
       this.contacts = [...this.contacts]; // Trigger re-render
       this.applyETags(etags);
       if (failed > 0) {
@@ -1716,13 +1771,14 @@ export class ContactsPage extends LitElement {
         this.fetchContacts();
       }
     } catch (e) {
+      if (!ownsWork()) return;
       console.error('Error updating categories', e);
       // The bulk update threw before reporting any outcome, so none of the
       // cards can be counted as done. Without numbers the toast showed its
       // own "{failed} of {total}" placeholders.
       this.reportRefusals('contacts.categoryUpdateFailed', 'contacts.categoryUpdateOneFailed', { count: pathsToUpdate.length, total: pathsToUpdate.length });
     } finally {
-      this.saving = false;
+      if (ownsWork()) this.saving = false;
     }
   }
 

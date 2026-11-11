@@ -48,10 +48,59 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   cleanup();
+  localStorage.removeItem('alps_active_user');
   history.replaceState(null, '', '#/');
 });
 
 describe('an edit of a contact deleted elsewhere', () => {
+  it('ignores an old form debounce flushed after navigating away from the missing card', async () => {
+    const el = contactsPage(grace(), true);
+    const source = el.selectedContact;
+    const update = vi.spyOn(contactsService, 'updateContact');
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, gonePaths: [source.path] });
+    await el.handleToggleStarEvent();
+    vi.spyOn(contactsService, 'fetchContact').mockResolvedValue(ada());
+    await el.selectContact(ada(), false);
+
+    await el.handleSave({ ...source, name: 'Old form still typing' }, source);
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('does not put back an older successful save after the toolbar found its card deleted', async () => {
+    const el = contactsPage(grace(), true);
+    let finish!: (saved: any) => void;
+    vi.spyOn(contactsService, 'updateContact').mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const saving = el.handleSave({ ...el.selectedContact, name: 'Grace Hopper' });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, gonePaths: ['/book/grace.vcf'] });
+    await el.handleToggleStarEvent();
+    finish({ ok: 'true', path: '/book/grace.vcf', etag: 'v2' });
+    await saving;
+
+    expect(el.contacts.map((c: any) => c.path)).toEqual(['/book/ada.vcf']);
+    expect(el.isEditing).toBe(true);
+  });
+
+  it('does not send its queued autosave after a toolbar action found the card gone', async () => {
+    const el = contactsPage(ada(), true);
+    el.contacts = [grace(), ada()];
+    let finish!: (saved: any) => void;
+    const update = vi.spyOn(contactsService, 'updateContact')
+      .mockReturnValueOnce(new Promise(resolve => { finish = resolve; }))
+      .mockRejectedValue(gone());
+    const saving = el.handleSave({ ...el.selectedContact, name: 'Ada Lovelace' });
+    el.selectedContact = el.contacts[0];
+    await el.handleSave({ ...el.selectedContact, name: 'Grace Hopper' });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, gonePaths: ['/book/grace.vcf'] });
+    await el.handleToggleStarEvent();
+    vi.spyOn(contactsService, 'fetchContact').mockResolvedValue(ada());
+    await el.selectContact(ada(), false);
+    finish({ ok: 'true', path: '/book/ada.vcf', etag: 'a2' });
+    await saving;
+
+    expect(update.mock.calls.map(([path]) => path)).toEqual(['/book/ada.vcf']);
+  });
+
   it('says so once, keeps the form as typed, and sends nothing more', async () => {
     const el = contactsPage(grace(), true);
     const toasts = record<CustomEvent>(window, 'show-toast');
@@ -100,6 +149,37 @@ describe('an edit of a contact deleted elsewhere', () => {
 });
 
 describe('a star on a contact deleted elsewhere', () => {
+  it('leaves a different card opened and edited while its result waited', async () => {
+    const el = contactsPage(grace(), false);
+    let finish!: (outcome: any) => void;
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const starring = el.handleToggleStarEvent();
+    const current = { ...ada(), name: 'Typed on Ada' };
+    el.selectedContact = current;
+    el.isEditing = true;
+    finish({ total: 1, done: 0, failed: 1, uncertain: 0, gonePaths: ['/book/grace.vcf'] });
+    await starring;
+
+    expect(el.selectedContact).toBe(current);
+    expect(el.isEditing).toBe(true);
+    expect(el.gonePath).not.toBe('/book/ada.vcf');
+  });
+
+  it('ignores a missing-card result from the previous account', async () => {
+    const el = contactsPage(grace(), false);
+    let refuse!: (error: unknown) => void;
+    vi.spyOn(contactsService, 'updateCategories').mockReturnValue(new Promise((_, reject) => { refuse = reject; }));
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const starring = el.handleToggleStar(new Event(''), el.selectedContact);
+    localStorage.setItem('alps_active_user', 'another@example.test');
+    refuse(gone());
+    await starring;
+
+    expect(toasts).toHaveLength(0);
+    expect(listReads).not.toHaveBeenCalled();
+    expect(el.selectedContact?.path).toBe('/book/grace.vcf');
+  });
+
   it('in the list says it was deleted, and takes the row out', async () => {
     const open = ada();
     const el = contactsPage(open, false);
@@ -157,5 +237,74 @@ describe('a category set on a contact deleted elsewhere', () => {
     expect(messages(toasts)).toEqual(['contacts.deletedElsewhere']);
     expect(el.selectedContact).toBeNull();
     expect(el.contacts.map((c: any) => c.path)).toEqual(['/book/ada.vcf']);
+  });
+});
+
+describe('toolbar results that outlive their account', () => {
+  it.each(['star', 'category', 'rename category', 'delete category'])('ignores the old %s result', async (action) => {
+    const el = contactsPage({ ...grace(), categories: ['Friends'] }, false);
+    let finish!: (outcome: any) => void;
+    const bulk = vi.spyOn(contactsService, 'bulkUpdateCategories').mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    let writing: Promise<void>;
+    if (action === 'star') writing = el.handleToggleStarEvent();
+    else if (action === 'category') writing = el.handleUpdateCategories(new CustomEvent('x', { detail: { category: 'Work' } }));
+    else if (action === 'rename category') {
+      el.categoryToRename = 'Friends';
+      writing = el.handleRenameCategorySubmit(new CustomEvent('x', { detail: { name: 'Work' } }));
+    } else {
+      el.categoryToDelete = 'Friends';
+      writing = el.handleDeleteCategorySubmit();
+    }
+    await vi.waitFor(() => expect(bulk).toHaveBeenCalledTimes(1));
+    localStorage.setItem('alps_active_user', 'another@example.test');
+    const current = { ...grace(), name: 'Another account card' };
+    el.selectedContact = current;
+    el.contacts = [current];
+    finish({ total: 1, done: 0, failed: 1, gonePaths: [current.path] });
+    await writing!;
+
+    expect(el.selectedContact).toBe(current);
+    expect(el.contacts).toEqual([current]);
+    expect(toasts).toHaveLength(0);
+    expect(listReads).not.toHaveBeenCalled();
+  });
+});
+
+describe('the card read again after cancelling a conflict', () => {
+  it.each(['disconnect', 'account change', 'stored identity'])('ignores the late missing-card read after %s', async (ending) => {
+    const el = contactsPage(grace(), false);
+    let refuse!: (error: unknown) => void;
+    vi.spyOn(contactsService, 'fetchContact').mockReturnValue(new Promise((_, reject) => { refuse = reject; }));
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const rereading = el.rereadOpenContact();
+    if (ending === 'disconnect') el.disconnectedCallback();
+    else if (ending === 'account change') el.handleSaveOwnerChange();
+    else localStorage.setItem('alps_active_user', 'another@example.test');
+    refuse(gone());
+    await rereading;
+
+    expect(toasts).toHaveLength(0);
+    expect(listReads).not.toHaveBeenCalled();
+    expect(el.selectedContact?.path).toBe('/book/grace.vcf');
+  });
+
+  it('leaves a reopened form alone when the old read finds it missing', async () => {
+    const el = contactsPage(grace(), false);
+    let refuse!: (error: unknown) => void;
+    vi.spyOn(contactsService, 'fetchContact')
+      .mockReturnValueOnce(new Promise((_, reject) => { refuse = reject; }))
+      .mockResolvedValueOnce(ada())
+      .mockResolvedValueOnce(grace());
+    const rereading = el.rereadOpenContact();
+    await el.selectContact(ada(), false);
+    await el.selectContact(grace(), false);
+    el.isEditing = true;
+    const current = el.selectedContact;
+    refuse(gone());
+    await rereading;
+
+    expect(el.selectedContact).toBe(current);
+    expect(el.isEditing).toBe(true);
   });
 });
