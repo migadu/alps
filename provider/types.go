@@ -455,6 +455,15 @@ type MailboxStatusBatcher interface {
 	GetMailboxStatuses(names []string) (statuses []*MailboxStatus, errs []error)
 }
 
+// ConnectionReporter is implemented by a provider that knows when its
+// connection to the mail server has ended. A session then opens another,
+// whatever the error of the operation that found it gone says. A provider
+// without it is taken for gone only when that error says so.
+type ConnectionReporter interface {
+	// ConnectionLost reports whether the provider's connection has ended.
+	ConnectionLost() bool
+}
+
 // ServiceRouter is implemented by provider Options that resolve backends per
 // login. A provider that routes the mail store by domain can route everything
 // else the same way, so a user does not read from one host while sending,

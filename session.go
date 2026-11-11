@@ -53,6 +53,21 @@ func isNetworkError(err error) bool {
 		strings.Contains(errStr, "broken pipe")
 }
 
+// connectionLost reports whether err, the error of an operation on p, means
+// p's connection is gone and another is to be opened: err says so, or p does.
+// p's own word is the one to go by when err carries the connection's end as
+// text alone, wrapped with %v, as most IMAP commands' errors do.
+func connectionLost(p provider.MailProvider, err error) bool {
+	if err == nil {
+		return false
+	}
+	if isNetworkError(err) {
+		return true
+	}
+	r, ok := p.(provider.ConnectionReporter)
+	return ok && r.ConnectionLost()
+}
+
 // generateToken creates a cryptographically secure random session token.
 // Token space: 32 bytes = 256 bits = 2^256 possible values (~1.16 × 10^77)
 // Collision probability: With 1 billion active sessions, probability < 10^-60
@@ -507,7 +522,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 
 	// A failed connection is closed. Replay is allowed only for operations
 	// whose caller permits it.
-	if err != nil && isNetworkError(err) {
+	if connectionLost(s.provider, err) {
 		s.provider.Close()
 		s.provider = nil
 		// A mutation is not replayed, nor work whose request is gone.
