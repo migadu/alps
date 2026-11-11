@@ -243,10 +243,12 @@ trusted_networks = ["127.0.0.1/32", "::1/128"]
 
 # Folders under Shared/ can be shared with the other accounts of the domain
 # (IMAP ACL); e2e/folder-sharing.spec.ts is about them. Personal folders
-# cannot be, on sora.
+# cannot be, on sora. Its owner makes the folder over IMAP, which sora
+# leaves to administrators unless allow_user_create is on.
 [shared_mailboxes]
 enabled = true
 namespace_prefix = "Shared/"
+allow_user_create = true
 
 # alps lists a folder with UID THREAD and SORT, both of which count against
 # sora's per-account search limit (60 a minute, and 0 does not switch it off).
