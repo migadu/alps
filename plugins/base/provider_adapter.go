@@ -118,6 +118,8 @@ func providerMessageToIMAP(msg provider.Message) IMAPMessage {
 		ThreadCount:        msg.ThreadCount,
 		ThreadUIDs:         msg.ThreadUIDs,
 		SubMessages:        subMsgs,
+		Preview:            msg.Preview,
+		PreviewPending:     msg.PreviewPending,
 	}
 	if msg.ID != nil {
 		imapMsg.AlpsUID = msg.ID.String()

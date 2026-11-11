@@ -301,6 +301,11 @@ type Message struct {
 	ThreadCount   int       `json:"ThreadCount,omitempty"`
 	ThreadUIDs    []string  `json:"ThreadUIDs,omitempty"`
 	SubMessages   []Message `json:"SubMessages,omitempty"`
+	// Preview is the start of the message's text, for a listing. PreviewPending
+	// says the listing asked for it and the server had none to hand; it can be
+	// asked for again through PreviewProvider.
+	Preview        string `json:"Preview,omitempty"`
+	PreviewPending bool   `json:"PreviewPending,omitempty"`
 }
 
 // MessageID is a provider-specific message identifier
@@ -443,6 +448,16 @@ type AuthVerdictProvider interface {
 	// mailbox, keyed by the ID's String(), and a scope naming what those IDs
 	// referred to: the same ID under a different scope is a different message.
 	AuthVerdicts(mailbox string, ids []MessageID) (verdicts map[string]AuthVerdict, scope string, err error)
+}
+
+// PreviewProvider is implemented by a provider that can read message previews
+// on request, for the messages a listing marked PreviewPending.
+type PreviewProvider interface {
+	// Previews returns the previews of the messages among ids that exist in
+	// mailbox, keyed by the ID's String(), and a scope as AuthVerdicts does. A
+	// message whose preview the server could not produce is left out, and
+	// supported is false when the server offers no previews at all.
+	Previews(mailbox string, ids []MessageID) (previews map[string]string, scope string, supported bool, err error)
 }
 
 // MailboxStatusBatcher is implemented by a provider that can ask for several

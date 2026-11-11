@@ -77,6 +77,12 @@ type IMAPMessage struct {
 	ThreadCount      int           `json:"ThreadCount,omitempty"`
 	ThreadUIDs       []string      `json:"ThreadUIDs,omitempty"`
 	SubMessages      []IMAPMessage `json:"SubMessages,omitempty"`
+	// Preview is the start of the message's text, for the list. PreviewPending
+	// says the frontend is to ask for it in the background (handlePreviews).
+	// They shadow the embedded FetchMessageBuffer.Preview, which the adapter
+	// never sets.
+	Preview        string `json:"Preview,omitempty"`
+	PreviewPending bool   `json:"PreviewPending,omitempty"`
 	// UIDValidity is the UIDVALIDITY of Mailbox the message was read under,
 	// where the provider said; 0 where it is not known. It is set on the
 	// messages of a conversation the session keeps (handleGetThread), which

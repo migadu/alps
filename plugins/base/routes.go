@@ -52,6 +52,7 @@ func registerRoutes(p *alps.GoPlugin) {
 	})
 	p.GET("/mailboxes/{mbox}/messages/{uid}/thread", handleGetThread)
 	p.GET("/mailboxes/{mbox}/verdicts", handleAuthVerdicts)
+	p.GET("/mailboxes/{mbox}/previews", handlePreviews)
 	p.DELETE("/mailboxes/{mbox}/messages", handleDelete)
 	p.POST("/mailboxes/{mbox}/empty", handleEmptyMailbox)
 	p.PUT("/mailboxes/{mbox}/messages/move", handleMove)

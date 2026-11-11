@@ -22,7 +22,7 @@ require (
 	github.com/go-webauthn/webauthn v0.17.2
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/memberlist v0.5.4
-	github.com/migadu/go-imap v1.1.0
+	github.com/migadu/go-imap v1.1.1-0.20261111112034-03ad6c30304b
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.53.0
 	golang.org/x/text v0.39.0

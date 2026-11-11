@@ -25,6 +25,8 @@
 #                     (localhost, 5432, postgres, empty)
 #   E2E_KEEP_STATE=1  keep the database and state directory after the run
 #   E2E_SKIP_BUILD=1  test the frontend/dist already on disk
+#   E2E_PREVIEW=0     run sora without message previews (FETCH PREVIEW), as
+#                     a backend that predates them or has them turned off
 #   PW_CHROMIUM_PATH  a pre-installed Chromium to use instead of Playwright's
 set -euo pipefail
 
@@ -51,6 +53,12 @@ PG_PORT="${E2E_PG_PORT:-5432}"
 PG_USER="${E2E_PG_USER:-postgres}"
 PG_PASSWORD="${E2E_PG_PASSWORD:-}"
 PG_DB="alps_e2e_$ALPS_PORT"
+
+if [ "${E2E_PREVIEW:-1}" = 0 ]; then
+  SORA_PREVIEW=false
+else
+  SORA_PREVIEW=true
+fi
 
 # Outside the repository: sora and alps write here constantly, and nothing in
 # it is worth keeping once the run is over.
@@ -257,13 +265,21 @@ allow_user_create = true
 # The lookup cache is off because it answers a sign-in from memory for minutes:
 # a deleted account or a changed password would keep working, and the tests
 # about exactly that would be testing the cache.
+#
+# Message previews are on, as for alps in production, and so are their S3
+# downloads past a deployment's per-account budget: the suite lists many
+# folders of older mail in a few minutes. Older sora checkouts only warn about
+# the keys they do not know.
 [[server]]
 type = "imap"
 name = "imap"
 addr = "127.0.0.1:$IMAP_PORT"
 insecure_auth = true
 tls = false
+enable_preview = $SORA_PREVIEW
 limits.search_rate_limit_per_min = 1000000
+limits.preview_s3_per_min = 0
+limits.preview_s3_node_per_min = 0
 
 [server.lookup_cache]
 enabled = false
