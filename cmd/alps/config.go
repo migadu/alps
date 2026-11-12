@@ -608,3 +608,23 @@ func (c *Config) ToLogger() alps.Logger {
 		return alps.NewLogger()
 	}
 }
+
+// freeFormConfigKey recognizes option maps whose descendants are interpreted
+// by a plugin rather than by the fixed TOML configuration structs. The decoder
+// leaves nested interface{} values undecoded even though those keys are used.
+func freeFormConfigKey(key toml.Key) bool {
+	if len(key) >= 3 && strings.EqualFold(key[0], "plugin") && strings.EqualFold(key[2], "options") {
+		return true
+	}
+	if len(key) < 4 || !strings.EqualFold(key[0], "provider") || !strings.EqualFold(key[1], "multi") {
+		return false
+	}
+	switch strings.ToLower(key[2]) {
+	case "default", "routes":
+		return strings.EqualFold(key[3], "password")
+	case "domains":
+		return len(key) >= 5 && strings.EqualFold(key[4], "password")
+	default:
+		return false
+	}
+}
