@@ -3,6 +3,7 @@ package alpsbase
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"sync/atomic"
@@ -18,6 +19,7 @@ type storeFailureProvider struct {
 	armed           *atomic.Bool
 	readKey, putKey string
 	corrupt         bool
+	freshOnly       bool
 	err             error
 }
 
@@ -26,7 +28,7 @@ func (p storeFailureProvider) GetStore() (provider.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return storeFailureStore{Store: store, armed: p.armed, readKey: p.readKey, putKey: p.putKey, corrupt: p.corrupt, err: p.err}, nil
+	return storeFailureStore{Store: store, armed: p.armed, readKey: p.readKey, putKey: p.putKey, corrupt: p.corrupt, freshOnly: p.freshOnly, err: p.err}, nil
 }
 
 type storeFailureStore struct {
@@ -34,11 +36,12 @@ type storeFailureStore struct {
 	armed           *atomic.Bool
 	readKey, putKey string
 	corrupt         bool
+	freshOnly       bool
 	err             error
 }
 
 func (s storeFailureStore) Get(key string, out interface{}) error {
-	if s.armed.Load() && key == s.readKey {
+	if !s.freshOnly && s.armed.Load() && key == s.readKey {
 		if s.corrupt {
 			return &json.SyntaxError{}
 		}
@@ -46,7 +49,15 @@ func (s storeFailureStore) Get(key string, out interface{}) error {
 	}
 	return s.Store.Get(key, out)
 }
-func (s storeFailureStore) GetFresh(key string, out interface{}) error { return s.Get(key, out) }
+func (s storeFailureStore) GetFresh(key string, out interface{}) error {
+	if s.armed.Load() && key == s.readKey {
+		if s.corrupt {
+			return &json.SyntaxError{}
+		}
+		return s.err
+	}
+	return provider.GetFresh(s.Store, key, out)
+}
 func (s storeFailureStore) Put(key string, value interface{}) error {
 	if s.armed.Load() && key == s.putKey {
 		return s.err
@@ -108,6 +119,36 @@ func TestHTTP_StoreCallersPreserveSessionErrorClassification(t *testing.T) {
 							t.Error("auth failure left session cookie")
 						}
 					}
+				}
+			})
+		}
+	}
+}
+
+func TestHTTP_SenderSettingsPreserveSessionErrorsBeforeSMTP(t *testing.T) {
+	for _, failure := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"auth", provider.AuthError{Cause: errors.New("credentials revoked")}, http.StatusUnauthorized},
+		{"outage", errors.Join(alps.ErrMailProviderUnavailable, errors.New("backend offline")), http.StatusServiceUnavailable},
+	} {
+		for _, freshOnly := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/fresh=%v", failure.name, freshOnly), func(t *testing.T) {
+				smtp, rec := listenRecorder(t)
+				armed := &atomic.Bool{}
+				s := newTestServerWrapping(t, smtp, alps.NewLogger(), func(p provider.MailProvider) provider.MailProvider {
+					return storeFailureProvider{MailProvider: p, armed: armed, readKey: settingsKey, freshOnly: freshOnly, err: failure.err}
+				})
+				s.expect(s.signInKeeping(true), http.StatusOK)
+				armed.Store(true)
+				r := s.do("POST", "/messages", url.Values{"from": {"identity@work.example"}, "to": {"charles@remote.test"}, "subject": {"No send"}, "text": {"Hello"}})
+				s.expect(r, failure.status)
+				rec.mu.Lock()
+				defer rec.mu.Unlock()
+				if rec.from != "" || rec.data != "" {
+					t.Fatal("settings failure reached SMTP")
 				}
 			})
 		}
