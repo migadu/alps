@@ -205,7 +205,7 @@ func main() {
 			}
 			go func() {
 				logger.Infof("Starting ACME HTTP-01 challenge handler on %s", acmeHTTPAddr)
-				if err := http.ListenAndServe(acmeHTTPAddr, tlsMgr.HTTPHandler()); err != nil {
+				if err := newACMEHTTPServer(acmeHTTPAddr, tlsMgr.HTTPHandler(), &options, logger).ListenAndServe(); err != nil {
 					logger.Errorf("ACME HTTP-01 handler error: %v", err)
 				}
 			}()
@@ -362,4 +362,9 @@ func (f *tlsErrorFilter) Write(p []byte) (n int, err error) {
 	}
 	f.logger.Error(strings.TrimSpace(msg))
 	return len(p), nil
+}
+
+// newACMEHTTPServer constructs the dedicated HTTP-01 listener.
+func newACMEHTTPServer(addr string, handler http.Handler, options *alps.Options, logger alps.Logger) *http.Server {
+	return &http.Server{Addr: addr, Handler: handler}
 }
