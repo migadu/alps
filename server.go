@@ -279,6 +279,9 @@ func (s *Server) loadPlugins() (err error) {
 				}
 				continue
 			}
+			if jobs, ok := p.(interface{ registerJobs(*Scheduler) }); ok && s.Scheduler != nil {
+				jobs.registerJobs(s.Scheduler)
+			}
 			s.logger.Printf("Loaded plugin %q", p.Name())
 			plugins = append(plugins, p)
 		}

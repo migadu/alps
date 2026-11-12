@@ -234,6 +234,9 @@ func (p *plugin) forgetHomeSet(cacheKey, homeSet string) {
 }
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
+	if !srv.PluginEnabled("caldav") {
+		return nil, nil
+	}
 	cfg := srv.Options.Plugins["caldav"]
 	if cfg.Server == "" && !cfg.Enabled && !srv.HasServiceRouting(provider.ServiceCalDAV) {
 		// No server configured and service not routed/enabled, disable plugin

@@ -201,6 +201,9 @@ func (p *plugin) forgetHomeSet(cacheKey, homeSet string) {
 func parseCardDAVURL(raw string) (*url.URL, error) { return serviceurl.ParseCardDAV(raw) }
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
+	if !srv.PluginEnabled("carddav") {
+		return nil, nil
+	}
 	cfg := srv.Options.Plugins["carddav"]
 	if cfg.Server == "" && !cfg.Enabled && !srv.HasServiceRouting(provider.ServiceCardDAV) {
 		// No server configured and service not routed/enabled, disable plugin

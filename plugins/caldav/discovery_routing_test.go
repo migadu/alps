@@ -13,7 +13,7 @@ func TestFailedDefaultDiscoveryKeepsRoutedCalDAV(t *testing.T) {
 	discoverCalDAVURL = func(context.Context, string) (string, error) { return "", errors.New("discovery unavailable") }
 	t.Cleanup(func() { discoverCalDAVURL = old })
 	srv := stubServer(routerStub{service: provider.ServiceCalDAV, user: "alice@example.com", url: "https://routed.example"})
-	srv.Options.Plugins = map[string]alps.PluginConfig{"caldav": {Server: "default.example"}}
+	srv.Options.Plugins = map[string]alps.PluginConfig{"caldav": {Enabled: true, Server: "default.example"}}
 	pl, err := newPlugin(srv)
 	if err != nil {
 		t.Fatal(err)
