@@ -6,6 +6,10 @@
 # Start:   service alps start
 # Reload:  service alps reload  (sends SIGHUP for config reload)
 # Logs:    tail -f /var/log/alps/alps.log
+# Log rotation: newsyslog must send SIGHUP to /var/run/alps/daemon.pid
+# (daemon owns this log); service reload signals alps itself.
+# Example /etc/newsyslog.conf.d/alps.conf entry:
+# /var/log/alps/alps.log alps:alps 640 7 * @T00 JC /var/run/alps/daemon.pid 1
 
 # PROVIDE: alps
 # REQUIRE: LOGIN networking
@@ -27,7 +31,8 @@ load_rc_config $name
 pidfile="/var/run/${name}/${name}.pid"
 procname="/usr/local/bin/alps"
 command="/usr/sbin/daemon"
-command_args="-c -f -o ${alps_logdir}/alps.log -p ${pidfile} ${procname} -config ${alps_config}"
+daemon_pidfile="/var/run/${name}/daemon.pid"
+command_args="-c -f -H -P ${daemon_pidfile} -o ${alps_logdir}/alps.log -p ${pidfile} ${procname} -config ${alps_config}"
 
 # SIGHUP triggers config reload
 sig_reload="HUP"
