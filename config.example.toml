@@ -424,6 +424,7 @@ level = "info"
 # cache_dir = "cert-cache"
 
 # Sync interval in minutes for S3 fallback cache (default: 5)
+# Non-positive values use the default of 5 minutes.
 # sync_interval_minutes = 5
 
 # Address for HTTP-01 challenge handler (default: ":80")

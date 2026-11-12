@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// DefaultCertSyncInterval is used when no positive interval is configured.
+const DefaultCertSyncInterval = 5 * time.Minute
+
 // CertSyncWorker manages periodic synchronization of certificates from local cache to S3.
 type CertSyncWorker struct {
 	fallbackCache    *FallbackCache
@@ -20,6 +23,9 @@ type CertSyncWorker struct {
 
 // NewCertSyncWorker creates a new certificate sync worker.
 func NewCertSyncWorker(fallbackCache *FallbackCache, syncInterval time.Duration, logger *slog.Logger) *CertSyncWorker {
+	if syncInterval <= 0 {
+		syncInterval = DefaultCertSyncInterval
+	}
 	return &CertSyncWorker{
 		fallbackCache: fallbackCache,
 		syncInterval:  syncInterval,
