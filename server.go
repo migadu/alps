@@ -709,6 +709,6 @@ func (s *Server) HasServiceRouting(service string) bool {
 	if s == nil || s.Options == nil {
 		return false
 	}
-	_, ok := s.Options.Provider.(provider.ServiceRouter)
-	return ok
+	router, ok := s.Options.Provider.(provider.ServiceRouter)
+	return ok && router.RoutesService(service)
 }

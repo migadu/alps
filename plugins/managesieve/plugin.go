@@ -75,8 +75,11 @@ func (p *plugin) endpointFor(username string) sieveEndpoint {
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	cfg := srv.Options.Plugins["managesieve"]
-	if cfg.Server == "" && !cfg.Enabled && !srv.HasServiceRouting(provider.ServiceManageSieve) {
-		// No server configured and service not routed/enabled, disable plugin
+	if cfg.Server == "" && !srv.HasServiceRouting(provider.ServiceManageSieve) {
+		// No login has an endpoint; do not advertise unusable filter settings.
+		if cfg.Enabled {
+			srv.Logger().Printf("ManageSieve enabled without a server or routed endpoint; plugin disabled")
+		}
 		return nil, nil
 	}
 	var u *url.URL

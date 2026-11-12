@@ -491,6 +491,9 @@ type ConnectionReporter interface {
 // caller keeps whatever is configured globally. Providers that do not
 // implement this interface behave exactly as before.
 type ServiceRouter interface {
+	// RoutesService reports whether any configured backend names the service.
+	RoutesService(service string) bool
+
 	// ServiceURL resolves a single endpoint: "smtp", "carddav", "caldav" or
 	// "managesieve". An empty string defers to the global configuration.
 	ServiceURL(service, username string) string

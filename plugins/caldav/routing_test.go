@@ -122,3 +122,5 @@ func TestNewPluginWithoutGlobalServer(t *testing.T) {
 		t.Fatal("plugin should be disabled when unconfigured and unrouted")
 	}
 }
+
+func (r routerStub) RoutesService(service string) bool { return r.service == service && r.url != "" }

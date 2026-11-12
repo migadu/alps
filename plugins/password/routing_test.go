@@ -71,3 +71,7 @@ func TestRoutedPasswordBlockReplacesRatherThanMerges(t *testing.T) {
 	}
 	_ = global
 }
+
+func (r optionRouter) RoutesService(service string) bool {
+	return service == provider.ServicePassword && len(r.block) > 0
+}
