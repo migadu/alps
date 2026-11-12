@@ -353,11 +353,12 @@ func (p *Provider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID
 		return nil, err
 	}
 
+	criteria := imapprovider.PrepareSearch(query)
 	matched := msgs
 	if query != "" {
 		matched = nil
 		for _, m := range msgs {
-			if messageContains(m, query) {
+			if messageMatches(m, criteria) {
 				matched = append(matched, m)
 			}
 		}
@@ -387,9 +388,10 @@ func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page,
 		return nil, provider.PageInfo{}, err
 	}
 
+	criteria := imapprovider.PrepareSearch(query)
 	var matchedMsgs []*mailFile
 	for _, m := range msgs {
-		if messageContains(m, query) {
+		if messageMatches(m, criteria) {
 			matchedMsgs = append(matchedMsgs, m)
 		}
 	}
