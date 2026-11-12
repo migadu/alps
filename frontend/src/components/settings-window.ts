@@ -607,7 +607,11 @@ export class SettingsWindow extends LitElement {
             {value: "30", label: this.i18nStore?.t('settings.general.minutes30') || "30"},
             {value: "60", label: this.i18nStore?.t('settings.general.hour1') || "60"},
             {value: "120", label: this.i18nStore?.t('settings.general.hours2') || "120"},
-            {value: "360", label: this.i18nStore?.t('settings.general.hours6') || "360"}
+            {value: "360", label: this.i18nStore?.t('settings.general.hours6') || "360"},
+            ...([0, 15, 30, 60, 120, 360].includes(this.settingsState.autoLogout) ? [] : [{
+              value: String(this.settingsState.autoLogout),
+              label: new Intl.NumberFormat(this.i18nStore?.getIntlLanguage?.(), { style: 'unit', unit: 'minute', unitDisplay: 'long' }).format(this.settingsState.autoLogout),
+            }])
           ]}>
           </alps-select>
         </alps-setting-group>
