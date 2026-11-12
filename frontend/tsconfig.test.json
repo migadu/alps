@@ -1,0 +1,9 @@
+// Unit tests use browser APIs in jsdom and Node-based test helpers.
+// Keep their Node globals out of the production/browser tsconfig.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"]
+  },
+  "include": ["test", "vitest.config.ts"]
+}
