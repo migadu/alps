@@ -411,6 +411,7 @@ export const zhHant = {
     emptyMailboxSlow: '仍在清空 {folder}。伺服器正在處理，請稍後再查看此資料夾。'
   },
   composer: {
+    messageTooLarge: "此郵件超過郵件伺服器的大小限制。請移除附件或縮短郵件內容後重試。",
     sentNotFiled: "郵件已寄出，但無法在寄件備份中儲存副本。",
     sentDraftNotRemoved: "郵件已寄出，但無法刪除草稿。請勿再次寄出。",
     sentNotFiledDraftKept: "郵件已寄出，但未儲存副本且草稿仍然存在。請勿再次寄出。",

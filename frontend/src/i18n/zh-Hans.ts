@@ -413,6 +413,7 @@ export const zhHans: TranslationDictionary = {
     emptyMailboxSlow: '仍在清空 “{folder}”。服务器正在处理，请稍后再查看该文件夹。'
   },
   composer: {
+    messageTooLarge: "此邮件超过邮件服务器的大小限制。请移除附件或缩短邮件内容后重试。",
     sentNotFiled: "邮件已发送，但无法在已发送中保存副本。",
     sentDraftNotRemoved: "邮件已发送，但无法删除草稿。请勿再次发送。",
     sentNotFiledDraftKept: "邮件已发送，但未保存副本且草稿仍然存在。请勿再次发送。",

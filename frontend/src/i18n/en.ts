@@ -422,6 +422,7 @@ export const en = {
     emptyMailboxSlow: 'Still emptying {folder}. The server is working on it — check the folder again in a moment.'
   },
   composer: {
+    messageTooLarge: "This message exceeds the mail server's size limit. Remove attachments or shorten the message and try again.",
     sentNotFiled: "Message sent, but no copy could be saved in Sent.",
     sentDraftNotRemoved: "Message sent, but its draft could not be removed. Do not send it again.",
     sentNotFiledDraftKept: "Message sent, but no Sent copy was saved and its draft remains. Do not send it again.",

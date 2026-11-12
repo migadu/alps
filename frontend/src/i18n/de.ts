@@ -346,6 +346,7 @@ export const de: TranslationDictionary = {
     emptyMailboxSlow: '{folder} wird noch geleert. Der Server arbeitet daran – sehen Sie gleich noch einmal nach.'
   },
   composer: {
+    messageTooLarge: "Diese Nachricht überschreitet die Größenbegrenzung des Mailservers. Entfernen Sie Anhänge oder kürzen Sie die Nachricht und versuchen Sie es erneut.",
     sentNotFiled: "Nachricht gesendet, aber keine Kopie unter Gesendet gespeichert.",
     sentDraftNotRemoved: "Nachricht gesendet, aber der Entwurf konnte nicht gelöscht werden. Nicht erneut senden.",
     sentNotFiledDraftKept: "Nachricht gesendet, aber keine Kopie gespeichert und der Entwurf bleibt erhalten. Nicht erneut senden.",

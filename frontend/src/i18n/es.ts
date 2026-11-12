@@ -344,6 +344,7 @@ export const es = {
     emptyMailboxSlow: 'Todavía se está vaciando {folder}. El servidor sigue trabajando: vuelve a comprobarlo en un momento.'
   },
   composer: {
+    messageTooLarge: "Este mensaje supera el límite de tamaño del servidor de correo. Elimina archivos adjuntos o acorta el mensaje e inténtalo de nuevo.",
     sentNotFiled: "Mensaje enviado, pero no se pudo guardar una copia en enviados.",
     sentDraftNotRemoved: "Mensaje enviado, pero no se pudo eliminar su borrador. No lo vuelvas a enviar.",
     sentNotFiledDraftKept: "Mensaje enviado, pero no se guardó una copia y el borrador sigue ahí. No lo vuelvas a enviar.",

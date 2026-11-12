@@ -354,6 +354,7 @@ export const sr = {
     emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi; proverite ponovo za trenutak.'
   },
   composer: {
+    messageTooLarge: "Ova poruka premašuje ograničenje veličine servera pošte. Uklonite priloge ili skratite poruku i pokušajte ponovo.",
     sentNotFiled: "Poruka je poslata, ali kopija nije sačuvana u poslatim.",
     sentDraftNotRemoved: "Poruka je poslata, ali nacrt nije uklonjen. Nemojte je ponovo slati.",
     sentNotFiledDraftKept: "Poruka je poslata, ali kopija nije sačuvana, a nacrt je ostao. Nemojte je ponovo slati.",
