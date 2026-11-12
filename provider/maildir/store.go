@@ -120,6 +120,10 @@ func (s *Store) Put(key string, v interface{}) error {
 		return err
 	}
 
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+		return err
+	}
+
 	root, err := s.openRoot()
 	if err != nil {
 		return err
