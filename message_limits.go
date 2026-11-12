@@ -39,8 +39,16 @@ func (s *Session) knownMessageSizeLimitLocked() int64 {
 // AttachmentSizeLimit reserves space for body/headers and base64 line breaks.
 // The complete encoded message is checked separately before it is submitted.
 func (s *Session) AttachmentSizeLimit() int64 {
+	return s.attachmentSizeLimit(s.MessageSizeLimit())
+}
+
+// KnownAttachmentSizeLimit enforces cached capabilities without a probe on a write.
+func (s *Session) KnownAttachmentSizeLimit() int64 {
+	return s.attachmentSizeLimit(s.KnownMessageSizeLimit())
+}
+func (s *Session) attachmentSizeLimit(size int64) int64 {
 	configured := s.manager.MaxAttachmentSize()
-	if size := s.MessageSizeLimit(); size > 0 {
+	if size > 0 {
 		available := size - (64 << 10)
 		if available <= 0 {
 			available = size / 2

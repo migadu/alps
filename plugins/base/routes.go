@@ -3213,10 +3213,14 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 	}
 
-	// Check the complete encoded draft, including Bcc, before APPEND or SMTP.
+	// Check the complete encoded representation before APPEND or SMTP.
 	// In particular, avoid delivering a message whose Sent copy cannot fit.
 	if maximum := ctx.Session.KnownMessageSizeLimit(); maximum > 0 {
-		size, sizeErr := msg.asDraft().WriteTo(io.Discard)
+		var encoded provider.OutgoingMessageWriter = msg
+		if saveAsDraft {
+			encoded = msg.asDraft()
+		}
+		size, sizeErr := encoded.WriteTo(io.Discard)
 		if sizeErr != nil {
 			return sizeErr
 		}
@@ -3614,7 +3618,7 @@ func handleComposeAttachment(ctx *alps.Context) error {
 	// framing and field names, since one request can legitimately carry several
 	// files for a composer that is still empty. MaxBytesReader makes the read
 	// itself fail once the body passes it.
-	limit := ctx.Session.AttachmentSizeLimit() + (1 << 20)
+	limit := ctx.Session.KnownAttachmentSizeLimit() + (1 << 20)
 	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, limit)
 
 	reader, err := ctx.Request.MultipartReader()

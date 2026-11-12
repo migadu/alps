@@ -19,7 +19,14 @@ func messageSizeRefused(err error) bool {
 		return true
 	}
 	var smtpError *smtp.SMTPError
-	return errors.As(err, &smtpError) && smtpError.Code == 552
+	if !errors.As(err, &smtpError) || smtpError.Code != 552 {
+		return false
+	}
+	// A known mailbox-full response is a quota failure, not a message-size cap.
+	if smtpError.EnhancedCode == (smtp.EnhancedCode{5, 2, 2}) {
+		return false
+	}
+	return true
 }
 
 func respondMessageTooLarge(ctx *alps.Context, err error) error {

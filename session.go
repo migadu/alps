@@ -881,7 +881,7 @@ func (s *Session) putAttachments(composerID string, files []*multipart.FileHeade
 	// All files must fit together. Otherwise storing a later file can
 	// evict an earlier one from this request and answer an unusable UUID.
 	// Subtraction also avoids overflowing the total for an oversized batch.
-	perComposerLimit := s.AttachmentSizeLimit()
+	perComposerLimit := s.KnownAttachmentSizeLimit()
 	var total int64
 	for _, fh := range files {
 		for _, limit := range []int64{perComposerLimit, s.manager.maxSessionAttachmentSize, s.manager.maxGlobalAttachmentSize} {
@@ -911,7 +911,7 @@ func (s *Session) putAttachments(composerID string, files []*multipart.FileHeade
 func (s *Session) putAttachment(composerID string, in *multipart.FileHeader,
 	form *multipart.Form, up *upload) (string, error) {
 
-	perComposerLimit := s.AttachmentSizeLimit()
+	perComposerLimit := s.KnownAttachmentSizeLimit()
 
 	// Try to reserve global budget
 	for {
