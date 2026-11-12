@@ -623,9 +623,21 @@ func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 		return fmt.Errorf("parsing 'From' address failed: %v", err)
 	}
 
+	var mailOptions *smtp.MailOptions
+	if maximum, advertised := c.MaxMessageSize(); advertised {
+		size, err := msg.WriteTo(io.Discard)
+		if err != nil {
+			return fmt.Errorf("failed to measure outgoing message: %v", err)
+		}
+		if maximum > 0 && size > int64(maximum) {
+			return errMessageTooLarge
+		}
+		mailOptions = &smtp.MailOptions{Size: size}
+	}
+
 	// Until the message is written, the server's replies and a failed
 	// connection are wrapped: DoSMTP tries a send again when one may pass.
-	if err := c.Mail(mailboxAddress(addr), nil); err != nil {
+	if err := c.Mail(mailboxAddress(addr), mailOptions); err != nil {
 		return &mailFromError{err}
 	}
 

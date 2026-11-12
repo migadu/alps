@@ -103,6 +103,9 @@ var (
 // session helpers to authenticate outgoing connections, for instance DoSMTP.
 type Session struct {
 	manager            *SessionManager
+	messageSizeLocker  sync.Mutex
+	smtpSizeChecked    time.Time
+	smtpMessageLimit   int64
 	username, password string
 	address            string // see Address
 	token              string
@@ -610,6 +613,11 @@ func (s *Session) doneWithProvider() {
 // threading preference that decides whether a listing is threaded, and the
 // listing's cached pages are named by it.
 func (s *Session) noteThreadCapability(p provider.MailProvider) {
+	if limits, ok := p.(interface{ MessageSizeLimit() int64 }); ok {
+		s.SetData("appendLimitBytes", limits.MessageSizeLimit())
+	} else {
+		s.SetData("appendLimitBytes", int64(0))
+	}
 	type threadCapable interface {
 		HasThreadCapability() bool
 	}
@@ -696,7 +704,7 @@ func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}
 	}
-	return fmt.Errorf("SMTP operation failed after %d attempts: %v", smtpMaxAttempts, err)
+	return fmt.Errorf("SMTP operation failed after %d attempts: %w", smtpMaxAttempts, err)
 }
 
 // smtpMayPass reports whether a failed SMTP attempt may pass when it is made
@@ -873,9 +881,10 @@ func (s *Session) putAttachments(composerID string, files []*multipart.FileHeade
 	// All files must fit together. Otherwise storing a later file can
 	// evict an earlier one from this request and answer an unusable UUID.
 	// Subtraction also avoids overflowing the total for an oversized batch.
+	perComposerLimit := s.AttachmentSizeLimit()
 	var total int64
 	for _, fh := range files {
-		for _, limit := range []int64{s.manager.maxAttachmentSize, s.manager.maxSessionAttachmentSize, s.manager.maxGlobalAttachmentSize} {
+		for _, limit := range []int64{perComposerLimit, s.manager.maxSessionAttachmentSize, s.manager.maxGlobalAttachmentSize} {
 			if fh.Size > limit-total {
 				return nil, ErrAttachmentCacheSize
 			}
@@ -901,6 +910,8 @@ func (s *Session) putAttachments(composerID string, files []*multipart.FileHeade
 
 func (s *Session) putAttachment(composerID string, in *multipart.FileHeader,
 	form *multipart.Form, up *upload) (string, error) {
+
+	perComposerLimit := s.AttachmentSizeLimit()
 
 	// Try to reserve global budget
 	for {
@@ -949,7 +960,7 @@ func (s *Session) putAttachment(composerID string, in *multipart.FileHeader,
 			}
 		}
 
-		if composerSize+in.Size > s.manager.maxAttachmentSize {
+		if composerSize+in.Size > perComposerLimit {
 			s.manager.globalAttachmentSize.Add(-in.Size) // rollback global reservation
 			return "", ErrAttachmentCacheSize
 		}
@@ -1255,6 +1266,7 @@ type (
 type SessionManager struct {
 	connectProviderFunc provider.AuthenticatedProviderFactory
 	dialSMTP            DialSMTPFunc
+	smtpSizeLimit       func(string) (int64, error)
 	logger              Logger
 	cacheTTL            time.Duration
 	cacheEnabled        bool

@@ -3152,3 +3152,16 @@ func (p *IMAPProvider) fallBackToFlat(mailbox string, err error) bool {
 	}
 	return true
 }
+
+// MessageSizeLimit reports the server-wide APPENDLIMIT, when advertised.
+// Mailbox-specific refusals are still handled at APPEND time.
+func (p *IMAPProvider) MessageSizeLimit() int64 {
+	if p.client == nil {
+		return 0
+	}
+	limit, ok := p.client.Caps().AppendLimit()
+	if !ok || limit == nil {
+		return 0
+	}
+	return int64(*limit)
+}

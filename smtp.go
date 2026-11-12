@@ -12,6 +12,10 @@ import (
 )
 
 func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
+	return s.dialSMTPWithTimeout(username, s.Options.SMTPTimeout)
+}
+
+func (s *Server) dialSMTPWithTimeout(username string, timeout time.Duration) (*smtp.Client, error) {
 	host, useTLS, insecure := s.smtp.host, s.smtp.tls, s.smtp.insecure
 
 	// A provider that routes the mail store per domain may route submission
@@ -32,7 +36,6 @@ func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
 	}
 
 	// Configure timeout for SMTP operations
-	timeout := s.Options.SMTPTimeout
 	if timeout == 0 {
 		timeout = 30 * time.Second // Default to 30s
 	}
@@ -106,4 +109,27 @@ func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
 	}
 
 	return c, err
+}
+
+// smtpMessageSizeLimit makes a short, cached capability probe. It authenticates
+// no credentials: SIZE is advertised by EHLO, after STARTTLS where configured.
+func (s *Server) smtpMessageSizeLimit(username string) (int64, error) {
+	timeout := time.Second
+	if s.Options.SMTPTimeout > 0 && s.Options.SMTPTimeout < timeout {
+		timeout = s.Options.SMTPTimeout
+	}
+	client, err := s.dialSMTPWithTimeout(username, timeout)
+	if err != nil {
+		return 0, err
+	}
+	defer client.Close()
+	if err := client.Hello("localhost"); err != nil {
+		return 0, err
+	}
+	defer client.Quit()
+	size, ok := client.MaxMessageSize()
+	if !ok || size <= 0 {
+		return 0, nil
+	}
+	return int64(size), nil
 }

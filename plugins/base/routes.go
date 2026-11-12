@@ -3213,6 +3213,18 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 	}
 
+	// Check the complete encoded draft, including Bcc, before APPEND or SMTP.
+	// In particular, avoid delivering a message whose Sent copy cannot fit.
+	if maximum := ctx.Session.KnownMessageSizeLimit(); maximum > 0 {
+		size, sizeErr := msg.asDraft().WriteTo(io.Discard)
+		if sizeErr != nil {
+			return sizeErr
+		}
+		if size > maximum {
+			return respondMessageTooLarge(ctx, errMessageTooLarge)
+		}
+	}
+
 	if saveAsDraft {
 		// The Bcc actually written, not the field the browser posted: a Bcc
 		// entry that does not read is omitted from a draft. Name and Address
@@ -3337,6 +3349,9 @@ func handleComposeNew(ctx *alps.Context) error {
 			// Cancellation can return before the callback does. Its state is
 			// still worker-owned; the deferred invalidation covers a late write.
 			ctx.Session.Cache().Clear()
+			if messageSizeRefused(err) {
+				return respondMessageTooLarge(ctx, err)
+			}
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		inMessage = readBack
@@ -3385,6 +3400,9 @@ func handleComposeNew(ctx *alps.Context) error {
 		return sendMessage(c, msg)
 	})
 	if err != nil {
+		if messageSizeRefused(err) {
+			return respondMessageTooLarge(ctx, err)
+		}
 		var authErr provider.AuthError
 		if errors.As(err, &authErr) {
 			return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Forbidden"})
@@ -3596,7 +3614,7 @@ func handleComposeAttachment(ctx *alps.Context) error {
 	// framing and field names, since one request can legitimately carry several
 	// files for a composer that is still empty. MaxBytesReader makes the read
 	// itself fail once the body passes it.
-	limit := ctx.Server.Sessions.MaxAttachmentSize() + (1 << 20)
+	limit := ctx.Session.AttachmentSizeLimit() + (1 << 20)
 	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, limit)
 
 	reader, err := ctx.Request.MultipartReader()
@@ -4094,10 +4112,7 @@ func handleGetSession(ctx *alps.Context) error {
 		}
 	}
 
-	maxAttachmentMiB := ctx.Server.Options.MaxAttachmentMiB
-	if maxAttachmentMiB == 0 {
-		maxAttachmentMiB = 32 // fallback to default
-	}
+	maxAttachmentMiB := float64(ctx.Session.AttachmentSizeLimit()) / (1 << 20)
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Username":              ctx.Session.Username(),
@@ -4991,10 +5006,7 @@ func handleSettings(ctx *alps.Context) error {
 		settings.WeekStart = &weekStart
 	}
 
-	maxAttachmentMiB := ctx.Server.Options.MaxAttachmentMiB
-	if maxAttachmentMiB == 0 {
-		maxAttachmentMiB = 32 // fallback to default
-	}
+	maxAttachmentMiB := float64(ctx.Session.AttachmentSizeLimit()) / (1 << 20)
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Settings":             settings,
