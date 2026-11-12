@@ -34,6 +34,14 @@ export class AlpsBanner extends LitElement {
       padding-inline-start: 13px;
     }
 
+    .banner.error {
+      background: var(--error-surface, color-mix(in srgb, var(--error, #ef4444) 12%, var(--bg-primary, #ffffff)));
+      border-color: var(--error-border, var(--error, #ef4444));
+      border-inline-start: 3px solid var(--error-border, var(--error, #ef4444));
+      color: var(--error-text, color-mix(in srgb, var(--error, #ef4444) 55%, var(--text-primary, #111827)));
+      padding-inline-start: 13px;
+    }
+
     .content {
       display: flex;
       align-items: center;
