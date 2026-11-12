@@ -18,6 +18,8 @@ import (
 // A var so tests can shorten it.
 var sanityCheckTimeout = 10 * time.Second
 
+var discoverCalDAVURL = caldav.DiscoverContextURL
+
 func sanityCheckURL(u *url.URL) error {
 	req, err := http.NewRequest(http.MethodOptions, u.String(), nil)
 	if err != nil {
@@ -70,8 +72,11 @@ func (p *plugin) urlFor(username string) *url.URL {
 	}
 	u, err := parseCalDAVURL(raw)
 	if err != nil {
-		p.srv.Logger().Printf("caldav: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
-		return p.url
+		cached, loaded := p.urlCache.LoadOrStore(raw, p.url)
+		if !loaded {
+			p.srv.Logger().Printf("caldav: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
+		}
+		return cached.(*url.URL)
 	}
 	p.urlCache.Store(raw, u)
 	return u
@@ -112,7 +117,7 @@ func (p *plugin) httpClient(session *alps.Session) *http.Client {
 
 // clientWithCalendars is a client for the session's server, with the
 // calendars in the user's calendar home set, whose path it keeps in
-// homeSetCache.
+// homeSetCache for as long as the calendars can be listed from it.
 //
 // No calendars is an answer, not an error. A home set is empty where a server
 // leaves an account to make its own first calendar, and once the last one is
@@ -152,10 +157,25 @@ func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session)
 
 	calendars, err := c.FindCalendars(ctx, homeSet)
 	if err != nil {
+		p.forgetHomeSet(session.Username(), homeSet)
 		return nil, nil, fmt.Errorf("failed to query CalDAV calendars: %v", err)
 	}
 
 	return c, calendars, nil
+}
+
+// forgetHomeSet drops a login's cached home set after listing from it failed,
+// so the next request looks it up again. The server may have moved it, when
+// the account was provisioned again or another server took over the URL;
+// kept, it would fail every request until alps restarted. It is dropped only if
+// it is still the one that failed: another request may have looked up the new
+// one meanwhile.
+func (p *plugin) forgetHomeSet(username, homeSet string) {
+	p.cacheMutex.Lock()
+	if cached, ok := p.homeSetCache[username]; ok && cached == homeSet {
+		delete(p.homeSetCache, username)
+	}
+	p.cacheMutex.Unlock()
 }
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
@@ -179,22 +199,28 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 			u.Scheme = "http"
 		}
 		if u.Scheme == "" {
-			s, err := caldav.DiscoverContextURL(context.Background(), u.Host)
+			s, err := discoverCalDAVURL(context.Background(), u.Host)
 			if err != nil {
 				srv.Logger().Printf("caldav: failed to discover CalDAV server: %v", err)
-				return nil, nil
-			}
-			u, err = url.Parse(s)
-			if err != nil {
-				return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
+				if !srv.HasServiceRouting(provider.ServiceCalDAV) {
+					return nil, nil
+				}
+				u = nil
+			} else {
+				u, err = url.Parse(s)
+				if err != nil {
+					return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
+				}
 			}
 		}
 
-		if err := sanityCheckURL(u); err != nil {
-			srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
-		}
+		if u != nil {
+			if err := sanityCheckURL(u); err != nil {
+				srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
+			}
 
-		srv.Logger().Printf("Configured CalDAV server: %v", u)
+			srv.Logger().Printf("Configured CalDAV server: %v", u)
+		}
 	}
 
 	p := &plugin{

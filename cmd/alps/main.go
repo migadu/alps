@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -14,47 +13,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/emersion/go-message"
-	"github.com/emersion/go-message/charset"
+	_ "github.com/emersion/go-message/charset"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/cluster"
 	"github.com/migadu/alps/tlsmanager"
-	"golang.org/x/text/encoding/charmap"
 	_ "golang.org/x/text/encoding/japanese"
 	_ "golang.org/x/text/encoding/korean"
 	_ "golang.org/x/text/encoding/simplifiedchinese"
 	_ "golang.org/x/text/encoding/traditionalchinese"
 	_ "golang.org/x/text/encoding/unicode"
 )
-
-func setupCharsetHandling() {
-	// Register charset decoders for handling emails with various character encodings
-	// Note: The charset package automatically sets message.CharsetReader when imported,
-	// but it doesn't include windows-1252 and some other common email charsets
-	charset.RegisterEncoding("windows-1252", charmap.Windows1252)
-	charset.RegisterEncoding("iso-8859-1", charmap.ISO8859_1)
-	charset.RegisterEncoding("iso-8859-2", charmap.ISO8859_2)
-	charset.RegisterEncoding("iso-8859-15", charmap.ISO8859_15)
-
-	// Wrap the charset reader with a fallback that prevents crashes on unknown charsets
-	message.CharsetReader = func(charsetName string, input io.Reader) (io.Reader, error) {
-		// Try to use the charset package's Reader function (which uses our registered encodings)
-		reader, err := charset.Reader(charsetName, input)
-		if err == nil {
-			return reader, nil
-		}
-
-		// If it's not an unknown charset error, propagate it
-		if !message.IsUnknownCharset(err) {
-			return nil, err
-		}
-
-		// If charset is unknown, fall back to Latin-1 which is byte-compatible
-		// This prevents crashes and usually produces readable text for Western European emails
-		return charmap.ISO8859_1.NewDecoder().Reader(input), nil
-	}
-}
 
 var (
 	version = "unknown"
@@ -63,9 +32,6 @@ var (
 )
 
 func main() {
-	// Setup charset handling FIRST before any message parsing
-	setupCharsetHandling()
-
 	var (
 		options      alps.Options
 		configFile   string
@@ -113,6 +79,9 @@ func main() {
 
 	// Create logger based on config or defaults
 	logger := config.ToLogger()
+	// Bridge standard-library log calls and structured subsystem logs to the
+	// configured destination, format and level.
+	slog.SetDefault(logger.Slog())
 
 	// Initialize cluster for leader election and gossip broadcasting (if enabled)
 	var clusterMgr *cluster.Cluster
@@ -144,7 +113,7 @@ func main() {
 			Peers:         config.Cluster.Peers,
 			SecretKey:     secretKey,
 			AllowInsecure: config.Cluster.AllowInsecure,
-			Logger:        slog.Default(),
+			Logger:        logger.Slog(),
 		})
 		if err != nil {
 			// Fatal, not a silent single-node fallback: with clustering
@@ -211,7 +180,7 @@ func main() {
 		}
 
 		// Create slog logger from alps logger for TLS manager
-		slogLogger := slog.Default()
+		slogLogger := logger.Slog()
 
 		if clusterMgr != nil {
 			// Cluster enabled: only leader can request new certs from Let's Encrypt
@@ -301,10 +270,12 @@ func main() {
 		if sig != syscall.SIGHUP {
 			break
 		}
-		if err := logger.Reopen(); err != nil {
+		if reopened, err := logger.Reopen(); err != nil {
 			logger.Errorf("SIGHUP: %v", err)
-		} else {
+		} else if reopened {
 			logger.Info("SIGHUP: log file reopened")
+		} else {
+			logger.Info("SIGHUP: no log file to reopen")
 		}
 	}
 

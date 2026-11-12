@@ -43,19 +43,6 @@ func Dial(addr string) (*MSClient, error) {
 	return c, nil
 }
 
-// Discover performs DNS SRV discovery for a domain.
-func Discover(domain string) (string, error) {
-	_, addrs, err := net.LookupSRV("sieve", "tcp", domain)
-	if err != nil {
-		return "", err
-	}
-	if len(addrs) == 0 {
-		return "", fmt.Errorf("no SRV records found for _sieve._tcp.%s", domain)
-	}
-	target := strings.TrimSuffix(addrs[0].Target, ".")
-	return fmt.Sprintf("%s:%d", target, addrs[0].Port), nil
-}
-
 func (c *MSClient) Close() error {
 	c.sendCommand("LOGOUT")
 	return c.conn.Close()

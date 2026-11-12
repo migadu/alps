@@ -6,7 +6,7 @@
  * cannot mirror for it.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, mount, shadow } from './helpers/dom';
+import { cleanup, shadow } from './helpers/dom';
 import { messageSync } from '../src/services/message-sync';
 import { ComposeStore } from '../src/store/compose-store';
 import { contactsService } from '../../plugins/carddav/frontend/contacts-service';

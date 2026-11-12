@@ -233,10 +233,7 @@ func handleVerifyRecovery(ctx *alps.Context) error {
 		username := session.Username()
 		if allowed, _, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
 			ctx.Server.Logger().Printf("WebAuthn: recovery code rate limited for %s", username)
-			seconds := int(retryAfter.Seconds())
-			if seconds > 0 {
-				ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
-			}
+			seconds := ctx.RetryAfter(retryAfter)
 			return ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
 				"error":       "rate_limited",
 				"retry_after": seconds,

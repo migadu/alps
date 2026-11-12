@@ -109,6 +109,7 @@ type Session struct {
 	id                 string    // names the session in the log, see sessionLogID
 	created            time.Time // when the password was accepted
 	closed             chan struct{}
+	done               chan struct{} // closed after the timeout goroutine tears down
 	pings              chan struct{}
 	durationUpdate     chan time.Duration
 	notice             string
@@ -208,11 +209,18 @@ type Attachment struct {
 type upload struct {
 	form *multipart.Form
 	held atomic.Int64
+
+	// The manager's set of held uploads, which it is in until the last hold
+	// goes. See heldUploadFiles.
+	heldIn *heldUploads
 }
 
 func (u *upload) release() {
 	if u.held.Add(-1) == 0 {
 		u.form.RemoveAll()
+		if u.heldIn != nil {
+			u.heldIn.remove(u)
+		}
 	}
 }
 
@@ -508,7 +516,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 		}
 		s.forgetStoreEntries()
 		if err != nil {
-			s.CloseWithReason("mail-server-unavailable")
+			s.closeForMailConnectError(err)
 			// Wrap with %w so errors.As can still recover an AuthError (bad
 			// credentials), and join the sentinel so handleError tells the
 			// page the mail server is unavailable rather than answering 500.
@@ -555,7 +563,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 		}
 		s.forgetStoreEntries()
 		if reErr != nil {
-			s.CloseWithReason("mail-server-unavailable")
+			s.closeForMailConnectError(reErr)
 			return fmt.Errorf("failed to re-connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, reErr))
 		}
 		s.noteThreadCapability(s.provider)
@@ -564,6 +572,16 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 	}
 
 	return err
+}
+
+// closeForMailConnectError records the reason when credentials are refused.
+func (s *Session) closeForMailConnectError(err error) {
+	var authErr provider.AuthError
+	if errors.As(err, &authErr) {
+		s.CloseWithReason("auth-error")
+	} else {
+		s.CloseWithReason("mail-server-unavailable")
+	}
 }
 
 // doneWithProvider releases the connection lock after an operation. A request
@@ -835,6 +853,7 @@ func (s *Session) putAttachments(composerID string, files []*multipart.FileHeade
 	// The request's own hold, while it stores the files: an attachment of it
 	// evicted meanwhile does not take the bytes the next one is stored with.
 	up.held.Store(1)
+	s.manager.uploads.add(up)
 	defer up.release()
 
 	// Refuse a request whose session has already ended before making room
@@ -1239,13 +1258,17 @@ type SessionManager struct {
 	sessionDuration          time.Duration
 	maxSessionDuration       time.Duration
 	absoluteSessionDuration  time.Duration
-	maxSessions              int   // Maximum total sessions (0 = unlimited)
-	maxSessionsPerUser       int   // Maximum sessions per username (0 = unlimited)
+	maxSessions              int   // Maximum total sessions (0 = unlimited, which a negative max_sessions in the config gives)
+	maxSessionsPerUser       int   // Maximum sessions per username (0 = unlimited, which a negative max_sessions_per_user in the config gives)
 	maxAttachmentSize        int64 // Max attachment size per composer in bytes
 	maxSessionAttachmentSize int64 // Max attachment size per session in bytes
 	maxGlobalAttachmentSize  int64 // Max global attachment size in bytes
 
 	globalAttachmentSize atomic.Int64 // Tracks current total attachment size across all sessions
+
+	// The uploads whose files are held, which the temp-file sweep keeps. See
+	// heldUploadFiles.
+	uploads heldUploads
 
 	// now is the clock that decides when a session reads its account's
 	// WebAuthn record again (see needsSecondFactor), so that a test can move
@@ -1287,9 +1310,10 @@ type SessionManager struct {
 
 	webAuthnRecords accountRecordLocks
 
-	locker       sync.RWMutex
-	sessions     map[string]*Session // token -> Session, protected by locker
-	userSessions map[string][]string // username -> []token, protected by locker
+	locker          sync.RWMutex
+	sessions        map[string]*Session   // token -> Session, protected by locker
+	userSessions    map[string][]string   // username -> []token, protected by locker
+	runningSessions map[*Session]struct{} // includes evicted sessions until their goroutine finishes
 }
 
 func newSessionManager(connectProviderFunc provider.AuthenticatedProviderFactory, dialSMTP DialSMTPFunc, logger Logger, cacheTTL time.Duration, cacheEnabled bool, loginKey *fernet.Key, sessionDuration time.Duration, maxSessionDuration time.Duration, maxSessions int, maxSessionsPerUser int, maxAttachmentMiB int, maxSessionAttachmentMiB int, maxGlobalAttachmentMiB int) *SessionManager {
@@ -1344,14 +1368,35 @@ func (sm *SessionManager) Close() {
 	// from sm.sessions under the same lock; iterating the live map here would be
 	// a concurrent map iteration/write and crash the process during shutdown.
 	sm.locker.Lock()
-	sessions := make([]*Session, 0, len(sm.sessions))
-	for _, s := range sm.sessions {
+	sessions := make([]*Session, 0, len(sm.runningSessions))
+	for s := range sm.runningSessions {
 		sessions = append(sessions, s)
+	}
+	// Include sessions constructed without a timeout goroutine as well.
+	for _, s := range sm.sessions {
+		if _, tracked := sm.runningSessions[s]; !tracked {
+			sessions = append(sessions, s)
+		}
 	}
 	sm.locker.Unlock()
 
 	for _, s := range sessions {
 		s.CloseWithReason("shutdown")
+	}
+	// Use one deadline for the entire batch, so a stalled mail connection
+	// cannot keep the process alive indefinitely or multiply the shutdown wait.
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for _, s := range sessions {
+		if s.done == nil {
+			continue
+		}
+		select {
+		case <-s.done:
+		case <-timer.C:
+			sm.logger.Printf("Session shutdown timed out waiting for cleanup")
+			return
+		}
 	}
 }
 
@@ -1587,7 +1632,8 @@ func (sm *SessionManager) removeSession(token string) {
 }
 
 // evictOldestAttachment evicts the oldest attachment across all sessions to free up global budget.
-// Returns true if an attachment was evicted, false if no attachments exist.
+// Returns true when the scan found a candidate, even if another request
+// removed it first. The caller must recheck the shared budget.
 func (sm *SessionManager) evictOldestAttachment() bool {
 	sm.locker.RLock()
 	var oldestSession *Session
@@ -1610,8 +1656,8 @@ func (sm *SessionManager) evictOldestAttachment() bool {
 	if oldestSession != nil {
 		if a := oldestSession.PopAttachment(oldestID); a != nil {
 			a.Remove()
-			return true
 		}
+		return true
 	}
 	return false
 }
@@ -1639,6 +1685,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	s := &Session{
 		manager:        sm,
 		closed:         make(chan struct{}),
+		done:           make(chan struct{}),
 		pings:          make(chan struct{}, 5),
 		durationUpdate: make(chan time.Duration, 1),
 		provider:       p,
@@ -1728,7 +1775,17 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	sm.sessions[token] = s
 	sm.userSessions[username] = append(sm.userSessions[username], token)
 
+	if sm.runningSessions == nil {
+		sm.runningSessions = make(map[*Session]struct{})
+	}
+	sm.runningSessions[s] = struct{}{}
 	go func() {
+		defer func() {
+			sm.locker.Lock()
+			delete(sm.runningSessions, s)
+			sm.locker.Unlock()
+			close(s.done)
+		}()
 		defer func() {
 			if r := recover(); r != nil {
 				sm.logger.Errorf("panic in session timeout goroutine: %v", r)

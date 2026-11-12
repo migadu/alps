@@ -19,7 +19,7 @@ def explore(nodes, attempts, *, fence=True, fresh=True):
     terminals = 0
     while pending:
         entries, actors, authenticated = pending.popleft()
-        if authenticated.bit_count() > 1:
+        if bin(authenticated).count("1") > 1:
             return False, len(seen), terminals
         if all(actor[0] == 6 for actor in actors):
             terminals += 1

@@ -25,6 +25,8 @@ export default {
     generating: 'कुंजी जोड़ी बनाई जा रही है…',
     enableEncryptionDesc: 'जो संपर्क एंड-टू-एंड एन्क्रिप्शन का समर्थन करते हैं, उनके साथ इसे चालू करने के लिए आपको GPG कुंजी जोड़ी चाहिए।',
     noKeyPresent: 'कोई कुंजी नहीं है',
+    loadError: 'GPG कुंजियाँ लोड नहीं हो सकीं।',
+    loadErrorRetry: 'फिर कोशिश करें',
     passphraseRequiredLabel: 'पासफ़्रेज़ (ज़रूरी)',
     generateKeysBtn: 'कुंजियाँ बनाएँ',
     importExistingKeys: 'मौजूदा GPG कुंजी जोड़ी इंपोर्ट करें',

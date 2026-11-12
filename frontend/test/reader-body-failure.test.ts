@@ -115,7 +115,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function open(msg = message, composeStore: unknown = new EventTarget()): Promise<El> {
+async function open(msg: typeof message | typeof draft | typeof reply = message, composeStore: unknown = new EventTarget()): Promise<El> {
   const el = await mount<El>('alps-message-reader', {
     settingsStore: settingsStore(),
     i18nStore,

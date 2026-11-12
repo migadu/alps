@@ -25,6 +25,8 @@ export default {
     generating: 'Generating keypair...',
     enableEncryptionDesc: "To enable end-to-end encryption between contacts that support it, you'll need a GPG keypair.",
     noKeyPresent: 'No key present',
+    loadError: 'Could not load the GPG keys.',
+    loadErrorRetry: 'Try again',
     passphraseRequiredLabel: 'Passphrase (Required)',
     generateKeysBtn: 'Generate Keys',
     importExistingKeys: 'Import Existing GPG Keypair',

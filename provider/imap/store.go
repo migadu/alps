@@ -15,7 +15,7 @@ import (
 	"github.com/migadu/go-imap/imapclient"
 )
 
-var warnedTransientStore = false
+var warnTransientStore sync.Once
 
 func newStore(client *imapclient.Client) (provider.Store, error) {
 	s, err := newIMAPStore(client)
@@ -24,10 +24,9 @@ func newStore(client *imapclient.Client) (provider.Store, error) {
 	} else if !errors.Is(err, errIMAPMetadataUnsupported) {
 		return nil, err
 	}
-	if !warnedTransientStore {
+	warnTransientStore.Do(func() {
 		log.Print("alps/provider: IMAP server doesn't support the METADATA extension, using transient store instead")
-		warnedTransientStore = true
-	}
+	})
 	return newMemoryStore(), nil
 }
 

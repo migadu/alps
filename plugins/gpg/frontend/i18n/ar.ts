@@ -25,6 +25,8 @@ export default {
     generating: 'جارٍ إنشاء زوج المفاتيح…',
     enableEncryptionDesc: 'لتفعيل التشفير التام بين الطرفين مع جهات الاتصال التي تدعمه، ستحتاج إلى زوج مفاتيح GPG.',
     noKeyPresent: 'لا يوجد مفتاح',
+    loadError: 'تعذر تحميل مفاتيح GPG.',
+    loadErrorRetry: 'إعادة المحاولة',
     passphraseRequiredLabel: 'عبارة المرور (مطلوبة)',
     generateKeysBtn: 'إنشاء المفاتيح',
     importExistingKeys: 'استيراد زوج مفاتيح GPG موجود',

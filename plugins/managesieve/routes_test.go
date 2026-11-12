@@ -111,7 +111,7 @@ func signedIn(t *testing.T, sieveAddr string) (*http.Client, string) {
 		SMTP:     alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
 		LoginKey: &key,
 		Plugins: map[string]alps.PluginConfig{
-			"managesieve": {Server: "managesieve+insecure://" + sieveAddr},
+			"managesieve": {Enabled: true, Server: "managesieve+insecure://" + sieveAddr},
 		},
 	})
 	if err != nil {

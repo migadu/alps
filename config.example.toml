@@ -504,7 +504,8 @@ level = "info"
 
 # How often, in minutes, a node uploads to S3 the certificates it could store
 # only in cache_dir while S3 was failing (default: 5). A check with nothing
-# waiting for upload does nothing. Used only with "s3". See docs/TLS.md.
+# waiting for upload does nothing. Zero or a negative value means 5.
+# Used only with "s3". See docs/TLS.md.
 # sync_interval_minutes = 5
 
 # Address for HTTP-01 challenge handler (default: ":80")
@@ -780,13 +781,13 @@ server = "smtps://smtp.migadu.com:465"
 
 # Plugin Configuration
 # Each plugin can have its own section with enabled flag and settings.
-# If any [plugin.*] section has enabled = true, only the plugins with
-# enabled = true are loaded, so list every plugin you want, base included.
-# If no section has enabled = true, which includes having no [plugin.*]
-# sections at all, all plugins load and enabled = false holds none of them
-# back. caldav, carddav and managesieve then load only with a server or
-# [provider] type = "multi". The password plugin loads only with
-# [plugin.password] enabled = true, so the rule above applies whenever it
+# base always loads. A section with enabled = false keeps its plugin out.
+# If any [plugin.*] section has enabled = true, only base and the plugins
+# with enabled = true load. If none has, which includes having no [plugin.*]
+# sections at all, every other plugin loads unless its section says
+# enabled = false, and caldav, carddav and managesieve load only with a
+# server or [provider] type = "multi". The password plugin loads only with
+# [plugin.password] enabled = true, so the allow-list applies whenever it
 # loads.
 # A caldav, carddav or managesieve section with enabled = true and no server,
 # as below, loads without an endpoint: its requests fail, logged as "...

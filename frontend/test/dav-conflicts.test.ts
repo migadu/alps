@@ -155,7 +155,7 @@ describe('a star', () => {
     el.contacts = [a, b];
     el.selectedContacts = new Set([a.path, b.path]);
     vi.spyOn(contactsService, 'bulkUpdateCategories')
-      .mockResolvedValue({ total: 2, done: 2, failed: 0, etags: { [a.path]: 'a2', [b.path]: 'b2' } });
+      .mockResolvedValue({ total: 2, done: 2, failed: 0, uncertain: 0, etags: { [a.path]: 'a2', [b.path]: 'b2' } });
 
     await el.handleToggleStarEvent();
 

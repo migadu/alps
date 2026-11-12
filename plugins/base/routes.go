@@ -1626,12 +1626,16 @@ func handleGetMailbox(ctx *alps.Context) error {
 			}
 			return nil
 		})
+		// A sign-in the server refused at the account's connection limit is
+		// a provider.LimitError too, but no search was refused. The session
+		// has ended with it, and handleError says the mail server is
+		// unavailable, as it does for every other request then.
 		var limited *provider.LimitError
-		if errors.As(err, &limited) {
+		if errors.As(err, &limited) && !errors.Is(err, alps.ErrMailProviderUnavailable) {
 			return searchRateLimited(ctx, limited)
 		}
 		if err != nil {
-			return err
+			return respondMailboxError(ctx, "Search mailbox", err)
 		}
 
 		// Convert provider messages to IMAP messages for display
@@ -1891,14 +1895,11 @@ func handleLogin(ctx *alps.Context) error {
 				"reason", "rate limited",
 				"detail", reason)
 
-			// Set Retry-After header
-			if retryAfter > 0 {
-				ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
-			}
+			seconds := ctx.RetryAfter(retryAfter)
 
 			body := map[string]interface{}{
 				"error":       reason,
-				"retry_after": int(retryAfter.Seconds()),
+				"retry_after": seconds,
 			}
 			// The reason is English, for the log and for other clients. The
 			// sign-in page says what a refusal is in its own language, and
@@ -3501,12 +3502,12 @@ func senderFor(ctx *alps.Context, address string) (from string, identity bool, e
 	}
 	settings, err := readSettings(ctx)
 	if err != nil {
-		return "", false, fmt.Errorf("failed to load settings: %v", err)
+		return "", false, fmt.Errorf("failed to load settings: %w", err)
 	}
 	found, ok := findIdentity(settings.Identities, address)
 	if !ok {
 		if settings, err = readFreshSettings(ctx); err != nil {
-			return "", false, fmt.Errorf("failed to load settings: %v", err)
+			return "", false, fmt.Errorf("failed to load settings: %w", err)
 		}
 		found, ok = findIdentity(settings.Identities, address)
 	}
@@ -3683,7 +3684,7 @@ func (scope messageScope) resolve(p provider.MailProvider, mboxName string) ([]p
 
 	found, err := p.SearchMessageIDs(mboxName, scope.Query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find the messages to act on: %v", err)
+		return nil, fmt.Errorf("failed to find the messages to act on: %w", err)
 	}
 	if len(scope.Except) == 0 {
 		return found, nil
@@ -4240,7 +4241,7 @@ func handleSetFlags(ctx *alps.Context) error {
 			invalidateMailboxCache(ctx, mboxName)
 			forgetMessages(ctx.Session.Cache(), mboxName, idStrings(alpsMsgIDs)...)
 		}
-		return err
+		return respondMailboxError(ctx, "Set message flags", err)
 	}
 
 	// A whole folder's worth of messages is not patched into the cache one at a
@@ -4608,7 +4609,7 @@ func settingsFrom(ctx *alps.Context, store provider.Store, get func(string, inte
 		return settings, err
 	}
 	if putErr := store.Put(settingsKey, nil); putErr != nil {
-		return nil, fmt.Errorf("failed to remove unreadable settings: %v", putErr)
+		return nil, fmt.Errorf("failed to remove unreadable settings: %w", putErr)
 	}
 	ctx.Server.Logger().Printf("Removed unreadable settings of %s: %v", ctx.Session.Username(), err)
 	return loadSettings(noSettings{})
@@ -4708,7 +4709,7 @@ func parseWeekStartOption(val interface{}) int {
 func handleSettings(ctx *alps.Context) error {
 	settings, err := readFreshSettings(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to load settings: %v", err)
+		return fmt.Errorf("failed to load settings: %w", err)
 	}
 
 	if ctx.Request.Method == http.MethodPut {
@@ -4887,7 +4888,7 @@ func handleSettings(ctx *alps.Context) error {
 			return alps.NewHTTPError(http.StatusBadRequest, err)
 		}
 		if err := ctx.Session.Store().Put(settingsKey, settings); err != nil {
-			return fmt.Errorf("failed to save settings: %v", err)
+			return fmt.Errorf("failed to save settings: %w", err)
 		}
 
 		// Only when this write changed what a listing IS.
@@ -4998,10 +4999,7 @@ func handleAddAccount(ctx *alps.Context) error {
 	// budget of its own.
 	if allowed, reason, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
 		ctx.Server.Logger().Printf("Linked accounts: linking %s rate limited", username)
-		seconds := int(retryAfter.Seconds())
-		if seconds > 0 {
-			ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
-		}
+		seconds := ctx.RetryAfter(retryAfter)
 		return ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
 			"error":       reason,
 			"retry_after": seconds,

@@ -688,7 +688,12 @@ func TestDoMailWithContext_AReconnectRefusedTheSignInEndsTheSession(t *testing.T
 			}
 			select {
 			case <-s.closed:
-				if s.endReason != "mail-server-unavailable" {
+				wantReason := "mail-server-unavailable"
+				var authErr provider.AuthError
+				if errors.As(refusal.err, &authErr) {
+					wantReason = "auth-error"
+				}
+				if s.endReason != wantReason {
 					t.Errorf("the session ended for %q", s.endReason)
 				}
 			default:

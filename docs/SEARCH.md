@@ -40,6 +40,8 @@ Write the value directly after the colon, with no space: `from:alice`, not `from
 
 A word with a colon that is not one of these prefixes, such as `10:30` or a link, is searched for as it is written.
 
+Every prefix requires a non-empty value. Queries such as `from:`, `body:""` and `header:X-Custom:` are refused with HTTP 400, including when selecting all search results for a bulk action. An empty query still means the whole folder.
+
 ### Starred and Unread Buttons
 
 The **Filter by starred** and **Filter by unread** buttons in the list toolbar set the search to exactly `is:starred` or `is:unread`. This replaces any search in progress, and clicking the active button clears the search. To combine a filter with text, type both, for example `is:unread invoice`.

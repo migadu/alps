@@ -59,7 +59,7 @@ beforeEach(() => {
   });
   vi.spyOn(contactsService, 'bulkUpdateCategories').mockImplementation(async (cards: any[]) => {
     for (const card of cards) if (card.path === ADA.path) adaCategories = card.categories;
-    return { total: cards.length, done: cards.length, failed: 0, etags: {} };
+    return { total: cards.length, done: cards.length, failed: 0, uncertain: 0, etags: {} };
   });
   history.replaceState(null, '', '#/');
 });
@@ -303,7 +303,7 @@ describe('a rename or removal of the open category, once its cards are written',
         const update = vi.spyOn(contactsService, 'updateContact').mockImplementation(async (_path: string, payload: any) => {
           // An edit that says nothing of the categories leaves the card's.
           if (payload.categories !== undefined) adaCategories = payload.categories;
-          return { path: ADA.path, etag: '"3"' };
+          return { ok: 'ok', path: ADA.path, etag: '"3"' };
         });
         const written = after ? [after] : [];
 

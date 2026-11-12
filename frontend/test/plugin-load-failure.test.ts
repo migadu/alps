@@ -8,7 +8,7 @@ type El = HTMLElement & Record<string, any>;
 const listeners: EventListener[] = [];
 function failures() {
   const events: CustomEvent[] = [];
-  const listener = ((event: CustomEvent) => events.push(event)) as EventListener;
+  const listener: EventListener = event => { events.push(event as CustomEvent); };
   listeners.push(listener);
   window.addEventListener(PLUGIN_LOAD_FAILED_EVENT, listener);
   return events;

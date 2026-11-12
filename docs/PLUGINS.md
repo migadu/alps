@@ -183,7 +183,7 @@ enabled = true
 # example_key = "example_value"
 ```
 
-A section's keys are `enabled` (bool), `server` (string) and `options` (a free-form table). See [CONFIGURATION.md](CONFIGURATION.md) for the in-tree plugins' sections.
+A section's keys are `enabled` (bool), `server` (string) and `options` (a free-form table). `base` always loads. A section with `enabled = false` keeps its plugin out, even when no other section enables anything. When one or more sections set `enabled = true`, only those plugins and `base` load; otherwise each plugin's loader decides whether it is set up. See [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname) for the in-tree plugins' sections.
 
 ---
 

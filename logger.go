@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"log/syslog"
 	"os"
 	"strings"
 	"sync"
@@ -26,8 +25,9 @@ type Logger interface {
 	Fatalf(format string, args ...interface{})
 	SetLevel(level slog.Level)
 	// Reopen closes and reopens the log file after a rotation tool such as
-	// newsyslog has moved it aside. A no-op when the output is not a file.
-	Reopen() error
+	// newsyslog has moved it aside. The boolean reports whether a file was
+	// reopened; non-file destinations return false without an error.
+	Reopen() (bool, error)
 	// Slog is the structured logger underneath, for lines whose parts are
 	// fields to search by (who signed in, from where) rather than a sentence.
 	Slog() *slog.Logger
@@ -82,7 +82,7 @@ func NewLoggerWithOptions(opts LoggerOptions) Logger {
 		writer = os.Stderr
 	case "syslog":
 		// Use syslog for output
-		syslogWriter, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "alps")
+		syslogWriter, err := newSyslogWriter()
 		if err != nil {
 			// Fallback to stderr if syslog fails
 			fmt.Fprintf(os.Stderr, "Failed to connect to syslog: %v, falling back to stderr\n", err)
@@ -188,11 +188,14 @@ func (l *logger) SetLevel(level slog.Level) {
 	l.level.Set(level)
 }
 
-func (l *logger) Reopen() error {
+func (l *logger) Reopen() (bool, error) {
 	if l.file == nil {
-		return nil
+		return false, nil
 	}
-	return l.file.reopen()
+	if err := l.file.reopen(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (l *logger) Slog() *slog.Logger {
@@ -285,5 +288,5 @@ func (discardLogger) Errorf(format string, args ...interface{}) {}
 func (discardLogger) Fatal(i ...interface{})                    {}
 func (discardLogger) Fatalf(format string, args ...interface{}) {}
 func (discardLogger) SetLevel(level slog.Level)                 {}
-func (discardLogger) Reopen() error                             { return nil }
+func (discardLogger) Reopen() (bool, error)                     { return false, nil }
 func (discardLogger) Slog() *slog.Logger                        { return slog.New(slog.DiscardHandler) }

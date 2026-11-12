@@ -13,7 +13,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../plugins/caldav/frontend/calendar-page';
-import { calendarService } from '../../plugins/caldav/frontend/calendar-service';
+import { calendarService, type CalendarData } from '../../plugins/caldav/frontend/calendar-service';
 import { tasksService } from '../../plugins/caldav/frontend/tasks-service';
 import { cleanup, flush, mount, shadow, waitFor } from './helpers/dom';
 
@@ -123,15 +123,15 @@ describe('a calendar deleted during a read', () => {
   const paths = (el: El) => el.calendars.map((calendar: any) => calendar.path);
 
   /** Work and Trips, the calendars read once; each later listing is held open. */
-  async function twoCalendars(): Promise<{ el: El; listings: Array<(calendars: object[]) => void> }> {
+  async function twoCalendars(): Promise<{ el: El; listings: Array<(calendars: CalendarData[]) => void> }> {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const listings: Array<(calendars: object[]) => void> = [];
+    const listings: Array<(calendars: CalendarData[]) => void> = [];
     vi.spyOn(calendarService, 'fetchCalendars').mockImplementation(() => new Promise((resolve) => {
       listings.push((calendars) => resolve({ calendars }));
     }));
     vi.spyOn(calendarService, 'fetchEvents').mockResolvedValue({ events: [] });
     vi.spyOn(tasksService, 'fetchTasks').mockResolvedValue({ tasks: [], calendars: [], failedCalendars: 0 });
-    vi.spyOn(calendarService, 'deleteCalendar').mockResolvedValue(undefined);
+    vi.spyOn(calendarService, 'deleteCalendar').mockResolvedValue({ ok: 'ok' });
     window.location.hash = '#/calendar/month/2026-09';
     const el = await mount<El>('calendar-page', { i18nStore });
     await waitFor(() => listings.length === 1, 'the first read');

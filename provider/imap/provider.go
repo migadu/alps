@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"regexp"
 	"slices"
@@ -817,7 +818,7 @@ func (p *IMAPProvider) sortWindowByDate(groups []ThreadGroup, sortOrder string) 
 	}).Wait()
 	if err != nil {
 		if p.debug {
-			fmt.Printf("thread sort: SORT failed, fetching envelopes instead: %v\n", err)
+			slog.Debug("thread sort: SORT failed, fetching envelopes instead", "error", err)
 		}
 		return false
 	}
@@ -1000,7 +1001,7 @@ func (p *IMAPProvider) mailboxThreads(mailbox string, fresh bool) (*threadCache,
 		}
 		p.cacheLock.Unlock()
 	} else if p.debug {
-		fmt.Printf("thread cache: cannot tell what %s holds, threading it: %v\n", mailbox, shapeErr)
+		slog.Debug("thread cache: cannot tell what the mailbox holds, threading it", "mailbox", mailbox, "error", shapeErr)
 	}
 
 	groups, err := p.fetchThreadGroups(&imap.SearchCriteria{})
@@ -1063,7 +1064,7 @@ func (p *IMAPProvider) sortedMailboxUIDs(mailbox string, reverse, fresh bool) ([
 		}
 		p.cacheLock.Unlock()
 	} else if p.debug {
-		fmt.Printf("sort cache: cannot tell what %s holds, sorting it: %v\n", mailbox, shapeErr)
+		slog.Debug("sort cache: cannot tell what the mailbox holds, sorting it", "mailbox", mailbox, "error", shapeErr)
 	}
 
 	data, err := p.client.UIDSort(&imapclient.SortOptions{
@@ -1450,6 +1451,10 @@ func (p *IMAPProvider) listByNumber(mailbox string, sortOrder string, page, page
 // One SEARCH, so the answer is the mailbox as it stands, not the page of a
 // listing the client happens to hold.
 func (p *IMAPProvider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID, error) {
+	if err := ValidateSearch(query); err != nil {
+		return nil, err
+	}
+
 	if p.client == nil {
 		return nil, fmt.Errorf("IMAP client not initialized")
 	}
@@ -1478,12 +1483,15 @@ func (p *IMAPProvider) SearchMessageIDs(mailbox, query string) ([]provider.Messa
 
 // SearchMessages searches messages in a mailbox
 func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
+	if err := ValidateSearch(query); err != nil {
+		return nil, provider.PageInfo{}, err
+	}
+
 	if mailbox == "*" {
 		if p.HasESearchCapability() {
 			return p.searchESearchMessages(query, sortOrder, page, pageSize)
 		}
-		// Fallback to INBOX if ESEARCH/MULTISEARCH is not supported
-		mailbox = "INBOX"
+		return nil, provider.PageInfo{}, &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeCannot, Text: "all-folder search requires MULTISEARCH"}
 	}
 
 	// A NOOP, as ListMessages sends, for mail that arrived since the mailbox
@@ -1542,7 +1550,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		// list is the whole folder, just without the grouping. Same call the
 		// SORT fallback in sortGroups makes.
 		if p.debug {
-			fmt.Printf("threaded list: THREAD failed, listing flat instead: %v\n", err)
+			slog.Debug("threaded list: THREAD failed, listing flat instead", "error", err)
 		}
 	}
 
@@ -1557,7 +1565,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	// The initial NOOP has already brought the selected mailbox up to date.
 	byNumber := func(command string, refusal error) ([]provider.Message, provider.PageInfo, error) {
 		if p.debug {
-			fmt.Printf("flat list: %s refused, listing by number instead: %v\n", command, refusal)
+			slog.Debug("flat list: command refused, listing by number instead", "command", command, "error", refusal)
 		}
 		return p.listByNumber(mailbox, sortOrder, page, pageSize)
 	}
@@ -2694,7 +2702,7 @@ func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, ma
 
 	if b := msg.FindBodySection(authResultsSection()); b != nil {
 		if p.debug {
-			fmt.Printf("BIMI debug: Auth-Results for %d: %q\n", msg.UID, string(b))
+			slog.Debug("BIMI: Authentication-Results", "uid", msg.UID, "results", string(b))
 		}
 		converted.BimiPotential, converted.BimiFailed = authVerdict(b, p.authservIDs)
 		p.rememberVerdict(mailbox, msg.UID, provider.AuthVerdict{
@@ -3139,7 +3147,7 @@ func (p *IMAPProvider) fallBackToFlat(mailbox string, err error) bool {
 		log.Printf("alps/provider: IMAP server refused THREAD for %q, listing it without grouping: %v", mailbox, err)
 	}
 	if p.debug {
-		fmt.Printf("threaded list: THREAD refused, listing flat instead: %v\n", err)
+		slog.Debug("threaded list: THREAD refused, listing flat instead", "error", err)
 	}
 	return true
 }

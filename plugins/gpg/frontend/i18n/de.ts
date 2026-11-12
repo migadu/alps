@@ -25,6 +25,8 @@ export default {
     generating: 'Schlüsselpaar wird generiert...',
     enableEncryptionDesc: 'Um die Ende-zu-Ende-Verschlüsselung zwischen unterstützenden Kontakten zu aktivieren, benötigen Sie ein GPG-Schlüsselpaar.',
     noKeyPresent: 'Kein Schlüssel vorhanden',
+    loadError: 'Die GPG-Schlüssel konnten nicht geladen werden.',
+    loadErrorRetry: 'Erneut versuchen',
     passphraseRequiredLabel: 'Passphrase (erforderlich)',
     generateKeysBtn: 'Schlüssel generieren',
     importExistingKeys: 'Vorhandenes GPG-Schlüsselpaar importieren',
