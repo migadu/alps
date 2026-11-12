@@ -14,6 +14,8 @@ import (
 	"log/slog"
 	"net"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,6 +36,9 @@ type Cluster struct {
 	broadcasts *memberlist.TransmitLimitedQueue
 	msgHandler func(msg []byte)
 	msgMtx     sync.RWMutex
+
+	// The port memberlist gives a peer written without one: its own bind port.
+	peerPort int
 
 	// Lifecycle
 	done         chan struct{}
@@ -146,6 +151,9 @@ func NewCluster(cfg Config) (*Cluster, error) {
 	}
 	cluster.leaderMtx.Unlock()
 
+	// Create has replaced a BindPort of 0 with the port it bound.
+	cluster.peerPort = mlConfig.BindPort
+
 	// Join peers if provided. This is best-effort at startup (peers may not be up
 	// yet); rejoinLoop below periodically retries so a failed initial join or a
 	// healed network partition does not leave independent groups
@@ -213,7 +221,7 @@ func (c *Cluster) runSafely(fn func()) {
 	fn()
 }
 
-// rejoinLoop periodically contacts configured peers missing from membership.
+// rejoinLoop periodically contacts configured discovery seeds and missing IP peers.
 // Multiple live members can still be only one side of a partition. memberlist never merges
 // two disjoint clusters on its own — someone must call Join again — so without
 // this a failed startup join or a partition heals into permanent split-brain,
@@ -231,7 +239,7 @@ func (c *Cluster) rejoinLoop(peers []string) {
 	}
 }
 
-// tryRejoin contacts configured peers absent from the current membership,
+// tryRejoin contacts configured host names and IP peers absent from membership,
 // including peers in another partition that still has multiple live nodes.
 // Recover each attempt separately so one failure cannot stop future retries.
 func (c *Cluster) tryRejoin(peers []string) {
@@ -243,24 +251,81 @@ func (c *Cluster) tryRejoin(peers []string) {
 	if c.ml == nil {
 		return
 	}
+	missing := c.missingPeers(peers)
+	if len(missing) == 0 {
+		return
+	}
+	before := c.ml.NumMembers()
+	if _, err := c.ml.Join(missing); err != nil {
+		c.logger.Debug("cluster rejoin attempt failed", "error", err)
+		return
+	}
+	// Join merges the peer's view before it returns. A join that found no one
+	// new is routine, for instance a peer whose advertised address differs
+	// from every address its name resolves to; only growth is news.
+	if after := c.ml.NumMembers(); after > before {
+		c.logger.Info("cluster rejoined peers", "members", after)
+	} else {
+		c.logger.Debug("cluster rejoin found no new members", "peers", missing, "members", after)
+	}
+}
+
+// missingPeers skips only literal IP addresses already in membership.
+// Host names remain discovery seeds: memberlist's TCP-first DNS lookup may
+// find nodes that a separate Go lookup would miss, even when some addresses
+// behind the name are already members. Leave resolution and errors to Join.
+func (c *Cluster) missingPeers(peers []string) []string {
 	known := make(map[string]bool)
 	for _, member := range c.ml.Members() {
 		known[member.Address()] = true
 	}
+	seen := make(map[string]bool)
 	var missing []string
 	for _, peer := range peers {
-		if peer != "" && !known[peer] {
+		if peer == "" || seen[peer] {
+			continue
+		}
+		seen[peer] = true
+		addr, literal := c.literalPeerAddress(peer)
+		if !literal || !known[addr] {
 			missing = append(missing, peer)
-			known[peer] = true
 		}
 	}
-	if len(missing) > 0 {
-		if _, err := c.ml.Join(missing); err != nil {
-			c.logger.Debug("cluster rejoin attempt failed", "error", err)
-		} else {
-			c.logger.Info("cluster rejoined peers", "members", c.ml.NumMembers())
-		}
+	return missing
+}
+
+// literalPeerAddress normalizes a literal IP peer to memberlist's "IP:port"
+// form. An optional "name/" prefix is dropped, and a peer without a port gets
+// this node's bind port. Host names and malformed peers are left for Join.
+func (c *Cluster) literalPeerAddress(peer string) (string, bool) {
+	if i := strings.Index(peer, "/"); i > 0 {
+		peer = peer[i+1:]
 	}
+	if !hasPort(peer) {
+		peer = net.JoinHostPort(strings.Trim(peer, "[]"), strconv.Itoa(c.peerPort))
+	}
+	host, sport, err := net.SplitHostPort(peer)
+	if err != nil {
+		return "", false
+	}
+	port, err := strconv.ParseUint(sport, 10, 16)
+	if err != nil {
+		return "", false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return net.JoinHostPort(ip.String(), strconv.FormatUint(port, 10)), true
+	}
+	return "", false
+}
+
+// hasPort is memberlist's test for a port: after a bracketed IPv6 address, a
+// colon past the bracket; otherwise exactly one colon, since an IPv6 address
+// written without brackets cannot carry one.
+func hasPort(s string) bool {
+	if strings.LastIndex(s, "[") == 0 {
+		return strings.LastIndex(s, ":") > strings.LastIndex(s, "]")
+	}
+	return strings.Count(s, ":") == 1
 }
 
 // IsLeader returns true if this node is the cluster leader.

@@ -207,7 +207,7 @@ For any deployment of several ALPS nodes, not only one using Let's Encrypt. The 
 | `port` | Integer | `7946` | Gossip protocol port, used over TCP and UDP. 0 means 7946. The port in use, from `bind` or from this key, must be 1 to 65535, or startup stops. |
 | `secret_key` | String | None (required) | Key that encrypts and authenticates the gossip: standard base64 that decodes to exactly 32 bytes (e.g. `openssl rand -base64 32`), the same on every node. Required unless `allow_insecure = true`. The environment variable `CLUSTER_SECRET_KEY`, when set, takes precedence over this value. |
 | `allow_insecure` | Boolean | `false` | Permits gossip without `secret_key`, unencrypted and unauthenticated, for a fully trusted network only. |
-| `peers` | Array | None | The other nodes' gossip addresses, written as `IP:port` (e.g., `["10.0.0.2:7946", "10.0.0.3:7946"]`). Joined at startup, and then every 30 seconds each one that is not among this node's members, so the nodes join up again after a split. A peer written as a host name, or without a port, never matches a member's address, so it is joined again every 30 seconds even while it is a member. |
+| `peers` | Array | None | The other nodes' gossip addresses (e.g., `["node2:7946", "node3:7946"]`). A peer without a port uses this node's `port`. Joined at startup and every 30 seconds; a literal IP address already among this node's members is skipped. Host names are retried so DNS can discover missing nodes, and only membership growth is logged as a rejoin at info level ([CLUSTER.md](CLUSTER.md#peers)). |
 
 ---
 
