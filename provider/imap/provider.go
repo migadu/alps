@@ -1482,8 +1482,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		if p.HasESearchCapability() {
 			return p.searchESearchMessages(query, sortOrder, page, pageSize)
 		}
-		// Fallback to INBOX if ESEARCH/MULTISEARCH is not supported
-		mailbox = "INBOX"
+		return nil, provider.PageInfo{}, &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeCannot, Text: "all-folder search requires MULTISEARCH"}
 	}
 
 	// A NOOP, as ListMessages sends, for mail that arrived since the mailbox

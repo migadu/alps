@@ -1635,7 +1635,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 			return searchRateLimited(ctx, limited)
 		}
 		if err != nil {
-			return err
+			return respondMailboxError(ctx, "Search mailbox", err)
 		}
 
 		// Convert provider messages to IMAP messages for display
