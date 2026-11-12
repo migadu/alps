@@ -386,3 +386,10 @@ describe('an unconfigured contacts account', () => {
     expect(page.shadowRoot!.textContent).toContain('contacts.notConfigured');
   });
 });
+
+it('names a list load failure separately from an individual contact edit refusal', async () => {
+  vi.mocked(contactsService.fetchContacts).mockRejectedValueOnce(new Error('offline'));
+  const page = await mount<Page>('contacts-page', { i18nStore });
+  await settle(page);
+  expect(page.shadowRoot!.textContent).toContain('contacts.listLoadFailed');
+});
