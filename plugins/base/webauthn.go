@@ -43,7 +43,7 @@ func handleSetupPage(ctx *alps.Context) error {
 
 	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
+		return keySettingsUnavailable(ctx, fmt.Errorf("failed to load credentials: %w", err))
 	}
 
 	displayCreds := make([]CredentialDisplay, len(creds.Credentials))
@@ -92,7 +92,7 @@ func handleSetupBegin(ctx *alps.Context) error {
 
 	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
+		return keySettingsUnavailable(ctx, fmt.Errorf("failed to load credentials: %w", err))
 	}
 	if lacksSecondFactor(ctx, creds) {
 		return respondTwoFactorRequired(ctx)
@@ -156,7 +156,7 @@ func handleSetupFinish(ctx *alps.Context) error {
 		// elsewhere since this session began its own.
 		creds, err := readCredentials(record.Read)
 		if err != nil {
-			return fmt.Errorf("failed to load credentials: %v", err)
+			return keySettingsUnavailable(ctx, fmt.Errorf("failed to load credentials: %w", err))
 		}
 		if lacksSecondFactor(ctx, creds) {
 			return respondTwoFactorRequired(ctx)
@@ -255,7 +255,7 @@ func handleSetupFinish(ctx *alps.Context) error {
 		creds.Enabled = true
 
 		if err := saveCredentials(record.Write, creds); err != nil {
-			return fmt.Errorf("failed to save credentials: %w", err)
+			return keySettingsUnavailable(ctx, fmt.Errorf("failed to save credentials: %w", err))
 		}
 		logKeyChange(ctx, "security key added", creds.Credentials[len(creds.Credentials)-1], len(creds.Credentials))
 		if codes != nil {
@@ -713,7 +713,7 @@ func handleLinkedAccountsTrust(ctx *alps.Context) error {
 
 		creds, err := readCredentials(record.Read)
 		if err != nil {
-			return fmt.Errorf("failed to load credentials: %v", err)
+			return keySettingsUnavailable(ctx, fmt.Errorf("failed to load credentials: %w", err))
 		}
 
 		if req.Trust {
@@ -732,9 +732,16 @@ func handleLinkedAccountsTrust(ctx *alps.Context) error {
 
 		creds.setTrust(req.Trust)
 		if err := saveCredentials(record.Write, creds); err != nil {
-			return fmt.Errorf("failed to save credentials: %w", err)
+			return keySettingsUnavailable(ctx, fmt.Errorf("failed to save credentials: %w", err))
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
 	})
+}
+
+// keySettingsUnavailable keeps transient record failures distinct from a
+// rejected ceremony and logs the wrapped cause without exposing it to the page.
+func keySettingsUnavailable(ctx *alps.Context, err error) error {
+	ctx.Server.Logger().Errorf("WebAuthn settings for %s: %v", ctx.Session.Username(), err)
+	return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
 }
