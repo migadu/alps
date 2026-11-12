@@ -25,6 +25,8 @@ export default {
     generating: 'Generazione della coppia di chiavi...',
     enableEncryptionDesc: 'Per abilitare la crittografia end-to-end tra i contatti che la supportano, avrai bisogno di una coppia di chiavi GPG.',
     noKeyPresent: 'Nessuna chiave presente',
+    loadError: 'Impossibile caricare le chiavi GPG.',
+    loadErrorRetry: 'Riprova',
     passphraseRequiredLabel: 'Passphrase (richiesta)',
     generateKeysBtn: 'Genera chiavi',
     importExistingKeys: 'Importa coppia di chiavi GPG esistente',

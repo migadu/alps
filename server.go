@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fernet/fernet-go"
@@ -34,8 +35,9 @@ type Server struct {
 	Scheduler   *Scheduler
 	Options     *Options
 
-	router  *Router
-	plugins []Plugin
+	router       *Router
+	plugins      []Plugin
+	closePlugins sync.Once
 
 	WebAuthn *webauthn.WebAuthn // Global WebAuthn instance
 
@@ -102,14 +104,21 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 
 	// Initialize Scheduler (runs every 1 hour)
 	s.Scheduler = NewScheduler(1 * time.Hour)
-	s.Scheduler.Register("core:cleanup_temp_attachments", cleanupTempAttachments)
+	s.Scheduler.Register("core:cleanup_temp_attachments", func() error {
+		threshold := time.Now().Add(-7 * 24 * time.Hour) // 7 days
+		return cleanupTempAttachments(os.TempDir(), threshold, s.Sessions.heldUploadFiles())
+	})
 	s.Scheduler.Start(logger)
 
 	return s, nil
 }
 
-func cleanupTempAttachments() error {
-	tempDir := os.TempDir()
+// cleanupTempAttachments removes the upload files (multipart-*) in tempDir
+// last written before threshold, which a crash or a kill left behind. It keeps
+// those in held, the files of uploads alps still holds: a session can keep an
+// upload for longer than the threshold, and a send or a draft save of it
+// would then fail for want of its file.
+func cleanupTempAttachments(tempDir string, threshold time.Time, held map[string]bool) error {
 	entries, err := os.ReadDir(tempDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -118,7 +127,6 @@ func cleanupTempAttachments() error {
 		return err
 	}
 
-	threshold := time.Now().Add(-7 * 24 * time.Hour) // 7 days
 	for _, entry := range entries {
 		if !strings.HasPrefix(entry.Name(), "multipart-") {
 			continue
@@ -127,8 +135,9 @@ func cleanupTempAttachments() error {
 		if err != nil {
 			continue
 		}
-		if info.ModTime().Before(threshold) {
-			os.Remove(filepath.Join(tempDir, entry.Name()))
+		path := filepath.Join(tempDir, entry.Name())
+		if info.ModTime().Before(threshold) && !held[path] {
+			os.Remove(path)
 		}
 	}
 	return nil
@@ -149,6 +158,16 @@ func (s *Server) Close() {
 	if s.Scheduler != nil {
 		s.Scheduler.Stop()
 	}
+	// Plugins load once, at start-up, and shutdown is the only time they are
+	// let go. Only the first call closes them: the steps above are safe to
+	// repeat, and a plugin's Close need not be.
+	s.closePlugins.Do(func() {
+		for _, p := range s.plugins {
+			if err := p.Close(); err != nil {
+				s.Logger().Errorf("Closing plugin %q: %v", p.Name(), err)
+			}
+		}
+	})
 }
 
 // LoadedPluginNames returns a list of plugin names that are currently loaded
@@ -248,10 +267,6 @@ func (s *Server) parseSMTPServer() error {
 }
 
 func (s *Server) loadPlugins() error {
-	if s.Scheduler != nil {
-		s.Scheduler.Clear()
-	}
-
 	var plugins []Plugin
 	for _, load := range pluginLoaders {
 		l, err := load(s)
@@ -395,8 +410,8 @@ type Options struct {
 	// the default (7 days); negative disables the cap entirely, which leaves
 	// sessions sliding forever — see defaultAbsoluteSessionDuration.
 	AbsoluteSessionDuration time.Duration
-	MaxSessions             int                     // Maximum total concurrent sessions, 0 means unlimited (default: 10000)
-	MaxSessionsPerUser      int                     // Maximum sessions per username, 0 means unlimited (default: 10)
+	MaxSessions             int                     // Maximum total concurrent sessions, 0 means unlimited; the config gives 10000 unless max_sessions is set, and 0 for a negative one
+	MaxSessionsPerUser      int                     // Maximum sessions per username, 0 means unlimited; the config gives 10 unless max_sessions_per_user is set, and 0 for a negative one
 	MaxAttachmentMiB        int                     // Max attachment size per composer in MiB
 	MaxSessionAttachmentMiB int                     // Max attachment size per session in MiB
 	MaxGlobalAttachmentMiB  int                     // Max global attachment size in MiB
@@ -453,7 +468,7 @@ type PluginConfig struct {
 }
 
 // setupMiddleware registers middleware on the router.
-// This is called both during initial setup and during reload.
+// loadPlugins calls it once, at start-up.
 func (s *Server) setupMiddleware(router *Router) {
 	// Baseline security headers (CSP, nosniff, DNS-prefetch) are applied to every
 	// response in Router.ServeHTTP so they also cover static assets (the SPA shell

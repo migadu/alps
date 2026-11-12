@@ -25,6 +25,8 @@ export default {
     generating: 'Генерисање пара кључева...',
     enableEncryptionDesc: 'Да бисте омогућили енд-то-енд крипцију са контактима који је подржавају, потребан вам је GPG пар кључева.',
     noKeyPresent: 'Нема кључева',
+    loadError: 'GPG кључеви нису могли да се учитају.',
+    loadErrorRetry: 'Покушајте поново',
     passphraseRequiredLabel: 'Лозинка (обавезно)',
     generateKeysBtn: 'Генериши кључеве',
     importExistingKeys: 'Увези постојећи GPG пар кључева',

@@ -25,6 +25,8 @@ export default {
     generating: '키 쌍을 생성하는 중…',
     enableEncryptionDesc: '종단 간 암호화를 지원하는 연락처와 암호화된 메일을 주고받으려면 GPG 키 쌍이 필요합니다.',
     noKeyPresent: '키 없음',
+    loadError: 'GPG 키를 불러오지 못했습니다.',
+    loadErrorRetry: '다시 시도',
     passphraseRequiredLabel: '암호 문구(필수)',
     generateKeysBtn: '키 생성',
     importExistingKeys: '기존 GPG 키 쌍 가져오기',

@@ -25,6 +25,8 @@ export default {
     generating: 'Membuat pasangan kunci…',
     enableEncryptionDesc: 'Untuk mengaktifkan enkripsi end-to-end dengan kontak yang mendukungnya, Anda memerlukan pasangan kunci GPG.',
     noKeyPresent: 'Belum ada kunci',
+    loadError: 'Kunci GPG tidak dapat dimuat.',
+    loadErrorRetry: 'Coba lagi',
     passphraseRequiredLabel: 'Frasa sandi (wajib)',
     generateKeysBtn: 'Buat Kunci',
     importExistingKeys: 'Impor Pasangan Kunci GPG yang Ada',

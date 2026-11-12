@@ -208,11 +208,18 @@ type Attachment struct {
 type upload struct {
 	form *multipart.Form
 	held atomic.Int64
+
+	// The manager's set of held uploads, which it is in until the last hold
+	// goes. See heldUploadFiles.
+	heldIn *heldUploads
 }
 
 func (u *upload) release() {
 	if u.held.Add(-1) == 0 {
 		u.form.RemoveAll()
+		if u.heldIn != nil {
+			u.heldIn.remove(u)
+		}
 	}
 }
 
@@ -835,6 +842,7 @@ func (s *Session) putAttachments(composerID string, files []*multipart.FileHeade
 	// The request's own hold, while it stores the files: an attachment of it
 	// evicted meanwhile does not take the bytes the next one is stored with.
 	up.held.Store(1)
+	s.manager.uploads.add(up)
 	defer up.release()
 
 	// Refuse a request whose session has already ended before making room
@@ -1239,13 +1247,17 @@ type SessionManager struct {
 	sessionDuration          time.Duration
 	maxSessionDuration       time.Duration
 	absoluteSessionDuration  time.Duration
-	maxSessions              int   // Maximum total sessions (0 = unlimited)
-	maxSessionsPerUser       int   // Maximum sessions per username (0 = unlimited)
+	maxSessions              int   // Maximum total sessions (0 = unlimited, which a negative max_sessions in the config gives)
+	maxSessionsPerUser       int   // Maximum sessions per username (0 = unlimited, which a negative max_sessions_per_user in the config gives)
 	maxAttachmentSize        int64 // Max attachment size per composer in bytes
 	maxSessionAttachmentSize int64 // Max attachment size per session in bytes
 	maxGlobalAttachmentSize  int64 // Max global attachment size in bytes
 
 	globalAttachmentSize atomic.Int64 // Tracks current total attachment size across all sessions
+
+	// The uploads whose files are held, which the temp-file sweep keeps. See
+	// heldUploadFiles.
+	uploads heldUploads
 
 	// now is the clock that decides when a session reads its account's
 	// WebAuthn record again (see needsSecondFactor), so that a test can move

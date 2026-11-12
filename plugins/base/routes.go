@@ -1627,8 +1627,12 @@ func handleGetMailbox(ctx *alps.Context) error {
 			}
 			return nil
 		})
+		// A sign-in the server refused at the account's connection limit is
+		// a provider.LimitError too, but no search was refused. The session
+		// has ended with it, and handleError says the mail server is
+		// unavailable, as it does for every other request then.
 		var limited *provider.LimitError
-		if errors.As(err, &limited) {
+		if errors.As(err, &limited) && !errors.Is(err, alps.ErrMailProviderUnavailable) {
 			return searchRateLimited(ctx, limited)
 		}
 		if err != nil {

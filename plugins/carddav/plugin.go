@@ -168,12 +168,27 @@ func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Sessio
 
 	addressBooks, err := c.FindAddressBooks(ctx, homeSet)
 	if err != nil {
+		p.forgetHomeSet(session.Username(), homeSet)
 		return nil, nil, fmt.Errorf("failed to query CardDAV address books: %v", err)
 	}
 	if len(addressBooks) == 0 {
 		return nil, nil, errNoAddressBook
 	}
 	return c, &addressBooks[0], nil
+}
+
+// forgetHomeSet drops a login's cached home set after listing from it failed,
+// so the next request looks it up again. The server may have moved it, when
+// the account was provisioned again or another server took over the URL;
+// kept, it would fail every request until alps restarted. It is dropped only if
+// it is still the one that failed: another request may have looked up the new
+// one meanwhile.
+func (p *plugin) forgetHomeSet(username, homeSet string) {
+	p.cacheMutex.Lock()
+	if cached, ok := p.homeSetCache[username]; ok && cached == homeSet {
+		delete(p.homeSetCache, username)
+	}
+	p.cacheMutex.Unlock()
 }
 
 // parseCardDAVURL normalises a configured CardDAV endpoint into an http(s) URL.

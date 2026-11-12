@@ -2,7 +2,9 @@
 # Install: cp dist/alps.service /etc/systemd/system/alps.service
 # Enable:  systemctl daemon-reload && systemctl enable alps
 # Start:   systemctl start alps
-# Reload:  systemctl reload alps  (sends SIGHUP for config reload)
+# Reload:  systemctl reload alps  (sends SIGHUP, which only reopens the log
+#          file set in [logging] output; the config is not read again)
+# Restart: systemctl restart alps  (applies a config or certificate change)
 # Logs:    journalctl -u alps -f
 
 [Unit]

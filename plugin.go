@@ -9,7 +9,8 @@ type Plugin interface {
 	Name() string
 	// SetRoutes populates group with the plugin's routes.
 	SetRoutes(group *Group)
-	// Close is called when the plugin is unloaded.
+	// Close is called once, by Server.Close at shutdown. Plugins load once,
+	// at start-up, and are never unloaded or reloaded before that.
 	Close() error
 }
 
@@ -18,8 +19,8 @@ type PluginLoaderFunc func(*Server) ([]Plugin, error)
 
 var pluginLoaders []PluginLoaderFunc
 
-// RegisterPluginLoader registers a plugin loader. The loader will be called on
-// server start-up and reload.
+// RegisterPluginLoader registers a plugin loader. The loader is called once, at
+// server start-up; plugins are not reloaded.
 func RegisterPluginLoader(f PluginLoaderFunc) {
 	pluginLoaders = append(pluginLoaders, f)
 }
