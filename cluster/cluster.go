@@ -43,7 +43,7 @@ type Cluster struct {
 type Config struct {
 	NodeName      string   // This node's name (defaults to hostname, determines leader order)
 	BindAddr      string   // Address to bind to (e.g., "0.0.0.0")
-	BindPort      int      // Port to bind to for memberlist (default: 7946)
+	BindPort      int      // Port to bind to for memberlist (0 chooses an unused port; the CLI defaults to7946)
 	Peers         []string // Other cluster nodes to connect to (e.g., ["node1:7946", "node2:7946"])
 	SecretKey     []byte   // 32-byte encryption key for gossip protocol (AES-256)
 	AllowInsecure bool     // Permit running without a SecretKey (unencrypted, unauthenticated gossip)
@@ -70,7 +70,7 @@ func NewCluster(cfg Config) (*Cluster, error) {
 	if cfg.BindAddr != "" {
 		mlConfig.BindAddr = cfg.BindAddr
 	}
-	if cfg.BindPort > 0 {
+	if cfg.BindPort >= 0 {
 		mlConfig.BindPort = cfg.BindPort
 	}
 
@@ -83,7 +83,7 @@ func NewCluster(cfg Config) (*Cluster, error) {
 	if ip := net.ParseIP(cfg.BindAddr); ip != nil && !ip.IsUnspecified() {
 		mlConfig.AdvertiseAddr = cfg.BindAddr
 	}
-	if cfg.BindPort > 0 {
+	if cfg.BindPort >= 0 {
 		mlConfig.AdvertisePort = cfg.BindPort
 	}
 
