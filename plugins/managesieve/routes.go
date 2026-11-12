@@ -42,8 +42,8 @@ func sieveError(ctx *alps.Context, op string, err error) error {
 // Script refusals are diagnostics for the editor; transport errors remain opaque.
 func scriptValidationError(ctx *alps.Context, op string, err error) error {
 	var refused *serverRefusal
-	if errors.As(err, &refused) {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Sieve script: " + refused.response})
+	if errors.As(err, &refused) && refused.code != "TRYLATER" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Sieve script: " + refused.message})
 	}
 	return sieveError(ctx, op, err)
 }
@@ -195,6 +195,10 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusOK, map[string]string{"message": "Script deactivated successfully"})
 	}
 
+	if err := validateForServer(payload.Content, strings.Fields(c.capabilities["SIEVE"])); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Sieve script: " + err.Error()})
+	}
+
 	// PUTSCRIPT validates with the server's complete grammar and extensions.
 	// Edit the currently active script in place rather than creating a
 	// separate one. Only fall back to a name of alps's own when the account
@@ -270,8 +274,16 @@ func (p *plugin) handleValidate(ctx *alps.Context) error {
 	}
 	defer c.Close()
 
-	if err := c.CheckScript(payload.Content); err != nil {
-		return scriptValidationError(ctx, "validate script", err)
+	allowed := strings.Fields(c.capabilities["SIEVE"])
+	if _, modern := c.capabilities["VERSION"]; modern {
+		if err := validateForServer(payload.Content, allowed); err != nil {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Sieve script: " + err.Error()})
+		}
+		if err := c.CheckScript(payload.Content); err != nil {
+			return scriptValidationError(ctx, "validate script", err)
+		}
+	} else if err := ValidateScript(payload.Content, allowed); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Sieve script: " + err.Error()})
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"message": "Script is valid"})

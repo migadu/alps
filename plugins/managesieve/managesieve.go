@@ -221,9 +221,41 @@ func (c *MSClient) CheckScript(content string) error {
 }
 
 // serverRefusal distinguishes a protocol NO from a failed connection.
-type serverRefusal struct{ response string }
+type serverRefusal struct{ code, message string }
 
-func (e *serverRefusal) Error() string { return e.response }
+func (e *serverRefusal) Error() string {
+	return fmt.Sprintf("server refused request (%s): %s", e.code, e.message)
+}
+
+// readRefusal consumes the optional response code and the complete RFC 5804
+// response string. Compile diagnostics commonly use a literal for CRLF lines.
+func (c *MSClient) readRefusal(line string) error {
+	rest := strings.TrimSpace(strings.TrimPrefix(line, "NO"))
+	code := ""
+	if strings.HasPrefix(rest, "(") {
+		end := strings.IndexByte(rest, ')')
+		if end == -1 {
+			return fmt.Errorf("unclosed ManageSieve response code")
+		}
+		fields := strings.Fields(rest[1:end])
+		if len(fields) > 0 {
+			code = strings.ToUpper(fields[0])
+		}
+		rest = strings.TrimSpace(rest[end+1:])
+	}
+	message := "The server refused the script"
+	if rest != "" {
+		parts, err := c.parseStringList(rest)
+		if err != nil {
+			return err
+		}
+		if len(parts) != 1 {
+			return fmt.Errorf("malformed ManageSieve response message")
+		}
+		message = parts[0]
+	}
+	return &serverRefusal{code: code, message: message}
+}
 
 func (c *MSClient) SetActive(name string) error {
 	// An empty name switches every script off.
@@ -315,7 +347,7 @@ func (c *MSClient) readResponse() error {
 			return nil
 		}
 		if strings.HasPrefix(line, "NO") {
-			return &serverRefusal{response: line}
+			return c.readRefusal(line)
 		}
 		if strings.HasPrefix(line, "BYE") {
 			return fmt.Errorf("server error: %s", line)
