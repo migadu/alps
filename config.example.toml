@@ -642,7 +642,7 @@ server = "smtps://smtp.migadu.com:465"
 # Each plugin can have its own section with enabled flag and settings
 # An explicit enabled = false always disables that plugin (except required base).
 # If any plugins are enabled explicitly, they form an allow-list plus base.
-# Otherwise loaders use their defaults for sections that are not configured.
+# An omitted enabled flag keeps loader defaults; password always requires true.
 
 [plugin.base]
 # Base plugin provides core email functionality (required)

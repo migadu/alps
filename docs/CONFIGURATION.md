@@ -251,7 +251,10 @@ Configures the SMTP server used for sending emails.
 ---
 
 ## 9. Plugins (`[plugin.<name>]`)
-Each plugin has a configuration section. If no sections exist, all plugins default to enabled.
+Each plugin may have a configuration section. An omitted `enabled` flag keeps
+the loader default; explicit `enabled = false` disables that plugin except for
+the required `base`. If any section sets `enabled = true`, those names form an
+allow-list plus `base`. Password changes always require explicit enablement.
 Common properties:
 - `enabled`: Boolean to toggle the plugin.
 - `upstream`: URI for backend services (used by CalDAV, CardDAV, ManageSieve).

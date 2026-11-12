@@ -91,7 +91,8 @@ enabled = true
 An explicit `enabled = false` always disables that plugin, even when no other
 plugin is enabled explicitly. The required `base` plugin stays enabled. When
 one or more sections set `enabled = true`, those names form an allow-list (plus
-`base`); otherwise plugins without a section follow their loader's defaults.
+`base`); otherwise plugins with an omitted `enabled` flag, or no section, follow
+their loader's defaults. Password changes always require `enabled = true`.
 
 ---
 
