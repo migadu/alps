@@ -273,14 +273,16 @@ export async function handleReaderContent(payload: any) {
             
             // Extract the PGP block
             const blockStart = payload.content.indexOf('-----BEGIN PGP MESSAGE-----');
-            const blockEnd = payload.content.indexOf('-----END PGP MESSAGE-----') + '-----END PGP MESSAGE-----'.length;
+            const end = payload.content.indexOf('-----END PGP MESSAGE-----', blockStart);
+            if (end === -1) return payload.content;
+            const blockEnd = end + '-----END PGP MESSAGE-----'.length;
             
             if (blockStart === -1 || blockEnd <= blockStart) return payload.content;
 
             const armoredBlock = payload.content.substring(blockStart, blockEnd);
 
-            const privateKey = await getPrivateKey(openpgp, payload.i18nStore);
             const message = await openpgp.readMessage({ armoredMessage: armoredBlock });
+            const privateKey = await getPrivateKey(openpgp, payload.i18nStore);
             
             const { data: decrypted } = await openpgp.decrypt({
                 message,
