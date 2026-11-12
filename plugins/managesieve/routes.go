@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/emersion/go-sasl"
 	"github.com/migadu/alps"
+	"github.com/migadu/alps/internal/debuglog"
 )
 
 // defaultScriptName is the name alps uses when creating a script for an
@@ -76,7 +76,7 @@ func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 	}
 
 	if ctx.Server.Options.Debug {
-		c.SetDebug(os.Stdout)
+		c.SetDebug(debuglog.NewWriter(ctx.Server.Logger().Slog(), "managesieve"))
 	}
 
 	// Upgrade to TLS before authenticating. Credentials are sent as SASL PLAIN,

@@ -5,15 +5,16 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net"
-	"os"
 	"regexp"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/emersion/go-message/charset"
+	"github.com/migadu/alps/internal/debuglog"
 	"github.com/migadu/go-imap/imapclient"
 )
 
@@ -101,11 +102,14 @@ func Connect(host string, tls bool, insecure bool, timeout time.Duration, debug 
 
 // connect is Connect, with the handler the client is to give what the server
 // says unasked (see mailboxNews); nil for none.
-func connect(host string, tls bool, insecure bool, timeout time.Duration, debug bool, guard TargetGuard, unilateral *imapclient.UnilateralDataHandler) (*imapclient.Client, error) {
+func connect(host string, tls bool, insecure bool, timeout time.Duration, debug bool, guard TargetGuard, unilateral *imapclient.UnilateralDataHandler, loggers ...*slog.Logger) (*imapclient.Client, error) {
 	var debugWriter io.Writer
 	if debug {
-		// Wrap os.Stderr with sanitizing writer to redact credentials
-		debugWriter = newSanitizingWriter(os.Stderr)
+		var logger *slog.Logger
+		if len(loggers) > 0 {
+			logger = loggers[0]
+		}
+		debugWriter = newSanitizingWriter(debuglog.NewWriter(logger, "imap"))
 	}
 
 	// Configure timeout for IMAP operations

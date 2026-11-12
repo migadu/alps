@@ -63,6 +63,9 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	}
 
 	// Create provider factory
+	if aware, ok := options.Provider.(provider.LoggerAware); ok {
+		aware.SetLogger(s.Logger().Slog())
+	}
 	providerFactory := options.Provider.CreateFactory(options.ProviderTimeout, options.Debug)
 
 	s.Sessions = newSessionManager(providerFactory, s.dialSMTP, logger, options.CacheTTL, options.CacheEnabled, options.LoginKey, options.SessionDuration, options.MaxSessionDuration, options.MaxSessions, options.MaxSessionsPerUser, options.MaxAttachmentMiB, options.MaxSessionAttachmentMiB, options.MaxGlobalAttachmentMiB)

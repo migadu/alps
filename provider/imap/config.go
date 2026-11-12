@@ -3,6 +3,7 @@ package imap
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"strings"
@@ -100,6 +101,14 @@ type Options struct {
 	*Config
 	address string
 	tls     bool
+	logger  *slog.Logger
+}
+
+// SetLogger receives the server logger before connection factories are built.
+func (o *Options) SetLogger(logger *slog.Logger) {
+	if o != nil {
+		o.logger = logger
+	}
 }
 
 // resolve returns the dial parameters, deriving them from Config when the
@@ -142,7 +151,7 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		}
 
 		news := &mailboxNews{}
-		client, err := connect(address, tls, insecure, timeout, debugMode, guard, news.handler())
+		client, err := connect(address, tls, insecure, timeout, debugMode, guard, news.handler(), o.logger)
 		if err != nil {
 			return nil, err
 		}
