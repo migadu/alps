@@ -533,7 +533,8 @@ func TestMultiConfig_RFC1035DomainValidation(t *testing.T) {
 func TestMultiConfig_ToOptionsNilSafety(t *testing.T) {
 	// 1. Direct Config without c.meta when using Template
 	cfg := &Config{
-		Template: "imaps://mail.%d:993",
+		Template:        "imaps://mail.%d:993",
+		TemplateDomains: []string{"*"},
 	}
 	opts, err := cfg.ToOptions()
 	require.NoError(t, err)

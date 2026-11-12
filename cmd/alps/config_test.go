@@ -104,6 +104,7 @@ type = "multi"
 [provider.multi]
 default_domain = "migadu.com"
 template = "imaps://mail.%d:993"
+template_domains = ["*"]
 
 [provider.multi.domains."migadu.com"]
 type = "imap"
