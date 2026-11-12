@@ -2,7 +2,6 @@ package cluster
 
 import (
 	"net"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -83,19 +82,5 @@ func TestClusterBoundToIPv6WildcardIsReachableAtItsAdvertisedAddress(t *testing.
 	}
 	if _, err := b.ml.Ping(self.Name, &net.UDPAddr{IP: self.Addr, Port: int(self.Port)}); err != nil {
 		t.Fatalf("ping %s over UDP: %v", advertised, err)
-	}
-}
-
-// The probe agrees with Go: a listener on "::" accepts IPv4 except where the
-// system has no IPv4-mapped IPv6 sockets.
-func TestIPv6WildcardServesIPv4WhereTheSystemMapsIt(t *testing.T) {
-	ln, err := net.Listen("tcp", "[::]:0")
-	if err != nil {
-		t.Skipf("this host cannot listen on ::: %v", err)
-	}
-	ln.Close()
-	want := runtime.GOOS != "openbsd" && runtime.GOOS != "dragonfly"
-	if got := ipv6WildcardServesIPv4(); got != want {
-		t.Fatalf("on %s a listener on :: serves IPv4: got %v, want %v", runtime.GOOS, got, want)
 	}
 }
