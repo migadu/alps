@@ -321,8 +321,8 @@ func (srv *scriptedServer) dial(t *testing.T, timeout time.Duration) *IMAPProvid
 
 // A DONE the server never answers ends the wait all the same, within the
 // connection's response timeout, as a lost connection: the connection is
-// closed, and whoever waits for it can go on. The client's own read deadline
-// in IDLE is half an hour, and DONE does not shorten it.
+// closed, and whoever waits for it can go on. The client uses the same
+// response timeout for DONE; the longer IDLE deadline is only for news.
 func TestIdle_ADoneLeftUnansweredLosesTheConnection(t *testing.T) {
 	srv := newScriptedServer(t, false)
 	p := srv.dial(t, 300*time.Millisecond)
@@ -488,8 +488,9 @@ func TestOnMailboxNews_NilStopsTheNews(t *testing.T) {
 }
 
 // An IDLE the server never answers with its continuation ends all the same,
-// within the connection's response timeout, as a lost connection: the client
-// waits for it under its half-hour read deadline for IDLE.
+// within the connection's response timeout, as a lost connection. The client
+// bounds the continuation by the same timeout; its half-hour IDLE deadline
+// applies only after the continuation, while waiting for news.
 func TestIdle_AnUnansweredIdleLosesTheConnection(t *testing.T) {
 	srv := newScriptedServer(t, false)
 	srv.silentIdle = true

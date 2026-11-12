@@ -500,7 +500,7 @@ enabled = false
 # A matching [provider.<type>] section is required.
 type = "imap"
 
-# Provider connect timeout in seconds (default: 30)
+# Provider connection and response timeout in seconds (default: 30)
 # For the imap provider this supersedes the legacy [server] imap_timeout_sec,
 # which is still honoured when this key is unset.
 # timeout_sec = 30
