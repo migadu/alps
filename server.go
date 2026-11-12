@@ -388,7 +388,7 @@ type Options struct {
 	TrustedProxies          []*net.IPNet            // Proxy IPs/CIDRs whose X-Forwarded-Proto/Host headers are trusted (e.g. for CSRF origin computation behind a TLS-terminating reverse proxy)
 	TrustedOrigins          []string                // Additional origins accepted by the CSRF check (e.g. "https://webmail.example.com"), normalized to lowercase without a trailing slash
 	ReadTimeout             time.Duration           // HTTP read timeout, 0 means use default (10 seconds)
-	WriteTimeout            time.Duration           // HTTP write timeout, 0 means use default (30 seconds)
+	WriteTimeout            time.Duration           // HTTP write timeout, 0 means use default (60 seconds)
 	IdleTimeout             time.Duration           // HTTP idle timeout, 0 means use default (120 seconds)
 	ProviderTimeout         time.Duration           // Provider connect timeout, 0 means use default (30 seconds)
 	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
