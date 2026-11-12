@@ -82,6 +82,11 @@ func main() {
 	// Bridge standard-library log calls and structured subsystem logs to the
 	// configured destination, format and level.
 	slog.SetDefault(logger.Slog())
+	// Provider-specific TOML has now been decoded by ToOptions, so legitimate
+	// provider keys are no longer counted as unknown. Log key names, not values.
+	for _, key := range config.provider.meta.Undecoded() {
+		logger.Warnf("Unknown configuration key: %s (ignored)", key.String())
+	}
 
 	// Initialize cluster for leader election and gossip broadcasting (if enabled)
 	var clusterMgr *cluster.Cluster

@@ -1,5 +1,7 @@
 # ALPS Configuration Reference
 
+Unknown configuration keys are ignored with a startup warning naming each key. Provider-specific sections are checked after decoding; free-form plugin `options` remain supported.
+
 This document provides a comprehensive overview of all configuration options and sections available in ALPS, as defined in `config.example.toml`. The configuration file uses the TOML format.
 
 ---
