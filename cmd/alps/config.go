@@ -628,3 +628,36 @@ func freeFormConfigKey(key toml.Key) bool {
 		return false
 	}
 }
+
+// UnknownKeys reports unused configuration after ToOptions has decoded the
+// selected provider. Generic primitive maps consume their direct keys, so those
+// keys must also be checked against the provider envelope explicitly.
+func (c *Config) UnknownKeys() []toml.Key {
+	if c.provider == nil || c.provider.meta == nil {
+		return nil
+	}
+	var keys []toml.Key
+	for _, key := range c.provider.meta.Undecoded() {
+		if freeFormConfigKey(key) && (!strings.EqualFold(key[0], "provider") || c.provider.Type == "multi") {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	for _, key := range c.provider.meta.Keys() {
+		if len(key) != 2 || !strings.EqualFold(key[0], "provider") || strings.EqualFold(key[1], "type") || strings.EqualFold(key[1], "timeout_sec") || strings.EqualFold(key[1], c.provider.Type) {
+			continue
+		}
+		covered := false
+		for _, existing := range keys {
+			if len(existing) >= 2 && existing[0] == key[0] && existing[1] == key[1] {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			keys = append(keys, key)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i].String() < keys[j].String() })
+	return keys
+}

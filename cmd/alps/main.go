@@ -84,10 +84,7 @@ func main() {
 	slog.SetDefault(logger.Slog())
 	// Provider-specific TOML has now been decoded by ToOptions, so legitimate
 	// provider keys are no longer counted as unknown. Log key names, not values.
-	for _, key := range config.provider.meta.Undecoded() {
-		if freeFormConfigKey(key) {
-			continue
-		}
+	for _, key := range config.UnknownKeys() {
 		logger.Warnf("Unknown configuration key: %s (ignored)", key.String())
 	}
 
