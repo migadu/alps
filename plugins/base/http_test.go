@@ -3,6 +3,7 @@ package alpsbase
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -600,9 +601,11 @@ func TestHTTP_FolderVerbs(t *testing.T) {
 }
 
 func TestHTTP_AFailureDoesNotDescribeTheServer(t *testing.T) {
-	s := newTestServer(t)
+	s := newTestServerWrapping(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(p provider.MailProvider) provider.MailProvider {
+		return folderFailureProvider{MailProvider: p, err: errors.New("backend at secret.internal failed")}
+	})
 	s.login()
-	r := s.do("DELETE", "/mailboxes/INBOX", nil)
+	r := s.do("DELETE", "/mailboxes/Archive", nil)
 	s.expect(r, http.StatusInternalServerError)
 	var body struct {
 		Error string
