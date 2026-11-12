@@ -10,5 +10,5 @@ import (
 )
 
 // All plugins are imported here for registration.
-// When using a config file, you can control which plugins are enabled
-// via the [plugins] section. Without a config file, all plugins are enabled.
+// The required config file selects plugins using enabled in [plugin.<name>].
+// Plugins load once at startup; SIGHUP only reopens the log file.

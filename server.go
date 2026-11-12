@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fernet/fernet-go"
@@ -34,8 +35,9 @@ type Server struct {
 	Scheduler   *Scheduler
 	Options     *Options
 
-	router  *Router
-	plugins []Plugin
+	router    *Router
+	plugins   []Plugin
+	closeOnce sync.Once
 
 	WebAuthn *webauthn.WebAuthn // Global WebAuthn instance
 
@@ -142,13 +144,20 @@ func (s *Server) EndEventStreams() {
 }
 
 func (s *Server) Close() {
-	s.Sessions.Close()
-	if s.RateLimiter != nil {
-		s.RateLimiter.Close()
-	}
-	if s.Scheduler != nil {
-		s.Scheduler.Stop()
-	}
+	s.closeOnce.Do(func() {
+		s.Sessions.Close()
+		if s.RateLimiter != nil {
+			s.RateLimiter.Close()
+		}
+		if s.Scheduler != nil {
+			s.Scheduler.Stop()
+		}
+		for _, p := range s.plugins {
+			if err := p.Close(); err != nil {
+				s.logger.Errorf("Closing plugin %q: %v", p.Name(), err)
+			}
+		}
+	})
 }
 
 // LoadedPluginNames returns a list of plugin names that are currently loaded
@@ -252,6 +261,9 @@ func (s *Server) loadPlugins() error {
 				}
 				if !enabled {
 					s.logger.Printf("Plugin %q is disabled (not in enabled list)", p.Name())
+					if err := p.Close(); err != nil {
+						s.logger.Errorf("Closing disabled plugin %q: %v", p.Name(), err)
+					}
 					continue
 				}
 			}
