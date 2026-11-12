@@ -4586,11 +4586,9 @@ func loadSettings(s provider.Store) (*Settings, error) {
 }
 
 func loadSettingsWith(get func(key string, out interface{}) error) (*Settings, error) {
-	autoLogoutDefault := 30
 	settings := &Settings{
 		MessagesPerPage:    50,
 		PreferredView:      "html", // Default to HTML view
-		AutoLogout:         &autoLogoutDefault,
 		SoundNotifications: true,
 	}
 	err := get(settingsKey, settings)
@@ -5009,6 +5007,14 @@ func handleSettings(ctx *alps.Context) error {
 			}
 		}
 		settings.WeekStart = &weekStart
+	}
+
+	if settings.AutoLogout == nil {
+		minutes := int(ctx.Server.Sessions.CalculateSessionDurationForVal(nil) / time.Minute)
+		if minutes < 0 {
+			minutes = 0
+		}
+		settings.AutoLogout = &minutes
 	}
 
 	maxAttachmentMiB := float64(ctx.Session.AttachmentSizeLimit()) / (1 << 20)

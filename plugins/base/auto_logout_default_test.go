@@ -9,7 +9,7 @@ import (
 
 func TestSettingsUseServerIdleDefaultWithoutPersistingIt(t *testing.T) {
 	for _, minutes := range []int{10, 37, 120} {
-		t.Run(time.Duration(minutes).String(), func(t *testing.T) {
+		t.Run((time.Duration(minutes) * time.Minute).String(), func(t *testing.T) {
 			s := newTestServerWithOptions(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(o *alps.Options) { o.SessionDuration = time.Duration(minutes) * time.Minute })
 			s.login()
 			read := func() {
