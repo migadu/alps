@@ -81,6 +81,7 @@ func registerRoutes(p *alps.GoPlugin) {
 	// Settings & Accounts
 	p.GET("/settings", handleSettings)
 	p.PUT("/settings", handleSettings)
+	registerDAVSettingsRoutes(p)
 
 	// WebAuthn
 	p.GET("/settings/2fa", handleSetupPage)
@@ -4089,6 +4090,7 @@ func handleGetSession(ctx *alps.Context) error {
 		"Address":               ctx.Session.Address(),
 		"PasswordChangeEnabled": passwordChangeEnabled,
 		"EnabledPlugins":        enabledPlugins,
+		"ActivePlugins":         activeSessionPlugins(ctx, enabledPlugins),
 		"MaxAttachmentMiB":      maxAttachmentMiB,
 	})
 }

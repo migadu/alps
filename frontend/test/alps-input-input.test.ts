@@ -43,3 +43,57 @@ describe('alps-input input', () => {
     expect(seen).toEqual(['']);
   });
 });
+
+describe('alps-input constraints and credentials', () => {
+  it('passes named-field constraints to the native input without changing its styling', async () => {
+    const el = await mount<El>('alps-input', { type: 'url', name: 'server', maxLength: 2048, required: true });
+    const input = shadow<HTMLInputElement>(el, 'input');
+    expect(input.type).toBe('url');
+    expect(input.name).toBe('server');
+    expect(input.maxLength).toBe(2048);
+    expect(input.required).toBe(true);
+    expect(input.checkValidity()).toBe(false);
+  });
+
+  it.each([
+    ['url', 'url'], ['email', 'email'], ['password', 'current-password'], ['text', 'section-caldav username'],
+  ])('preserves %s identifiers without correction or capitalization', async (type, autocomplete) => {
+    const el = await mount<El>('alps-input', { type, autocomplete });
+    const input = shadow<HTMLInputElement>(el, 'input');
+    expect(input.autocomplete).toBe(autocomplete);
+    expect(input.getAttribute('autocorrect')).toBe('off');
+    expect(input.getAttribute('autocapitalize')).toBe('none');
+    expect(input.getAttribute('spellcheck')).toBe('false');
+  });
+
+  it('leaves ordinary text correction and capitalization at the browser defaults', async () => {
+    const el = await mount<El>('alps-input', { type: 'text', autocomplete: 'name' });
+    const input = shadow<HTMLInputElement>(el, 'input');
+    expect(input.hasAttribute('autocorrect')).toBe(false);
+    expect(input.hasAttribute('autocapitalize')).toBe(false);
+    expect(input.hasAttribute('spellcheck')).toBe(false);
+  });
+
+  it('locks both the field and its password action when disabled', async () => {
+    const el = await mount<El>('alps-input', { type: 'password', value: 'secret', disabled: true });
+    const input = shadow<HTMLInputElement>(el, 'input');
+    const toggle = shadow<HTMLButtonElement>(el, 'button');
+    expect(input.disabled).toBe(true);
+    expect(toggle.disabled).toBe(true);
+    toggle.click();
+    await el.updateComplete;
+    expect(input.type).toBe('password');
+  });
+
+  it('hides a newly entered password after the previous password was cleared', async () => {
+    const el = await mount<El>('alps-input', { type: 'password', value: 'first' });
+    shadow<HTMLButtonElement>(el, 'button').click();
+    await el.updateComplete;
+    expect(shadow<HTMLInputElement>(el, 'input').type).toBe('text');
+    el.value = '';
+    await el.updateComplete;
+    el.value = 'next';
+    await el.updateComplete;
+    expect(shadow<HTMLInputElement>(el, 'input').type).toBe('password');
+  });
+});

@@ -66,6 +66,10 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	providerFactory := options.Provider.CreateFactory(options.ProviderTimeout, options.Debug)
 
 	s.Sessions = newSessionManager(providerFactory, s.dialSMTP, logger, options.CacheTTL, options.CacheEnabled, options.LoginKey, options.SessionDuration, options.MaxSessionDuration, options.MaxSessions, options.MaxSessionsPerUser, options.MaxAttachmentMiB, options.MaxSessionAttachmentMiB, options.MaxGlobalAttachmentMiB)
+	s.Sessions.davAllowPrivate = options.DAVAllowPrivateServers
+	if options.DAVConnectionFreshFor != 0 {
+		s.Sessions.davFreshFor = options.DAVConnectionFreshFor
+	}
 	// A provider that knows the address of a bare login says it: see
 	// Session.Address.
 	if r, ok := options.Provider.(provider.AddressResolver); ok {
@@ -177,6 +181,24 @@ func (s *Server) LoadedPluginNames() []string {
 		names = append(names, p.Name())
 	}
 	return names
+}
+
+// DAVDefaultServer returns the endpoint the loaded plugin actually uses after
+// parsing and discovery. Settings and connection validation must use that same
+// endpoint, including when a provider's invalid route falls back to the global
+// server or startup discovery could not find one.
+func (s *Server) DAVDefaultServer(service, username string) string {
+	for _, p := range s.plugins {
+		if p.Name() == service {
+			if defaults, ok := p.(interface{ DAVDefaultServer(string) string }); ok {
+				return defaults.DAVDefaultServer(username)
+			}
+		}
+	}
+	if endpoint := s.ServiceURLFor(service, username); endpoint != "" {
+		return endpoint
+	}
+	return s.Options.Plugins[service].Server
 }
 
 // ParseServerURL parses a connection string into a url.URL.
@@ -389,15 +411,27 @@ func (o *Options) CacheMaxPartBytes() int64 {
 }
 
 type Options struct {
-	SMTP               SMTPOptions // SMTP configuration
-	Debug              bool
-	LoginKey           *fernet.Key
-	EnabledPlugins     []string      // If empty, all plugins are enabled
-	CacheTTL           time.Duration // Cache TTL, 0 means use default (10 minutes)
-	CacheEnabled       bool          // If false, caching is disabled
-	CacheMaxPartKiB    int           // Largest message part the session cache keeps, in KiB; 0 means the default (see CacheMaxPartBytes)
-	SessionDuration    time.Duration // Session timeout, 0 means use default (30 minutes)
-	MaxSessionDuration time.Duration // Maximum session duration users can set, 0 means no limit
+	SMTP     SMTPOptions // SMTP configuration
+	Debug    bool
+	LoginKey *fernet.Key
+	// If true, the CalDAV and CardDAV servers users enter in Settings may use
+	// plain HTTP (the +insecure schemes) and loopback or private addresses.
+	// Off by default: a personal server is then reached over HTTPS only, at
+	// public addresses only, so a mail account cannot make alps probe the
+	// network it runs in. Administrator-configured servers are never limited.
+	DAVAllowPrivateServers bool
+	// How long a session answers DAV requests from the saved CalDAV/CardDAV
+	// connection it last read from the mail account's store, before it reads
+	// again to see a change made in another session. 0 means the default (30
+	// seconds); negative reads on every request. A session's own changes take
+	// effect at once either way.
+	DAVConnectionFreshFor time.Duration
+	EnabledPlugins        []string      // If empty, all plugins are enabled
+	CacheTTL              time.Duration // Cache TTL, 0 means use default (10 minutes)
+	CacheEnabled          bool          // If false, caching is disabled
+	CacheMaxPartKiB       int           // Largest message part the session cache keeps, in KiB; 0 means the default (see CacheMaxPartBytes)
+	SessionDuration       time.Duration // Session timeout, 0 means use default (30 minutes)
+	MaxSessionDuration    time.Duration // Maximum session duration users can set, 0 means no limit
 	// How long a session may live no matter how much it is used. 0 means use
 	// the default (7 days); negative disables the cap entirely, which leaves
 	// sessions sliding forever — see defaultAbsoluteSessionDuration.

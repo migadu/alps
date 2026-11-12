@@ -44,6 +44,7 @@ Playwright reads a file argument as a regular expression over the path, so a bar
 | `E2E_SKIP_BUILD` | unset | Test the `frontend/dist` already on disk instead of rebuilding it |
 | `E2E_KEEP_STATE` | unset | Keep the database and state directory after the run |
 | `E2E_PREVIEW` | unset | Set to `1` to enable FETCH PREVIEW and run the positive preview test; requires a PREVIEW-capable `SORA_DIR` |
+| `E2E_DAV_PERSONAL` | unset | Set to `1` to leave DAV defaults unconfigured and test personal connection setup |
 | `PW_CHROMIUM_PATH` | unset | Use an already installed Chromium binary |
 
 The default run leaves message previews off and tests that a server without them
@@ -52,6 +53,15 @@ checkout that implements FETCH PREVIEW and opt in explicitly:
 
 ```sh
 E2E_PREVIEW=1 SORA_DIR=../sora-preview scripts/e2e.sh e2e/message-preview.spec.ts
+```
+
+The DAV connection spec runs with global defaults and without them. Both runs
+save credentials for a DAV account different from the signed-in mail account,
+exercise DAV access, reload the saved connection, and reset it:
+
+```sh
+scripts/e2e.sh e2e/dav-connections.spec.ts
+E2E_DAV_PERSONAL=1 scripts/e2e.sh e2e/dav-connections.spec.ts
 ```
 
 An opted-in run requires preview support; it fails if the server cannot supply it.

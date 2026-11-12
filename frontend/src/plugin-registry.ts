@@ -132,22 +132,69 @@ class PluginRegistry {
     routes: Route[] = [];
     hooks: Map<string, { handler: Function; pluginId?: string }[]> = new Map();
     enabledPlugins: Set<string> | null = null;
+    /** Enabled plugins whose account connection is configured. Settings still
+     * use enabledPlugins, so an unconfigured DAV account can be set up. */
+    activePlugins: Set<string> | null = null;
 
     /** The plugins /session names as on, or null for "not known yet": all of them. */
-    setEnabledPlugins(plugins: string[] | null) {
+    setEnabledPlugins(plugins: string[] | null, activePlugins: string[] | null = plugins) {
         const next = plugins === null ? null : new Set(plugins);
+        const active = activePlugins === null ? null : new Set(activePlugins);
         // Idempotent, because the callers are not: /session is re-read on every
         // sign-in and reconnect, and each would otherwise announce a change that
         // never happened — costing a full re-render in all three listeners and
         // re-installing the route table under whichever plugin page is open.
-        if (sameEnablement(this.enabledPlugins, next)) return;
+        if (sameEnablement(this.enabledPlugins, next) && sameEnablement(this.activePlugins, active)) return;
         this.enabledPlugins = next;
+        this.activePlugins = active;
         window.dispatchEvent(new CustomEvent('plugins-updated'));
     }
 
     /** Is `pluginId` (or, for a nav/settings tab, its id) enabled here? */
     private isEnabled(pluginName: string): boolean {
         return this.enabledPlugins === null || this.enabledPlugins.has(pluginName);
+    }
+
+    /** What this account's last /session said of its DAV connections, to go
+     * by until this page load's own answer: see setRememberedActive. */
+    private rememberedActive: Set<string> | null = null;
+
+    private isActive(pluginName: string): boolean {
+        // Until /session answers, do not issue DAV reads against an account
+        // that may have no server: only one known to have had a connection
+        // the last time gets its pages. Other plugins keep their startup
+        // behavior.
+        if (!this.isEnabled(pluginName)) return false;
+        if (this.activePlugins) return this.activePlugins.has(pluginName);
+        return (pluginName !== 'caldav' && pluginName !== 'carddav')
+            || this.rememberedActive?.has(pluginName) === true;
+    }
+
+    /** Whether /session has said which plugins have a connection. */
+    get activeKnown(): boolean {
+        return this.activePlugins !== null;
+    }
+
+    /**
+     * The DAV plugins the account had a connection for when /session last
+     * answered, or null for none known. A reload on a calendar page then has
+     * its page and tabs at once, rather than only after /session answers, or
+     * never when that request fails. /session still has the last word.
+     */
+    setRememberedActive(plugins: string[] | null) {
+        const next = plugins === null ? null : new Set(plugins);
+        if (sameEnablement(this.rememberedActive, next)) return;
+        this.rememberedActive = next;
+        if (this.activePlugins === null) window.dispatchEvent(new CustomEvent('plugins-updated'));
+    }
+
+    /** Apply a saved/reset connection before the next /session read returns,
+     * so removing an endpoint cannot mount a new page against no server. */
+    setDAVConnectionConfigured(service: 'caldav' | 'carddav', configured: boolean) {
+        const active = new Set(this.activePlugins ?? this.enabledPlugins ?? []);
+        if (configured) active.add(service);
+        else active.delete(service);
+        this.setEnabledPlugins(this.enabledPlugins === null ? null : [...this.enabledPlugins], [...active]);
     }
 
     /**
@@ -174,7 +221,7 @@ class PluginRegistry {
     /** The handlers for `hookName` that this deployment actually enables. */
     private enabledHandlers(hookName: string): Function[] {
         return (this.hooks.get(hookName) || [])
-            .filter(entry => !entry.pluginId || this.isEnabled(entry.pluginId))
+            .filter(entry => !entry.pluginId || this.isActive(entry.pluginId))
             .map(entry => entry.handler);
     }
 
@@ -244,10 +291,7 @@ class PluginRegistry {
     }
 
     getNavTabs(): NavTab[] {
-        let tabs = this.navTabs;
-        if (this.enabledPlugins !== null) {
-            tabs = tabs.filter(t => this.isEnabled(t.pluginId || t.id));
-        }
+        const tabs = this.navTabs.filter(t => this.isActive(t.pluginId || t.id));
         return tabs.slice().sort((a, b) => (a.order || 999) - (b.order || 999));
     }
 
@@ -280,10 +324,7 @@ class PluginRegistry {
      * arrives from /session after the first render.
      */
     getRoutes(): Route[] {
-        if (this.enabledPlugins !== null) {
-            return this.routes.filter(r => !r.pluginId || this.isEnabled(r.pluginId));
-        }
-        return this.routes;
+        return this.routes.filter(r => !r.pluginId || this.isActive(r.pluginId));
     }
 }
 

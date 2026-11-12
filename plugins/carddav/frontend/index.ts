@@ -2,6 +2,15 @@ import { registry } from '../../../frontend/src/plugin-registry';
 import { parseWrittenAddress } from '../../../frontend/src/utils/address-display';
 import { contactsService } from './contacts-service';
 
+registry.registerSettingsTab({
+    id: 'carddav',
+    pluginId: 'carddav',
+    labelKey: 'navigation.contacts',
+    icon: 'users',
+    component: 'alps-carddav-settings',
+    load: () => import('../../../frontend/src/components/dav-connection-settings'),
+});
+
 registry.registerRoute({
     path: '/contacts/*',
     component: 'contacts-page',

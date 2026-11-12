@@ -198,6 +198,9 @@ func summaryOf(t *testing.T, co caldav.CalendarObject) string {
 }
 
 type harness struct {
+	srv    *alps.Server
+	davURL string
+	passwd string
 	t      *testing.T
 	url    string
 	client *http.Client
@@ -207,6 +210,9 @@ type harness struct {
 }
 
 type harnessOptions struct {
+	noDefault         bool
+	defaultServer     string
+	explicitlyEnabled bool
 	// smtp is the submission server; none reachable when empty.
 	smtp string
 	// wrap stands in front of the CalDAV server, to say or record what
@@ -276,6 +282,15 @@ func startHarness(t *testing.T, o harnessOptions) *harness {
 		SMTP:     alps.SMTPOptions{Server: o.smtp},
 		LoginKey: &key,
 		Plugins:  map[string]alps.PluginConfig{"caldav": {Enabled: true, Server: davServer.URL}},
+		// The personal endpoints in these tests are loopback HTTP servers.
+		DAVAllowPrivateServers: true,
+		// These tests save a connection in one session and use it in another.
+		DAVConnectionFreshFor: -1,
+	}
+	if o.noDefault {
+		opts.Plugins["caldav"] = alps.PluginConfig{Enabled: true}
+	} else if o.defaultServer != "" {
+		opts.Plugins["caldav"] = alps.PluginConfig{Server: o.defaultServer, Enabled: o.explicitlyEnabled}
 	}
 	srv, err := alps.New(alps.NewLogger(), opts)
 	if err != nil {
@@ -288,7 +303,7 @@ func startHarness(t *testing.T, o harnessOptions) *harness {
 	})
 
 	jar, _ := cookiejar.New(nil)
-	h := &harness{t: t, url: ts.URL, client: &http.Client{Jar: jar}, dav: dav, mailDir: mailDir}
+	h := &harness{t: t, srv: srv, davURL: davServer.URL, passwd: passwd, url: ts.URL, client: &http.Client{Jar: jar}, dav: dav, mailDir: mailDir}
 	h.expect(h.do("POST", "/session", map[string]string{"username": login, "password": testPassword}), http.StatusOK)
 	return h
 }
