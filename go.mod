@@ -56,7 +56,7 @@ require (
 	github.com/hashicorp/go-metrics v0.5.4 // indirect
 	github.com/hashicorp/go-msgpack/v2 v2.1.5 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
-	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
+	github.com/hashicorp/go-sockaddr v1.0.7
 	github.com/hashicorp/golang-lru v0.5.0 // indirect
 	github.com/miekg/dns v1.1.68 // indirect
 	github.com/migadu/go-sieve v1.1.2

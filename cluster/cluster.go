@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	sockaddr "github.com/hashicorp/go-sockaddr"
 	"github.com/hashicorp/memberlist"
 )
 
@@ -77,14 +78,28 @@ func NewCluster(cfg Config) (*Cluster, error) {
 		mlConfig.BindPort = cfg.BindPort
 	}
 
-	// Advertise a concrete address to peers only when we bind to a specific IP.
-	// Binding to 0.0.0.0 / :: (or empty) means "all interfaces"; advertising that
-	// literally makes peers try to reach us at an unspecified address and mark us
-	// suspect/dead, so membership never forms. Leaving AdvertiseAddr empty lets
-	// memberlist auto-detect a routable private IP. Non-IP bind addresses are
+	// Advertise a concrete address to peers. Binding to 0.0.0.0 or :: (or
+	// empty) means "all interfaces"; advertising that literally makes peers try
+	// to reach us at an unspecified address and mark us suspect/dead, so
+	// membership never forms. memberlist picks the host's private address
+	// itself, but only for the literal "0.0.0.0" (an empty bind is that too).
+	// For "::" it would advertise "::", so pick the same address here: Go
+	// listens on IPv4 and IPv6 alike for "::". Non-IP bind addresses are
 	// rejected before creating any listener.
-	if ip := net.ParseIP(cfg.BindAddr); ip != nil && !ip.IsUnspecified() {
-		mlConfig.AdvertiseAddr = cfg.BindAddr
+	if ip := net.ParseIP(cfg.BindAddr); ip != nil {
+		switch {
+		case !ip.IsUnspecified():
+			mlConfig.AdvertiseAddr = cfg.BindAddr
+		case ip.To4() == nil:
+			private, err := sockaddr.GetPrivateIP()
+			if err != nil {
+				return nil, fmt.Errorf("cluster bind address %q: cannot find a private address to advertise: %w", cfg.BindAddr, err)
+			}
+			if private == "" {
+				return nil, fmt.Errorf("cluster bind address %q: the host has no private address to advertise; set bind to this node's own address", cfg.BindAddr)
+			}
+			mlConfig.AdvertiseAddr = private
+		}
 	}
 	if cfg.BindPort >= 0 {
 		mlConfig.AdvertisePort = cfg.BindPort
