@@ -69,16 +69,17 @@ type S3Config struct {
 
 // Manager orchestrates TLS certificate management using Let's Encrypt.
 type Manager struct {
-	config          *Config
-	autocertManager *autocert.Manager
-	logger          *slog.Logger
-	domains         []string
-	defaultDomain   string                  // Default domain for SNI-less connections
-	syncWorker      *storage.CertSyncWorker // Periodic S3 sync worker (nil if not using S3)
-	tlsConfig       *tls.Config             // Cached TLS config
-	fallbackCache   *storage.FallbackCache  // Retained for follower refresh / warmer S3-health checks (nil unless S3 storage)
-	isLeader        func() bool             // Cluster leadership; nil in single-instance mode
-	warmer          *certWarmer             // Proactive issuance/renewal loop (nil unless Let's Encrypt)
+	config           *Config
+	autocertManager  *autocert.Manager
+	logger           *slog.Logger
+	domains          []string
+	defaultDomain    string                  // Default domain for SNI-less connections
+	syncWorker       *storage.CertSyncWorker // Periodic S3 sync worker (nil if not using S3)
+	tlsConfig        *tls.Config             // Cached TLS config
+	fallbackCache    *storage.FallbackCache  // Retained for follower refresh / warmer S3-health checks (nil unless S3 storage)
+	isLeader         func() bool             // Cluster leadership; nil in single-instance mode
+	warmer           *certWarmer             // Proactive issuance/renewal loop (nil unless Let's Encrypt)
+	certificateClock func() time.Time        // Optional clock for deterministic certificate-status checks
 }
 
 // NewManager creates a new TLS manager.
