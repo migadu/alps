@@ -9,6 +9,12 @@
 import { describe, expect, it } from 'vitest';
 import { readSources } from './helpers/sources';
 import { en } from '../src/i18n/en';
+import { sr } from '../src/i18n/sr';
+import { rs } from '../src/i18n/rs';
+import { fr } from '../src/i18n/fr';
+import { pt } from '../src/i18n/pt';
+import { zhHans } from '../src/i18n/zh-Hans';
+import { zhHant } from '../src/i18n/zh-Hant';
 import { SUPPORTED_LANGUAGES } from '../src/store/i18n-store';
 
 type Dict = Record<string, unknown>;
