@@ -63,3 +63,26 @@ func TestHTTP_KeySettingsReadFailuresAreUnavailable(t *testing.T) {
 		})
 	}
 }
+
+func TestHTTP_KeySettingsWriteFailuresAreUnavailable(t *testing.T) {
+	for _, operation := range []string{"registration", "trust"} {
+		t.Run(operation, func(t *testing.T) {
+			s, gate := recoveryRaceServer(t)
+			var r response
+			if operation == "registration" {
+				begin, challenge := s.beginEnrolment()
+				s.expect(begin, http.StatusOK)
+				gate.failWrite.Store(true)
+				r = s.finishEnrolment(newSoftKey(t), challenge, "laptop")
+			} else {
+				s.enrolKey(newSoftKey(t), "laptop")
+				gate.failWrite.Store(true)
+				r = s.do("POST", "/settings/2fa/trust-linked-accounts", map[string]bool{"trust": false})
+			}
+			s.expect(r, http.StatusServiceUnavailable)
+			if got := refusal(t, r); got != "keys_unavailable" {
+				t.Fatalf("code=%q", got)
+			}
+		})
+	}
+}
