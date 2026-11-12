@@ -9,32 +9,22 @@
 import { describe, expect, it } from 'vitest';
 import { readSources } from './helpers/sources';
 import { en } from '../src/i18n/en';
-import { de } from '../src/i18n/de';
-import { es } from '../src/i18n/es';
-import { fr } from '../src/i18n/fr';
-import { it as itLocale } from '../src/i18n/it';
-import { pt } from '../src/i18n/pt';
-import { rs } from '../src/i18n/rs';
 import { sr } from '../src/i18n/sr';
-import { da } from '../src/i18n/da';
-import { ar } from '../src/i18n/ar';
-import { ptBR } from '../src/i18n/pt-BR';
-import { ru } from '../src/i18n/ru';
-import { tr } from '../src/i18n/tr';
-import { id as idLocale } from '../src/i18n/id';
-import { hi } from '../src/i18n/hi';
-import { ja } from '../src/i18n/ja';
-import { ko } from '../src/i18n/ko';
+import { rs } from '../src/i18n/rs';
+import { fr } from '../src/i18n/fr';
+import { pt } from '../src/i18n/pt';
 import { zhHans } from '../src/i18n/zh-Hans';
-import { zhHant } from '../src/i18n/zh-Hant';
+import { SUPPORTED_LANGUAGES } from '../src/store/i18n-store';
 
 type Dict = Record<string, unknown>;
 
-const CORE: [string, Dict][] = [['ar', ar], ['da', da], ['de', de], ['es', es], ['fr', fr], ['it', itLocale], ['pt', pt], ['rs', rs], ['sr', sr], ['pt-BR', ptBR], ['ru', ru], ['tr', tr], ['id', idLocale], ['hi', hi], ['ja', ja], ['ko', ko], ['zh-Hans', zhHans], ['zh-Hant', zhHant]] as [string, Dict][];
 const intlTag = (code: string) => (code === 'rs' ? 'sr-Cyrl' : code === 'sr' ? 'sr-Latn' : code === 'pt' ? 'pt-PT' : code);
 
 const PLUGIN_LOCALES = import.meta.glob('../../plugins/*/frontend/i18n/*.ts', { eager: true }) as Record<string, Dict>;
 const dictOf = (module: Dict) => (module.default ?? Object.values(module)[0] ?? {}) as Dict;
+const CORE: [string, Dict][] = Object.entries(import.meta.glob('../src/i18n/*.ts', { eager: true }) as Record<string, Dict>)
+  .map(([path, module]): [string, Dict] => [path.slice(path.lastIndexOf('/') + 1, -3), dictOf(module)])
+  .filter(([code]) => code !== 'en');
 
 const byPlugin = new Map<string, Map<string, Dict>>();
 for (const [path, module] of Object.entries(PLUGIN_LOCALES)) {
@@ -142,7 +132,7 @@ function checkFamily(name: string, source: Dict, locales: [string, Dict][]) {
 describe('locales', () => {
   it('found the plugin dictionaries', () => {
     expect(byPlugin.size).toBeGreaterThanOrEqual(5);
-    for (const [plugin, locales] of byPlugin) expect([...locales.keys()].sort(), plugin).toEqual(['ar', 'da', 'de', 'en', 'es', 'fr', 'hi', 'id', 'it', 'ja', 'ko', 'pt', 'pt-BR', 'rs', 'ru', 'sr', 'tr', 'zh-Hans', 'zh-Hant']);
+    for (const [plugin, locales] of byPlugin) expect([...locales.keys()].sort(), plugin).toEqual([...SUPPORTED_LANGUAGES].sort());
   });
 
   it('core: every locale has en\'s keys, its language\'s plural forms, and en\'s placeholders', () => {
