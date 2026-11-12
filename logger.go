@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"log/syslog"
 	"os"
 	"strings"
 	"sync"
@@ -82,7 +81,7 @@ func NewLoggerWithOptions(opts LoggerOptions) Logger {
 		writer = os.Stderr
 	case "syslog":
 		// Use syslog for output
-		syslogWriter, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "alps")
+		syslogWriter, err := newSyslogWriter()
 		if err != nil {
 			// Fallback to stderr if syslog fails
 			fmt.Fprintf(os.Stderr, "Failed to connect to syslog: %v, falling back to stderr\n", err)
