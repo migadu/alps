@@ -3,6 +3,13 @@ export default {
     gpg: 'GPG Keys'
   },
   gpg: {
+    keyringUnreadable: 'Could not read your GPG keys. Please try again.',
+    noPrivateKey: 'No private GPG key is stored. Import or generate one in Settings.',
+    passphraseCancelled: 'Decryption was cancelled.',
+    messageUnreadable: 'This encrypted message could not be read. It may be damaged.',
+    noMatchingKey: 'This message was not encrypted to your stored GPG key.',
+    decryptionFailed: 'Could not decrypt this message with your GPG key.',
+
     toggleEncryption: 'Toggle GPG Encryption',
     decryptedSuccess: 'The content of this message was end-to-end encrypted with GPG.',
     decryptedFailed: 'This message is encrypted but no matching private key is found on server to decrypt it.',

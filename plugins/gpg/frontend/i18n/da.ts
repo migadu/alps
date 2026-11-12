@@ -3,6 +3,13 @@ export default {
     gpg: 'GPG-nøgler'
   },
   gpg: {
+    keyringUnreadable: 'Kunne ikke læse dine GPG-nøgler. Prøv igen.',
+    noPrivateKey: 'Ingen privat GPG-nøgle er gemt. Importer eller opret en i indstillingerne.',
+    passphraseCancelled: 'Dekrypteringen blev annulleret.',
+    messageUnreadable: 'Den krypterede besked kunne ikke læses. Den kan være beskadiget.',
+    noMatchingKey: 'Beskeden er ikke krypteret til din gemte GPG-nøgle.',
+    decryptionFailed: 'Kunne ikke dekryptere beskeden med din GPG-nøgle.',
+
     toggleEncryption: 'Slå GPG-kryptering til/fra',
     decryptedSuccess: 'Indholdet af denne besked var end-to-end-krypteret med GPG.',
     decryptedFailed: 'Denne besked er krypteret, men der blev ikke fundet en matchende privat nøgle på serveren til at dekryptere den.',

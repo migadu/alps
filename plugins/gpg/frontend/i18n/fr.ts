@@ -3,6 +3,13 @@ export default {
     gpg: 'Clés GPG'
   },
   gpg: {
+    keyringUnreadable: 'Impossible de lire vos clés GPG. Veuillez réessayer.',
+    noPrivateKey: 'Aucune clé GPG privée enregistrée. Importez-en ou générez-en une dans les paramètres.',
+    passphraseCancelled: 'Le déchiffrement a été annulé.',
+    messageUnreadable: 'Impossible de lire ce message chiffré. Il est peut-être endommagé.',
+    noMatchingKey: 'Ce message n’a pas été chiffré pour votre clé GPG enregistrée.',
+    decryptionFailed: 'Impossible de déchiffrer ce message avec votre clé GPG.',
+
     toggleEncryption: 'Basculer le chiffrement GPG',
     decryptedSuccess: 'Le contenu de ce message a été chiffré de bout en bout avec GPG.',
     decryptedFailed: 'Ce message est chiffré mais aucune clé privée correspondante n\'a été trouvée sur le serveur pour le déchiffrer.',

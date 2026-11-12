@@ -76,24 +76,30 @@ function remember(key: any, epoch: number): any {
     return key;
 }
 
+class GPGFailure extends Error {
+    readonly translationKey: string;
+    constructor(translationKey: string) { super(translationKey); this.translationKey = translationKey; }
+}
+
 async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
     if (cachedPrivateKey) return cachedPrivateKey;
     const epoch = keyEpoch;
 
-    // Fetch from server
-    const res = await fetchWithTimeout('/gpg/keys');
-    if (!res.ok) throw new Error('Failed to fetch GPG keyring.');
-    const keyring = await res.json();
-    // A keyring replaced or read for a session that has since ended is not
-    // unlocked or kept for a later operation.
-    if (epoch !== keyEpoch) throw new Error('The keyring changed.');
-    
-    if (!keyring.encrypted_private_key) {
-        throw new Error('No private key found on server. Please generate one in Settings.');
+    let keyring: any;
+    let privateKey: any;
+    try {
+        const res = await fetchWithTimeout('/gpg/keys');
+        if (!res.ok) throw new Error(`Keyring read failed: ${res.status}`);
+        keyring = await res.json();
+        if (epoch !== keyEpoch) throw new Error('The keyring changed.');
+        if (!keyring.encrypted_private_key) throw new GPGFailure('gpg.noPrivateKey');
+        privateKey = await openpgp.readPrivateKey({ armoredKey: keyring.encrypted_private_key });
+    } catch (error) {
+        if (error instanceof GPGFailure) throw error;
+        console.error('GPG keyring read failed:', error);
+        throw new GPGFailure('gpg.keyringUnreadable');
     }
 
-    const privateKey = await openpgp.readPrivateKey({ armoredKey: keyring.encrypted_private_key });
-    
     if (!privateKey.isDecrypted()) {
         let errorMsg: string | undefined;
         let pass = await promptForPassphrase(errorMsg, i18nStore);
@@ -109,7 +115,7 @@ async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
                 pass = await promptForPassphrase(errorMsg, i18nStore);
             }
         }
-        throw new Error('Passphrase prompt cancelled.');
+        throw new GPGFailure('gpg.passphraseCancelled');
     } else {
         // Key was already decrypted (unlikely if securely stored)
         return remember(privateKey, epoch);
@@ -281,8 +287,19 @@ export async function handleReaderContent(payload: any) {
 
             const armoredBlock = payload.content.substring(blockStart, blockEnd);
 
-            const message = await openpgp.readMessage({ armoredMessage: armoredBlock });
+            let message;
+            try {
+                message = await openpgp.readMessage({ armoredMessage: armoredBlock });
+            } catch (error) {
+                console.error('Unreadable GPG message:', error);
+                throw new GPGFailure('gpg.messageUnreadable');
+            }
             const privateKey = await getPrivateKey(openpgp, payload.i18nStore);
+            const recipients: string[] = message.getEncryptionKeyIDs?.().map((id: any) => id.toHex()) ?? [];
+            const ownKeys: string[] = privateKey.getKeyIDs?.().map((id: any) => id.toHex()) ?? [];
+            if (recipients.length && ownKeys.length && !recipients.some(id => /^0+$/.test(id) || ownKeys.includes(id))) {
+                throw new GPGFailure('gpg.noMatchingKey');
+            }
             
             const { data: decrypted } = await openpgp.decrypt({
                 message,
@@ -322,7 +339,7 @@ export async function handleReaderContent(payload: any) {
               <alps-banner variant="error">
                 <span style="display: flex; align-items: center; gap: 8px;">
                   <span style="display: flex; width: 16px; height: 16px;">${renderIcon('lock')}</span>
-                  <span>${payload.i18nStore?.t('gpg.decryptedFailed')}</span>
+                  <span>${payload.i18nStore?.t(e instanceof GPGFailure ? e.translationKey : 'gpg.decryptionFailed')}</span>
                 </span>
               </alps-banner>
             `);

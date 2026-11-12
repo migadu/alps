@@ -3,6 +3,13 @@ export default {
     gpg: 'GPG Anahtarları'
   },
   gpg: {
+    keyringUnreadable: 'GPG anahtarlarınız okunamadı. Lütfen yeniden deneyin.',
+    noPrivateKey: 'Kayıtlı özel GPG anahtarı yok. Ayarlardan bir anahtar içe aktarın veya oluşturun.',
+    passphraseCancelled: 'Şifre çözme iptal edildi.',
+    messageUnreadable: 'Bu şifreli ileti okunamadı. Hasar görmüş olabilir.',
+    noMatchingKey: 'Bu ileti kayıtlı GPG anahtarınız için şifrelenmemiş.',
+    decryptionFailed: 'Bu iletinin şifresi GPG anahtarınızla çözülemedi.',
+
     toggleEncryption: 'GPG Şifrelemesini Aç/Kapat',
     decryptedSuccess: 'Bu iletinin içeriği GPG ile uçtan uca şifrelenmişti.',
     decryptedFailed: 'Bu ileti şifreli, ancak sunucuda şifresini çözecek eşleşen bir özel anahtar bulunamadı.',

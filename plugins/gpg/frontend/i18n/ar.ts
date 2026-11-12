@@ -3,6 +3,13 @@ export default {
     gpg: 'مفاتيح GPG'
   },
   gpg: {
+    keyringUnreadable: 'تعذرت قراءة مفاتيح GPG. أعد المحاولة.',
+    noPrivateKey: 'لا يوجد مفتاح GPG خاص محفوظ. استورد مفتاحًا أو أنشئه في الإعدادات.',
+    passphraseCancelled: 'تم إلغاء فك التشفير.',
+    messageUnreadable: 'تعذرت قراءة هذه الرسالة المشفرة. قد تكون تالفة.',
+    noMatchingKey: 'لم يتم تشفير هذه الرسالة لمفتاح GPG المحفوظ لديك.',
+    decryptionFailed: 'تعذر فك تشفير هذه الرسالة بمفتاح GPG الخاص بك.',
+
     toggleEncryption: 'تشغيل تشفير GPG أو إيقافه',
     decryptedSuccess: 'كان محتوى هذه الرسالة مشفّرًا تشفيرًا تامًا بين الطرفين باستخدام GPG.',
     decryptedFailed: 'هذه الرسالة مشفّرة، لكن لم يُعثَر على الخادم على مفتاح خاص مطابق لفك تشفيرها.',

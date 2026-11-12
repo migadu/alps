@@ -3,6 +3,13 @@ export default {
     gpg: 'GPG 金鑰'
   },
   gpg: {
+    keyringUnreadable: '無法讀取您的 GPG 金鑰，請重試。',
+    noPrivateKey: '尚未儲存 GPG 私密金鑰。請在設定中匯入或產生金鑰。',
+    passphraseCancelled: '已取消解密。',
+    messageUnreadable: '無法讀取此加密郵件，郵件可能已損壞。',
+    noMatchingKey: '此郵件並非使用您儲存的 GPG 金鑰加密。',
+    decryptionFailed: '無法使用您的 GPG 金鑰解密此郵件。',
+
     toggleEncryption: '切換 GPG 加密',
     decryptedSuccess: '此郵件的內容已使用 GPG 進行端對端加密。',
     decryptedFailed: '此郵件已加密，但在伺服器上找不到可解密的對應私密金鑰。',
