@@ -8,6 +8,7 @@
 package alpsbase
 
 import (
+	"github.com/migadu/alps/provider/providertest"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -349,7 +350,7 @@ func TestDropMailboxListingsReachesOtherFoldersConversations(t *testing.T) {
 func TestListedThreadUIDsDoesNotUseColonSibling(t *testing.T) {
 	cache := alps.NewCache(time.Minute)
 	defer cache.Close()
-	p := &provider.MockProvider{}
+	p := &providertest.MockProvider{}
 
 	cache.Set("messages:Work:Sub:page0", CachedMessages{
 		Mailbox:  "Work:Sub",

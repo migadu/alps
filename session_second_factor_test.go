@@ -1,6 +1,7 @@
 package alps
 
 import (
+	"github.com/migadu/alps/provider/providertest"
 	"testing"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 // it goes on, unless it already has: the one that enrolled it, or one that
 // signed in with an earlier key. Other accounts' sessions are untouched.
 func TestSessionManager_RequireSecondFactor(t *testing.T) {
-	mockProvider := &provider.MockProvider{}
+	mockProvider := &providertest.MockProvider{}
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(&rawStore{entries: map[string]string{}}, nil)
 	mockProvider.On("HasThreadCapability").Return(false).Maybe()

@@ -2,6 +2,7 @@ package alps
 
 import (
 	"errors"
+	"github.com/migadu/alps/provider/providertest"
 	"io"
 	"sync/atomic"
 	"testing"
@@ -45,7 +46,7 @@ func (s *copyKeepingStore) GetFresh(key string, out interface{}) error {
 func newStoreSession(store provider.Store, connects *int) *Session {
 	sm := newSessionManager(func(string, string) (provider.MailProvider, error) {
 		*connects++
-		p := &provider.MockProvider{}
+		p := &providertest.MockProvider{}
 		p.On("Close").Return(nil)
 		p.On("GetStore").Return(store, nil)
 		return p, nil

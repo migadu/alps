@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"github.com/migadu/alps/tlsmanager/storage/storagetest"
 	"io"
 	"log/slog"
 	"math/big"
@@ -44,9 +45,9 @@ func makeCertPEM(t *testing.T, notAfter time.Time) []byte {
 	return buf.Bytes()
 }
 
-func newTestFallbackCache(t *testing.T) (*FallbackCache, *MockS3Client) {
+func newTestFallbackCache(t *testing.T) (*FallbackCache, *storagetest.MockS3Client) {
 	t.Helper()
-	mock := NewMockS3Client()
+	mock := storagetest.NewMockS3Client()
 	s3 := &S3Cache{S3Client: mock, Bucket: "b", Prefix: "p/", Logger: discardLogger()}
 	fc := NewFallbackCache(t.TempDir(), s3, discardLogger())
 	return fc, mock

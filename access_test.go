@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/migadu/alps/provider/providertest"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -62,8 +63,8 @@ func newBufferLogger(w *logBuffer) Logger {
 
 func newLoggedSessionManager(t *testing.T, logger Logger, idle time.Duration) *SessionManager {
 	t.Helper()
-	mockProvider := &provider.MockProvider{}
-	mockStore := &provider.MockStore{}
+	mockProvider := &providertest.MockProvider{}
+	mockStore := &providertest.MockStore{}
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(mockStore, nil)
 	mockStore.On("Get", mock.Anything, mock.Anything).Return(provider.ErrNoStoreEntry)

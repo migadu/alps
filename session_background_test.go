@@ -3,6 +3,7 @@ package alps
 import (
 	"context"
 	"errors"
+	"github.com/migadu/alps/provider/providertest"
 	"sync"
 	"testing"
 	"time"
@@ -41,7 +42,7 @@ func (c *mailConnections) dial(username, password string) (provider.MailProvider
 		c.mostOpen = c.open
 	}
 	c.passwords = append(c.passwords, password)
-	p := &provider.MockProvider{}
+	p := &providertest.MockProvider{}
 	closed := false
 	p.On("Close").Return(nil).Run(func(mock.Arguments) {
 		c.mu.Lock()

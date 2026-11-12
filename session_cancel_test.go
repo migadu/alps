@@ -3,6 +3,7 @@ package alps
 import (
 	"context"
 	"errors"
+	"github.com/migadu/alps/provider/providertest"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -28,7 +29,7 @@ func newCountedSession(t *testing.T, c *connectionCounter) *Session {
 			c.dial()
 		}
 		c.opened.Add(1)
-		p := &provider.MockProvider{}
+		p := &providertest.MockProvider{}
 		p.On("Close").Return(nil).Run(func(mock.Arguments) { c.closed.Add(1) })
 		return p, nil
 	}, nil, &NilLogger{}, 0, false, nil, 30*time.Minute, time.Hour, 0, 0, 0, 0, 0)
