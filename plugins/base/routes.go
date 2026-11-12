@@ -1941,6 +1941,7 @@ func handleLogin(ctx *alps.Context) error {
 					"user", username,
 					"ip", ctx.ClientIP(),
 					"reason", "bad credentials",
+					"error", err.Error(),
 					"agent", ctx.Request.UserAgent())
 				return ctx.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Failed to login"})
 			}
