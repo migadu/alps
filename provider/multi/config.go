@@ -2,6 +2,7 @@ package multi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -322,7 +323,10 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		}
 		host := u.Hostname()
 		if err := checkRestrictedHost(ctx, nil, host); err != nil {
-			return nil, fmt.Errorf("access to restricted server address %q is forbidden: %w", host, err)
+			if errors.Is(err, netguard.ErrBlockedAddress) {
+				return nil, fmt.Errorf("access to restricted server address %q is forbidden: %w", host, err)
+			}
+			return nil, fmt.Errorf("cannot resolve server address %q: %w", host, err)
 		}
 
 		// checkRestrictedHost validates the name we resolved just now; the dial
