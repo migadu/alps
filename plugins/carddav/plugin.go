@@ -117,6 +117,12 @@ func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Sessio
 
 	addressBooks, err := c.FindAddressBooks(ctx, homeSet)
 	if err != nil {
+		p.cacheMutex.Lock()
+		// Do not evict a newer home another request discovered meanwhile.
+		if p.homeSetCache[session.Username()] == homeSet {
+			delete(p.homeSetCache, session.Username())
+		}
+		p.cacheMutex.Unlock()
 		return nil, nil, fmt.Errorf("failed to query CardDAV address books: %v", err)
 	}
 	if len(addressBooks) == 0 {

@@ -152,6 +152,12 @@ func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session)
 
 	calendars, err := c.FindCalendars(ctx, homeSet)
 	if err != nil {
+		p.cacheMutex.Lock()
+		// Do not evict a newer home another request discovered meanwhile.
+		if p.homeSetCache[session.Username()] == homeSet {
+			delete(p.homeSetCache, session.Username())
+		}
+		p.cacheMutex.Unlock()
 		return nil, nil, fmt.Errorf("failed to query CalDAV calendars: %v", err)
 	}
 
