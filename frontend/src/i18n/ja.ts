@@ -49,7 +49,7 @@ export const ja = {
       retry: "再試行",
       invalidServer: "認証情報、クエリ、フラグメントを含まない有効なDAVサーバーのHTTPS URLを入力してください。",
       credentialsRequired: "DAVユーザー名を入力してください。",
-      passwordRequired: "DAVサーバーまたはユーザー名を変更する場合は、パスワードを入力してください。",
+      passwordRequired: 'この接続を保存するにはDAVパスワードを入力してください。',
       keyRequired: "管理者が認証情報の暗号化を設定するまで、別のパスワードは使用できません。",
       authFailed: "このDAVアカウントにアクセスできませんでした。サーバーのURL、ユーザー名、パスワード、アクセス権限を確認してください。",
       unreachable: "この DAV サーバーに接続できませんでした。サーバー URL とサーバーが利用可能かどうかを確認してください。",

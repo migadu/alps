@@ -43,7 +43,7 @@ export const fr = {
       retry: "Réessayer",
       invalidServer: "Saisissez une URL HTTPS valide du serveur DAV, sans identifiants, paramètres de requête ni fragment.",
       credentialsRequired: "Saisissez votre nom d’utilisateur DAV.",
-      passwordRequired: "Saisissez un mot de passe lorsque vous changez de serveur DAV ou de nom d’utilisateur.",
+      passwordRequired: 'Saisissez votre mot de passe DAV pour enregistrer cette connexion.',
       keyRequired: "Les mots de passe distincts ne sont disponibles qu’une fois le chiffrement des identifiants configuré par votre administrateur.",
       authFailed: "Impossible d’accéder à ce compte DAV. Vérifiez l’URL du serveur, le nom d’utilisateur, le mot de passe et les droits d’accès.",
       unreachable: "Impossible de joindre ce serveur DAV. Vérifiez l’URL du serveur et sa disponibilité.",

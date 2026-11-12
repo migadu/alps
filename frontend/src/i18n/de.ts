@@ -45,7 +45,7 @@ export const de: TranslationDictionary = {
       retry: "Erneut versuchen",
       invalidServer: "Geben Sie eine gültige HTTPS-URL des DAV-Servers ohne Zugangsdaten, Abfrage oder Fragment ein.",
       credentialsRequired: "Geben Sie Ihren DAV-Benutzernamen ein.",
-      passwordRequired: "Geben Sie beim Ändern des DAV-Servers oder Benutzernamens ein Passwort ein.",
+      passwordRequired: 'Geben Sie Ihr DAV-Passwort ein, um diese Verbindung zu speichern.',
       keyRequired: "Separate Passwörter sind erst verfügbar, wenn Ihr Administrator die Verschlüsselung der Zugangsdaten eingerichtet hat.",
       authFailed: "Auf dieses DAV-Konto konnte nicht zugegriffen werden. Prüfen Sie Server-URL, Benutzername, Passwort und Zugriffsrechte.",
       unreachable: "Dieser DAV-Server konnte nicht erreicht werden. Prüfen Sie die Server-URL und ob der Server verfügbar ist.",

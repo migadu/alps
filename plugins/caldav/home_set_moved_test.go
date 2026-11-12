@@ -53,7 +53,7 @@ func homeSetMoves(moved *atomic.Bool, mu *sync.Mutex, targets *[]string) func(ht
 	}
 }
 
-// alps keeps each login's calendar home set once it has looked it up. When
+// Alps keeps each resolved connection's calendar home set once it has looked it up. When
 // the server moved it, listing the calendars from the old one failed, and the
 // old one was kept: every calendar request for that login failed until alps
 // restarted. A home set that fails to list is dropped, so the next request
@@ -63,6 +63,7 @@ func TestAMovedCalendarHomeIsLookedUpAgain(t *testing.T) {
 	var mu sync.Mutex
 	var targets []string
 	h := startHarness(t, harnessOptions{wrap: homeSetMoves(&moved, &mu, &targets)})
+	h.expect(h.do("PUT", "/settings/dav/caldav", map[string]any{"username": "independent-dav-user", "password": "independent-secret"}), http.StatusOK)
 	h.expect(h.do("GET", "/calendar/calendars", nil), http.StatusOK)
 
 	moved.Store(true)
@@ -92,13 +93,14 @@ func TestAMovedCalendarHomeIsLookedUpAgain(t *testing.T) {
 // that one: another request may already have looked up the new one, and that
 // one stays.
 func TestOnlyTheCalendarHomeThatFailedIsForgotten(t *testing.T) {
-	p := &plugin{homeSetCache: map[string]string{testUser: movedHome}}
-	p.forgetHomeSet(testUser, testHome)
-	if got, ok := p.homeSetCache[testUser]; !ok || got != movedHome {
+	const connectionKey = "resolved-connection-key"
+	p := &plugin{homeSetCache: map[string]string{connectionKey: movedHome, "another-connection": testHome}}
+	p.forgetHomeSet(connectionKey, testHome)
+	if got, ok := p.homeSetCache[connectionKey]; !ok || got != movedHome {
 		t.Errorf("the new home set was dropped for a failure of the old one: cached %q, %v", got, ok)
 	}
-	p.forgetHomeSet(testUser, movedHome)
-	if got, ok := p.homeSetCache[testUser]; ok {
+	p.forgetHomeSet(connectionKey, movedHome)
+	if got, ok := p.homeSetCache[connectionKey]; ok {
 		t.Errorf("the home set that failed is still cached: %q", got)
 	}
 }
