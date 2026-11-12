@@ -275,7 +275,7 @@ func startHarness(t *testing.T, o harnessOptions) *harness {
 		Provider: popt,
 		SMTP:     alps.SMTPOptions{Server: o.smtp},
 		LoginKey: &key,
-		Plugins:  map[string]alps.PluginConfig{"caldav": {Server: davServer.URL}},
+		Plugins:  map[string]alps.PluginConfig{"caldav": {Enabled: true, Server: davServer.URL}},
 	}
 	srv, err := alps.New(alps.NewLogger(), opts)
 	if err != nil {
