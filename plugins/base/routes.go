@@ -3505,12 +3505,12 @@ func senderFor(ctx *alps.Context, address string) (from string, identity bool, e
 	}
 	settings, err := readSettings(ctx)
 	if err != nil {
-		return "", false, fmt.Errorf("failed to load settings: %v", err)
+		return "", false, fmt.Errorf("failed to load settings: %w", err)
 	}
 	found, ok := findIdentity(settings.Identities, address)
 	if !ok {
 		if settings, err = readFreshSettings(ctx); err != nil {
-			return "", false, fmt.Errorf("failed to load settings: %v", err)
+			return "", false, fmt.Errorf("failed to load settings: %w", err)
 		}
 		found, ok = findIdentity(settings.Identities, address)
 	}
@@ -4612,7 +4612,7 @@ func settingsFrom(ctx *alps.Context, store provider.Store, get func(string, inte
 		return settings, err
 	}
 	if putErr := store.Put(settingsKey, nil); putErr != nil {
-		return nil, fmt.Errorf("failed to remove unreadable settings: %v", putErr)
+		return nil, fmt.Errorf("failed to remove unreadable settings: %w", putErr)
 	}
 	ctx.Server.Logger().Printf("Removed unreadable settings of %s: %v", ctx.Session.Username(), err)
 	return loadSettings(noSettings{})
@@ -4712,7 +4712,7 @@ func parseWeekStartOption(val interface{}) int {
 func handleSettings(ctx *alps.Context) error {
 	settings, err := readFreshSettings(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to load settings: %v", err)
+		return fmt.Errorf("failed to load settings: %w", err)
 	}
 
 	if ctx.Request.Method == http.MethodPut {
@@ -4891,7 +4891,7 @@ func handleSettings(ctx *alps.Context) error {
 			return alps.NewHTTPError(http.StatusBadRequest, err)
 		}
 		if err := ctx.Session.Store().Put(settingsKey, settings); err != nil {
-			return fmt.Errorf("failed to save settings: %v", err)
+			return fmt.Errorf("failed to save settings: %w", err)
 		}
 
 		// Only when this write changed what a listing IS.
