@@ -72,6 +72,7 @@ func TestHTTP_StoreCallersPreserveSessionErrorClassification(t *testing.T) {
 			{name: "check existing keys", method: "POST", path: "/gpg/keys", readKey: "gpg_keys", body: map[string]string{"public_key": "public", "encrypted_private_key": "private"}},
 			{name: "save keys", method: "POST", path: "/gpg/keys?replace=1", putKey: "gpg_keys", body: map[string]string{"public_key": "public", "encrypted_private_key": "private"}},
 			{name: "delete keys", method: "DELETE", path: "/gpg/keys", putKey: "gpg_keys"},
+			{name: "read settings", method: "GET", path: "/settings", readKey: settingsKey},
 			{name: "cleanup unreadable settings", method: "GET", path: "/settings", readKey: settingsKey, putKey: settingsKey, corrupt: true},
 			{name: "save settings", method: "PUT", path: "/settings", putKey: settingsKey, body: map[string]string{"signature": "Ada"}},
 		} {
