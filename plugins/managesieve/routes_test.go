@@ -192,12 +192,16 @@ func TestGetScriptNamesTheServersExtensions(t *testing.T) {
 // GETSCRIPT, PUTSCRIPT and SETACTIVE, and a test reads afterwards what it
 // holds.
 type sieveAccount struct {
-	mu            sync.Mutex
-	names         []string // in the order they were first stored
-	scripts       map[string]string
-	active        string
-	validationErr string
-	checked       int
+	mu                sync.Mutex
+	names             []string // in the order they were first stored
+	scripts           map[string]string
+	active            string
+	validationErr     string
+	checked           int
+	uploaded          int
+	legacy            bool
+	validationLiteral bool
+	validationCode    string
 }
 
 // store keeps a script as another client would upload it, switched off.
@@ -253,7 +257,11 @@ func (a *sieveAccount) listen(t *testing.T) string {
 func (a *sieveAccount) serve(conn net.Conn) {
 	defer conn.Close()
 	r, w := bufio.NewReader(conn), bufio.NewWriter(conn)
-	fmt.Fprint(w, "\"IMPLEMENTATION\" \"fake\"\r\n\"SASL\" \"PLAIN\"\r\n\"SIEVE\" \"fileinto include\"\r\nOK \"ready\"\r\n")
+	fmt.Fprint(w, "\"IMPLEMENTATION\" \"fake\"\r\n\"SASL\" \"PLAIN\"\r\n\"SIEVE\" \"fileinto include\"\r\n")
+	if !a.legacy {
+		fmt.Fprint(w, "\"VERSION\" \"1.0\"\r\n")
+	}
+	fmt.Fprint(w, "OK \"ready\"\r\n")
 	w.Flush()
 	for {
 		line, err := r.ReadString('\n')
@@ -292,9 +300,21 @@ func (a *sieveAccount) serve(conn net.Conn) {
 			r.ReadString('\n') // the line break that ends the command
 			if command == "CHECKSCRIPT" {
 				a.checked++
+			} else {
+				a.uploaded++
 			}
-			if a.validationErr != "" {
-				fmt.Fprintf(w, "NO %q\r\n", a.validationErr)
+			if command == "CHECKSCRIPT" && a.legacy {
+				fmt.Fprint(w, "NO \"Unknown command.\"\r\n")
+			} else if a.validationErr != "" {
+				code := ""
+				if a.validationCode != "" {
+					code = "(" + a.validationCode + ") "
+				}
+				if a.validationLiteral {
+					fmt.Fprintf(w, "NO %s{%d}\r\n%s\r\n", code, len(a.validationErr), a.validationErr)
+				} else {
+					fmt.Fprintf(w, "NO %s%q\r\n", code, a.validationErr)
+				}
 			} else {
 				if command == "PUTSCRIPT" {
 					a.put(name, string(content))
