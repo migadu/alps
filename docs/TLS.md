@@ -261,3 +261,9 @@ In this scenario, configure ALPS:
 [tls.letsencrypt]
 acme_http_addr = ":8080"
 ```
+
+For Let's Encrypt, a valid ClientHello for a configured name gets a separate
+bounded two-minute budget for certificate acquisition and the remaining TLS
+exchange. This lets the first request wait for a slow certificate order even
+when `server.read_timeout_sec` is shorter. The initial ClientHello and HTTP
+request headers/bodies retain their existing HTTP server timeout limits.

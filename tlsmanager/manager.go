@@ -67,6 +67,10 @@ type S3Config struct {
 	SecretKey string
 }
 
+// certificateHandshakeTimeout bounds certificate acquisition and the rest of
+// TLS after a valid ClientHello. HTTP request limits apply again after TLS.
+const certificateHandshakeTimeout = 2 * time.Minute
+
 // Manager orchestrates TLS certificate management using Let's Encrypt.
 type Manager struct {
 	config          *Config
@@ -279,6 +283,16 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 
 		modifiedHello := *hello
 		modifiedHello.ServerName = serverName
+
+		// net/http initially uses its short request timeout for TLS too. A new
+		// certificate can require a slow CA order. Once SNI has been checked,
+		// give this phase its own bounded budget; net/http clears these
+		// deadlines after the handshake and applies request timeouts anew.
+		if hello.Conn != nil {
+			if err := hello.Conn.SetDeadline(time.Now().Add(certificateHandshakeTimeout)); err != nil {
+				return nil, fmt.Errorf("set certificate handshake deadline: %w", err)
+			}
+		}
 
 		cert, err := originalGetCert(&modifiedHello)
 		if err != nil {
