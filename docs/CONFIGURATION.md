@@ -268,6 +268,8 @@ Common properties:
 ### Password Plugin (`[plugin.password]`)
 Changes user passwords through an external HTTP API, or a command run on the ALPS host.
 
+The enabled plugin loads only when a global endpoint or command, or a per-domain password backend under `provider.multi`, is configured. Otherwise startup logs why Password settings remain unavailable.
+
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `enabled` | Boolean | `false` | Toggle the password change feature. |
