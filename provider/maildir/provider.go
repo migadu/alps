@@ -258,10 +258,23 @@ func (p *Provider) FindMailboxByType(mboxType provider.MailboxType) (*provider.M
 		}
 	}
 
-	// Try to find a fallback if exact match not found (e.g., "Sent Messages")
-	for _, m := range mailboxes {
-		if strings.Contains(strings.ToLower(m.Name), strings.ToLower(targetName)) {
-			return &m, nil
+	// The same exact aliases recognized by IMAP and the webmail page.
+	var aliases []string
+	switch mboxType {
+	case provider.MailboxTypeDrafts:
+		aliases = []string{"Draft"}
+	case provider.MailboxTypeTrash:
+		aliases = []string{"Deleted", "Deleted Items"}
+	case provider.MailboxTypeJunk:
+		aliases = []string{"Spam"}
+	case provider.MailboxTypeArchive:
+		aliases = []string{"Archives"}
+	}
+	for _, alias := range aliases {
+		for _, m := range mailboxes {
+			if strings.EqualFold(m.Name, alias) {
+				return &m, nil
+			}
 		}
 	}
 
