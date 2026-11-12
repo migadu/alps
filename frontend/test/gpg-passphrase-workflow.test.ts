@@ -34,6 +34,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  localStorage.clear();
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -536,5 +537,23 @@ describe('saving a keypair the page did not show', () => {
     await generate(el);
     expect(posted).toEqual(['/gpg/keys?replace=1']);
     expect(keyring).toEqual({ public_key: 'public armour', encrypted_private_key: 'encrypted armour' });
+  });
+});
+
+describe('generated key identities without a resolved email address', () => {
+  it.each([
+    [{ loginUsername: 'ada' }, { name: 'ada' }],
+    [{ loginUsername: 'ada', name: 'Ada Lovelace' }, { name: 'Ada Lovelace' }],
+    [{}, { name: 'ALPS User' }],
+  ])('creates a nonempty named user ID for %j', async (settings, userID) => {
+    localStorage.clear();
+    localStorage.setItem('alps_settings', JSON.stringify(settings));
+    const el = await pane();
+    const finished = el.generateKeys();
+    const first = await prompt(el);
+    await submit(first, 'new secret');
+    await submit(await prompt(el, first), 'new secret');
+    await finished;
+    expect(pgp.generateKey).toHaveBeenCalledWith(expect.objectContaining({ userIDs: [userID] }));
   });
 });
