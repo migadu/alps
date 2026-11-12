@@ -20,12 +20,23 @@
 #
 # Environment:
 #   SORA_DIR          sora checkout                       (../sora)
-#   E2E_PORT          alps's port; the other servers take the next eight (8900)
+#   E2E_PORT          alps's port; the other servers take the next eight, or
+#                     eleven with E2E_CLUSTER=1           (8900)
 #   E2E_PG_HOST, E2E_PG_PORT, E2E_PG_USER, E2E_PG_PASSWORD
 #                     a PostgreSQL server that may create databases
 #                     (localhost, 5432, postgres, empty)
+#   E2E_STATE         the run's binaries, configs and server data, deleted
+#                     when it starts and ends
+#                     (${TMPDIR:-/tmp}/alps-e2e-<port>)
+#   E2E_LOGS          the build and server logs, kept until the next run starts
+#                     (${TMPDIR:-/tmp}/alps-e2e-logs-<port>)
+#   E2E_RESULTS       Playwright's traces and screenshots, emptied when a run
+#                     starts; a relative path is read from frontend/
+#                     ($E2E_LOGS/test-results)
 #   E2E_KEEP_STATE=1  keep the database and state directory after the run
 #   E2E_SKIP_BUILD=1  test the frontend/dist already on disk
+#   E2E_CLUSTER=1     also start a second alps on E2E_PORT+9, clustered with
+#                     the first over gossip on E2E_PORT+10 and +11
 #   E2E_PREVIEW=1     enable message previews (off by default); SORA_DIR must
 #                     point to a checkout that supports FETCH PREVIEW
 #   PW_CHROMIUM_PATH  a pre-installed Chromium to use instead of Playwright's
@@ -34,8 +45,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SORA_DIR="${SORA_DIR:-$ROOT/../sora}"
 
-# One port decides every other, so two runs on different E2E_PORTs share
-# nothing: not a server, not a database, not a log.
+# One port decides every other and names the database and the default state,
+# log and results directories. Two runs whose ports are at least nine apart
+# (twelve with E2E_CLUSTER=1) share none of them; they share only the build,
+# which takes turns below, and the PostgreSQL server and its connection
+# ceiling.
 ALPS_PORT="${E2E_PORT:-8900}"
 IMAP_PORT=$((ALPS_PORT + 1))
 SIEVE_PORT=$((ALPS_PORT + 2))
@@ -465,6 +479,10 @@ export DAV_URL="http://127.0.0.1:$DAV_PORT"
 export SIEVE_ADDR="127.0.0.1:$SIEVE_PORT"
 export IMAP_ADDR="127.0.0.1:$IMAP_PORT"
 export E2E_USER E2E_PASSWORD
+# Playwright empties its output directory when it starts, so a run sharing one
+# with another would delete that run's traces. Each run keeps them with its
+# logs: an absolute path, since Playwright reads a relative one from frontend/.
+export E2E_RESULTS="${E2E_RESULTS:-$(cd "$LOGS" && pwd)/test-results}"
 
 status=0
 (cd "$ROOT/frontend" && npx playwright test "$@") || status=$?
@@ -486,5 +504,6 @@ if [ -n "$dead" ]; then
 fi
 if [ "$status" != 0 ]; then
   echo "==> server logs: $LOGS"
+  echo "==> traces and screenshots: $E2E_RESULTS"
 fi
 exit "$status"
