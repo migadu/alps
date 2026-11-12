@@ -84,3 +84,24 @@ describe('the unlocked key across a sign-out', () => {
     expect(await open()).toContain('opened with KEY-B');
   });
 });
+
+describe('armored message boundaries', () => {
+  it.each(['', 'prefix '.repeat(8)])('leaves incomplete armor unchanged at any offset', async prefix => {
+    const content = prefix + '-----BEGIN PGP MESSAGE-----\ntruncated';
+    const payload = { content, banners: [], i18nStore };
+    expect(await handleReaderContent(payload)).toBe(content);
+    expect(keyReads).toBe(0);
+    expect(payload.banners).toEqual([]);
+  });
+
+  it('finds the END marker after BEGIN, ignoring an earlier stray END', async () => {
+    const prefix = '-----END PGP MESSAGE-----\n';
+    expect(await handleReaderContent({ content: prefix + encrypted, banners: [], i18nStore })).toContain('opened with KEY-A');
+  });
+
+  it('checks readable armor before asking for the private key', async () => {
+    openpgp.readMessage.mockRejectedValueOnce(new Error('damaged armor'));
+    expect(await open()).toBe(encrypted);
+    expect(keyReads).toBe(0);
+  });
+});
