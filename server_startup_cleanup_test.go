@@ -11,6 +11,8 @@ import (
 // the shared provider mocks that are moving to a test-only package.
 type startupResourceProviderOptions struct{}
 
+func (startupResourceProviderOptions) Type() string { return "startup-test" }
+
 func (startupResourceProviderOptions) CreateFactory(time.Duration, bool) provider.AuthenticatedProviderFactory {
 	return func(string, string) (provider.MailProvider, error) {
 		return nil, errors.New("unexpected authentication during startup")
