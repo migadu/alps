@@ -9,7 +9,7 @@ import '../../../frontend/src/components/ui-prompt';
 function promptForPassphrase(errorMsg?: string, i18nStore?: any): Promise<string | null> {
     return new Promise((resolve) => {
         const prompt = document.createElement('ui-prompt') as any;
-        prompt.title = i18nStore?.t('gpg.passphraseRequired') as string;
+        prompt.heading = i18nStore?.t('gpg.passphraseRequired') as string;
         prompt.confirmText = i18nStore?.t('gpg.unlock') as string;
         prompt.cancelText = i18nStore?.t('general.cancel') as string;
         
