@@ -1,5 +1,5 @@
 const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/openpgp-BXFLORuu.js","assets/rolldown-runtime-S-ySWqyJ.js"])))=>i.map(i=>d[i]);
-import{d as e,f as t,g as n,l as r,o as i,x as a,y as o}from"./lit-BYBpccnv.js";import{X as s,bt as c,dt as l,ht as u,xt as d}from"./index-B2hmno7v.js";var f=class extends n{constructor(...e){super(...e),this.loading=!0,this.loadFailed=!1,this.generating=!1,this.importing=!1,this.importError=``,this.keyring=null,this.pubKeyInput=``,this.privKeyInput=``,this.viewState=`default`,this.showPassphrasePrompt=!1,this.passphrasePromptMode=`lock`,this.showPurgeConfirm=!1,this.resolvePassphrase=null,this.passphrasePromptId=0,this.resolveError=null}static{this.styles=a`
+import{d as e,f as t,g as n,l as r,o as i,x as a,y as o}from"./lit-BYBpccnv.js";import{X as s,bt as c,dt as l,ht as u,xt as d}from"./index-BK-a2ZIU.js";var f=class extends n{constructor(...e){super(...e),this.loading=!0,this.loadFailed=!1,this.generating=!1,this.importing=!1,this.importError=``,this.keyring=null,this.pubKeyInput=``,this.privKeyInput=``,this.viewState=`default`,this.showPassphrasePrompt=!1,this.passphrasePromptMode=`lock`,this.showPurgeConfirm=!1,this.resolvePassphrase=null,this.passphrasePromptId=0,this.resolveError=null}static{this.styles=a`
         :host {
             display: block;
         }
