@@ -29,7 +29,7 @@ func registerRoutes(p *alps.GoPlugin) {
 			// Return empty 200 OK if no keys are found
 			return ctx.JSON(http.StatusOK, Keyring{})
 		} else if err != nil {
-			return fmt.Errorf("failed to get gpg keys: %v", err)
+			return fmt.Errorf("failed to get gpg keys: %w", err)
 		}
 
 		return ctx.JSON(http.StatusOK, keyring)
@@ -53,7 +53,7 @@ func registerRoutes(p *alps.GoPlugin) {
 			var stored Keyring
 			err := provider.GetFresh(ctx.Session.Store(), "gpg_keys", &stored)
 			if err != nil && !errors.Is(err, provider.ErrNoStoreEntry) {
-				return fmt.Errorf("failed to get gpg keys: %v", err)
+				return fmt.Errorf("failed to get gpg keys: %w", err)
 			}
 			if stored != (Keyring{}) {
 				return alps.NewHTTPError(http.StatusConflict, "a keypair is stored already")
@@ -61,7 +61,7 @@ func registerRoutes(p *alps.GoPlugin) {
 		}
 
 		if err := ctx.Session.Store().Put("gpg_keys", req); err != nil {
-			return fmt.Errorf("failed to save gpg keys: %v", err)
+			return fmt.Errorf("failed to save gpg keys: %w", err)
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
@@ -74,7 +74,7 @@ func registerRoutes(p *alps.GoPlugin) {
 
 		// To delete, we can put an empty keyring
 		if err := ctx.Session.Store().Put("gpg_keys", Keyring{}); err != nil {
-			return fmt.Errorf("failed to delete gpg keys: %v", err)
+			return fmt.Errorf("failed to delete gpg keys: %w", err)
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
