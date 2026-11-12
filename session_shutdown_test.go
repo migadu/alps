@@ -30,3 +30,29 @@ func TestSessionManagerCloseWaitsForTeardown(t *testing.T) {
 		t.Error("shutdown left an upload on disk")
 	}
 }
+
+func TestSessionManagerCloseWaitsForEvictedSessionTeardown(t *testing.T) {
+	sm, s := attachmentTestSession(t, 128)
+	s.providerLocker.Lock()
+	sm.locker.Lock()
+	sm.evictOldestSession()
+	sm.locker.Unlock()
+	finished := make(chan struct{})
+	go func() { sm.Close(); close(finished) }()
+	select {
+	case <-finished:
+		t.Error("manager returned while an evicted session still needed teardown")
+	case <-time.After(50 * time.Millisecond):
+	}
+	s.providerLocker.Unlock()
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown did not finish")
+	}
+	select {
+	case <-s.done:
+	case <-time.After(time.Second):
+		t.Fatal("evicted session did not finish teardown")
+	}
+}
