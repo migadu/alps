@@ -104,14 +104,21 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 
 	// Initialize Scheduler (runs every 1 hour)
 	s.Scheduler = NewScheduler(1 * time.Hour)
-	s.Scheduler.Register("core:cleanup_temp_attachments", cleanupTempAttachments)
+	s.Scheduler.Register("core:cleanup_temp_attachments", func() error {
+		threshold := time.Now().Add(-7 * 24 * time.Hour) // 7 days
+		return cleanupTempAttachments(os.TempDir(), threshold, s.Sessions.heldUploadFiles())
+	})
 	s.Scheduler.Start(logger)
 
 	return s, nil
 }
 
-func cleanupTempAttachments() error {
-	tempDir := os.TempDir()
+// cleanupTempAttachments removes the upload files (multipart-*) in tempDir
+// last written before threshold, which a crash or a kill left behind. It keeps
+// those in held, the files of uploads alps still holds: a session can keep an
+// upload for longer than the threshold, and a send or a draft save of it
+// would then fail for want of its file.
+func cleanupTempAttachments(tempDir string, threshold time.Time, held map[string]bool) error {
 	entries, err := os.ReadDir(tempDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -120,7 +127,6 @@ func cleanupTempAttachments() error {
 		return err
 	}
 
-	threshold := time.Now().Add(-7 * 24 * time.Hour) // 7 days
 	for _, entry := range entries {
 		if !strings.HasPrefix(entry.Name(), "multipart-") {
 			continue
@@ -129,8 +135,9 @@ func cleanupTempAttachments() error {
 		if err != nil {
 			continue
 		}
-		if info.ModTime().Before(threshold) {
-			os.Remove(filepath.Join(tempDir, entry.Name()))
+		path := filepath.Join(tempDir, entry.Name())
+		if info.ModTime().Before(threshold) && !held[path] {
+			os.Remove(path)
 		}
 	}
 	return nil
@@ -242,10 +249,6 @@ func (s *Server) parseSMTPServer() error {
 }
 
 func (s *Server) loadPlugins() error {
-	if s.Scheduler != nil {
-		s.Scheduler.Clear()
-	}
-
 	var plugins []Plugin
 	for _, load := range pluginLoaders {
 		l, err := load(s)
