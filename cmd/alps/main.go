@@ -38,6 +38,16 @@ func main() { os.Exit(run()) }
 
 // run returns only after startup and runtime resources have been released.
 func run() int {
+	// Registered first so that it runs last: SIGINT and SIGTERM stay ignored
+	// until every deferred shutdown step below has run (see the wait at the
+	// end of run).
+	var stopShutdownSignals func()
+	defer func() {
+		if stopShutdownSignals != nil {
+			stopShutdownSignals()
+		}
+	}()
+
 	var (
 		options      alps.Options
 		configFile   string
@@ -288,7 +298,12 @@ func run() int {
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(sigs)
+	// Not deferred here: deferred calls run last in, first out, so a defer at
+	// this point would end the subscription before the certificate manager,
+	// the sessions and the cluster are shut down, and a second signal would
+	// then kill the process part way through. Once subscribed, a further
+	// signal finds the channel full and is dropped.
+	stopShutdownSignals = func() { signal.Stop(sigs) }
 	exitCode := 0
 	select {
 	case err := <-listenerErrors:
