@@ -70,6 +70,7 @@ server = "imaps://fallback.example.com:993"
 
 	multiOpts, ok := opts.(*Options)
 	require.True(t, ok)
+	multiOpts.Resolver = offlineResolver()
 	assert.Equal(t, "migadu.com", multiOpts.DefaultDomain)
 	assert.Equal(t, "imaps://mail.%d:993", multiOpts.Template)
 	assert.NotNil(t, multiOpts.Default)
@@ -136,6 +137,7 @@ func TestMultiConfig_Autodiscover(t *testing.T) {
 	}
 
 	opts := &Options{
+		Resolver:            offlineResolver(),
 		Autodiscover:        true,
 		AutodiscoverDomains: []string{"autodomain.com"},
 		Autodiscoverer:      mockDisc,
@@ -216,6 +218,7 @@ server = "imaps://imap.example.com:993"
 func TestDNSAutodiscoverer_BoundedCache(t *testing.T) {
 	// Create autodiscoverer with capacity 3
 	disc := NewDNSAutodiscovererWithCapacity(10*time.Minute, 30*time.Second, 3)
+	disc.Resolver = offlineResolver()
 	ctx := context.Background()
 
 	// Discover 10 different domains that fail lookup (which caches the error result)
@@ -229,6 +232,7 @@ func TestDNSAutodiscoverer_BoundedCache(t *testing.T) {
 
 func TestDNSAutodiscoverer_EmptyDomain(t *testing.T) {
 	disc := NewDNSAutodiscoverer(time.Minute)
+	disc.Resolver = offlineResolver()
 	_, err := disc.Discover(context.Background(), "   ")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "domain cannot be empty")
@@ -236,6 +240,7 @@ func TestDNSAutodiscoverer_EmptyDomain(t *testing.T) {
 
 func TestMultiConfig_DomainValidationAndInjection(t *testing.T) {
 	opts := &Options{
+		Resolver:        offlineResolver(),
 		Template:        "imaps://mail.%d:993",
 		TemplateDomains: []string{"*"},
 	}
@@ -282,6 +287,7 @@ func TestMultiConfig_MultipleAtSymbols(t *testing.T) {
 
 func TestMultiConfig_DynamicFactoryBounded(t *testing.T) {
 	opts := &Options{
+		Resolver: offlineResolver(),
 		// Use an external IP target to avoid external network DNS lookups in unit tests
 		Template:        "imaps://198.51.100.1:993",
 		TemplateDomains: []string{"*"},
@@ -296,6 +302,7 @@ func TestMultiConfig_DynamicFactoryBounded(t *testing.T) {
 
 func TestMultiConfig_Concurrency(t *testing.T) {
 	opts := &Options{
+		Resolver:      offlineResolver(),
 		DefaultDomain: "default.lan",
 		Domains: map[string]provider.Options{
 			"default.lan": nil,
@@ -362,6 +369,7 @@ func (s *slowAutodiscoverer) Discover(ctx context.Context, domain string) (*Disc
 
 func TestMultiConfig_AutodiscoverTimeoutRespected(t *testing.T) {
 	opts := &Options{
+		Resolver:            offlineResolver(),
 		Autodiscover:        true,
 		AutodiscoverDomains: []string{"slowdomain.com"},
 		Autodiscoverer:      &slowAutodiscoverer{},
@@ -387,6 +395,7 @@ func TestMultiConfig_AutodiscoverSSRFBlocked(t *testing.T) {
 		},
 	}
 	opts := &Options{
+		Resolver:            offlineResolver(),
 		Autodiscover:        true,
 		AutodiscoverDomains: []string{"victim.com"},
 		Autodiscoverer:      mockDisc,
@@ -398,6 +407,7 @@ func TestMultiConfig_AutodiscoverSSRFBlocked(t *testing.T) {
 
 	// 2. Domain not in AutodiscoverDomains allowlist
 	optsNoAllowlist := &Options{
+		Resolver:       offlineResolver(),
 		Autodiscover:   true,
 		Autodiscoverer: mockDisc,
 	}
@@ -455,6 +465,7 @@ func TestIsRestrictedIP(t *testing.T) {
 func TestMultiConfig_TemplateSSRFBlocked(t *testing.T) {
 	// 1. Injection via %u containing invalid characters (colons, slashes, ports)
 	opts := &Options{
+		Resolver:        offlineResolver(),
 		Template:        "imaps://%u.internal.example:993",
 		TemplateDomains: []string{"*"},
 	}
@@ -467,6 +478,7 @@ func TestMultiConfig_TemplateSSRFBlocked(t *testing.T) {
 
 	// 2. Direct template target to restricted address
 	optsLoopback := &Options{
+		Resolver:        offlineResolver(),
 		Template:        "imaps://127.0.0.1:993",
 		TemplateDomains: []string{"*"},
 	}
@@ -479,6 +491,7 @@ func TestMultiConfig_TemplateSSRFBlocked(t *testing.T) {
 func TestMultiConfig_RoutingDoesNotFailOpen(t *testing.T) {
 	mockDefault := &providertest.MockOptions{}
 	opts := &Options{
+		Resolver:        offlineResolver(),
 		Template:        "imaps://unreachable.invalid.domain:993",
 		TemplateDomains: []string{"*"},
 		Default:         mockDefault,
@@ -547,6 +560,7 @@ func TestMultiConfig_ToOptionsNilSafety(t *testing.T) {
 func TestDNSAutodiscoverer_NegativeCacheTTL(t *testing.T) {
 	// Positive TTL = 10m, Negative TTL = 50ms
 	disc := NewDNSAutodiscovererWithCapacity(10*time.Minute, 50*time.Millisecond, 10)
+	disc.Resolver = offlineResolver()
 	ctx := context.Background()
 
 	// Query failing domain
@@ -567,6 +581,7 @@ func TestDNSAutodiscoverer_NegativeCacheTTL(t *testing.T) {
 func TestDNSAutodiscoverer_DeterministicOldestEviction(t *testing.T) {
 	// Capacity 2
 	disc := NewDNSAutodiscovererWithCapacity(10*time.Minute, 10*time.Minute, 2)
+	disc.Resolver = offlineResolver()
 	disc.Resolver = &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
@@ -597,7 +612,7 @@ func TestDNSAutodiscoverer_DeterministicOldestEviction(t *testing.T) {
 // in flight at once and the second must not lose its entry. IP literals keep
 // this free of DNS, which no wall-clock assertion could depend on reliably.
 func TestMultiConfig_DynamicFactoryCachingIsRaceSafe(t *testing.T) {
-	opts := &Options{Template: "imaps://%d:993", TemplateDomains: []string{"*"}}
+	opts := &Options{Resolver: offlineResolver(), Template: "imaps://%d:993", TemplateDomains: []string{"*"}}
 	factory := opts.CreateFactory(50*time.Millisecond, false)
 
 	var wg sync.WaitGroup
@@ -618,6 +633,7 @@ func TestMultiConfig_DynamicFactoryCachingIsRaceSafe(t *testing.T) {
 func TestMultiConfig_TemplateRequiresAllowlist(t *testing.T) {
 	mockDefault := &providertest.MockOptions{}
 	opts := &Options{
+		Resolver:        offlineResolver(),
 		Template:        "imaps://mail.%d:993",
 		TemplateDomains: []string{"allowed.example"},
 		Default:         mockDefault,
@@ -630,7 +646,7 @@ func TestMultiConfig_TemplateRequiresAllowlist(t *testing.T) {
 	assert.NotNil(t, p)
 
 	// With no default configured, an unlisted domain is refused outright.
-	bare := (&Options{Template: "imaps://mail.%d:993"}).CreateFactory(time.Second, false)
+	bare := (&Options{Resolver: offlineResolver(), Template: "imaps://mail.%d:993"}).CreateFactory(time.Second, false)
 	_, err = bare("user@other.example", "pass")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no mail provider configured")
@@ -646,6 +662,7 @@ func TestMultiConfig_AutodiscoverRequiresAllowlist(t *testing.T) {
 		server: &DiscoveredServer{Host: "mail.allowed.example", Port: 993, TLS: true},
 	}
 	opts := &Options{
+		Resolver:            offlineResolver(),
 		Autodiscover:        true,
 		AutodiscoverDomains: []string{"allowed.example"},
 		Autodiscoverer:      mockDisc,

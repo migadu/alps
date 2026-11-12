@@ -82,9 +82,12 @@ type Options struct {
 	AutodiscoverDomains []string
 	TemplateDomains     []string
 	Autodiscoverer      Autodiscoverer
-	Default             provider.Options
-	Domains             map[string]provider.Options
-	Routes              []routeEntry
+	// Resolver overrides dynamic host validation and DNS autodiscovery. Nil uses
+	// the system resolver; tests can supply a resolver that never leaves the host.
+	Resolver *net.Resolver
+	Default  provider.Options
+	Domains  map[string]provider.Options
+	Routes   []routeEntry
 
 	// Endpoints named alongside each backend. Any of them is optional: a
 	// backend that omits one defers to the matching global configuration.
@@ -322,7 +325,7 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 			return nil, fmt.Errorf("failed to parse dynamic server URL: %w", err)
 		}
 		host := u.Hostname()
-		if err := checkRestrictedHost(ctx, nil, host); err != nil {
+		if err := checkRestrictedHost(ctx, o.Resolver, host); err != nil {
 			if errors.Is(err, netguard.ErrBlockedAddress) {
 				return nil, fmt.Errorf("access to restricted server address %q is forbidden: %w", host, err)
 			}
@@ -365,7 +368,11 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 
 	autodiscoverer := o.Autodiscoverer
 	if autodiscoverer == nil && o.Autodiscover {
-		autodiscoverer = NewDNSAutodiscoverer(15 * time.Minute)
+		discovery := NewDNSAutodiscoverer(15 * time.Minute)
+		if o.Resolver != nil {
+			discovery.Resolver = o.Resolver
+		}
+		autodiscoverer = discovery
 	}
 
 	return func(username, password string) (provider.MailProvider, error) {
