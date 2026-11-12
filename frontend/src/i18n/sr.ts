@@ -322,6 +322,9 @@ export const sr = {
     emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi; proverite ponovo za trenutak.'
   },
   composer: {
+    sentNotFiled: "Poruka je poslata, ali kopija nije sačuvana u poslatim.",
+    sentDraftNotRemoved: "Poruka je poslata, ali nacrt nije uklonjen. Nemojte je ponovo slati.",
+    sentNotFiledDraftKept: "Poruka je poslata, ali kopija nije sačuvana, a nacrt je ostao. Nemojte je ponovo slati.",
     windowLoadFailed: 'Prozor za poruku nije mogao da se učita.',
     discardFailed: 'Nacrt nije bilo moguće obrisati sa servera i još uvek je u Nacrtima.',
     attachmentsTooLarge: 'Prilozi prelaze maksimalnu dozvoljenu veličinu.',

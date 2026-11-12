@@ -262,8 +262,18 @@ func TestHTTP_AnUnknownAppendIsNotRepeatedAfterAMailboxLookupFailure(t *testing.
 				form.Set("save_as_draft", "1")
 			}
 			r := s.do("POST", "/messages", form)
-			if r.status == http.StatusOK {
+			if kind == provider.MailboxTypeDrafts && r.status == http.StatusOK {
 				t.Errorf("an unverified APPEND answered success: %s", r.body)
+			}
+			if kind == provider.MailboxTypeSent {
+				s.expect(r, http.StatusOK)
+				var answer struct {
+					Warning string `json:"warning"`
+				}
+				r.json(t, &answer)
+				if answer.Warning != "not_filed_in_sent" {
+					t.Errorf("uncertain filing needs a warning: %s", r.body)
+				}
 			}
 			if got := s.mailbox(folder).Total; got != 1 {
 				t.Errorf("%s holds %d copies after a failed verification lookup, want 1", folder, got)

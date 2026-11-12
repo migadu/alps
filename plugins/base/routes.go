@@ -3450,12 +3450,33 @@ func handleComposeNew(ctx *alps.Context) error {
 				sentName = held
 			}
 		}
-		return deleteDraft(p, draftPath)
+		return nil
 	})
-	if err != nil {
+	filingErr := err
+	// Remove the sent draft even when filing failed, so it cannot invite
+	// another delivery. Each step keeps its own result.
+	var draftErr error
+	if draftPath != nil {
+		draftErr = ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+			// This callback may finish after the canceled request has returned and
+			// another request has cached the still-present draft. Forget that copy
+			// after the delete completes too, just as filing does for its writes.
+			defer forgetAppendOutcome(ctx.Session.Cache(), "", false, draftPath)
+			return deleteDraft(p, draftPath)
+		})
+	}
+	if filingErr != nil || draftErr != nil {
 		// As above, an abandoned callback can still be finishing its write.
 		ctx.Session.Cache().Clear()
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save message to Sent mailbox: " + err.Error()})
+		ctx.Server.Logger().Errorf("Sent message cleanup: filing=%v draft=%v", filingErr, draftErr)
+		warning := "draft_not_removed"
+		if filingErr != nil {
+			warning = "not_filed_in_sent"
+			if draftErr != nil {
+				warning = "not_filed_in_sent_and_draft_not_removed"
+			}
+		}
+		return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true, "warning": warning})
 	}
 
 	// The account's own Sent, which is not always named so, and the folder the

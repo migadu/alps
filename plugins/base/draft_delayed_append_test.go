@@ -83,8 +83,18 @@ func TestHTTP_AnUnknownAppendCanCommitAfterItsVerificationSearch(t *testing.T) {
 				form.Set("save_as_draft", "1")
 			}
 			response := s.do("POST", "/messages", form)
-			if response.status == http.StatusOK {
+			if kind == provider.MailboxTypeDrafts && response.status == http.StatusOK {
 				t.Error("an unconfirmed append was reported as completed")
+			}
+			if kind == provider.MailboxTypeSent {
+				s.expect(response, http.StatusOK)
+				var answer struct {
+					Warning string `json:"warning"`
+				}
+				response.json(t, &answer)
+				if answer.Warning != "not_filed_in_sent" {
+					t.Errorf("uncertain filing needs a warning: %s", response.body)
+				}
 			}
 			if got := s.mailbox(folder).Total; got != 1 {
 				t.Errorf("%s has %d copies when the old APPEND commits after the replay search (status%d), want1", folder, got, response.status)
