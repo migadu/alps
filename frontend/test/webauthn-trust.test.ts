@@ -98,6 +98,7 @@ describe('trust in linked accounts', () => {
       [403, 'two_factor_required', 'Sign in with your security key to change this setting.'],
       [409, 'no_security_key', 'Add a security key first.'],
       [429, 'rate_limited', 'Too many attempts. Please wait a few minutes and try again.'],
+      [503, 'security keys unavailable', 'The security key settings could not be loaded.'],
       [500, undefined, 'The setting could not be changed. Please try again.'],
     ] as const) {
       answer = () => json(status, code ? { error: code } : {});

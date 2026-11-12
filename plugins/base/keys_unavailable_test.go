@@ -5,6 +5,7 @@ import (
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
 	"net/http"
+	"net/url"
 	"sync/atomic"
 	"testing"
 )
@@ -82,6 +83,32 @@ func TestHTTP_KeySettingsWriteFailuresAreUnavailable(t *testing.T) {
 			s.expect(r, http.StatusServiceUnavailable)
 			if got := refusal(t, r); got != "keys_unavailable" {
 				t.Fatalf("code=%q", got)
+			}
+		})
+	}
+}
+
+func TestHTTP_KeySettingsAuthFailuresSignOut(t *testing.T) {
+	for _, path := range []string{"/settings/2fa", "/settings/2fa/begin"} {
+		t.Run(path, func(t *testing.T) {
+			armed := &atomic.Bool{}
+			s := newTestServerWrapping(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(p provider.MailProvider) provider.MailProvider {
+				return storeFailureProvider{MailProvider: p, armed: armed, readKey: "webauthn", err: provider.AuthError{Cause: errors.New("credentials revoked")}}
+			})
+			s.withWebAuthn()
+			s.expect(s.signInKeeping(true), http.StatusOK)
+			armed.Store(true)
+			method := "GET"
+			if path != "/settings/2fa" {
+				method = "POST"
+			}
+			r := s.do(method, path, nil)
+			s.expect(r, http.StatusUnauthorized)
+			address, _ := url.Parse(s.url)
+			for _, cookie := range s.client.Jar.Cookies(address) {
+				if (cookie.Name == "alps_session" || cookie.Name == "alps_login_token") && cookie.Value != "" {
+					t.Errorf("auth failure retained %s cookie", cookie.Name)
+				}
 			}
 		})
 	}
