@@ -94,6 +94,8 @@ async function dismissError(el: El) {
 
 describe('GPG passphrase steps', () => {
   it('confirms in a fresh empty form and generates/saves once, despite duplicate submits', async () => {
+    localStorage.setItem('alps_active_user', 'ada');
+    localStorage.setItem('alps_settings_ada', JSON.stringify({ loginUsername: 'ada', loginAddress: 'ada@example.com', name: 'Ada Lovelace' }));
     const el = await pane();
     const finished = el.generateKeys();
     const first = await prompt(el);
@@ -103,7 +105,7 @@ describe('GPG passphrase steps', () => {
     await submit(confirmation, 'new secret', true);
     await finished;
     expect(pgp.generateKey).toHaveBeenCalledTimes(1);
-    expect(pgp.generateKey).toHaveBeenCalledWith(expect.objectContaining({ passphrase: 'new secret' }));
+    expect(pgp.generateKey).toHaveBeenCalledWith(expect.objectContaining({ passphrase: 'new secret', userIDs: [{ name: 'Ada Lovelace', email: 'ada@example.com' }] }));
     expect(saves).toHaveLength(1);
     expect(JSON.parse(saves[0])).toEqual({ public_key: 'public armour', encrypted_private_key: 'encrypted armour' });
   });
