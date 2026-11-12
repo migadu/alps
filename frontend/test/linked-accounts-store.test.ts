@@ -25,6 +25,11 @@ afterEach(() => {
 });
 
 describe('across a sign-out', () => {
+  it('preserves a stable switch error code without displaying server prose', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'relink_required' }), { status: 409 })));
+    const store = new LinkedAccountsStore();
+    await expect(store.switchAccount('ada@example.com')).rejects.toMatchObject({ code: 'relink_required' });
+  });
   it('forgets the accounts it read, so the next user\'s menu reads its own', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => answer(['ada@work.example'])));
     const store = new LinkedAccountsStore();
