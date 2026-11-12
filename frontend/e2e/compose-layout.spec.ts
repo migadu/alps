@@ -23,6 +23,15 @@ async function openComposer(page: Page): Promise<Locator> {
   return composer;
 }
 
+/** The composer's attachment budget in whole MiB, as its header rounds it. */
+async function sessionAttachmentBudget(page: Page): Promise<number> {
+  const response = await page.request.get("/settings");
+  expect(response.ok()).toBe(true);
+  const { MaxAttachmentMiB } = (await response.json()) as { MaxAttachmentMiB?: number };
+  expect(MaxAttachmentMiB).toBeGreaterThan(0);
+  return Math.round(MaxAttachmentMiB!);
+}
+
 async function discardDraft(composer: Locator): Promise<void> {
   await composer.locator(".send-actions").getByRole("button", { name: "Discard", exact: true }).click();
   await composer.locator("ui-confirm").getByRole("button", { name: "Discard", exact: true }).click();
@@ -88,8 +97,12 @@ test("attachments grow the window instead of covering the body", async ({ page }
   expect(await height(tray)).toBeLessThanOrEqual(205);
   expect(await overflow()).toBeGreaterThan(40);
   expect(await height(body)).toBeGreaterThanOrEqual(before.body - 2);
-  // Its header totals the files against the budget, beside the caret.
-  await expect(composer.locator("alps-attachment-list .attachments-size")).toHaveText("24 KB / 32 MB");
+  // Its header totals the files against the budget, beside the caret. The
+  // budget is the session's, which the server lowers below the configured
+  // 32 MiB when the mail server advertises less (sora's APPENDLIMIT of 25 MiB
+  // leaves 18), so read it from where the composer reads it, not from here.
+  const budget = await sessionAttachmentBudget(page);
+  await expect(composer.locator("alps-attachment-list .attachments-size")).toHaveText(`24 KB / ${budget} MB`);
 
   // Collapsing the tray gives the room back.
   await composer.locator("alps-attachment-list .caret").click();
