@@ -88,6 +88,8 @@ func run() int {
 	// Bridge standard-library log calls and structured subsystem logs to the
 	// configured destination, format and level.
 	slog.SetDefault(logger.Slog())
+	stopLogReopen := watchSIGHUP(logger)
+	defer stopLogReopen()
 	// Provider-specific TOML has now been decoded by ToOptions, so legitimate
 	// provider keys are no longer counted as unknown. Log key names, not values.
 	for _, key := range config.UnknownKeys() {
@@ -285,29 +287,14 @@ func run() int {
 	}()
 
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)
 	exitCode := 0
-waitForStop:
-	for {
-		select {
-		case err := <-listenerErrors:
-			logger.Errorf("HTTP listener failed: %v", err)
-			exitCode = 1
-			break waitForStop
-		case sig := <-sigs:
-			if sig != syscall.SIGHUP {
-				break waitForStop
-			}
-			if reopened, err := logger.Reopen(); err != nil {
-				logger.Errorf("SIGHUP: %v", err)
-			} else if reopened {
-				logger.Info("SIGHUP: log file reopened")
-			} else {
-				logger.Info("SIGHUP: no log file to reopen")
-			}
-		}
+	select {
+	case err := <-listenerErrors:
+		logger.Errorf("HTTP listener failed: %v", err)
+		exitCode = 1
+	case <-sigs:
 	}
 
 	ctx, cancel := context.WithDeadline(context.Background(),
@@ -318,6 +305,37 @@ waitForStop:
 	cancel()
 
 	return exitCode
+}
+
+// watchSIGHUP registers before slow startup work so log rotation cannot end
+// the process while a backend probe or cluster join is still in progress.
+func watchSIGHUP(logger alps.Logger) func() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGHUP)
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			case <-sigs:
+				if reopened, err := logger.Reopen(); err != nil {
+					logger.Errorf("SIGHUP: %v", err)
+				} else if reopened {
+					logger.Info("SIGHUP: log file reopened")
+				} else {
+					logger.Info("SIGHUP: no log file to reopen")
+				}
+			}
+		}
+	}()
+	return func() {
+		signal.Stop(sigs)
+		close(stop)
+		<-done
+	}
 }
 
 // validateClusterTLS rejects configurations where clustered nodes would have
