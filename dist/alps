@@ -17,6 +17,7 @@
 
 name="alps"
 rcvar="alps_enable"
+extra_commands="reload"
 
 load_rc_config $name
 
@@ -26,9 +27,10 @@ load_rc_config $name
 : ${alps_config:="/usr/local/etc/alps/config.toml"}
 : ${alps_logdir:="/var/log/alps"}
 
-pidfile="/var/run/${name}.pid"
+pidfile="/var/run/${name}/${name}.pid"
+procname="/usr/local/bin/alps"
 command="/usr/sbin/daemon"
-command_args="-c -f -o ${alps_logdir}/alps.log -p ${pidfile} -u ${alps_user} /usr/local/bin/alps -config ${alps_config}"
+command_args="-c -f -o ${alps_logdir}/alps.log -p ${pidfile} ${procname} -config ${alps_config}"
 
 # reload sends SIGHUP to alps, which reopens only the log file set in
 # [logging] output. It does not reopen daemon(8)'s alps.log, and it does not
@@ -40,7 +42,7 @@ start_precmd="alps_precmd"
 alps_precmd()
 {
     # Ensure required directories exist
-    install -d -o ${alps_user} -g ${alps_group} -m 750 ${alps_logdir}
+    install -d -o ${alps_user} -g ${alps_group} -m 750 ${alps_logdir} /var/run/${name}
 }
 
 run_rc_command "$1"
