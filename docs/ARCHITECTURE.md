@@ -38,7 +38,7 @@ Dotted edges are used only when the matching provider, plugin or feature is conf
 
 [OPERATIONS.md](OPERATIONS.md) lists every outbound connection the host must allow.
 
-On IMAP, ALPS uses these extensions when the server advertises them: METADATA/METADATA-SERVER (RFC 5464), IDLE, NOTIFY, ENABLE with CONDSTORE, SORT, THREAD (REFS, REFERENCES, ORDEREDSUBJECT), QUOTA, NAMESPACE, ACL, UIDPLUS, MOVE, BINARY, LIST-EXTENDED/LIST-STATUS and MULTISEARCH. IDLE, NOTIFY and CONDSTORE are used only once they are turned on in `[server]` (see below). [MAIL_SERVER.md](MAIL_SERVER.md) says what each one is used for and what ALPS does without it.
+On IMAP, ALPS uses these extensions when the server advertises them: METADATA/METADATA-SERVER (RFC 5464), IDLE, NOTIFY, ENABLE with CONDSTORE, SORT, THREAD (REFS, REFERENCES, ORDEREDSUBJECT), QUOTA, NAMESPACE, ACL, UIDPLUS, MOVE, BINARY, LIST-EXTENDED/LIST-STATUS (with SPECIAL-USE) and MULTISEARCH. IDLE, NOTIFY and CONDSTORE are used only once they are turned on in `[server]` (see below). [MAIL_SERVER.md](MAIL_SERVER.md) says what each one is used for and what ALPS does without it.
 
 ---
 

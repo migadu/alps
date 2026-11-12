@@ -17,7 +17,7 @@ ALPS runs as a single process with no database. Sessions live in its memory, eac
 
 ALPS handles SIGHUP, SIGINT and SIGTERM. SIGHUP reopens the log file. SIGINT and SIGTERM shut ALPS down.
 
-ALPS starts handling these signals only once it has started its HTTP listener, the last step of the [Startup Order](#startup-order). Before that, each of the three ends the process at once, without the steps below.
+ALPS handles SIGHUP from the moment it has opened the log, step 2 of the [Startup Order](#startup-order), until it exits. It handles SIGINT and SIGTERM only once it has started its HTTP listener, the last step. Before that, SIGINT and SIGTERM end the process at once, without the steps below, and so does a SIGHUP that comes before the log is open.
 
 ### SIGHUP
 
@@ -34,15 +34,17 @@ SIGHUP does nothing else:
 Either signal starts a graceful shutdown, which takes these steps in order:
 
 1. **HTTP.** The listener on `[server] addr` closes, and with Let's Encrypt so does the ACME HTTP-01 listener on `acme_http_addr`, so new connections are refused, and idle keep-alive connections are closed. Open `/events` streams are ended. Requests in progress on both listeners get up to 30 seconds together to finish. The connections of a request still running after that are closed, and ALPS logs `HTTP server shutdown: context deadline exceeded`.
-2. **Sessions.** Every session is told to close. Each one releases its mail connections and its uploaded attachment files in the background, and ALPS waits up to 5 seconds in all for that to finish, for sessions evicted just before the shutdown as well. If the cleanup takes longer, ALPS logs `Session shutdown timed out waiting for cleanup` and goes on, so some upload files can be left in the temp directory (see [Attachment Uploads](#attachment-uploads)). No `session ended` line is logged for these sessions.
-3. **Background jobs and plugins.** The rate limiter's cleanup and the hourly job scheduler stop. Then each loaded plugin is closed, once; the shipped plugins have nothing to release.
-4. **Let's Encrypt.** With `[tls] provider = "letsencrypt"`, the certificate warm loop stops, waiting up to 5 seconds for it. With S3 storage, the certificate sync worker also stops, waiting up to 10 seconds.
+2. **Let's Encrypt.** With `[tls] provider = "letsencrypt"`, the certificate warm loop stops, waiting up to 5 seconds for it. With S3 storage, the certificate sync worker also stops, waiting up to 10 seconds.
+3. **Sessions.** Every session is told to close. Each one releases its mail connections and its uploaded attachment files in the background, and ALPS waits up to 5 seconds in all for that to finish, for sessions evicted just before the shutdown as well. If the cleanup takes longer, ALPS logs `Session shutdown timed out waiting for cleanup` and goes on, so some upload files can be left in the temp directory (see [Attachment Uploads](#attachment-uploads)). No `session ended` line is logged for these sessions.
+4. **Background jobs and plugins.** The rate limiter's cleanup and the hourly job scheduler stop. Then each loaded plugin is closed, once; the shipped plugins have nothing to release.
 5. **Cluster.** With `[cluster] enabled = true`, the node announces that it is leaving, waits up to 5 seconds for that to go out (not at all when no other node is up), and stops gossip ([CLUSTER.md](CLUSTER.md#3-startup-membership-and-shutdown)).
 6. ALPS exits with status 0.
 
 A shutdown therefore takes up to 35 seconds without Let's Encrypt and `[cluster]`. Let's Encrypt adds up to 5 seconds, or up to 15 with S3 storage, and `[cluster]` up to 5 more. With both, which means S3 storage, a shutdown takes up to 55 seconds. ALPS logs no line of its own for the start or the end of a shutdown, only the HTTP line above when the 30 seconds run out. With S3 storage, the certificate manager logs `stopping certificate sync worker` and then `certificate sync worker stopped gracefully` (or `certificate sync worker stop timed out`).
 
-Once a shutdown has begun, further SIGINT, SIGTERM and SIGHUP signals are ignored, so a second SIGTERM does not make it end sooner. Only SIGKILL, or SIGQUIT (which prints a stack trace and exits with status 2), ends it sooner.
+Once a shutdown has begun, a SIGHUP only reopens the log file, as above. A further SIGINT or SIGTERM is ignored while the requests of step 1 finish. After step 1, one ends the process at once, skipping the steps still to come, the cluster leave included. SIGKILL, or SIGQUIT (which prints a stack trace and exits with status 2), ends it sooner at any point.
+
+When the listener on `[server] addr` fails, as it starts (the address is already in use, for example) or later, ALPS logs `HTTP listener failed: <error>`, takes the same steps, and then exits with status 1.
 
 ### Killed or Crashed
 
@@ -107,7 +109,7 @@ Do not share the temp directory with other users or programs: only the user ALPS
 
 ### Attachment Uploads
 
-An upload request (`POST /attachments`) keeps its file parts in memory while they fit in a 32 KiB allowance for the whole request. Every other file part of the request is written to one temporary file, `multipart-<random>` (mode 0600), in the temp directory. The request body is capped at `max_attachment_mib` + 1 MiB, and ALPS deletes older uploads to stay within `max_session_attachment_mib` and `max_global_attachment_mib` (defaults 128 and 1024 MiB). Leave room in the temp directory above `max_global_attachment_mib`.
+An upload request (`POST /attachments`) keeps its file parts in memory while they fit in a 32 KiB allowance for the whole request. Every other file part of the request is written to one temporary file, `multipart-<random>` (mode 0600), in the temp directory. The request body is capped at the per-composer attachment limit in force + 1 MiB, which is at most `max_attachment_mib` + 1 MiB ([ATTACHMENTS.md](ATTACHMENTS.md#request-size-cap)), and ALPS deletes older uploads to stay within `max_session_attachment_mib` and `max_global_attachment_mib` (defaults 128 and 1024 MiB). Leave room in the temp directory above `max_global_attachment_mib`.
 
 The file is removed once every attachment stored from it is gone: sent, saved in a draft, removed by the user, evicted to make room under the budgets, or dropped when its session ends ([ATTACHMENTS.md](ATTACHMENTS.md#the-temporary-directory)).
 
@@ -275,9 +277,9 @@ ALPS starts in this order:
 1. It reads and checks the configuration, and sets `TMPDIR` from `[server] temp_dir`.
 2. It opens the log, and logs a warning for each configuration key it does not know (`Unknown configuration key: ... (ignored)`, see [CONFIGURATION.md](CONFIGURATION.md)).
 3. With `[cluster] enabled = true`, it starts gossip and tries to join `peers` ([CLUSTER.md](CLUSTER.md#3-startup-membership-and-shutdown)).
-4. It sets up the server (the SMTP server URL and the mail provider) and loads the plugins. Here a `[plugin.caldav] server` without a scheme is discovered through DNS, and the global CalDAV and CardDAV `server` each get one `OPTIONS` request, with a 10-second timeout ([CDAV.md](CDAV.md#sanity-checks)).
+4. It sets up the server (the SMTP server URL and the mail provider) and loads the plugins. Here a `[plugin.caldav] server` without a scheme is discovered through DNS, and the global CalDAV and CardDAV `server` each get one `OPTIONS` request, with a 10-second timeout ([CDAV.md](CDAV.md#sanity-checks)). A plugin that `enabled` keeps out is not set up, so its `server` is neither read nor contacted ([CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname)).
 5. It sets up WebAuthn.
-6. With `[tls] enabled = true`, it loads the certificate pair, or sets up Let's Encrypt. With S3 storage, it first checks that the bucket can be reached, for up to 10 seconds. With Let's Encrypt, it then starts the ACME HTTP-01 listener on `acme_http_addr`. A listener that cannot bind is logged as `ACME HTTP-01 handler error` and does not stop ALPS.
+6. With `[tls] enabled = true`, it loads the certificate pair, or sets up Let's Encrypt. With S3 storage, it first checks that the bucket can be reached, with up to 5 attempts within 30 seconds; the error that stops startup carries the cause of the last attempt's failure, such as an access refusal. With Let's Encrypt, it then starts the ACME HTTP-01 listener on `acme_http_addr`. A listener that cannot bind is logged as `ACME HTTP-01 handler error` and does not stop ALPS.
 7. It logs `Starting server on <addr>` and starts the HTTP or HTTPS listener on `[server] addr`.
 
 ### Exit Status
@@ -285,7 +287,7 @@ ALPS starts in this order:
 | Status | When |
 | :--- | :--- |
 | `0` | `-version`, `-h`, or the end of a shutdown after SIGINT or SIGTERM. |
-| `1` | `-config` is missing; the configuration cannot be read, parsed or validated; or a startup step fails: the cluster, the server setup (the mail provider, the SMTP server URL, a plugin), WebAuthn, TLS (including an S3 bucket that cannot be reached), or the listener on `[server] addr` (for example, when the address is already in use). Also when that listener fails later. |
+| `1` | `-config` is missing; the configuration cannot be read, parsed or validated; or a startup step fails: the cluster, the server setup (the mail provider, the SMTP server URL, a plugin), WebAuthn, TLS (including an S3 bucket that cannot be reached), or the listener on `[server] addr` (for example, when the address is already in use). Also when that listener fails later. A failed step releases what the steps before it set up before ALPS exits: the TLS manager and the server are closed, and a node that has joined the cluster leaves it, as in a [shutdown](#sigint-and-sigterm). |
 | `2` | An unknown flag. ALPS prints its usage. Go also exits with status 2 after an unrecovered panic or on SIGQUIT, and prints the trace on standard error. |
 
 Errors found before the log is opened, such as `Error: -config flag is required`, `Error loading config file: ...` and `Error generating options: ...`, are written to standard error. Later fatal errors go to the `[logging]` output. Under the systemd unit, standard error goes to the journal. Under the FreeBSD script, it goes to `alps.log`.

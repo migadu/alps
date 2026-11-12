@@ -14,6 +14,8 @@ ALPS supports two-factor authentication (2FA) through the WebAuthn standard. Onc
 
 In production, set `rpid` to the browser-facing hostname and `origins` to its exact origin (scheme included, no trailing slash), for example `rpid = "webmail.example.com"` and `origins = ["https://webmail.example.com"]`. Otherwise adding a key fails. Neither can be derived from a reverse proxy's forwarded headers, so a proxied deployment must set both.
 
+At startup ALPS also checks each origin against `rpid`, the port aside. An origin whose host is neither `rpid` nor a name under it is logged as a warning, `WebAuthn: origin "<origin>" is outside rpid "<rpid>"; security-key enrolment will fail; set [webauthn] origins to the browser-facing origin`. That is what the localhost defaults give when `rpid` is set and `origins` is not. An origin without a host name, such as one written without its scheme, is logged as `WebAuthn: origin "<origin>" has no usable hostname; check [webauthn] origins`. Neither stops startup.
+
 2FA also needs a store that keeps the account's record: an IMAP server that advertises METADATA or METADATA-SERVER, or the maildir provider (see [Storage Mechanism](#storage-mechanism)).
 
 ---
@@ -37,7 +39,7 @@ The key or recovery-code step must finish within the 5 minutes the pending cooki
 
 ### Changing the Keys
 
-Once an account has a security key, its keys can only be changed from a session that has passed the second factor: adding one (`/settings/2fa/begin` and `/finish`) and removing one (`/settings/2fa/credential/{id}/delete`) are otherwise refused with `403 two_factor_required`. The first key needs none, since there is none yet; enrolling it counts as passing the second factor for the session that does it. Adding a further key needs no password.
+Once an account has a security key, its keys can only be changed from a session that has passed the second factor: adding one (`/settings/2fa/begin` and `/finish`) and removing one (`/settings/2fa/credential/{id}/delete`) are otherwise refused with `403 two_factor_required`. The first key needs none, since there is none yet; enrolling it counts as passing the second factor for the session that does it. Adding a further key needs no password. Reading the keys (`GET /settings/2fa`) and adding one answer `503 keys_unavailable` when the record cannot be read or saved, and the session stays signed in.
 
 Removing a key also takes the account's password. `POST /settings/2fa/credential/{id}/delete` takes `{"current_password": "..."}`, and an empty body counts as no password. `{id}` is the key's ID as `GET /settings/2fa` lists it (padded base64url, URL-encoded in the path). The second factor is checked before the password. Then the password is checked: `400 password_required`, `403 wrong_password`, or `429 rate_limited` with `Retry-After`, and each attempt counts against the login rate limits (see [RATELIMIT.md](RATELIMIT.md)). An unknown key is `404`. A record that cannot be read or saved is `503 keys_unavailable`. On an IMAP METADATA store, an update that cannot be started, or that loses to a competing one, is answered `503` as well, with the bodies listed in [What a conflict answers](WEBAUTHN_COORDINATION.md#what-a-conflict-answers).
 
@@ -108,7 +110,7 @@ Because trust waives the target account's own second factor, turning it on (`POS
 - a session that has passed the second factor (otherwise `403 two_factor_required`);
 - the account's current password, checked against the session's in constant time (`400 password_required`, `403 wrong_password`). Attempts count against the login rate limits (`429 rate_limited`, with `Retry-After`).
 
-Turning it off (`{"trust": false}`) needs only a session.
+Turning it off (`{"trust": false}`) needs only a session. Either way, a record that cannot be read or saved is `503 keys_unavailable`.
 
 Turning trust on stores `trust_linked_accounts_version` beside it, naming the rules it was turned on under. Trust stored without it was turned on before these rules, when any session of the account could turn it on, and is read as off: the settings show it unticked, switching accounts does not honour it, and the record's next save drops it. The owner turns it on again, as above, if they want it. There is no migration to run; each account's record is read this way from the first time an upgraded node reads it.
 

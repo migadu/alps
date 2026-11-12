@@ -121,7 +121,9 @@ A handshake for a listed domain that has no certificate yet also starts issuance
 
 A node keeps a certificate in memory once it has loaded it, at the first handshake or warm pass that needs it. Its renewal comes due when the certificate has min(30 days, one third of its lifetime) left, or up to an hour after that. A renewal first reads the store again and takes a stored copy that is not yet due for renewal itself, instead of ordering a new one. A renewal that fails is tried again 30 to 60 minutes later, and the current certificate is served meanwhile.
 
-At shutdown, after the HTTP drain of up to 30 seconds and up to 5 seconds for the sessions' cleanup, ALPS waits up to 5 seconds for the warm loop to stop and, with S3 storage, up to 10 seconds more for the sync worker. A shutdown therefore takes up to 40 seconds with `"file"` storage and up to 50 with S3, and up to 55 in a cluster, which adds up to 5 seconds for leaving it ([SIGINT and SIGTERM](OPERATIONS.md#sigint-and-sigterm)). The shipped systemd unit's `TimeoutStopSec=60` covers all of it (see [systemd](OPERATIONS.md#systemd-distalpsservice)).
+For each domain and key type (`flavor` `ecdsa`, and `rsa` with `warm_rsa_certs`), a warm pass logs the state of the certificate it holds, with `not_after` and the time `remaining`: `cert warmer: certificate is valid` at info, `cert warmer: certificate is due for renewal` at warn once the certificate is inside its renewal window, and `cert warmer: certificate has expired` or `cert warmer: certificate is not yet valid` at error. A handshake is refused when the certificate held for its domain has expired or is not yet valid, rather than served with it, and ALPS logs `TLS: cached certificate is not valid` with the `server_name`. The renewal goes on as above.
+
+At shutdown, after the HTTP drain of up to 30 seconds, ALPS waits up to 5 seconds for the warm loop to stop and, with S3 storage, up to 10 seconds more for the sync worker, then up to 5 seconds for the sessions' cleanup. A shutdown therefore takes up to 40 seconds with `"file"` storage and up to 50 with S3, and up to 55 in a cluster, which adds up to 5 seconds for leaving it ([SIGINT and SIGTERM](OPERATIONS.md#sigint-and-sigterm)). The shipped systemd unit's `TimeoutStopSec=60` covers all of it (see [systemd](OPERATIONS.md#systemd-distalpsservice)).
 
 ### Staging Directory and RSA Certificates
 
@@ -147,7 +149,7 @@ prefix = "alps/"                        # Folder in the bucket (default: "", the
 # secret_key = "..."
 ```
 
-- `bucket`: Required. At startup ALPS checks the bucket (up to 5 attempts within 10 seconds) and exits if it cannot reach it.
+- `bucket`: Required. At startup ALPS checks the bucket (up to 5 attempts within 30 seconds) and exits if it cannot reach it, with an error that carries the cause of the last attempt's failure.
 - `endpoint`: Optional for AWS, where the SDK resolves it. When set (MinIO, B2 and others), `https://` is added if no scheme is given, and path-style addressing is used.
 - `region`: Defaults to `us-east-1` when an `endpoint` is set. Otherwise the AWS configuration or environment decides.
 - `access_key` and `secret_key`: Used only when both are set. Otherwise the default AWS credential chain applies (environment, shared config files, instance or IAM role).
@@ -303,7 +305,7 @@ rpid = "webmail.example.com"
 origins = ["https://webmail.example.com"]
 ```
 
-The defaults (`localhost`, `http://localhost:1323`, `http://localhost:5173`) work only for local development, and ALPS logs a warning at startup when `rpid` is unset. See [WEBAUTHN.md](WEBAUTHN.md).
+The defaults (`localhost`, `http://localhost:1323`, `http://localhost:5173`) work only for local development. ALPS logs a warning at startup when `rpid` is unset, and one for each origin whose host is outside `rpid`, as the localhost origins are when `rpid` is set alone. See [WEBAUTHN.md](WEBAUTHN.md).
 
 ### Passing ACME Challenges through a Proxy
 

@@ -37,7 +37,7 @@ Several nodes can also run without `[cluster]`. Each one then acts as a standalo
 [cluster]
 enabled = true
 node_id = "node-1"                          # Unique per node (default: the hostname)
-bind = "10.0.0.1"                           # This node's IPv4 address (default: "0.0.0.0")
+bind = "10.0.0.1"                           # This node's IP address (default: "0.0.0.0")
 port = 7946                                 # Gossip port, TCP and UDP (default: 7946)
 secret_key = "base64-encoded-32-byte-key"   # Generate: openssl rand -base64 32
 peers = ["10.0.0.2:7946", "10.0.0.3:7946"]  # The other ALPS nodes
@@ -48,11 +48,11 @@ peers = ["10.0.0.2:7946", "10.0.0.3:7946"]  # The other ALPS nodes
 | :--- | :--- | :--- | :--- |
 | `enabled` | Boolean | `false` | Joins this node to the gossip cluster. |
 | `node_id` | String | The hostname | This node's name. Must be unique and stable, because it decides which node leads. |
-| `bind` | String | `"0.0.0.0"` | The IPv4 address to listen on for gossip. `"IP:port"` is also accepted, and its port overrides `port`. |
+| `bind` | String | `"0.0.0.0"` | The IPv4 or IPv6 address to listen on for gossip. `"IP:port"` (`"[IPv6]:port"`) is also accepted, and its port overrides `port`. Anything else stops startup. |
 | `port` | Integer | `7946` | The gossip port, on TCP and UDP. 0 also means 7946. |
 | `secret_key` | String | None | Standard base64 of exactly 32 bytes. Required unless `allow_insecure = true`. `CLUSTER_SECRET_KEY` takes precedence. |
 | `allow_insecure` | Boolean | `false` | Lets the cluster run without a secret key. |
-| `peers` | Array of strings | None | The other nodes, as `"host:port"`. Joined at startup, and again while this node sees no other member. |
+| `peers` | Array of strings | None | The other nodes, as `"IP:port"`. Joined at startup, and then every 30 seconds each one that is not among this node's members. |
 
 ### `secret_key` and `CLUSTER_SECRET_KEY`
 
@@ -76,15 +76,17 @@ Without a secret key, the cluster does not start and ALPS exits, unless `allow_i
 
 ### `bind` and `port`
 
-`bind` takes an IPv4 address, not a hostname or an interface name. It can carry a port (`"10.0.0.1:7946"`), which then overrides `port`. The node listens for gossip on that port over both TCP and UDP, and every node must be able to reach every other node's gossip port over both.
+`bind` takes an IPv4 or IPv6 address, not a hostname or an interface name. It can carry a port (`"10.0.0.1:7946"`, or `"[2001:db8::1]:7946"` for IPv6), which then overrides `port`. A value that is not an address, with or without a port, stops startup with an error that starts with `cluster.bind:`, and so does a port outside 1 to 65535 (the one `bind` carries, or else `port`). The node listens for gossip on that port over both TCP and UDP, and every node must be able to reach every other node's gossip port over both.
 
 With a specific address, the node also advertises that address to its peers. With `0.0.0.0`, the node advertises a private address of the host, detected automatically. If the host has no private address, the cluster cannot start, and ALPS exits. Set `bind` to the address the peers can reach when the host has no private address, or when it has more than one.
 
 ### `peers`
 
-List the other nodes as `"host:port"`. A node tries to join them at startup. A peer that is not up yet is not an error: ALPS logs a warning and starts anyway. Once a node reaches any one member, it learns about the rest of the cluster.
+List the other nodes as `"IP:port"`, the address and gossip port each one advertises (`"[2001:db8::2]:7946"` for IPv6). A node tries to join them at startup. A peer that is not up yet is not an error: ALPS logs a warning and starts anyway. Once a node reaches any one member, it learns about the rest of the cluster.
 
-Every 30 seconds, a node that sees no other member tries its configured peers again. Until one of them answers, the node is its own leader. A node tries its peers again only while it sees no other member, so nodes that still see each other do not look for the rest. After a lasting network split that leaves two or more nodes on each side, the sides can therefore stay apart, each with its own leader, until the nodes on one side are restarted. ALPS uses `peers` for nothing else. List all the other nodes, so that a node can find its way back to the cluster whichever of them is up.
+Every 30 seconds, a node tries to join each configured peer whose address is not among its members. Until it reaches another node, a node that sees no other member is its own leader. Nodes on both sides of a network split also look for the peers they no longer see, so once the network is back the sides join up again, under one leader. ALPS uses `peers` for nothing else. List all the other nodes, so that a node can find its way back to the cluster whichever of them is up.
+
+A peer is matched against the members by the address it is written as. A peer written as a host name, or without a port, never matches, so the node joins it again every 30 seconds even while it is a member, and logs `cluster rejoined peers` each time the join succeeds. Write peers as `IP:port`.
 
 ---
 
@@ -92,16 +94,19 @@ Every 30 seconds, a node that sees no other member tries its configured peers ag
 
 ALPS starts the cluster before it starts the TLS manager and the HTTP server. With `[cluster]` enabled, any of these stops ALPS with exit status 1:
 
+- a `bind` that is not an IP address with an optional port, or a port outside 1 to 65535 (see [`bind` and `port`](#bind-and-port));
 - no secret key, and `allow_insecure` not set;
 - a key that does not decode to 32 bytes;
 - a gossip port that cannot be bound;
 - with `bind = "0.0.0.0"`, no private address to advertise.
 
-ALPS logs the reason to its `[logging]` output, in a line that starts with `failed to initialize cluster`, or `failed to decode cluster secret key` for a bad key. ALPS does not fall back to running as a standalone node. A standalone node would issue Let's Encrypt certificates on its own.
+A bad `bind` or port is found when the configuration is read, before the log is open, and is written to standard error (`Error generating options: cluster.bind: ...`). For the others, ALPS logs the reason to its `[logging]` output, in a line that starts with `failed to initialize cluster`, or `failed to decode cluster secret key` for a bad key. ALPS does not fall back to running as a standalone node. A standalone node would issue Let's Encrypt certificates on its own.
+
+A node whose startup fails after it has joined, at the server setup, WebAuthn, TLS or the HTTP listener, leaves the cluster before it exits, as at a shutdown (below), so the other nodes see it leave rather than detect a failure.
 
 With `[tls] enabled = true`, `provider = "letsencrypt"` and the cluster enabled, `storage_provider` must be `"s3"` (the default). `"file"` stops startup, because each node's `cache_dir` is its own, so the followers would have no source of certificates (see [Certificates in a Cluster](#4-certificates-in-a-cluster)).
 
-On SIGINT or SIGTERM, ALPS first stops serving HTTP, waiting up to 30 seconds for open requests. It then closes its sessions, waiting up to 5 seconds for their cleanup, and stops the certificate manager, which with Let's Encrypt takes up to 5 seconds, or up to 15 with S3 storage. Last, it leaves the cluster, waiting up to 5 seconds for the leave to go out, so the other nodes see it leave and do not have to detect a failure. A node with Let's Encrypt, which in a cluster always uses S3, therefore takes up to 55 seconds to stop, and one without it up to 40 seconds ([SIGINT and SIGTERM](OPERATIONS.md#sigint-and-sigterm)). A node that is killed drops out of the cluster once the others' failure detection notices it is gone. In both cases the remaining nodes work out the leader again. With Let's Encrypt, the new leader takes over the certificate warm passes (see [Certificates in a Cluster](#4-certificates-in-a-cluster)). [OPERATIONS.md](OPERATIONS.md) covers signals and what a restart loses.
+On SIGINT or SIGTERM, ALPS first stops serving HTTP, waiting up to 30 seconds for open requests. It then stops the certificate manager, which with Let's Encrypt takes up to 5 seconds, or up to 15 with S3 storage, and closes its sessions, waiting up to 5 seconds for their cleanup. Last, it leaves the cluster, waiting up to 5 seconds for the leave to go out, so the other nodes see it leave and do not have to detect a failure. A node with Let's Encrypt, which in a cluster always uses S3, therefore takes up to 55 seconds to stop, and one without it up to 40 seconds ([SIGINT and SIGTERM](OPERATIONS.md#sigint-and-sigterm)). A node that is killed drops out of the cluster once the others' failure detection notices it is gone. In both cases the remaining nodes work out the leader again. With Let's Encrypt, the new leader takes over the certificate warm passes (see [Certificates in a Cluster](#4-certificates-in-a-cluster)). [OPERATIONS.md](OPERATIONS.md) covers signals and what a restart loses.
 
 ### Restarting and Upgrading
 
@@ -204,7 +209,7 @@ ALPS has no status endpoint for the cluster. Its state shows in the log:
 
 - `cluster started`, once at startup, with `node_name`, `bind_addr`, `bind_port`, `advertise_addr` (empty with `bind = "0.0.0.0"`, since the detected address is not shown), `advertise_port`, `members`, `leader` and `is_leader`;
 - `gossip encryption enabled (AES-256)`, or a warning that it is disabled when the cluster runs without a key under `allow_insecure`;
-- `failed to join some peers (may be first node)` when no listed peer answered at startup, and `cluster rejoined peers` when a lone node found them again;
+- `failed to join some peers (may be first node)` when no listed peer answered at startup, and `cluster rejoined peers` when a node joined listed peers it did not see among its members;
 - `node joined cluster` and `node left cluster`, with the node's name and address;
 - `cluster leader changed`, with `old_leader`, `new_leader` and `is_leader`;
 - with Let's Encrypt, `TLS certificate cache wrapped with cluster-aware leader gating` at startup.

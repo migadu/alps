@@ -23,12 +23,13 @@ The repository has no CI configuration, so these tests run only when someone run
 
 ## Go tests
 
-Go tests sit beside the sources, in every package except three: `internal/netguard`, whose address
+Go tests sit beside the sources, in every package except four: `internal/netguard`, whose address
 check is tested through the packages that use it (`plugins/base`, `provider/multi` and the root
-package's DAV connections), and the two packages of shared mocks below. They need neither sora nor
-PostgreSQL nor any other setup: the servers they talk to run in-process on
+package's DAV connections), `internal/serviceurl`, whose endpoint parsers are tested through the
+plugins and `provider/multi`, and the two packages of shared mocks below. They need neither sora
+nor PostgreSQL nor any other setup: the servers they talk to run in-process on
 loopback (in-memory IMAP servers, go-smtp SMTP servers, HTTP servers from `net/http/httptest`, and
-the cluster tests' gossip members on fixed 127.0.0.1 ports).
+the cluster tests' gossip members on 127.0.0.1 ports the system picks).
 
 - The base plugin's tests run the real server, over a maildir in `t.TempDir()` (the
   `newTestServer…` helpers in `plugins/base/http_test.go`) or over an in-memory IMAP server (the
@@ -43,7 +44,13 @@ the cluster tests' gossip members on fixed 127.0.0.1 ports).
 - `make test` runs `go test -v ./...`. `make test-coverage` writes `coverage.out` and opens its
   HTML report.
 - The browser harness's test stack (`internal/e2estack`) has Go tests too, which `go test ./...`
-  runs with the rest.
+  runs with the rest, and so does `scripts`, whose test runs the setup part of `scripts/e2e.sh`
+  with stand-ins for its tools and checks that a run keeps Playwright's last-failed record.
+- Some `cmd/alps` tests build the `alps` binary with `go build` into a temporary directory and
+  start it with a config of their own, to check what only the process shows: the unknown-key and
+  WebAuthn origin warnings, the log file and format, plugin sections, SIGHUP during startup and
+  after it, and a node that fails startup after joining a cluster leaving it. They, and the
+  `scripts` test, skip themselves on Windows.
 
 ---
 
@@ -65,6 +72,9 @@ source in `src/` or `plugins/*/frontend/` never runs.
   `record`, `flush`, `click`, `waitFor`), `sidebar.ts` (`settleSidebar`, `inSidebar`,
   `setSidebar`), `sources.ts` (`readSources`) and `styles.ts` (`rulesOf`, `ruleMatches`,
   `backgroundOf`, `backgroundsOf`).
+- `npm run test:shuffle` runs the same typecheck and then the tests in a random order
+  (`vitest run --sequence.shuffle`), to find tests that depend on the ones before them. Vitest
+  prints the seed it used; `npm run test:shuffle -- --sequence.seed=<seed>` repeats that order.
 - `npm run typecheck:test` checks the frontend unit tests and their fakes against the production
   interfaces without running Vitest, so a type error there fails `npm test` before any test runs.
   Its separate TypeScript config, `tsconfig.test.json`, includes Node globals for test helpers
@@ -122,7 +132,7 @@ regular expression over the spec's full path, so a bare `reading.spec.ts` also r
 | `E2E_CLUSTER` | unset | Exactly `1` also starts a second ALPS on `E2E_PORT`+9, made from the same config. Both ALPS processes get a `[cluster]` section and gossip with each other (the first on `E2E_PORT`+10, the second on +11), against the one sora. Specs get `ALPS_SECONDARY_URL`; `e2e/cluster-recovery.spec.ts` needs it and skips itself otherwise |
 | `E2E_STATE` | `${TMPDIR:-/tmp}/alps-e2e-<port>` | The run's state directory: `bin/` (the alps, e2estack and sora binaries), `alps.toml`, `sora.toml` (and `alps-secondary.toml`), sora's cache, uploads and relay directories, and ALPS's `temp_dir` |
 | `E2E_LOGS` | `${TMPDIR:-/tmp}/alps-e2e-logs-<port>` | The server and build logs |
-| `E2E_RESULTS` | `$E2E_LOGS/test-results` | Playwright's output directory for traces and screenshots, emptied when a run starts. The default is made absolute, so with a relative `E2E_LOGS` it is under the directory the script was started in; a relative `E2E_RESULTS` that you set is read from `frontend/` |
+| `E2E_RESULTS` | `$E2E_LOGS/test-results` | Playwright's output directory for traces and screenshots, emptied when a run starts except for Playwright's record of the last run (`.last-run.json`). The default is made absolute, so with a relative `E2E_LOGS` it is under the directory the script was started in; a relative `E2E_RESULTS` that you set is read from `frontend/` |
 | `E2E_PREVIEW` | unset | Exactly `1` turns on FETCH PREVIEW in the generated sora config and runs the positive preview test; it needs a `SORA_DIR` checkout that supports PREVIEW |
 | `E2E_DAV_PERSONAL` | unset | Exactly `1` leaves out the default CalDAV and CardDAV servers in the generated `alps.toml`, so that `e2e/dav-connections.spec.ts` tests setting up a personal connection |
 | `PW_CHROMIUM_PATH` | unset | Use an already installed Chromium binary |
@@ -155,6 +165,11 @@ it ends unless `E2E_KEEP_STATE` is set, so neither may point at a directory that
 else. The servers are stopped at the end either way. State and a database kept with
 `E2E_KEEP_STATE` survive only until the next run on the same port, which deletes the state
 directory and drops `alps_e2e_<port>` before creating it again.
+
+Playwright's record of the last run, `.last-run.json` in `E2E_RESULTS`, is kept across that
+deletion, so `scripts/e2e.sh --last-failed` runs again the tests that failed last time. Without
+the record, `--last-failed` stops before anything is built, with `e2e: --last-failed needs a
+previous run record at <dir>/.last-run.json; run the suite once first.`
 
 ### Ports
 
@@ -262,10 +277,10 @@ e2estack ───┼─► sora (IMAP, ManageSieve, admin API) ─┐
   - `dav_allow_private_servers = true`, because the personal DAV servers the tests enter are the
     stack's own, on loopback over plain HTTP (see [CDAV.md](CDAV.md#personal-servers)).
 
-  With `E2E_CLUSTER=1`, the second ALPS runs from a copy of this config with its own address, and
-  each gets its own `[cluster]` section (see [CLUSTER.md](CLUSTER.md) for what the cluster
-  carries). Both have the same `login_key`, so either node can restore a session from a login token
-  the other issued.
+  With `E2E_CLUSTER=1`, the second ALPS runs from a copy of this config with its own address and
+  WebAuthn origin (`http://localhost:<E2E_PORT+9>`), and each gets its own `[cluster]` section
+  (see [CLUSTER.md](CLUSTER.md) for what the cluster carries). Both have the same `login_key`, so
+  either node can restore a session from a login token the other issued.
 
 One account, `alice@example.test`, is created for the run. The tests run serially against it.
 
@@ -388,10 +403,10 @@ role the page does not render — only running the suite does.
 
 ## When a run fails
 
-- **"<tool> is required and was not found on PATH"** — put `go`, `npm`, `psql`, `curl` and `lsof`
+- **`"<tool> is required and was not found on PATH"`** — put `go`, `npm`, `psql`, `curl` and `lsof`
   on `PATH`.
-- **"no sora checkout at <dir>; set SORA_DIR"** — the directory must contain `cmd/sora/main.go`.
-- **"cannot reach PostgreSQL as <user>@<host>:<port>"** — set `E2E_PG_*`. The user needs
+- **`"no sora checkout at <dir>; set SORA_DIR"`** — the directory must contain `cmd/sora/main.go`.
+- **`"cannot reach PostgreSQL as <user>@<host>:<port>"`** — set `E2E_PG_*`. The user needs
   permission to create and drop databases.
 - **"port … is in use"** — an earlier run is still up, or something else holds the port. Stop it,
   or pick another `E2E_PORT`. The check only sees servers that are already listening, so a second
@@ -400,10 +415,10 @@ role the page does not render — only running the suite does.
 - **"gave up waiting for the build lock at …"** — another run held the build lock for about ten
   minutes.
 - **A frontend build failure** — the script prints the last 30 lines of `frontend-build.log`.
-- **"<server> exited during startup"** or **"<server> did not become ready"** (after about 60 s) —
+- **`"<server> exited during startup"`** or **`"<server> did not become ready"`** (after about 60 s) —
   the server is `the test stack`, `sora`, `alps` or `secondary alps`, and the last 20 lines of its
   log follow.
-- **"a server died during the run: <names>"** — the names are among `e2estack`, `sora`, `alps`
+- **`"a server died during the run: <names>"`** — the names are among `e2estack`, `sora`, `alps`
   and `alps-secondary`; read `<name>.log` in the logs directory the message prints. Every test
   after that point failed for that reason alone, so read the log before reading anything into the
   failures. The run then exits 1 whatever Playwright reported.

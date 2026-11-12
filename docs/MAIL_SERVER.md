@@ -65,7 +65,7 @@ ALPS needs an IMAP4rev1 (RFC 3501) or IMAP4rev2 (RFC 9051) server. It uses each 
 | `SORT` (RFC 5256) | Listing by message date | Flat listings and searches sorted by date come back in UID order, the order mail was filed in. Threaded listings are dated by ALPS from the message envelopes. |
 | `THREAD=REFS`, `THREAD=REFERENCES` or `THREAD=ORDEREDSUBJECT` (REFERENCES and ORDEREDSUBJECT: RFC 5256) | Conversations, built with the first algorithm the server lists in the order REFS, REFERENCES, ORDEREDSUBJECT | Flat listings only |
 | `MULTISEARCH` (RFC 7377) | Search All: one search across all subscribed folders | No Search All button. A search of `*` is refused with HTTP 400. `ESEARCH` (RFC 4731) alone is not enough. |
-| `LIST-EXTENDED` (RFC 5258) or `LIST-STATUS` (RFC 5819) | Folders and subscriptions in one `LIST ... RETURN (SUBSCRIBED)`, with the counts as well under LIST-STATUS | A plain LIST followed by an LSUB. A server that lists these but answers `RETURN` with `BAD` gets a plain LIST from then on, for as long as that connection is open. |
+| `LIST-EXTENDED` (RFC 5258) or `LIST-STATUS` (RFC 5819) | Folders and subscriptions in one `LIST ... RETURN (SUBSCRIBED)`, with the counts as well under LIST-STATUS. Where the server also lists `SPECIAL-USE` (RFC 6154), the `RETURN` asks for `SPECIAL-USE` too, so that the special-use attributes (section 4) come with it | A plain LIST followed by an LSUB. A server that lists these but answers `RETURN` with `BAD` gets a plain LIST from then on, for as long as that connection is open. |
 | `NAMESPACE` (RFC 2342) | Telling other users' and shared folders from the user's own. The sidebar shows them under "Shared folders". | Every folder counts as the user's own, and only top-level folders are looked at for Sent and Drafts (section 4) |
 | `ACL` (RFC 4314) | Folder sharing, and `MYRIGHTS` on other people's folders, so that only the actions the user may take are offered there | No sharing. Other people's folders are shown without the actions that need a right. |
 | `QUOTA` (RFC 9208) | The storage meter in the account menu | No meter |
@@ -131,12 +131,12 @@ ALPS never creates special folders. The account must already have them.
 **Filed by the backend.** ALPS stores each sent copy in Sent and each draft in Drafts. It finds them in a `LIST` of the user's own folders (not other people's, and not `\Noselect` placeholders):
 
 - A folder carrying the special-use attribute, `\Sent` or `\Drafts` (RFC 6154), is used first.
-- Otherwise ALPS takes a folder by name, compared in any case after the personal namespace prefix (such as `INBOX.`): `Sent` for Sent, `Draft` or `Drafts` for Drafts.
+- Otherwise ALPS takes a folder by name, compared in any case after the personal namespace prefix (such as `INBOX.`): `Sent` for Sent, and `Drafts`, or else `Draft`, for Drafts.
 - Without NAMESPACE, only top-level folders are looked at.
 
 Without a Sent folder, a send is answered as sent, with a warning that no copy was saved in Sent (section 7). Without a Drafts folder, draft saves fail.
 
-**Used by the page.** Delete moves messages into Trash, Archive into Archive, and Report spam into Junk. The page finds those folders, and draws Sent, Drafts and the others in the sidebar, by the attributes `\Trash`, `\Archive`, `\Junk`, `\Sent`, `\Drafts` and `\All`. For a role no folder of the user's own carries as an attribute, it matches the whole folder name in any case: `Trash` or `Deleted Items`, `Archive` or `Archives`, `Junk` or `Spam`, `Sent`, `Drafts`. When no folder has the role, the action names a folder called `Trash`, `Archive` or `Junk`, and the server refuses the move if that folder does not exist. Folders in other people's namespaces never take a role.
+**Used by the page.** Delete moves messages into Trash, Archive into Archive, and Report spam into Junk. The page finds those folders, and draws Sent, Drafts and the others in the sidebar, by the attributes `\Trash`, `\Archive`, `\Junk`, `\Sent`, `\Drafts` and `\All`. For a role no folder of the user's own carries as an attribute, it matches the folder's name in any case, after the personal namespace prefix (such as `INBOX.`): `Trash`, `Deleted` or `Deleted Items`, `Archive` or `Archives`, `Junk` or `Spam`, `Sent`, `Drafts` or `Draft`. When no folder has the role, the action names a folder called `Trash`, `Archive` or `Junk`, and the server refuses the move if that folder does not exist. Folders in other people's namespaces never take a role.
 
 Mark the special folders with special-use attributes on the server: a folder that carries one is found by it, whatever its name.
 
@@ -172,7 +172,8 @@ ALPS keeps no SMTP connection open. For each send it:
 1. Connects. For `smtp://` it reads the greeting, says EHLO and upgrades with STARTTLS.
 2. Says `EHLO localhost`, or `HELO` if the server answers EHLO with 500 or 502.
 3. Authenticates with `AUTH PLAIN`, using the same username and password the user signed in with. ALPS sends it without checking the server's EHLO list, so the submission server must accept AUTH PLAIN and those credentials on that connection, which for `smtp://` is after STARTTLS.
-4. Sends `MAIL FROM` with the address chosen in From (the account's own address or an identity, see section 8), one `RCPT TO` for each To, Cc and Bcc recipient, and the message. It then sends `QUIT`.
+4. Sends `MAIL FROM` with the address chosen in From (the account's own address or an identity, see section 8), one `RCPT TO` for each To, Cc and Bcc recipient, and the message. When the server lists `SIZE` (RFC 1870), `MAIL FROM` carries the message's size, and a message larger than the server's limit is not sent at all: the send gets 413 `message_too_large` (see [ATTACHMENTS.md](ATTACHMENTS.md)).
+5. Sends `QUIT`, also when a command was refused or the send failed, waiting at most a second for its answer, and closes the connection.
 
 Because `MAIL FROM` is the chosen From address, the submission server must let the login send as each of its identities' addresses.
 
@@ -189,7 +190,7 @@ Calendar invitations that ALPS mails itself (iMIP) are submitted the same way (s
 
 ### Per-Domain SMTP Under `multi`
 
-With the `multi` provider, each `[provider.multi.domains."<domain>"]` table, each `[[provider.multi.routes]]` entry and `[provider.multi.default]` can set `smtp = "..."`, with the same schemes. A login is routed by its domain, or by `default_domain` when it has none. A backend that names no `smtp` uses the global `[smtp] server`. A login that no domain table or route names, such as one reached through `template` or `autodiscover`, takes the `smtp` of `[provider.multi.default]`, and the global server when that names none. See [CONFIGURATION.md](CONFIGURATION.md#providermulti).
+With the `multi` provider, each `[provider.multi.domains."<domain>"]` table, each `[[provider.multi.routes]]` entry and `[provider.multi.default]` can set `smtp = "..."`, with the same schemes. A value that cannot be used stops startup. A login is routed by its domain, or by `default_domain` when it has none. A backend that names no `smtp` uses the global `[smtp] server`. A login that no domain table or route names, such as one reached through `template` or `autodiscover`, takes the `smtp` of `[provider.multi.default]`, and the global server when that names none. See [CONFIGURATION.md](CONFIGURATION.md#providermulti).
 
 ---
 

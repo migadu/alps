@@ -76,11 +76,11 @@ server = "https://dav.example.com/"
 ```
 
 ### Loading the Plugins
-A DAV plugin with a section that does not say `enabled = false` is set up, with or without a `server`. Without a section, it is set up when a `[provider.multi]` backend names its endpoint (see [Per-Domain Endpoints](#per-domain-endpoints-multi-provider)).
+A DAV plugin may load unless its section says `enabled = false`, or some `[plugin.*]` section sets `enabled = true` and its own does not: the sections with `enabled = true` form an allow-list. A plugin left out is not set up at all: its `server` is not read or probed, and nothing is logged for it.
 
-A set-up plugin loads unless its section says `enabled = false`, or some `[plugin.*]` section sets `enabled = true` and its own does not: the sections with `enabled = true` form an allow-list. A plugin left out is dropped at startup and logged as `Plugin "caldav" is disabled`. `config.example.toml` sets `enabled = true` in `[plugin.caldav]` and `[plugin.carddav]` and in every other plugin it uses, so with it every plugin you add needs `enabled = true` too. The full rules are in [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname).
+A plugin that may load is set up when it has a section, with or without a `server`, or, without a section, when a `[provider.multi]` backend names its endpoint (see [Per-Domain Endpoints](#per-domain-endpoints-multi-provider)). `config.example.toml` sets `enabled = true` in `[plugin.caldav]` and `[plugin.carddav]` and in every other plugin it uses, so with it every plugin you add needs `enabled = true` too. The full rules are in [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname).
 
-A default server is optional. A loaded plugin without one, for a login whose multi backend names none either, offers that user its section in Settings, where the user can set up a server of their own (see [Connections in Settings](#connections-in-settings)). Until then, a request for that login fails with `CalDAV server is not configured` (`CardDAV server is not configured`).
+A default server is optional. A loaded plugin without one, for a login whose multi backend names none either, offers that user its section in Settings, where the user can set up a server of their own (see [Connections in Settings](#connections-in-settings)). Until then, the plugin's requests for that login answer 409 `{"error":"caldav_not_configured"}` (`carddav_not_configured`), which is not logged as an error. A Calendar, Tasks or Contacts page that gets this answer says that the account is not configured, instead of showing an error.
 
 ### Supported Schemes
 | Section | TLS | Plain HTTP |
@@ -107,10 +107,10 @@ carddav = "https://dav.sharedmail.com"
 - That endpoint serves every login the table matches.
 - A login whose domain matches no `domains` or `routes` entry uses the `default` table's.
 - A table that names no endpoint uses the global `[plugin.caldav]` / `[plugin.carddav]` `server`, never another table's.
-- These values must be full URLs, with one of the plugin's schemes and a host. Any other value is logged once for each such value (`caldav: provider named an unusable server ... (using the configured one)`, carddav likewise) and the global server is used.
+- These values must be full URLs, with one of the plugin's schemes and a host. They are checked at startup, and any other value stops startup, with an error naming the table and the service.
 - Per-domain endpoints are neither discovered nor probed at startup.
 
-Under `multi`, a plugin without a global `server` is set up when it has a section that does not say `enabled = false`, or, with no section, when some backend names its endpoint (see [Loading the Plugins](#loading-the-plugins)).
+Under `multi`, a plugin without a global `server` is set up when `enabled` lets it load and it has a section, or, with no section, when some backend names its endpoint (see [Loading the Plugins](#loading-the-plugins)).
 
 ### CalDAV Auto-Discovery
 When `[plugin.caldav]` `server` is a bare domain (for example `example.com`), ALPS runs DNS discovery once at startup (RFC 6764):
@@ -201,10 +201,10 @@ Finding a user's collections takes three `PROPFIND` requests:
 
 On the first CalDAV or CardDAV request of a connection, ALPS runs steps 1 and 2 and caches the home-set path in memory in that ALPS process. The cache is keyed by the connection: the mail account, the server and the credentials, so a changed server, username or password finds its home set again. Every later request still runs step 3 (one `PROPFIND`) before it queries the collections. One request keeps one connection throughout, for discovery, reads, writes and scheduling, even if the account's saved connection changes meanwhile.
 
-The cache has no expiry and is not cleared at sign-out. When step 3 fails, the request fails and the connection's cached home set is dropped, so the next request runs steps 1 and 2 again and finds a home set that has moved on the server. Otherwise the cache is emptied only when it grows past 1000 connections or the process restarts. Each cluster node keeps its own (see [CLUSTER.md](CLUSTER.md)). CalDAV also caches each connection's scheduling capability and addresses for 10 minutes (see [section 5](#5-scheduling-invitations-and-tasks)).
+A cached home set is used for 10 minutes from the discovery that found it, however often it is used meanwhile, and the next request after that runs steps 1 and 2 again, so a home set that has moved on the server is found within 10 minutes even while the old one still answers. It is not cleared at sign-out. When step 3 fails, the request fails and the connection's cached home set is dropped at once, so the next request runs steps 1 and 2 again. The whole cache is also emptied when it grows past 1000 connections, and when the process restarts. Each cluster node keeps its own (see [CLUSTER.md](CLUSTER.md)). CalDAV also caches each connection's scheduling capability and addresses for 10 minutes (see [section 5](#5-scheduling-invitations-and-tasks)).
 
 ### Address Books and Calendars
-CardDAV uses only the first address book the server lists in the user's home set. Other address books are never shown or written to. If there are none, every contacts request fails with `carddav: no address book found`. ALPS never creates an address book, so the server must provision one per account.
+CardDAV uses only the first address book the server lists in the user's home set. Other address books are never shown or written to. If there are none, the contact list is empty, every other contacts request (reading, creating, saving, changing categories, deleting) answers 409 `{"error":"no_address_book"}`, and the recipients of sent mail are not saved. ALPS never creates an address book, so the server must provision one per account.
 
 CalDAV shows every calendar in the home set, and an empty home is valid. Users can:
 
