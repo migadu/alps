@@ -183,8 +183,8 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 
 		// Start periodic sync worker
 		syncInterval := time.Duration(cfg.SyncIntervalMinutes) * time.Minute
-		if syncInterval == 0 {
-			syncInterval = 5 * time.Minute // Default: 5 minutes
+		if syncInterval <= 0 {
+			syncInterval = storage.DefaultCertSyncInterval
 		}
 		syncWorker = storage.NewCertSyncWorker(fallbackCache, syncInterval, m.logger)
 		syncWorker.Start()

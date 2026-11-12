@@ -156,7 +156,7 @@ Handles Transport Layer Security for secure connections.
 | `default_domain` | String | None | (Optional) Fallback domain for SNI-less connections. |
 | `storage_provider`| String | `"s3"` | Where certificates are stored. |
 | `cache_dir` | String | `"cert-cache"`| Local filesystem cache directory for certificates. |
-| `sync_interval_minutes`| Integer | `5` | Sync interval for S3 fallback cache. |
+| `sync_interval_minutes`| Integer | `5` | Sync interval for S3 fallback cache. Non-positive values use the default. |
 | `acme_http_addr` | String | `":80"` | Address for HTTP-01 challenge handler. |
 
 ### 6.2 Let's Encrypt S3 Storage (`[tls.letsencrypt.s3]`)
