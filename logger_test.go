@@ -20,8 +20,8 @@ func TestLoggerReopenFollowsRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	l.Info("lost without reopen")
-	if err := l.Reopen(); err != nil {
-		t.Fatal(err)
+	if reopened, err := l.Reopen(); err != nil || !reopened {
+		t.Fatalf("reopened=%v err=%v", reopened, err)
 	}
 	l.Info("after reopen")
 
@@ -44,8 +44,15 @@ func TestLoggerReopenFollowsRotation(t *testing.T) {
 // Reopen on stderr or stdout output has nothing to do and must not fail.
 func TestLoggerReopenWithoutFile(t *testing.T) {
 	for _, out := range []string{"stderr", "stdout"} {
-		if err := NewLoggerWithOptions(LoggerOptions{Output: out}).Reopen(); err != nil {
-			t.Errorf("%s: %v", out, err)
+		if reopened, err := NewLoggerWithOptions(LoggerOptions{Output: out}).Reopen(); err != nil || reopened {
+			t.Errorf("%s: reopened=%v err=%v", out, reopened, err)
 		}
+	}
+}
+
+func TestLoggerReopenAfterFileFallbackReportsNoFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing-directory", "alps.log")
+	if reopened, err := NewLoggerWithOptions(LoggerOptions{Output: path}).Reopen(); err != nil || reopened {
+		t.Fatalf("file open fell back to stderr: reopened=%v err=%v", reopened, err)
 	}
 }
