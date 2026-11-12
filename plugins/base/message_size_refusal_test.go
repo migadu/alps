@@ -2,6 +2,7 @@ package alpsbase
 
 import (
 	"context"
+	"fmt"
 	"github.com/emersion/go-smtp"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
@@ -79,5 +80,25 @@ func TestHTTP_SentCopyLimitRefusesBeforeSMTPDelivery(t *testing.T) {
 	defer recorder.mu.Unlock()
 	if recorder.data != "" {
 		t.Fatal("delivered a message that could not fit its Sent copy")
+	}
+}
+
+func TestHTTP_BccOnlyAffectsDraftSize(t *testing.T) {
+	server := newTestServerWithSMTP(t, listenLimitedSubmission(t, 4096))
+	server.login()
+	server.expect(server.do(http.MethodGet, "/session", nil), http.StatusOK)
+	var bcc []string
+	for i := 0; i < 180; i++ {
+		bcc = append(bcc, fmt.Sprintf("recipient-%03d-with-long-name@remote.test", i))
+	}
+	form := url.Values{"to": {"b@example.test"}, "subject": {"small delivered body"}, "text": {"body"}, "bcc": {strings.Join(bcc, ",")}}
+	server.expect(server.do(http.MethodPost, "/messages", form), http.StatusOK)
+	form.Set("save_as_draft", "1")
+	server.expect(server.do(http.MethodPost, "/messages", form), http.StatusRequestEntityTooLarge)
+}
+
+func TestMessageSizeRefusalDoesNotMislabelMailboxFull(t *testing.T) {
+	if messageSizeRefused(&smtp.SMTPError{Code: 552, EnhancedCode: smtp.EnhancedCode{5, 2, 2}, Message: "Mailbox full"}) {
+		t.Fatal("mailbox quota is not a message-size refusal")
 	}
 }
