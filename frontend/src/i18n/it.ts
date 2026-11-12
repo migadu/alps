@@ -46,6 +46,7 @@ export const it = {
       passwordRequired: 'Inserisci la password DAV per salvare questa connessione.',
       keyRequired: "Le password separate saranno disponibili quando l’amministratore avrà configurato la cifratura delle credenziali.",
       authFailed: "Impossibile accedere a questo account DAV. Verifica l’URL del server, il nome utente, la password e i permessi di accesso.",
+      unreachable: "Impossibile raggiungere questo server DAV. Controlla l’URL del server e che sia disponibile.",
       unavailable: "Impossibile caricare o salvare la connessione DAV. Riprova.",
       sessionEnded: "La sessione di posta è terminata. Accedi di nuovo per modificare questa connessione.",
     },

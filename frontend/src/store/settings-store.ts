@@ -1134,6 +1134,8 @@ export function clearSessionSettings(clearAuthCookies: boolean = true) {
     const username = localStorage.getItem(ACTIVE_USER_KEY);
     if (username) localStorage.removeItem(`alps_settings_${username}`);
     if (username) localStorage.removeItem(unsavedKeyFor(username));
+    // What the shell remembers of the account's DAV connections: see app-root.
+    if (username) localStorage.removeItem(`alps_dav_active:${username}`);
     localStorage.removeItem(ACTIVE_USER_KEY);
   } catch (e) {
     Logger.error('Failed to clear the per-user settings record', e);

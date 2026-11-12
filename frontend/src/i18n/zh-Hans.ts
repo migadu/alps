@@ -54,6 +54,7 @@ export const zhHans: TranslationDictionary = {
       passwordRequired: '请输入您的 DAV 密码以保存此连接。',
       keyRequired: "管理员配置凭据加密后，才能使用单独的密码。",
       authFailed: "无法访问此 DAV 账户。请检查服务器 URL、用户名、密码和访问权限。",
+      unreachable: "无法连接到该 DAV 服务器。请检查服务器 URL 以及服务器是否可用。",
       unavailable: "无法加载或保存 DAV 连接。请重试。",
       sessionEnded: "您的邮件会话已结束。请重新登录以更改此连接。",
     },

@@ -52,6 +52,7 @@ export const ptBR = {
       passwordRequired: 'Digite sua senha DAV para salvar esta conexão.',
       keyRequired: "As senhas separadas estarão disponíveis quando o administrador configurar a criptografia das credenciais.",
       authFailed: "Não foi possível acessar esta conta DAV. Verifique a URL do servidor, o nome de usuário, a senha e as permissões de acesso.",
+      unreachable: "Não foi possível acessar este servidor DAV. Verifique a URL do servidor e se ele está disponível.",
       unavailable: "Não foi possível carregar ou salvar a conexão DAV. Tente novamente.",
       sessionEnded: "Sua sessão de e-mail terminou. Entre novamente para alterar esta conexão.",
     },

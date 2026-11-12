@@ -301,7 +301,7 @@ func TestHTTP_DAVPersonalServersArePublicHTTPSUnlessTheAdministratorOptsIn(t *te
 	}
 	r = s.do(http.MethodPut, "/settings/dav/carddav", map[string]any{"server": internal.URL + "/dav/", "use_mail_credentials": true, "mail_password": testPassword})
 	s.expect(r, http.StatusBadRequest)
-	if !strings.Contains(string(r.body), "dav_auth_failed") {
+	if !strings.Contains(string(r.body), "dav_unreachable") {
 		t.Fatalf("private HTTPS personal server: %s", r.body)
 	}
 	if contacted.Load() != 0 {

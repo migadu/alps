@@ -48,6 +48,7 @@ export const de: TranslationDictionary = {
       passwordRequired: 'Geben Sie Ihr DAV-Passwort ein, um diese Verbindung zu speichern.',
       keyRequired: "Separate Passwörter sind erst verfügbar, wenn Ihr Administrator die Verschlüsselung der Zugangsdaten eingerichtet hat.",
       authFailed: "Auf dieses DAV-Konto konnte nicht zugegriffen werden. Prüfen Sie Server-URL, Benutzername, Passwort und Zugriffsrechte.",
+      unreachable: "Dieser DAV-Server konnte nicht erreicht werden. Prüfen Sie die Server-URL und ob der Server verfügbar ist.",
       unavailable: "Die DAV-Verbindung konnte nicht geladen oder gespeichert werden. Bitte versuchen Sie es erneut.",
       sessionEnded: "Ihre E-Mail-Sitzung ist abgelaufen. Melden Sie sich erneut an, um diese Verbindung zu ändern.",
     },

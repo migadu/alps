@@ -61,6 +61,9 @@ origin are refused, because following one would send the user's credentials
 wherever that server points. Requests to personal servers are also limited to
 60 seconds and 64 MiB per response.
 
+Saving the administrator's server with the mail username and password keeps no
+personal connection: that is what an account uses without one.
+
 A session reads an account's saved connection from the mail store at most every
 30 seconds, and keeps using the last one it read while the store cannot be
 reached. Changes made in the same session apply at once; changes made in

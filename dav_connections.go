@@ -24,6 +24,7 @@ var (
 	ErrDAVCredentialsRequired = errors.New("dav_credentials_required")
 	ErrDAVPasswordRequired    = errors.New("dav_password_required")
 	ErrDAVValidationFailed    = errors.New("dav_auth_failed")
+	ErrDAVUnreachable         = errors.New("dav_unreachable")
 	// A personal server that is to receive the mail password is a change only
 	// someone who knows that password may make, not whoever holds the session.
 	ErrDAVMailPasswordRequired  = errors.New("dav_mail_password_required")
@@ -458,7 +459,13 @@ func (s *Session) SaveDAVConnection(ctx context.Context, service, defaultServer 
 	if err := validateDAVConnection(validationContext, service, connection); err != nil {
 		return DAVSettings{}, err
 	}
-	err = s.Store().Put(key, record)
+	if input.Server == "" && input.UseMailCredentials {
+		// The administrator's server with the mail login is what an account
+		// has without a record: none is kept, so there is nothing to remove.
+		err = s.Store().Put(key, nil)
+	} else {
+		err = s.Store().Put(key, record)
+	}
 	s.forgetDAVConnection(service)
 	if err != nil {
 		return DAVSettings{}, fmt.Errorf("save DAV connection: %w", err)
@@ -629,7 +636,7 @@ func validationDAVURL(ctx context.Context, service, server string) (*url.URL, er
 			server, err = carddav.DiscoverContextURL(ctx, server)
 		}
 		if err != nil {
-			return nil, ErrDAVValidationFailed
+			return nil, ErrDAVUnreachable
 		}
 	}
 	return normalDAVURL(server)
@@ -648,11 +655,11 @@ func validateDAVConnection(ctx context.Context, service string, connection Resol
 		}
 		principal, err := client.FindCurrentUserPrincipal(ctx)
 		if err != nil || principal == "" {
-			return ErrDAVValidationFailed
+			return davValidationError(err)
 		}
 		home, err := client.FindCalendarHomeSet(ctx, principal)
 		if err != nil || home == "" {
-			return ErrDAVValidationFailed
+			return davValidationError(err)
 		}
 	} else {
 		client, err := carddav.NewClient(httpClient, u.String())
@@ -661,12 +668,24 @@ func validateDAVConnection(ctx context.Context, service string, connection Resol
 		}
 		principal, err := client.FindCurrentUserPrincipal(ctx)
 		if err != nil || principal == "" {
-			return ErrDAVValidationFailed
+			return davValidationError(err)
 		}
 		home, err := client.FindAddressBookHomeSet(ctx, principal)
 		if err != nil || home == "" {
-			return ErrDAVValidationFailed
+			return davValidationError(err)
 		}
 	}
 	return nil
+}
+
+// davValidationError tells a server that could not be reached (no route, no
+// name, TLS, a refused address, a redirect elsewhere, no answer in time) from
+// one that answered and would not let the account in: the page should not
+// send the user to check a password for a server that never saw it.
+func davValidationError(err error) error {
+	var transport *url.Error
+	if errors.As(err, &transport) || errors.Is(err, context.DeadlineExceeded) {
+		return ErrDAVUnreachable
+	}
+	return ErrDAVValidationFailed
 }

@@ -52,6 +52,7 @@ export const tr = {
       passwordRequired: 'Bu bağlantıyı kaydetmek için DAV parolanızı girin.',
       keyRequired: "Ayrı parolalar, yöneticiniz kimlik bilgilerinin şifrelenmesini yapılandırdıktan sonra kullanılabilir.",
       authFailed: "Bu DAV hesabına erişilemedi. Sunucu URL’sini, kullanıcı adını, parolayı ve erişim izinlerini denetleyin.",
+      unreachable: "Bu DAV sunucusuna ulaşılamadı. Sunucu URL’sini ve sunucunun erişilebilir olduğunu kontrol edin.",
       unavailable: "DAV bağlantısı yüklenemedi veya kaydedilemedi. Lütfen yeniden deneyin.",
       sessionEnded: "Posta oturumunuz sona erdi. Bu bağlantıyı değiştirmek için yeniden giriş yapın.",
     },

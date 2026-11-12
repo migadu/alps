@@ -52,6 +52,7 @@ export const ko = {
       passwordRequired: '이 연결을 저장하려면 DAV 비밀번호를 입력하세요.',
       keyRequired: "관리자가 인증 정보 암호화를 설정한 후에 별도 비밀번호를 사용할 수 있습니다.",
       authFailed: "이 DAV 계정에 액세스할 수 없습니다. 서버 URL, 사용자 이름, 비밀번호 및 액세스 권한을 확인하세요.",
+      unreachable: "이 DAV 서버에 연결할 수 없습니다. 서버 URL과 서버 상태를 확인하세요.",
       unavailable: "DAV 연결을 불러오거나 저장하지 못했습니다. 다시 시도하세요.",
       sessionEnded: "메일 세션이 종료되었습니다. 이 연결을 변경하려면 다시 로그인하세요.",
     },

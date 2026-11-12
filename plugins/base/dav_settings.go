@@ -86,6 +86,8 @@ func handleDAVSettings(ctx *alps.Context) error {
 			code, status = "dav_mail_password_required", http.StatusBadRequest
 		case errors.Is(err, alps.ErrDAVMailPasswordIncorrect):
 			code, status = "dav_mail_password_incorrect", http.StatusForbidden
+		case errors.Is(err, alps.ErrDAVUnreachable):
+			code, status = "dav_unreachable", http.StatusBadRequest
 		case errors.Is(err, alps.ErrDAVValidationFailed):
 			code, status = "dav_auth_failed", http.StatusBadRequest
 		}

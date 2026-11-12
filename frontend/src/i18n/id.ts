@@ -52,6 +52,7 @@ export const id = {
       passwordRequired: 'Masukkan kata sandi DAV Anda untuk menyimpan koneksi ini.',
       keyRequired: "Kata sandi terpisah tersedia setelah administrator mengonfigurasi enkripsi kredensial.",
       authFailed: "Tidak dapat mengakses akun DAV ini. Periksa URL server, nama pengguna, kata sandi, dan izin akses.",
+      unreachable: "Tidak dapat menjangkau server DAV ini. Periksa URL server dan pastikan server tersedia.",
       unavailable: "Tidak dapat memuat atau menyimpan koneksi DAV. Coba lagi.",
       sessionEnded: "Sesi email Anda telah berakhir. Masuk lagi untuk mengubah koneksi ini.",
     },

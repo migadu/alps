@@ -46,6 +46,7 @@ export const es = {
       passwordRequired: 'Introduce tu contraseña DAV para guardar esta conexión.',
       keyRequired: "Las contraseñas independientes estarán disponibles cuando el administrador configure el cifrado de credenciales.",
       authFailed: "No se pudo acceder a esta cuenta DAV. Comprueba la URL del servidor, el nombre de usuario, la contraseña y los permisos de acceso.",
+      unreachable: "No se pudo conectar con este servidor DAV. Comprueba la URL del servidor y que esté disponible.",
       unavailable: "No se pudo cargar o guardar la conexión DAV. Inténtalo de nuevo.",
       sessionEnded: "Tu sesión de correo ha finalizado. Inicia sesión de nuevo para cambiar esta conexión.",
     },
