@@ -120,7 +120,7 @@ func namespacedStorageConfig(cfg LetsEncryptConfig) (LetsEncryptConfig, bool) {
 		cfg.CacheDir = "cert-cache"
 	}
 	cfg.CacheDir += "-" + suffix
-	cfg.S3.Prefix = path.Join(cfg.S3.Prefix, suffix)
+	cfg.S3.Prefix = path.Join(cfg.S3.Prefix, suffix) + "/"
 	return cfg, true
 }
 
