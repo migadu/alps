@@ -78,7 +78,7 @@ Without a secret key, the cluster does not start and ALPS exits, unless `allow_i
 
 `bind` takes an IPv4 or IPv6 address, not a hostname or an interface name. It can carry a port (`"10.0.0.1:7946"`, or `"[2001:db8::1]:7946"` for IPv6), which then overrides `port`. A value that is not an address, with or without a port, stops startup with an error that starts with `cluster.bind:`, and so does a port outside 1 to 65535 (the one `bind` carries, or else `port`). The node listens for gossip on that port over both TCP and UDP, and every node must be able to reach every other node's gossip port over both.
 
-With a specific address, the node also advertises that address to its peers. With `0.0.0.0`, the node advertises a private address of the host, detected automatically. If the host has no private address, the cluster cannot start, and ALPS exits. Set `bind` to the address the peers can reach when the host has no private address, or when it has more than one.
+With a specific address, the node also advertises that address to its peers. With `0.0.0.0` or `::`, the node advertises a private address of the host, detected automatically. If the host has no private address, the cluster cannot start, and ALPS exits. Set `bind` to the address the peers can reach when the host has no private address, or when it has more than one.
 
 ### `peers`
 
@@ -98,7 +98,7 @@ ALPS starts the cluster before it starts the TLS manager and the HTTP server. Wi
 - no secret key, and `allow_insecure` not set;
 - a key that does not decode to 32 bytes;
 - a gossip port that cannot be bound;
-- with `bind = "0.0.0.0"`, no private address to advertise.
+- with `bind = "0.0.0.0"` or `"::"`, no private address to advertise.
 
 A bad `bind` or port is found when the configuration is read, before the log is open, and is written to standard error (`Error generating options: cluster.bind: ...`). For the others, ALPS logs the reason to its `[logging]` output, in a line that starts with `failed to initialize cluster`, or `failed to decode cluster secret key` for a bad key. ALPS does not fall back to running as a standalone node. A standalone node would issue Let's Encrypt certificates on its own.
 
