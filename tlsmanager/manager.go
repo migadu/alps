@@ -342,7 +342,8 @@ func (m *Manager) Close() error {
 }
 
 func createS3Cache(ctx context.Context, cfg LetsEncryptConfig, logger *slog.Logger) (*storage.S3Cache, error) {
-	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// Four backoffs total15s; leave time for all five requests as well.
+	initCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(initCtx,
@@ -398,7 +399,7 @@ func createS3Cache(ctx context.Context, cfg LetsEncryptConfig, logger *slog.Logg
 			select {
 			case <-time.After(backoff):
 			case <-initCtx.Done():
-				return nil, fmt.Errorf("S3 bucket validation cancelled: %w", initCtx.Err())
+				return nil, fmt.Errorf("S3 bucket validation cancelled after %d attempts: %w", attempt, errors.Join(initCtx.Err(), err))
 			}
 		}
 
