@@ -59,6 +59,27 @@ type serviceProbe struct {
 	Password    map[string]interface{} `toml:"password"`
 }
 
+// Decode all routing metadata before choosing the mail provider. The TOML
+// decoder accepts scalar values for a map field without reporting an error,
+// so verify the optional password settings table explicitly as well.
+func decodeBackend(meta *toml.MetaData, raw toml.Primitive, target any) error {
+	if err := meta.PrimitiveDecode(raw, target); err != nil {
+		return err
+	}
+	var pw struct {
+		Password any `toml:"password"`
+	}
+	if err := meta.PrimitiveDecode(raw, &pw); err != nil {
+		return err
+	}
+	if pw.Password != nil {
+		if _, ok := pw.Password.(map[string]any); !ok {
+			return fmt.Errorf("password must be a table")
+		}
+	}
+	return nil
+}
+
 func (p serviceProbe) toServices() (services, error) {
 	urls := make(map[string]string)
 	for name, raw := range map[string]string{
@@ -131,7 +152,9 @@ func (c *Config) ToOptions() (provider.Options, error) {
 				Type string `toml:"type"`
 				serviceProbe
 			}
-			_ = c.meta.PrimitiveDecode(prim, &probe)
+			if err := decodeBackend(c.meta, prim, &probe); err != nil {
+				return nil, fmt.Errorf("multi: invalid domains entry %q: %w", domain, err)
+			}
 			subType := strings.ToLower(strings.TrimSpace(probe.Type))
 			if subType == "" {
 				subType = "imap"
@@ -166,7 +189,7 @@ func (c *Config) ToOptions() (provider.Options, error) {
 				Type    string   `toml:"type"`
 				serviceProbe
 			}
-			if err := c.meta.PrimitiveDecode(prim, &probe); err != nil {
+			if err := decodeBackend(c.meta, prim, &probe); err != nil {
 				return nil, fmt.Errorf("multi: invalid route at index %d: %w", i, err)
 			}
 			if len(probe.Domains) == 0 {
@@ -218,7 +241,9 @@ func (c *Config) ToOptions() (provider.Options, error) {
 			Type string `toml:"type"`
 			serviceProbe
 		}
-		_ = c.meta.PrimitiveDecode(*c.Default, &probe)
+		if err := decodeBackend(c.meta, *c.Default, &probe); err != nil {
+			return nil, fmt.Errorf("multi: invalid default provider entry: %w", err)
+		}
 		subType := strings.ToLower(strings.TrimSpace(probe.Type))
 		if subType == "" {
 			subType = "imap"
