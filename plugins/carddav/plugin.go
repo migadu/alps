@@ -43,8 +43,8 @@ type plugin struct {
 	alps.GoPlugin
 	url          *url.URL
 	srv          *alps.Server
-	urlCache     sync.Map          // raw endpoint -> *url.URL
-	homeSetCache map[string]string // resolved connection identity -> home set
+	urlCache     sync.Map                // raw endpoint -> *url.URL
+	homeSetCache map[string]homeSetEntry // resolved connection identity -> home set and discovery time
 	cacheMutex   sync.RWMutex
 	debug        bool
 }
@@ -147,10 +147,11 @@ func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Sessio
 	}
 
 	p.cacheMutex.RLock()
-	homeSet, ok := p.homeSetCache[conn.cacheKey]
+	cached, ok := p.homeSetCache[conn.cacheKey]
 	p.cacheMutex.RUnlock()
+	homeSet := cached.path
 
-	if !ok {
+	if !ok || homeSetClock().Sub(cached.fetched) >= homeSetTTL {
 		principal, err := c.FindCurrentUserPrincipal(ctx)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to query CardDAV principal: %v", err)
@@ -164,9 +165,9 @@ func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Sessio
 		p.cacheMutex.Lock()
 		if len(p.homeSetCache) > 1000 {
 			// Clear cache to prevent unbounded growth
-			p.homeSetCache = make(map[string]string)
+			p.homeSetCache = make(map[string]homeSetEntry)
 		}
-		p.homeSetCache[conn.cacheKey] = homeSet
+		p.homeSetCache[conn.cacheKey] = homeSetEntry{path: homeSet, fetched: homeSetClock()}
 		p.cacheMutex.Unlock()
 	}
 
@@ -184,12 +185,12 @@ func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Sessio
 // forgetHomeSet drops a connection's cached home set after listing from it failed,
 // so the next request looks it up again. The server may have moved it, when
 // the account was provisioned again or another server took over the URL;
-// kept, it would fail every request until alps restarted. It is dropped only if
+// kept, it would fail every request until the cache expires. It is dropped only if
 // it is still the one that failed: another request may have looked up the new
 // one meanwhile.
 func (p *plugin) forgetHomeSet(cacheKey, homeSet string) {
 	p.cacheMutex.Lock()
-	if cached, ok := p.homeSetCache[cacheKey]; ok && cached == homeSet {
+	if cached, ok := p.homeSetCache[cacheKey]; ok && cached.path == homeSet {
 		delete(p.homeSetCache, cacheKey)
 	}
 	p.cacheMutex.Unlock()
@@ -246,7 +247,7 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 		GoPlugin:     alps.GoPlugin{Name: "carddav"},
 		url:          u,
 		srv:          srv,
-		homeSetCache: make(map[string]string),
+		homeSetCache: make(map[string]homeSetEntry),
 		debug:        srv.Options.Debug,
 	}
 
