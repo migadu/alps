@@ -128,7 +128,7 @@ func TestNewPluginWithoutGlobalServer(t *testing.T) {
 	srv := stubServer(routerStub{
 		service: provider.ServiceManageSieve, user: "routed@example.com", url: "managesieves://sieve.routed.example:4190",
 	})
-	srv.Options.Plugins = map[string]alps.PluginConfig{"managesieve": {}}
+	srv.Options.Plugins = map[string]alps.PluginConfig{"managesieve": {Enabled: true}}
 	pl, err := newPlugin(srv)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

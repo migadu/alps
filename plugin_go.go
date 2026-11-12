@@ -85,11 +85,16 @@ func (p *GoPlugin) Plugin() Plugin {
 // Loader returns a loader function for this plugin.
 func (p *GoPlugin) Loader() PluginLoaderFunc {
 	return func(s *Server) ([]Plugin, error) {
-		if s.Scheduler != nil {
-			for name, job := range p.jobs {
-				s.Scheduler.Register(p.Name+":"+name, job)
-			}
+		if !s.PluginEnabled(p.Name) {
+			return nil, nil
 		}
 		return []Plugin{p.Plugin()}, nil
+	}
+}
+
+// registerJobs runs only after the server accepts this plugin.
+func (p *goPlugin) registerJobs(s *Scheduler) {
+	for name, job := range p.p.jobs {
+		s.Register(p.Name()+":"+name, job)
 	}
 }

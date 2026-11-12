@@ -20,6 +20,9 @@ func init() {
 // backend exists. Invalid global command options stop startup; routed option
 // blocks are checked when used.
 func load(s *alps.Server) ([]alps.Plugin, error) {
+	if !s.PluginEnabled("password") {
+		return nil, nil
+	}
 	if s.Options == nil {
 		return nil, nil
 	}
