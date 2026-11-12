@@ -720,7 +720,18 @@ func (s *Session) doSMTP(f func(*smtp.Client) error) error {
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer func() {
+		defer c.Close()
+		// A refusal can leave a usable SMTP connection. End it politely on
+		// every exit path, but keep cleanup short and preserve the attempt's
+		// result even if QUIT fails or the connection is already gone.
+		if c.CommandTimeout <= 0 || c.CommandTimeout > time.Second {
+			c.CommandTimeout = time.Second
+		}
+		if err := c.Quit(); err != nil {
+			s.manager.logger.Debugf("SMTP QUIT failed while closing the connection: %v", err)
+		}
+	}()
 
 	// Auth would read the server's greeting and say EHLO first, and its
 	// error would not tell their failures from a refusal of the
@@ -744,13 +755,6 @@ func (s *Session) doSMTP(f func(*smtp.Client) error) error {
 
 	if err := f(c); err != nil {
 		return err
-	}
-
-	// f has done what it came for: a message it sent, the server has taken.
-	// A QUIT that fails changes nothing of that; reported as a failure, it
-	// would have the message sent again.
-	if err := c.Quit(); err != nil {
-		s.manager.logger.Debugf("SMTP QUIT failed after the operation succeeded: %v", err)
 	}
 
 	return nil
