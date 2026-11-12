@@ -66,8 +66,11 @@ func (p *plugin) endpointFor(username string) sieveEndpoint {
 	}
 	ep, err := parseSieveURL(raw)
 	if err != nil {
-		p.srv.Logger().Printf("managesieve: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
-		return fallback
+		cached, loaded := p.urlCache.LoadOrStore(raw, fallback)
+		if !loaded {
+			p.srv.Logger().Printf("managesieve: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
+		}
+		return cached.(sieveEndpoint)
 	}
 	p.urlCache.Store(raw, ep)
 	return ep

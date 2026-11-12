@@ -72,8 +72,11 @@ func (p *plugin) urlFor(username string) *url.URL {
 	}
 	u, err := parseCalDAVURL(raw)
 	if err != nil {
-		p.srv.Logger().Printf("caldav: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
-		return p.url
+		cached, loaded := p.urlCache.LoadOrStore(raw, p.url)
+		if !loaded {
+			p.srv.Logger().Printf("caldav: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
+		}
+		return cached.(*url.URL)
 	}
 	p.urlCache.Store(raw, u)
 	return u
