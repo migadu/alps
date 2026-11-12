@@ -1739,7 +1739,8 @@ func handleNewMailbox(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Name is required"})
 	}
 
-	err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err := ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		defer invalidateMailboxTree(ctx)
 		return createMailboxWithProvider(p, name)
 	})
 
@@ -1759,7 +1760,8 @@ func handleDeleteMailbox(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid mailbox name"})
 	}
 
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		defer invalidateMailboxTree(ctx)
 		_ = unsubscribeMailboxWithProvider(p, mboxName)
 		return deleteMailboxWithProvider(p, mboxName)
 	})
@@ -1787,7 +1789,8 @@ func handleRenameMailbox(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "New name is required"})
 	}
 
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		defer invalidateMailboxTree(ctx)
 		// Read fresh rather than from the session's cache: which folders are
 		// subscribed is the point, and another client may have changed that.
 		// A listing that fails leaves the rename to go ahead on the Trash
@@ -4029,7 +4032,7 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 	}
 
 	var discarded int
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		// Security check: Only allow emptying Trash or Junk
 		mailboxes, err := p.ListMailboxes()
 		if err != nil {
