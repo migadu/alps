@@ -33,6 +33,9 @@ unknown_option = true
 output = "` + filepath.ToSlash(logPath) + `"
 [smtp]
 server = "smtps://smtp.example.test"
+[provider]
+timeout = 60
+typ = "imap"
 [provider.imap]
 server = "imaps://imap.example.test"
 misspelled_option = true
@@ -64,7 +67,7 @@ unknown_option = true
 	if !strings.Contains(logs, "Starting server on") {
 		t.Fatalf("server did not start: %s", logs)
 	}
-	for _, key := range []string{"server.write_timeout", "server.rate_limit.misspelled_limit", "tls.unknown_option", "provider.imap.misspelled_option", "plugin.caldav.unknown_option"} {
+	for _, key := range []string{"server.write_timeout", "server.rate_limit.misspelled_limit", "tls.unknown_option", "provider.timeout", "provider.typ", "provider.imap.misspelled_option", "plugin.caldav.unknown_option"} {
 		if !strings.Contains(logs, "Unknown configuration key: "+key) {
 			t.Errorf("missing warning for %s; logs:\n%s", key, logs)
 		}
