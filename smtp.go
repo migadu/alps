@@ -48,10 +48,18 @@ func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
 	var c *smtp.Client
 	var err error
 	if useTLS {
-		c, err = smtp.DialTLS(host, nil)
+		serverName, _, splitErr := net.SplitHostPort(host)
+		if splitErr != nil {
+			return nil, splitErr
+		}
+		// Include both the TCP connection and TLS handshake in the configured
+		// timeout, rather than the SMTP package's fixed dialer timeout.
+		conn, dialErr := tls.DialWithDialer(&net.Dialer{Timeout: dialTimeout}, "tcp", host, &tls.Config{ServerName: serverName})
+		err = dialErr
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to SMTPS server: %w", err)
 		}
+		c = smtp.NewClient(conn)
 	} else if !insecure {
 		conn, dialErr := net.DialTimeout("tcp", host, dialTimeout)
 		if dialErr != nil {
@@ -82,13 +90,16 @@ func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
 			return nil, fmt.Errorf("failed to connect to SMTP server: %w", err)
 		}
 	} else {
-		c, err = smtp.Dial(host)
+		conn, dialErr := net.DialTimeout("tcp", host, dialTimeout)
+		err = dialErr
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to SMTP server: %w", err)
 		}
+		c = smtp.NewClient(conn)
 	}
 
-	// Set timeouts on the client
+	// NewClient reads the greeting lazily. Apply the timeout before Hello or
+	// Auth can read it, for plain connections as well as implicit TLS.
 	if timeout > 0 {
 		c.CommandTimeout = timeout
 		c.SubmissionTimeout = timeout
