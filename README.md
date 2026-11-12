@@ -125,6 +125,32 @@ Dive deeper into how ALPS works.
 - [Plugin System](docs/PLUGINS.md): plugin structure, and how to write a plugin's backend and frontend
 - [Testing (Go, frontend, browser)](docs/E2E.md): the three test tiers and the browser test harness
 
+## Funding
+
+ALPS has received funding from the [NGI Zero Commons Fund](https://nlnet.nl/commonsfund/),
+managed by [NLnet](https://nlnet.nl/). See the
+[ALPS grant page](https://nlnet.nl/project/Alps/) for details.
+
+The fund is supported by the European Union’s Horizon Europe programme
+under grant agreement No. 101135429, with additional support from the
+Swiss State Secretariat for Education, Research and Innovation (SERI).
+
+<!-- Official logos: https://nlnet.nl/logo/ -->
+<p>
+  <a href="https://nlnet.nl/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/nlnet-dark.svg">
+      <img src="docs/assets/nlnet.svg" alt="NLnet" height="48">
+    </picture>
+  </a>
+  <a href="https://nlnet.nl/commonsfund/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/ngi-zero-commons-fund-dark.svg">
+      <img src="docs/assets/ngi-zero-commons-fund.svg" alt="NGI Zero Commons Fund" height="48">
+    </picture>
+  </a>
+</p>
+
 ## AI Assistance Policy
 
 In compliance with NLnet's policies and our own project standards, the use of Generative AI (GenAI) in this project is strictly **assistive**.
