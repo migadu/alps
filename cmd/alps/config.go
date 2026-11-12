@@ -580,7 +580,7 @@ func (c *Config) ToLogger() alps.Logger {
 			Level:  c.Logging.Level,
 		}
 		if logOpts.Output == "" {
-			logOpts.Output = "stderr"
+			logOpts.Output = "stdout"
 		}
 		if logOpts.Format == "" {
 			if c.Server.Debug {
