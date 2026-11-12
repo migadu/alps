@@ -17,6 +17,9 @@ export default {
     "warningRawSwitchConfirm": "Passer",
     "warningRawSwitch": "Passer en mode brut signifie que le script ne sera plus modifiable visuellement. Continuer ?",
     "toast": {
+      "saveError": "Impossible d’enregistrer les filtres. Veuillez réessayer.",
+      "validateError": "Impossible de valider le script. Veuillez réessayer.",
+
       "saved": "Règles enregistrées et activées.",
       "deactivated": "Règles désactivées.",
       "valid": "Le script est valide !",

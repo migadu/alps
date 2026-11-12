@@ -17,6 +17,9 @@ export default {
     "warningRawSwitchConfirm": "Wechseln",
     "warningRawSwitch": "Beim Wechsel in den Raw-Modus kann das Skript nicht mehr visuell bearbeitet werden. Fortfahren?",
     "toast": {
+      "saveError": "Die Filter konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+      "validateError": "Das Skript konnte nicht geprüft werden. Bitte versuchen Sie es erneut.",
+
       "saved": "Regeln gespeichert und aktiviert.",
       "deactivated": "Regeln deaktiviert.",
       "valid": "Skript ist gültig!",

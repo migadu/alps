@@ -3,7 +3,7 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
-import { managesieveService, TwoVacationsError } from './managesieve-service';
+import { managesieveService, TwoVacationsError, scriptFailureMessage } from './managesieve-service';
 import '../../../frontend/src/components/alps-button';
 import { MessageCache } from '../../../frontend/src/utils/message-cache';
 
@@ -190,7 +190,7 @@ export class RawEditor extends LitElement {
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t('managesieve.toast.valid'), duration: 3000 } }));
 		} catch (e: any) {
 			if (this.script !== sent) return;
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), duration: 5000, type: 'error' } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: scriptFailureMessage(e, this.i18nStore.t('managesieve.toast.validateError')), duration: 5000, type: 'error' } }));
 		} finally {
 			this.isValidating = false;
 		}
@@ -216,7 +216,7 @@ export class RawEditor extends LitElement {
 			if (session !== MessageCache.generation()) return;
 			const message = e instanceof TwoVacationsError
 				? this.i18nStore.t('managesieve.toast.autoReplyOn')
-				: e.message || this.i18nStore.t('managesieve.toast.networkError');
+				: scriptFailureMessage(e, this.i18nStore.t('managesieve.toast.saveError'));
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, duration: 5000, type: 'error' } }));
 		} finally {
 			this.isSaving = false;

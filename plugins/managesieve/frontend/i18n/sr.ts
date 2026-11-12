@@ -17,6 +17,9 @@ export default {
     "warningRawSwitchConfirm": "Prebaci",
     "warningRawSwitch": "Prelazak na sirovi režim znači da se skripta više neće moći vizuelno uređivati. Nastaviti?",
     "toast": {
+      "saveError": "Nije moguće sačuvati filtere. Pokušajte ponovo.",
+      "validateError": "Nije moguće proveriti skript. Pokušajte ponovo.",
+
       "saved": "Pravila su sačuvana i aktivirana.",
       "deactivated": "Pravila su deaktivirana.",
       "valid": "Skripta je validna!",

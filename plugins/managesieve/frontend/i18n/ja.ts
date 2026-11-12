@@ -17,6 +17,9 @@ export default {
     warningRawSwitchConfirm: '切り替える',
     warningRawSwitch: 'スクリプト編集モードに切り替えると、このスクリプトはビジュアル編集できなくなります。続行しますか？',
     toast: {
+      "saveError": "フィルターを保存できませんでした。再試行してください。",
+      "validateError": "スクリプトを検証できませんでした。再試行してください。",
+
       saved: 'ルールを保存して有効にしました。',
       deactivated: 'ルールを無効にしました。',
       valid: 'スクリプトは有効です。',
