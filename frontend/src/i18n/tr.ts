@@ -390,6 +390,9 @@ export const tr = {
     emptyMailboxSlow: '{folder} hâlâ boşaltılıyor. Sunucu bu işlem üzerinde çalışıyor — biraz sonra klasörü yeniden kontrol edin.'
   },
   composer: {
+    sentNotFiled: "Mesaj gönderildi ancak Gönderilenler’e bir kopya kaydedilemedi.",
+    sentDraftNotRemoved: "Mesaj gönderildi ancak taslağı silinemedi. Tekrar göndermeyin.",
+    sentNotFiledDraftKept: "Mesaj gönderildi ancak kopyası kaydedilmedi ve taslak duruyor. Tekrar göndermeyin.",
     windowLoadFailed: 'İleti penceresi yüklenemedi.',
     discardFailed: 'Taslak sunucudan silinemedi ve hâlâ Taslaklar\'da duruyor.',
     attachmentsTooLarge: 'Ekler izin verilen en büyük boyutu aşıyor.',
