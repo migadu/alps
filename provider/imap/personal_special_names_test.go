@@ -32,3 +32,28 @@ func TestSpecialMailboxFallbackNamesMatchThePage(t *testing.T) {
 		})
 	}
 }
+
+func TestSpecialMailboxFallbackPrefersCanonicalNamesInEitherListOrder(t *testing.T) {
+	for _, tc := range []struct {
+		kind             provider.MailboxType
+		canonical, alias string
+	}{
+		{provider.MailboxTypeDrafts, "Drafts", "Draft"},
+		{provider.MailboxTypeTrash, "Trash", "Deleted"},
+		{provider.MailboxTypeArchive, "Archive", "Archives"},
+	} {
+		for _, reverse := range []bool{false, true} {
+			names := []string{tc.canonical, tc.alias}
+			if reverse {
+				names[0], names[1] = names[1], names[0]
+			}
+			t.Run(fmt.Sprintf("%s/reverse=%t", tc.canonical, reverse), func(t *testing.T) {
+				srv := &scriptedIMAP{caps: "IMAP4rev1 NAMESPACE", namespace: `* NAMESPACE (("INBOX." ".")) NIL NIL`, list: []string{fmt.Sprintf(`* LIST () "." "INBOX.%s"`, names[0]), fmt.Sprintf(`* LIST () "." "INBOX.%s"`, names[1])}}
+				box, err := scriptedProvider(t, srv).FindMailboxByType(tc.kind)
+				if err != nil || box == nil || box.Name != "INBOX."+tc.canonical {
+					t.Fatalf("resolved %+v, %v; want canonical %q", box, err, tc.canonical)
+				}
+			})
+		}
+	}
+}
