@@ -38,6 +38,16 @@ type = "imap"
 server = "imaps://imap.example.test"
 caldav = "https://calendar.example.test"
 `)
+	metadataOnlyPassword := passwordRoutingOptions(t, `[domains."example.test"]
+type = "imap"
+server = "imaps://imap.example.test"
+password = {method="POST", auth_type="basic"}
+`)
+	blankPasswordEndpoint := passwordRoutingOptions(t, `[domains."example.test"]
+type = "imap"
+server = "imaps://imap.example.test"
+password = {endpoint="  "}
+`)
 	for _, tc := range []struct {
 		name    string
 		options map[string]interface{}
@@ -49,6 +59,8 @@ caldav = "https://calendar.example.test"
 		{name: "whitespace endpoint", options: map[string]interface{}{"endpoint": "  "}},
 		{name: "multi without services", router: emptyMulti},
 		{name: "multi with unrelated service", router: unrelatedMulti},
+		{name: "multi password metadata without backend", router: metadataOnlyPassword},
+		{name: "multi blank password endpoint", router: blankPasswordEndpoint},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &alps.Server{Options: &alps.Options{Provider: tc.router, Plugins: map[string]alps.PluginConfig{"password": {Enabled: true, Options: tc.options}}}}
