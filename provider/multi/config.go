@@ -265,8 +265,8 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		defaultFactory = o.Default.CreateFactory(timeout, debug)
 	}
 
-	// One bound for every network step a login may take: the SRV lookup, the
-	// restricted-host lookup and the dial.
+	// Bound the SRV and restricted-host lookups. The subsequent dial uses
+	// the provider timeout (timeout_sec), as do statically configured backends.
 	netTimeout := 5 * time.Second
 	if timeout > 0 && timeout < netTimeout {
 		netTimeout = timeout
@@ -604,4 +604,38 @@ func (o *Options) ServiceOptions(service, username string) map[string]interface{
 	}
 	svc, _ := o.resolveServices(username)
 	return svc.password
+}
+
+// RoutesService reports whether any configured backend names this service.
+func (o *Options) RoutesService(service string) bool {
+	if o == nil {
+		return false
+	}
+	names := func(s services) bool {
+		if service == provider.ServicePassword {
+			endpoint, _ := s.password["endpoint"].(string)
+			if strings.TrimSpace(endpoint) != "" {
+				return true
+			}
+			// A declared command is checked by the password plugin when used.
+			// HTTP metadata alone does not name a backend that can run.
+			_, hasCommand := s.password["command"]
+			return hasCommand
+		}
+		return strings.TrimSpace(s.urls[service]) != ""
+	}
+	if names(o.DefaultServices) {
+		return true
+	}
+	for _, svc := range o.DomainServices {
+		if names(svc) {
+			return true
+		}
+	}
+	for _, route := range o.Routes {
+		if names(route.services) {
+			return true
+		}
+	}
+	return false
 }

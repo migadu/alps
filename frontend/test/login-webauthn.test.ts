@@ -167,7 +167,7 @@ describe('login-webauthn-page', () => {
         if (String(url).endsWith('/webauthn/verify/finish')) return finish();
         return answer(404, {});
       });
-      const el = document.createElement('login-webauthn-page') as LoginWebAuthnPage & Record<string, any>;
+      const el = document.createElement('login-webauthn-page') as Pick<LoginWebAuthnPage, keyof LoginWebAuthnPage> & Record<string, any>;
       el.i18nStore = { t: (k: string) => k, addEventListener() {}, removeEventListener() {} };
       document.body.appendChild(el);
       return { el, key };
@@ -340,7 +340,7 @@ describe('login-webauthn-page', () => {
     });
 
     async function page() {
-      const el = document.createElement('login-webauthn-page') as LoginWebAuthnPage & Record<string, any>;
+      const el = document.createElement('login-webauthn-page') as Pick<LoginWebAuthnPage, keyof LoginWebAuthnPage> & Record<string, any>;
       el.i18nStore = { t: (k: string) => k, addEventListener() {}, removeEventListener() {} };
       document.body.appendChild(el);
       await el.updateComplete;

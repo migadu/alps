@@ -15,7 +15,8 @@ import * as webauthnUtils from '../src/utils/webauthn-utils';
 import '../src/pages/login-webauthn-page';
 import type { LoginWebAuthnPage } from '../src/pages/login-webauthn-page';
 
-type Page = LoginWebAuthnPage & Record<string, any>;
+// Private reactive fields are intentional test hooks; retain public API types.
+type Page = Pick<LoginWebAuthnPage, keyof LoginWebAuthnPage> & Record<string, any>;
 
 const answer = (status: number, body: unknown) => ({
   ok: status >= 200 && status < 300,

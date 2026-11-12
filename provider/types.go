@@ -41,6 +41,14 @@ func (err *LimitError) Unwrap() error {
 	return err.Cause
 }
 
+// InvalidSearchError is a query that cannot safely be interpreted as a search.
+// Prefix names the value-less prefix; the web API answers it as a client error.
+type InvalidSearchError struct{ Prefix string }
+
+func (err *InvalidSearchError) Error() string {
+	return fmt.Sprintf("search prefix %q requires a value", err.Prefix)
+}
+
 // AuthenticatedProviderFactory creates an authenticated provider instance
 type AuthenticatedProviderFactory func(username, password string) (MailProvider, error)
 
@@ -500,6 +508,13 @@ type ServiceRouter interface {
 	// two backends mean two admin APIs with separate credentials. A nil map
 	// defers to the global configuration.
 	ServiceOptions(service, username string) map[string]interface{}
+}
+
+// ServiceRoutingReporter optionally describes which services any configured
+// backend can route. Keeping this separate preserves ServiceRouter providers
+// that implement the original per-login resolution methods alone.
+type ServiceRoutingReporter interface {
+	RoutesService(service string) bool
 }
 
 // AddressResolver is implemented by provider Options that know the email

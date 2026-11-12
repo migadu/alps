@@ -73,8 +73,11 @@ func (p *plugin) urlFor(username string) *url.URL {
 	}
 	u, err := parseCalDAVURL(raw)
 	if err != nil {
-		p.srv.Logger().Printf("caldav: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
-		return p.url
+		cached, loaded := p.urlCache.LoadOrStore(raw, p.url)
+		if !loaded {
+			p.srv.Logger().Printf("caldav: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
+		}
+		return cached.(*url.URL)
 	}
 	p.urlCache.Store(raw, u)
 	return u
@@ -251,11 +254,12 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 			s, err := discoverCalDAVURL(context.Background(), u.Host)
 			if err != nil {
 				srv.Logger().Printf("caldav: failed to discover CalDAV server: %v", err)
-				if !cfg.Enabled {
+				if !cfg.Enabled && !srv.HasServiceRouting(provider.ServiceCalDAV) {
 					return nil, nil
 				}
-				// Explicit enablement also permits personal connections. A failed
-				// administrator default must not hide their settings or endpoints.
+				// Explicit enablement also permits personal connections, and a
+				// routed login has a server of its own. A failed administrator
+				// default must not hide their settings or endpoints.
 				u = nil
 			} else {
 				u, err = url.Parse(s)
@@ -269,6 +273,7 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 			if err := sanityCheckURL(u); err != nil {
 				srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
 			}
+
 			srv.Logger().Printf("Configured CalDAV server: %v", u)
 		}
 	}

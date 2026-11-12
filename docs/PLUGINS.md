@@ -88,6 +88,11 @@ ALPS users can then enable or disable your plugin in `config.toml`:
 enabled = true
 ```
 
+An explicit `enabled = false` always disables that plugin, even when no other
+plugin is enabled explicitly. The required `base` plugin stays enabled. When
+one or more sections set `enabled = true`, those names form an allow-list (plus
+`base`); otherwise plugins without a section follow their loader's defaults.
+
 ---
 
 ## 3. Frontend (TypeScript) Development

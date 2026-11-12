@@ -5,7 +5,7 @@ ALPS has three test tiers:
 | Tier | Where | What it catches |
 |---|---|---|
 | Go tests | `go test ./...` | Handlers, providers, sessions, protocol handling |
-| Frontend unit tests | `cd frontend && npm test` (Vitest + jsdom) | Component logic and render decisions |
+| Frontend unit tests | `cd frontend && npm test` (typecheck, then Vitest + jsdom) | Component logic and render decisions |
 | **Browser tests** | `scripts/e2e.sh` (Playwright + Chromium) | The application actually running against real servers |
 
 The browser tier exists for what the other two cannot see: a component reading a field the backend
@@ -153,3 +153,5 @@ role the page no longer renders — only running the suite does.
   a finding, not noise; look at what was logged.
 - **Traces and screenshots** of failed tests are in `frontend/test-results/`
   (`npx playwright show-trace <trace.zip>`).
+
+`npm run typecheck:test` checks the frontend unit tests and their fakes against the production interfaces without running Vitest. `npm test` runs this check first. Its separate TypeScript config includes Node globals for test helpers without adding them to the browser build.

@@ -123,6 +123,7 @@ func connect(host string, tls bool, insecure bool, timeout time.Duration, debug 
 		WordDecoder: &mime.WordDecoder{
 			CharsetReader: charset.Reader,
 		},
+		ResponseTimeout:       timeout,
 		Dialer:                dialer,
 		UnilateralDataHandler: unilateral,
 	}

@@ -37,7 +37,7 @@ async function settle() {
   for (let i = 0; i < 10; i++) await flush();
 }
 
-const previewTexts = (el: Element) => shadowAll(el, '.message-preview').map((p) => p.textContent?.trim());
+const previewTexts = (el: HTMLElement) => shadowAll(el, '.message-preview').map((p) => p.textContent?.trim());
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -108,7 +108,7 @@ describe('message previews in the list', () => {
   });
 
   it('does not ask again in the same folder for a preview the server did not give', async () => {
-    const requests = previewServer((uids) => ({ Previews: {}, Scope: '1', Supported: true }));
+    const requests = previewServer(() => ({ Previews: {}, Scope: '1', Supported: true }));
     const el = await mount(TAG, { messages: [row(1, { PreviewPending: true })], currentMailbox: 'INBOX', totalMessages: 1, showSenderAvatars: false });
     await waitFor(() => requests.length === 1, 'the first request');
     await update(el, { messages: [row(1, { PreviewPending: true })] });

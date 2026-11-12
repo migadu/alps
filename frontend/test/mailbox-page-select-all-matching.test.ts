@@ -124,7 +124,7 @@ describe('selecting the folder', () => {
     const el = await page();
 
     expect(el.selectionCount).toBe(5);
-    expect(el.shadowRoot!.querySelector('alps-message-reader')!.selectedCount).toBe(5);
+    expect(el.shadowRoot!.querySelector<import('../src/components/message-reader').MessageReader>('alps-message-reader')!.selectedCount).toBe(5);
   });
 
   it('checks the rows this page shows, and the ones the next page brings', async () => {

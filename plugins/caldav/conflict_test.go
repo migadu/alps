@@ -281,7 +281,7 @@ func startHarness(t *testing.T, o harnessOptions) *harness {
 		Provider: popt,
 		SMTP:     alps.SMTPOptions{Server: o.smtp},
 		LoginKey: &key,
-		Plugins:  map[string]alps.PluginConfig{"caldav": {Server: davServer.URL}},
+		Plugins:  map[string]alps.PluginConfig{"caldav": {Enabled: true, Server: davServer.URL}},
 		// The personal endpoints in these tests are loopback HTTP servers.
 		DAVAllowPrivateServers: true,
 		// These tests save a connection in one session and use it in another.

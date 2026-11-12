@@ -253,3 +253,7 @@ func TestHTTP_PasswordCommandRefusesDashAfterEmptyPlaceholder(t *testing.T) {
 		t.Fatalf("program ran with argument %q, read error: %v", arg, err)
 	}
 }
+
+func (r routedPassword) RoutesService(service string) bool {
+	return service == provider.ServicePassword
+}

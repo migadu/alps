@@ -270,6 +270,26 @@ func (s *Server) parseSMTPServer() error {
 	return nil
 }
 
+// PluginEnabled applies explicit per-plugin switches and the optional allow-list.
+// The base plugin provides the core routes and is always required.
+func (s *Server) PluginEnabled(name string) bool {
+	if name == "base" || s.Options == nil {
+		return true
+	}
+	if cfg, exists := s.Options.Plugins[name]; exists && !cfg.Enabled {
+		return false
+	}
+	if len(s.Options.EnabledPlugins) == 0 {
+		return true
+	}
+	for _, enabled := range s.Options.EnabledPlugins {
+		if enabled == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) loadPlugins() error {
 	var plugins []Plugin
 	for _, load := range pluginLoaders {
@@ -278,19 +298,9 @@ func (s *Server) loadPlugins() error {
 			return fmt.Errorf("failed to load plugins: %v", err)
 		}
 		for _, p := range l {
-			// Filter plugins based on EnabledPlugins list
-			if len(s.Options.EnabledPlugins) > 0 {
-				enabled := false
-				for _, name := range s.Options.EnabledPlugins {
-					if p.Name() == name {
-						enabled = true
-						break
-					}
-				}
-				if !enabled {
-					s.logger.Printf("Plugin %q is disabled (not in enabled list)", p.Name())
-					continue
-				}
+			if !s.PluginEnabled(p.Name()) {
+				s.logger.Printf("Plugin %q is disabled", p.Name())
+				continue
 			}
 			s.logger.Printf("Loaded plugin %q", p.Name())
 			plugins = append(plugins, p)
@@ -437,9 +447,9 @@ type Options struct {
 	TrustedProxies          []*net.IPNet            // Proxy IPs/CIDRs whose X-Forwarded-Proto/Host headers are trusted (e.g. for CSRF origin computation behind a TLS-terminating reverse proxy)
 	TrustedOrigins          []string                // Additional origins accepted by the CSRF check (e.g. "https://webmail.example.com"), normalized to lowercase without a trailing slash
 	ReadTimeout             time.Duration           // HTTP read timeout, 0 means use default (10 seconds)
-	WriteTimeout            time.Duration           // HTTP write timeout, 0 means use default (30 seconds)
+	WriteTimeout            time.Duration           // HTTP write timeout, 0 means use default (60 seconds)
 	IdleTimeout             time.Duration           // HTTP idle timeout, 0 means use default (120 seconds)
-	ProviderTimeout         time.Duration           // Provider connect timeout, 0 means use default (30 seconds)
+	ProviderTimeout         time.Duration           // Provider connection and response timeout, 0 means use default (30 seconds)
 	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
 	WebAuthn                WebAuthnOptions         // WebAuthn configuration
 	Branding                BrandingOptions         // Default theme and login logo; the zero value is alps as it ships
@@ -706,6 +716,11 @@ func (s *Server) handleError(err error, ctx *Context) {
 		err = NewHTTPError(http.StatusNotFound, "Message not found")
 	}
 
+	var invalidSearch *provider.InvalidSearchError
+	if errors.As(err, &invalidSearch) {
+		err = NewHTTPError(http.StatusBadRequest, "Search terms require a value.")
+	}
+
 	code := http.StatusInternalServerError
 	var he *HTTPError
 	if errors.As(err, &he) {
@@ -758,6 +773,14 @@ func (s *Server) HasServiceRouting(service string) bool {
 	if s == nil || s.Options == nil {
 		return false
 	}
-	_, ok := s.Options.Provider.(provider.ServiceRouter)
-	return ok
+	router, ok := s.Options.Provider.(provider.ServiceRouter)
+	if !ok {
+		return false
+	}
+	if reporter, ok := router.(provider.ServiceRoutingReporter); ok {
+		return reporter.RoutesService(service)
+	}
+	// Legacy external routers cannot enumerate services. Keep their routing
+	// available until they opt into reporting instead of silently disabling it.
+	return true
 }

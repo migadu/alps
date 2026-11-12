@@ -21,8 +21,9 @@ Group=alps
 ExecStart=/usr/local/bin/alps -config /etc/alps/config.toml
 ExecReload=/bin/kill -HUP $MAINPID
 
-# Graceful shutdown (30s timeout matches server's internal shutdown timeout)
-TimeoutStopSec=30
+# Allow the 30s HTTP drain, session cleanup, TLS worker shutdown (up to 15s),
+# and cluster leave (up to 5s) to complete before systemd sends SIGKILL.
+TimeoutStopSec=60
 KillMode=mixed
 KillSignal=SIGTERM
 

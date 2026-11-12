@@ -8,6 +8,10 @@
 #          file set in [logging] output; the config is not read again)
 # Restart: service alps restart  (applies a config or certificate change)
 # Logs:    tail -f /var/log/alps/alps.log
+# Log rotation: newsyslog must send SIGHUP to /var/run/alps/daemon.pid
+# (daemon owns this log); service reload signals alps itself.
+# Example /etc/newsyslog.conf.d/alps.conf entry:
+# /var/log/alps/alps.log alps:alps 640 7 * @T00 JC /var/run/alps/daemon.pid 1
 
 # PROVIDE: alps
 # REQUIRE: LOGIN networking
@@ -17,6 +21,7 @@
 
 name="alps"
 rcvar="alps_enable"
+extra_commands="reload"
 
 load_rc_config $name
 
@@ -26,9 +31,11 @@ load_rc_config $name
 : ${alps_config:="/usr/local/etc/alps/config.toml"}
 : ${alps_logdir:="/var/log/alps"}
 
-pidfile="/var/run/${name}.pid"
+pidfile="/var/run/${name}/${name}.pid"
+procname="/usr/local/bin/alps"
 command="/usr/sbin/daemon"
-command_args="-c -f -o ${alps_logdir}/alps.log -p ${pidfile} -u ${alps_user} /usr/local/bin/alps -config ${alps_config}"
+daemon_pidfile="/var/run/${name}/daemon.pid"
+command_args="-c -f -H -P ${daemon_pidfile} -o ${alps_logdir}/alps.log -p ${pidfile} ${procname} -config ${alps_config}"
 
 # reload sends SIGHUP to alps, which reopens only the log file set in
 # [logging] output. It does not reopen daemon(8)'s alps.log, and it does not
@@ -40,7 +47,7 @@ start_precmd="alps_precmd"
 alps_precmd()
 {
     # Ensure required directories exist
-    install -d -o ${alps_user} -g ${alps_group} -m 750 ${alps_logdir}
+    install -d -o ${alps_user} -g ${alps_group} -m 750 ${alps_logdir} /var/run/${name}
 }
 
 run_rc_command "$1"

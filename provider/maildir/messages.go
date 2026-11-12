@@ -339,6 +339,10 @@ func messageContains(m *mailFile, query string) bool {
 // newest first, and nothing about them: what an action on a whole folder is
 // applied to. An empty query is the whole mailbox.
 func (p *Provider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID, error) {
+	if err := imapprovider.ValidateSearch(query); err != nil {
+		return nil, err
+	}
+
 	b, err := p.openBox(mailbox)
 	if err != nil {
 		return nil, err
@@ -369,6 +373,10 @@ func (p *Provider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID
 }
 
 func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
+	if err := imapprovider.ValidateSearch(query); err != nil {
+		return nil, provider.PageInfo{}, err
+	}
+
 	b, err := p.openBox(mailbox)
 	if err != nil {
 		return nil, provider.PageInfo{}, err
@@ -386,12 +394,7 @@ func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page,
 		}
 	}
 
-	sort.Slice(matchedMsgs, func(i, j int) bool {
-		if sortOrder == "asc" {
-			return matchedMsgs[i].Key() < matchedMsgs[j].Key()
-		}
-		return matchedMsgs[i].Key() > matchedMsgs[j].Key()
-	})
+	p.sortSearchMessages(matchedMsgs, sortOrder)
 
 	total := len(matchedMsgs)
 	start := page * pageSize
@@ -639,6 +642,14 @@ func (p *Provider) GetMessagePartWithData(mailbox string, id provider.MessageID,
 // Messages already gone are skipped; all other failures remain visible so
 // the HTTP layer invalidates cached flags instead of reporting a false star.
 func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op provider.FlagOperation) error {
+	for _, flag := range op.Flags {
+		switch flag {
+		case provider.FlagAnswered, provider.FlagSeen, provider.FlagDeleted, provider.FlagDraft, provider.FlagFlagged:
+		default:
+			return refused("Maildir cannot store flag %q", flag)
+		}
+	}
+
 	b, err := p.openBox(mailbox)
 	if err != nil {
 		return err

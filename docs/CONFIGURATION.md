@@ -107,7 +107,7 @@ Configures output destination, format, and verbosity.
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `output` | String | `"stderr"` | Destination for log output (`"stdout"`, `"stderr"`, `"syslog"`, or a file path like `"/var/log/alps.log"`). With a file path, alps reopens the file on `SIGHUP`, so a rotation tool such as newsyslog or logrotate can signal it after moving the file aside. |
+| `output` | String | `"stdout"` | Destination for log output (`"stdout"`, `"stderr"`, `"syslog"`, or a file path like `"/var/log/alps.log"`). With a file path, alps reopens the file on `SIGHUP`, so a rotation tool such as newsyslog or logrotate can signal it after moving the file aside. |
 | `format` | String | `"console"`| Log format: `"json"` (structured, for production) or `"console"` (human-readable). |
 | `level` | String | `"info"` | Minimum log severity: `"debug"`, `"info"`, `"warn"`, or `"error"`. |
 | `access` | Boolean | `true` | Logs one `request` line per HTTP request at `info`: method, path (without the query string), status, bytes, `duration_ms`, client `ip` and, once signed in, `user` and `session`. |
@@ -157,7 +157,7 @@ Handles Transport Layer Security for secure connections.
 | `default_domain` | String | None | (Optional) Fallback domain for SNI-less connections. |
 | `storage_provider`| String | `"s3"` | Where certificates are stored. |
 | `cache_dir` | String | `"cert-cache"`| Local filesystem cache directory for certificates. |
-| `sync_interval_minutes`| Integer | `5` | Sync interval for S3 fallback cache. |
+| `sync_interval_minutes`| Integer | `5` | Sync interval for S3 fallback cache. Non-positive values use the default. |
 | `acme_http_addr` | String | `":80"` | Address for HTTP-01 challenge handler. |
 
 ### 6.2 Let's Encrypt S3 Storage (`[tls.letsencrypt.s3]`)
@@ -268,6 +268,8 @@ Common properties:
 
 ### Password Plugin (`[plugin.password]`)
 Changes user passwords through an external HTTP API, or a command run on the ALPS host.
+
+The enabled plugin loads only when a global endpoint or command, or a per-domain password backend under `provider.multi`, is configured. Otherwise startup logs why Password settings remain unavailable.
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |

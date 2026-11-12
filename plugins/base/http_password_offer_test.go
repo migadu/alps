@@ -20,6 +20,7 @@ func TestHTTP_SessionOffersPasswordOnlyWhereAChangeCanRun(t *testing.T) {
 		want    bool
 	}{
 		{"no plugin sections", nil, false},
+		{"enabled without a backend", map[string]alps.PluginConfig{"password": {Enabled: true}}, false},
 		{"a block not enabled", map[string]alps.PluginConfig{"password": {Options: endpoint}}, false},
 		{"an enabled block", map[string]alps.PluginConfig{"password": {Enabled: true, Options: endpoint}}, true},
 	}

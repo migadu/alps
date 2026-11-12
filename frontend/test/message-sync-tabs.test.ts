@@ -6,7 +6,8 @@ class Channel {
   static sent: any[] = [];
   static held: (() => void)[] | null = null;
   onmessage: ((event: MessageEvent) => void) | null = null;
-  constructor(readonly name: string) { Channel.open.add(this); }
+  readonly name: string;
+  constructor(name: string) { this.name = name; Channel.open.add(this); }
   postMessage(data: any) {
     Channel.sent.push(data);
     for (const peer of Channel.open) if (peer !== this && peer.name === this.name) {
@@ -36,7 +37,7 @@ function locks() {
 }
 
 const started: MessageSyncService[] = [];
-let fetchMock: ReturnType<typeof vi.fn>;
+let fetchMock: ReturnType<typeof vi.fn<(url: string, init?: RequestInit) => Promise<Response>>>;
 let state: Record<string, { total: number; unseen: number; uidnext: number; uidvalidity: number }>;
 let username: string;
 const successes = (svc: MessageSyncService) => {
