@@ -20,9 +20,9 @@ import (
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-vcard"
-	"github.com/emersion/go-webdav"
-	"github.com/emersion/go-webdav/caldav"
-	"github.com/emersion/go-webdav/carddav"
+	"github.com/migadu/go-webdav"
+	"github.com/migadu/go-webdav/caldav"
+	"github.com/migadu/go-webdav/carddav"
 	"golang.org/x/text/unicode/norm"
 )
 

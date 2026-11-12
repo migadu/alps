@@ -12,8 +12,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/emersion/go-webdav/carddav"
 	"github.com/migadu/alps"
+	"github.com/migadu/go-webdav/carddav"
 )
 
 var errNoAddressBook = fmt.Errorf("carddav: no address book found")

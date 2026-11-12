@@ -1,14 +1,16 @@
 package alpscaldav
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"path"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/emersion/go-webdav/caldav"
+	"github.com/migadu/go-webdav/caldav"
 )
 
 // mkcalendarsRecorded stands in front of the CalDAV server as one that takes
@@ -119,12 +121,40 @@ func TestWithNoCalendarAPathIsRefusedAsNotTheUsers(t *testing.T) {
 	}
 }
 
-// A principal may name an empty calendar home set. The calendars are then
-// listed at the endpoint itself, where go-webdav resolves the empty href, and
-// a new calendar went beside the first one listed. With none listed, the
-// create gave up with "failed to determine calendar home set", so such an
-// account could not make its first calendar. It goes where the calendars are
-// listed.
+// withoutHomeSet stands in front of the CalDAV server as one whose principal,
+// /ada/, names an empty calendar home set, and records where each MKCALENDAR
+// goes.
+func withoutHomeSet(mu *sync.Mutex, targets *[]string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == "MKCALENDAR":
+				mu.Lock()
+				*targets = append(*targets, r.URL.Path)
+				mu.Unlock()
+				w.WriteHeader(http.StatusCreated)
+			case r.Method == "PROPFIND" && r.URL.Path == "/ada/":
+				rec := httptest.NewRecorder()
+				next.ServeHTTP(rec, r)
+				for k, v := range rec.Header() {
+					if k != "Content-Length" {
+						w.Header()[k] = v
+					}
+				}
+				w.WriteHeader(rec.Code)
+				w.Write(bytes.ReplaceAll(rec.Body.Bytes(), []byte(">"+testHome+"<"), []byte("><")))
+			default:
+				next.ServeHTTP(w, r)
+			}
+		})
+	}
+}
+
+// A principal may name an empty calendar home set. An empty href is a
+// reference to the resource it was listed for (RFC 3986 section 4.4), so the
+// home set is the principal itself: the calendars are listed there, and the
+// first one is made there. The create once gave up with "failed to determine
+// calendar home set", so such an account could not make its first calendar.
 func TestTheFirstCalendarIsMadeWhereAnEmptyHomeSetIsListed(t *testing.T) {
 	var mu sync.Mutex
 	var targets []string
@@ -141,8 +171,8 @@ func TestTheFirstCalendarIsMadeWhereAnEmptyHomeSetIsListed(t *testing.T) {
 	if len(targets) != 1 {
 		t.Fatalf("%d MKCALENDAR requests, want 1: %q", len(targets), targets)
 	}
-	if parent := path.Dir(strings.TrimSuffix(targets[0], "/")); parent != "/" {
-		t.Errorf("the calendar was asked for at %s, in %s, not at the endpoint, where the calendars are listed", targets[0], parent)
+	if parent := path.Dir(strings.TrimSuffix(targets[0], "/")) + "/"; parent != "/ada/" {
+		t.Errorf("the calendar was asked for at %s, in %s, not in the principal /ada/, where the calendars are listed", targets[0], parent)
 	}
 	if created.Path != targets[0] {
 		t.Errorf("the create answered %q, but the calendar was asked for at %q", created.Path, targets[0])

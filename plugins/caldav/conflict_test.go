@@ -20,13 +20,13 @@ import (
 	"time"
 
 	"github.com/emersion/go-ical"
-	"github.com/emersion/go-webdav"
-	"github.com/emersion/go-webdav/caldav"
 	"github.com/fernet/fernet-go"
 	"github.com/migadu/alps"
 	_ "github.com/migadu/alps/plugins/base"
 	"github.com/migadu/alps/provider/maildir"
 	"github.com/migadu/alps/provider/multi"
+	"github.com/migadu/go-webdav"
+	"github.com/migadu/go-webdav/caldav"
 )
 
 // These run the real server, with this plugin pointed at go-webdav's own

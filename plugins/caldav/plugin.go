@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/emersion/go-webdav/caldav"
 	"github.com/migadu/alps"
+	"github.com/migadu/go-webdav/caldav"
 )
 
 // sanityCheckTimeout bounds sanityCheckURL's OPTIONS probe. http.DefaultClient
@@ -126,9 +126,18 @@ func (p *plugin) httpClient(session *alps.Session) *http.Client {
 // one itself: a new event, task or invitation copy with none to go into is
 // refused with a conflict, and a path is checked against the calendars listed.
 func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session) (*caldav.Client, []caldav.Calendar, error) {
+	c, _, calendars, err := p.clientWithHomeSet(ctx, session)
+	return c, calendars, err
+}
+
+// clientWithHomeSet is clientWithCalendars, with the path of the home set the
+// calendars were listed from, where a new calendar goes. Read back from
+// homeSetCache instead, it could be gone: another request may have cleared the
+// cache meanwhile.
+func (p *plugin) clientWithHomeSet(ctx context.Context, session *alps.Session) (*caldav.Client, string, []caldav.Calendar, error) {
 	c, err := p.client(ctx, session)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create CalDAV client: %v", err)
+		return nil, "", nil, fmt.Errorf("failed to create CalDAV client: %v", err)
 	}
 
 	p.cacheMutex.RLock()
@@ -138,12 +147,12 @@ func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session)
 	if !ok {
 		principal, err := c.FindCurrentUserPrincipal(ctx)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to query CalDAV principal: %v", err)
+			return nil, "", nil, fmt.Errorf("failed to query CalDAV principal: %v", err)
 		}
 
 		homeSet, err = c.FindCalendarHomeSet(ctx, principal)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to query CalDAV calendar home set: %v", err)
+			return nil, "", nil, fmt.Errorf("failed to query CalDAV calendar home set: %v", err)
 		}
 
 		p.cacheMutex.Lock()
@@ -158,10 +167,10 @@ func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session)
 	calendars, err := c.FindCalendars(ctx, homeSet)
 	if err != nil {
 		p.forgetHomeSet(session.Username(), homeSet)
-		return nil, nil, fmt.Errorf("failed to query CalDAV calendars: %v", err)
+		return nil, "", nil, fmt.Errorf("failed to query CalDAV calendars: %v", err)
 	}
 
-	return c, calendars, nil
+	return c, homeSet, calendars, nil
 }
 
 // forgetHomeSet drops a login's cached home set after listing from it failed,

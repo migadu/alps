@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/emersion/go-vcard"
-	"github.com/emersion/go-webdav"
-	"github.com/emersion/go-webdav/carddav"
+	"github.com/migadu/go-webdav"
+	"github.com/migadu/go-webdav/carddav"
 )
 
 // Query through the real REPORT encoder/handler, with no name containing an
