@@ -42,7 +42,7 @@ Either signal starts a graceful shutdown, which takes these steps in order:
 
 A shutdown therefore takes up to 35 seconds without Let's Encrypt and `[cluster]`. Let's Encrypt adds up to 5 seconds, or up to 15 with S3 storage, and `[cluster]` up to 5 more. With both, which means S3 storage, a shutdown takes up to 55 seconds. ALPS logs no line of its own for the start or the end of a shutdown, only the HTTP line above when the 30 seconds run out. With S3 storage, the certificate manager logs `stopping certificate sync worker` and then `certificate sync worker stopped gracefully` (or `certificate sync worker stop timed out`).
 
-Once a shutdown has begun, a SIGHUP only reopens the log file, as above. A further SIGINT or SIGTERM is ignored while the requests of step 1 finish. After step 1, one ends the process at once, skipping the steps still to come, the cluster leave included. SIGKILL, or SIGQUIT (which prints a stack trace and exits with status 2), ends it sooner at any point.
+Once a shutdown has begun, a SIGHUP only reopens the log file, as above. A further SIGINT or SIGTERM is ignored for the whole shutdown, so a second SIGTERM does not make it end sooner. SIGKILL, or SIGQUIT (which prints a stack trace and exits with status 2), ends it sooner at any point.
 
 When the listener on `[server] addr` fails, as it starts (the address is already in use, for example) or later, ALPS logs `HTTP listener failed: <error>`, takes the same steps, and then exits with status 1.
 

@@ -9,6 +9,7 @@ package cluster
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -88,22 +89,25 @@ func NewCluster(cfg Config) (*Cluster, error) {
 	// to reach us at an unspecified address and mark us suspect/dead, so
 	// membership never forms. memberlist picks the host's private address
 	// itself, but only for the literal "0.0.0.0" (an empty bind is that too).
-	// For "::" it would advertise "::", so pick the same address here: Go
-	// listens on IPv4 and IPv6 alike for "::". Non-IP bind addresses are
-	// rejected before creating any listener.
+	// For "::" it would advertise "::", so pick an address here, in a family
+	// the "::" listeners serve: they accept IPv4 too where the system has
+	// IPv4-mapped IPv6 sockets, and IPv6 only where it has not (OpenBSD,
+	// DragonFly). Non-IP bind addresses are rejected before creating any
+	// listener.
 	if ip := net.ParseIP(cfg.BindAddr); ip != nil {
 		switch {
 		case !ip.IsUnspecified():
 			mlConfig.AdvertiseAddr = cfg.BindAddr
 		case ip.To4() == nil:
-			private, err := sockaddr.GetPrivateIP()
+			private, err := sockaddr.GetPrivateInterfaces()
 			if err != nil {
 				return nil, fmt.Errorf("cluster bind address %q: cannot find a private address to advertise: %w", cfg.BindAddr, err)
 			}
-			if private == "" {
-				return nil, fmt.Errorf("cluster bind address %q: the host has no private address to advertise; set bind to this node's own address", cfg.BindAddr)
+			addr, err := ipv6WildcardAdvertiseAddr(ipv6WildcardServesIPv4(), private)
+			if err != nil {
+				return nil, fmt.Errorf("cluster bind address %q: %w", cfg.BindAddr, err)
 			}
-			mlConfig.AdvertiseAddr = private
+			mlConfig.AdvertiseAddr = addr
 		}
 	}
 	if cfg.BindPort >= 0 {
@@ -546,4 +550,46 @@ func (w *logWriter) Write(p []byte) (n int, err error) {
 	}
 	w.logger.Debug(msg)
 	return len(p), nil
+}
+
+// ipv6WildcardAdvertiseAddr picks the address a node bound to "::" advertises
+// from the host's private addresses, in the order memberlist ranks them for a
+// "0.0.0.0" bind. Where the "::" listeners serve IPv6 only, an IPv4 address
+// would reach no listener, so only an IPv6 one is taken.
+func ipv6WildcardAdvertiseAddr(servesIPv4 bool, private sockaddr.IfAddrs) (string, error) {
+	for _, ifAddr := range private {
+		ipAddr := sockaddr.ToIPAddr(ifAddr.SockAddr)
+		if ipAddr == nil {
+			continue
+		}
+		ip := *(*ipAddr).NetIP()
+		if !servesIPv4 && ip.To4() != nil {
+			continue
+		}
+		return ip.String(), nil
+	}
+	if !servesIPv4 {
+		return "", errors.New("the host has no private IPv6 address to advertise, and on this system a listener on :: serves IPv6 only; set bind to this node's own address")
+	}
+	return "", errors.New("the host has no private address to advertise; set bind to this node's own address")
+}
+
+// ipv6WildcardServesIPv4 reports whether a listener on "::" also accepts IPv4
+// connections. Go makes it dual-stack where the system has IPv4-mapped IPv6
+// sockets, and IPv6 only where it has not. memberlist's TCP and UDP listeners
+// for a "::" bind are made the same way, so a short-lived loopback listener
+// answers for them.
+func ipv6WildcardServesIPv4() bool {
+	ln, err := net.Listen("tcp", "[::]:0")
+	if err != nil {
+		return false
+	}
+	defer ln.Close()
+	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", port), time.Second)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }
