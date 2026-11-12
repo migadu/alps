@@ -3,12 +3,11 @@ package maildir
 import (
 	"bytes"
 	"io"
-	"mime"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/emersion/go-message"
-	"github.com/emersion/go-message/charset"
 	"github.com/migadu/alps/provider"
 	"github.com/migadu/go-imap"
 )
@@ -53,12 +52,15 @@ func messageFieldContains(m *mailFile, field, query string, body, all bool) bool
 	if entity == nil || (err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err)) {
 		return false
 	}
-	decoder := mime.WordDecoder{CharsetReader: charset.Reader}
-	for fields := entity.Header.Fields(); fields.Next(); {
+	fields := entity.Header.Fields()
+	if !body && !all {
+		fields = entity.Header.FieldsByKey(field)
+	}
+	for fields.Next() {
 		if !all && (body || !strings.EqualFold(fields.Key(), field)) {
 			continue
 		}
-		value, err := decoder.DecodeHeader(fields.Value())
+		value, err := fields.Text()
 		if err != nil {
 			value = fields.Value()
 		}
@@ -95,20 +97,23 @@ func readerContains(reader io.Reader, query string) bool {
 	if len(wanted) == 0 {
 		return true
 	}
+	keep := (utf8.RuneCount(wanted) + 1) * utf8.UTFMax
 	buf := make([]byte, 32*1024)
 	var tail []byte
 	for {
 		n, err := reader.Read(buf)
 		if n > 0 {
-			chunk := bytes.ToLower(append(tail, buf[:n]...))
-			if bytes.Contains(chunk, wanted) {
+			raw := append(tail, buf[:n]...)
+			if bytes.Contains(bytes.ToLower(raw), wanted) {
 				return true
 			}
-			if len(chunk) > len(wanted) {
-				tail = chunk[len(chunk)-len(wanted):]
-			} else {
-				tail = chunk
+			// Keep raw bytes: lowercasing an incomplete rune corrupts a match
+			// crossing the next read. Uppercase encodings can also be longer than
+			// their lowercase forms (for example Kelvin sign -> k).
+			if len(raw) > keep {
+				raw = raw[len(raw)-keep:]
 			}
+			tail = bytes.Clone(raw)
 		}
 		if err != nil {
 			return false
