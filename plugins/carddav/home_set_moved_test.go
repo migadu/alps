@@ -45,7 +45,7 @@ func homeSetMoves(moved *atomic.Bool) func(http.Handler) http.Handler {
 	}
 }
 
-// alps keeps each login's address book home set once it has looked it up.
+// Alps keeps each resolved connection's address book home set once it has looked it up.
 // When the server moved it, listing the address books from the old one
 // failed, and the old one was kept: every contacts request for that login
 // failed until alps restarted. A home set that fails to list is dropped, so
@@ -54,6 +54,7 @@ func TestAMovedAddressBookHomeIsLookedUpAgain(t *testing.T) {
 	var moved atomic.Bool
 	h := newHarnessWrapping(t, homeSetMoves(&moved))
 	h.dav.save(testBook+"grace.vcf", grace("+1 555 0100"))
+	h.expect(h.do("PUT", "/settings/dav/carddav", map[string]any{"username": "independent-dav-user", "password": "independent-secret"}), http.StatusOK)
 	h.expect(h.do("GET", "/contacts", nil), http.StatusOK)
 
 	moved.Store(true)
@@ -73,13 +74,14 @@ func TestAMovedAddressBookHomeIsLookedUpAgain(t *testing.T) {
 // that one: another request may already have looked up the new one, and that
 // one stays.
 func TestOnlyTheAddressBookHomeThatFailedIsForgotten(t *testing.T) {
-	p := &plugin{homeSetCache: map[string]string{testUser: movedHome}}
-	p.forgetHomeSet(testUser, testHome)
-	if got, ok := p.homeSetCache[testUser]; !ok || got != movedHome {
+	const connectionKey = "resolved-connection-key"
+	p := &plugin{homeSetCache: map[string]string{connectionKey: movedHome, "another-connection": testHome}}
+	p.forgetHomeSet(connectionKey, testHome)
+	if got, ok := p.homeSetCache[connectionKey]; !ok || got != movedHome {
 		t.Errorf("the new home set was dropped for a failure of the old one: cached %q, %v", got, ok)
 	}
-	p.forgetHomeSet(testUser, movedHome)
-	if got, ok := p.homeSetCache[testUser]; ok {
+	p.forgetHomeSet(connectionKey, movedHome)
+	if got, ok := p.homeSetCache[connectionKey]; ok {
 		t.Errorf("the home set that failed is still cached: %q", got)
 	}
 }

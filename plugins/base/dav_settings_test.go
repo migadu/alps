@@ -358,3 +358,52 @@ func TestHTTP_DAVMailCredentialsForAPersonalServerTakeTheMailPassword(t *testing
 		t.Fatal("a confirmed save did not reach the server")
 	}
 }
+
+func TestHTTP_DAVStalePasswordsAreNotOfferedForReuse(t *testing.T) {
+	for _, change := range []string{"undecryptable secret", "changed default endpoint"} {
+		t.Run(change, func(t *testing.T) {
+			dav := settingsDiscoveryServer(t, "dav-user", "secret")
+			s := newDAVSettingsServer(t, func(options *alps.Options) {
+				cfg := options.Plugins["caldav"]
+				cfg.Server = dav
+				options.Plugins["caldav"] = cfg
+			})
+			s.login()
+			input := map[string]any{"username": "dav-user", "password": "secret"}
+			s.expect(s.do(http.MethodPut, "/settings/dav/caldav", input), http.StatusOK)
+			if change == "undecryptable secret" {
+				store, err := s.store.GetStore()
+				if err != nil {
+					t.Fatal(err)
+				}
+				var record map[string]any
+				if err := store.Get("dav.connection.caldav", &record); err != nil {
+					t.Fatal(err)
+				}
+				record["password_enc"] = "not decryptable under the current key"
+				if err := store.Put("dav.connection.caldav", record); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				cfg := s.server.Options.Plugins["caldav"]
+				cfg.Server = "https://changed-default.example/dav/"
+				s.server.Options.Plugins["caldav"] = cfg
+			}
+			r := s.do(http.MethodGet, "/settings/dav/caldav", nil)
+			s.expect(r, http.StatusOK)
+			var settings alps.DAVSettings
+			r.json(t, &settings)
+			if settings.PasswordConfigured {
+				t.Errorf("stale password offered for reuse: %s", r.body)
+			}
+			delete(input, "password")
+			r = s.do(http.MethodPut, "/settings/dav/caldav", input)
+			s.expect(r, http.StatusBadRequest)
+			var result struct{ Error string }
+			r.json(t, &result)
+			if result.Error != "dav_password_required" {
+				t.Errorf("blank password response: %s", r.body)
+			}
+		})
+	}
+}
