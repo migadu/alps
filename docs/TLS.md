@@ -94,7 +94,7 @@ acme_http_addr = ":80"                  # HTTP-01 challenge listener (default: "
 ```
 
 - `email`: The ACME account contact address. Required: without it startup fails with `email required`.
-- `domains`: List every hostname browsers use. At least one is required (`at least one domain required`). The list is an exact allowlist with no wildcards. Each name gets its own certificate, ordered on its own rather than as one multi-name certificate. A handshake for a name that is not listed, or for an IP address, gets no certificate and fails.
+- `domains`: List every hostname browsers use. At least one is required (`at least one domain required`). The list is an exact allowlist with no wildcards. Each name gets its own certificate, ordered on its own rather than as one multi-name certificate. A handshake whose SNI names a host that is not listed, or an IP address, gets no certificate and fails. A client that connects to an IP address normally sends no SNI, and is served the `default_domain` certificate (below).
 - `default_domain`: Optional, and defaults to the first entry of `domains`. It is used for handshakes without SNI and must be one of the listed `domains`, otherwise those handshakes fail.
 - `cache_dir`: Defaults to `"cert-cache"`, relative to the process's working directory. The shipped systemd unit sets no `WorkingDirectory` and uses `ProtectSystem=strict`, so a relative directory cannot be written there. Use an absolute path such as `/var/lib/alps/cert-cache`, make sure its parent exists and is writable by the `alps` user, and add that parent to the unit's `ReadWritePaths` (the line is there, commented out).
 

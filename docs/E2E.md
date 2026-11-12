@@ -54,8 +54,10 @@ source in `src/` or `plugins/*/frontend/` never runs.
   `frontend/vitest.config.ts` allows that (`server.fs.allow: ['..']`) and pins `lit`, `@lit`,
   `openpgp` and `rrule` to `frontend/node_modules`.
 - `test/helpers/setup.ts` runs before every file and installs jsdom shims, each only where the API
-  is missing: `scrollIntoView`, `ResizeObserver`, `<dialog>` `showModal`/`close`, a `matchMedia`
-  that answers `min-width`/`max-width` queries from `innerWidth`, and `document.execCommand`.
+  is missing: `scrollIntoView`, `ResizeObserver`, `<dialog>` `show`/`showModal`/`close`, the
+  Popover API (`popover`, `showPopover` and `hidePopover`, which fire `toggle` with its
+  `newState`), a `matchMedia` that answers `min-width`/`max-width` queries from `innerWidth`, and
+  `document.execCommand`.
 - Helpers: `test/helpers/dom.ts` (`mount`, `update`, `cleanup`, `shadow`, `shadowAll`, `text`,
   `record`, `flush`, `click`, `waitFor`), `sidebar.ts` (`settleSidebar`, `inSidebar`,
   `setSidebar`), `sources.ts` (`readSources`) and `styles.ts` (`rulesOf`, `ruleMatches`,
@@ -321,7 +323,7 @@ What `fixtures.ts` offers:
 | `clearSent()` | Empties the outbox |
 | `resetSettings(account?)`, `resetSieve(account?)`, `resetDav(account?)` | Put the account back to its defaults. `resetSettings()` for `USER` also forgets the cached session, so the next `login()` signs in through the form |
 | `mailboxElsewhere(verb, mailbox, account?)` | `"create"`, `"subscribe"` or `"unsubscribe"` a folder over IMAP, behind ALPS's back. A created folder is left unsubscribed |
-| `seedEvent(…)`, `seedCalendarObject(uid, ics, account?)`, `readCalendarObject(uid, account?)` | Calendar data, written and read as a DAV client would |
+| `seedEvent(…)`, `seedCalendarObject(uid, ics, account?)`, `readCalendarObject(uid, account?)`, `removeCalendarObject(uid, account?)` | Calendar data, written, read and deleted as a DAV client would |
 | `seedContact(…)`, `readContact(uid, account?)`, `removeContact(uid)` | Contacts, written, read and deleted as a DAV client would |
 | `createAccount({ address, password })`, `deleteAccount(address)` | Throwaway accounts |
 | `allowConsoleErrors(page, ...patterns)` | Permit expected console errors in one test. Call it before the action that provokes them |
@@ -355,7 +357,9 @@ Rules that keep a serial suite on one account reliable:
 - Use unique subjects; never assume the inbox is empty.
 - Put back anything global a test changes (`resetSettings()` and friends, in `afterEach`).
 - A test that deletes its account or changes its password uses an account from `createAccount`.
-- Wait with `expect(…)` or `expect.poll(…)`, never with a fixed sleep.
+- Wait with `expect(…)` or `expect.poll(…)`. A fixed wait (`page.waitForTimeout`) is only for what
+  no condition can show: that something does not happen, or that a known delay, such as the
+  compose store's write to disk or a CSS transition, has passed. Say which in a comment.
 - An expected refusal still logs a console error in Chromium (`Failed to load resource: … 4xx`).
   Allow that exact line in that one test with `allowConsoleErrors`; do not widen the built-in
   list.

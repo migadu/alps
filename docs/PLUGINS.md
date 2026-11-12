@@ -124,7 +124,7 @@ A panic in a handler is recovered, logged, and answered with a plain-text 500.
 
 A plugin reads its config section as `s.Options.Plugins["myplugin"]` in its loader, or `ctx.Server.Options.Plugins["myplugin"]` in a handler. It is an `alps.PluginConfig{Enabled, Server, Options}`; see [Registering the Plugin](#registering-the-plugin) for the keys.
 
-A loader can decide to stay off by returning no plugins, and can refuse a bad configuration by returning an error. An error from a loader makes `alps.New` fail, and ALPS exits at startup. `caldav` and `carddav` return no plugins when they have no `server`, `enabled` is not `true` and the provider routes no endpoint for the service; `managesieve` does when it has no `server` and the provider routes no endpoint for it, whatever `enabled` says:
+A loader can decide to stay off by returning no plugins, and can refuse a bad configuration by returning an error. An error from a loader makes `alps.New` fail, and ALPS exits at startup. `caldav` and `carddav` return no plugins when they have no `server`, `enabled` is not `true` and the provider routes no endpoint for the service; `managesieve` does when it has no `server` and the provider routes no endpoint for it, whatever `enabled` says; `password` does when `enabled` is not `true`, or when neither its options nor a provider backend name an endpoint or a command:
 
 ```go
 func init() {
@@ -172,7 +172,7 @@ The `[plugin.<name>]` sections of `config.toml` then decide which of the compile
 - If at least one section has `enabled = true`, the sections with `enabled = true` form an allow-list, and a plugin without a section is skipped and logged the same way.
 - If no section has `enabled = true`, which includes having no sections at all, there is no allow-list, and every plugin the loaders return loads unless its own section keeps it out.
 
-Every compiled-in plugin's loader runs in all cases, and these rules are applied to what the loaders return. A loader that returns no plugins, as `caldav`, `carddav` and `managesieve` can (see [Configuration and Per-User Data](#configuration-and-per-user-data)), stays off either way, and is not logged as disabled. A loader's error stops ALPS even for a plugin the rules would have dropped, so a loader should check `enabled` before it refuses its options, as `password` does.
+Every compiled-in plugin's loader runs in all cases, and these rules are applied to what the loaders return. A loader that returns no plugins, as `caldav`, `carddav`, `managesieve` and `password` can (see [Configuration and Per-User Data](#configuration-and-per-user-data)), stays off either way, and is not logged as disabled. A loader's error stops ALPS even for a plugin the rules would have dropped, so a loader should check `enabled` before it refuses its options, as `password` does.
 
 A config that adds `[plugin.myplugin]` must therefore set `enabled = true` in it, and then also keep `enabled = true` for every other plugin it wants, as `config.example.toml` does:
 

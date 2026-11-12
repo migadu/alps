@@ -20,7 +20,7 @@ The IMAP sections apply to the `imap` provider and to `multi` backends of type `
 
 `[provider.imap] insecure = true` makes `imap://` plaintext as well. It does not relax certificate checks, and it never changes `imaps://`. TLS certificates are checked against the host's system roots.
 
-`[provider] timeout_sec` (default 30 seconds) bounds the TCP connect, with the TLS handshake for `imaps://`, and the wait for a few of the server's answers, which [CONFIGURATION.md](CONFIGURATION.md#provider) lists. `LOGIN` and the other commands are not bounded by it: there the IMAP client waits at most 30 seconds for each response, a fixed limit that no key changes. For the `imap` provider, `[server] imap_timeout_sec` is used when `timeout_sec` is unset.
+`[provider] timeout_sec` (default 30 seconds) bounds the TCP connect, with the TLS handshake for `imaps://`, and the wait for each of the server's answers: the greeting, `LOGIN` and every later command. A fetched message, or a part of one, has a fixed 5 minutes to arrive instead. An answer that does not come in time closes the connection; a sign-in whose `LOGIN` goes unanswered gets the 503 of a lost connection (below). For the `imap` provider, `[server] imap_timeout_sec` is used when `timeout_sec` is unset. [CONFIGURATION.md](CONFIGURATION.md#provider) has the details.
 
 ALPS signs in with the IMAP `LOGIN` command, sending the username and password the user typed on the sign-in page. It does not use `AUTHENTICATE` (SASL) or OAuth, so the server must accept `LOGIN` on the connection ALPS opens, which for `imap://` is after STARTTLS. The server's answer decides what the sign-in gets:
 

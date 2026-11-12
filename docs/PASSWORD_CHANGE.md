@@ -67,7 +67,7 @@ payload = "json"
 # custom_new_pass_key = "new_password"
 ```
 
-- `[plugin.password] enabled = true` is required. Without it the plugin does not load, and Settings has no Password tab (see [The Change Endpoint](#the-change-endpoint)).
+- `[plugin.password] enabled = true` is required, and so is an `endpoint` or a `command`, here or in a per-domain block (see [Per-Domain Backends](#per-domain-backends)). Without them the plugin does not load, and Settings has no Password tab (see [The Change Endpoint](#the-change-endpoint)).
 - Values put into `endpoint` are escaped for a URL path segment. "/", "?", ";", "," and spaces are escaped, but "@", "+", "&" and "=" are left as they are. Put the placeholders in the path, not in the query string. A login with no "@" gives the whole login as `{local}` and an empty `{domain}`.
 - `method` is sent in upper case.
 - `auth_type = "basic"` sends HTTP Basic authentication with `username` and `password`. `auth_type = "bearer"` sends `Authorization: Bearer <token>`. Any other value, `"none"` included, sends no Authorization header.
@@ -141,7 +141,7 @@ With `[plugin.password] enabled = true`, ALPS refuses to start when the global `
 
 The same checks run again on every change, so a program that is removed or loses its execute bits after ALPS started is refused then (see [Error Handling](#error-handling)). A program with an execute bit set that still does not let the user ALPS runs as execute it passes these checks, and fails when it is run as a program that could not be started (502).
 
-The HTTP options are not checked at startup. A block with neither `endpoint` nor `command` starts, and every change then fails with 502 `password_service_unavailable`. An `endpoint` that is not a valid URL, or a `method` that is not a valid HTTP method, also starts, and every change then fails with a 500 error.
+The HTTP options are not checked at startup. When neither the global block nor any per-domain block sets `endpoint` or `command`, the plugin stays off, and startup logs `password: enabled without an endpoint, command or routed backend; plugin disabled`. When only per-domain blocks set one, every change by a login that uses the global block fails with 502 `password_service_unavailable`. An `endpoint` that is not a valid URL, or a `method` that is not a valid HTTP method, also starts, and every change then fails with a 500 error.
 
 ## Per-Domain Backends
 
@@ -167,7 +167,7 @@ password = "old_password"
 new_password = "new_password"
 ```
 
-For logins on that backend, the block replaces `[plugin.password.options]` entirely. Nothing is merged in from the global block: not `endpoint`, `method`, `auth_type`, `username`, `password`, `token`, `payload` or `payload_mapping`. A routed block without `payload_mapping` therefore sends no fields. A backend with no password block uses the global options. `[plugin.password] enabled = true` is still required.
+For logins on that backend, the block replaces `[plugin.password.options]` entirely. Nothing is merged in from the global block: not `endpoint`, `method`, `auth_type`, `username`, `password`, `token`, `payload` or `payload_mapping`. A routed block without `payload_mapping` therefore sends no fields. A backend with no password block uses the global options. `[plugin.password] enabled = true` is still required. A per-domain block that sets `endpoint` or `command` is enough for the plugin to load without a global one.
 
 A routed block may set `command` and `stdin` as the global one does. It is not checked at startup. If it fails the checks when it is used, the change is answered 500 `password_service_unavailable` and the log says "Password change is misconfigured". The rest of `provider.multi` is described in [CONFIGURATION.md](CONFIGURATION.md#providermulti).
 
@@ -180,7 +180,7 @@ The Settings page calls `POST /password/change`, which needs a signed-in session
 
 Errors are `{"error": ..., "code": ...}` with the codes listed under [Error Handling](#error-handling); a 429 also carries `retry_after`. Malformed JSON is 400 `{"error":"invalid_json"}`, and a JSON body over the size limit is 413 `{"error":"payload_too_large"}`.
 
-The route and the Settings > Password tab exist only while the password plugin is loaded, and it loads only with `[plugin.password] enabled = true`. Without it, `GET /session` does not list `password` in `EnabledPlugins` and answers `PasswordChangeEnabled` false, Settings offers no Password tab, and there is no `/password/change` route. Because a `[plugin.*]` section with `enabled = true` means only `base` and the enabled plugins load, every other plugin wanted needs `enabled = true` as well (see [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname)).
+The route and the Settings > Password tab exist only while the password plugin is loaded, and it loads only with `[plugin.password] enabled = true` and an `endpoint` or `command` (see [Configuration](#configuration)). Without them, `GET /session` does not list `password` in `EnabledPlugins` and answers `PasswordChangeEnabled` false, Settings offers no Password tab, and there is no `/password/change` route. Because a `[plugin.*]` section with `enabled = true` means only `base` and the enabled plugins load, every other plugin wanted needs `enabled = true` as well (see [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname)).
 
 ## Error Handling
 

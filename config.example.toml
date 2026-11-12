@@ -455,8 +455,9 @@ level = "info"
 # favicon package, the files RealFaviconGenerator writes: all six of
 # favicon.svg, favicon-96x96.png, favicon.ico, apple-touch-icon.png,
 # web-app-manifest-192x192.png and web-app-manifest-512x512.png, each at most
-# 1 MiB. A missing or larger file, or a value that is neither a built-in name
-# nor a folder, stops startup. Defaults to the default theme's own logo, so
+# 1 MiB. A missing, larger or unreadable file, or a value that is neither a
+# built-in name nor a folder, stops startup. A relative path is taken from the
+# directory ALPS runs in. Defaults to the default theme's own logo, so
 # default_theme = "migadu" brings the Migadu logo.
 # logo = "migadu"
 
@@ -610,11 +611,12 @@ type = "imap"
 # Provider timeout in seconds (default: 30)
 # It bounds connecting to the IMAP server (the TCP connect, plus the TLS
 # handshake for imaps://) and the wait for each of the server's answers: the
-# greeting, LOGIN and every later command (5 minutes while the client reads a
-# literal, such as a message body). It also bounds ALPS's own waits for the
+# greeting, LOGIN and every later command. A fetched message, or a part of
+# one, has a fixed 5 minutes to arrive instead. ALPS's own waits for the
 # answers to ENABLE (CONDSTORE), IDLE and DONE, NOTIFY, the STATUS after an
-# IDLE, and the STATUS and UID lookup around saving a message without
-# UIDPLUS. An answer that does not come in time loses the connection.
+# IDLE, and the STATUS and UID lookup around saving a message without UIDPLUS
+# use the same limit. An answer that does not come in time loses the
+# connection.
 # A mail operation runs until its request is cancelled: the page stops waiting
 # (25 seconds by default), the page goes away, or read_timeout_sec passes. It
 # may then run up to 10 more seconds. After that, the session's mail
@@ -788,7 +790,8 @@ server = "smtps://smtp.migadu.com:465"
 # sections at all, the plugins without a section load too: gpg, and caldav,
 # carddav and managesieve when a [provider.multi] backend names their
 # endpoint. The password plugin loads only with [plugin.password]
-# enabled = true, so the allow-list applies whenever it loads.
+# enabled = true (and an endpoint or command, see below), so the allow-list
+# applies whenever it loads.
 # A caldav or carddav section with enabled = true and no server, as below,
 # loads without an endpoint: its requests fail, logged as "... server is not
 # configured", unless the user's multi backend names one. A managesieve
@@ -864,11 +867,13 @@ enabled = true
 # run on this host. The request, or the command, must finish within 15
 # seconds. See docs/PASSWORD_CHANGE.md.
 [plugin.password]
-# Requires an endpoint or command below, or a provider.multi password backend.
-# If none is configured, the plugin stays off even when enabled.
 # Enable the password change feature (default: false)
 # With enabled = true, an options block that cannot run (endpoint and command
-# both set, a program path that is not absolute, ...) stops startup.
+# both set, a program path that is not absolute, ...) stops startup. The
+# plugin also needs an endpoint or command below, or a provider.multi backend
+# whose password block sets one. Without any, it stays off and startup logs
+# "password: enabled without an endpoint, command or routed backend; plugin
+# disabled".
 enabled = false
 
 [plugin.password.options]

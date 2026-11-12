@@ -29,7 +29,7 @@ These settings bound how long the server waits on a client, so slow or stalled c
 | `read_timeout_sec` | Integer | `10` | Max time allowed to read the entire HTTP request, headers and body. An attachment upload that takes longer fails. |
 | `write_timeout_sec` | Integer | `60` | Runs from the end of a request's headers to the end of its response, so it bounds an upload's body, the handling and the response together. The example config sets 30. For large attachments over slow links, raise both this and `read_timeout_sec`, or put a proxy in front that buffers request bodies. |
 | `idle_timeout_sec` | Integer | `120` | Max time to wait for the next request when using HTTP keep-alive connections. |
-| `imap_timeout_sec` | Integer | `30` | An alias of `[provider] timeout_sec`, used only when `[provider] type` is `"imap"` and `timeout_sec` is unset or 0. It is ignored for `"multi"` (set `[provider] timeout_sec` there) and for `"maildir"`. It bounds the TCP connect to the IMAP server (plus the TLS handshake for `imaps://`), and the wait for the server's answer to IDLE, DONE, ENABLE, NOTIFY, the STATUS after an IDLE, and the STATUS and UID lookup around an APPEND to a server without UIDPLUS. It does not bound LOGIN or ordinary commands. |
+| `imap_timeout_sec` | Integer | `30` | An alias of `[provider] timeout_sec`, used only when `[provider] type` is `"imap"` and `timeout_sec` is unset or 0. It is ignored for `"multi"` (set `[provider] timeout_sec` there) and for `"maildir"`. It then bounds what `timeout_sec` bounds: the connect, and the wait for each of the IMAP server's answers, LOGIN and every other command included (see [`[provider]`](#provider)). |
 | `smtp_timeout_sec` | Integer | `30` | Bounds each SMTP command, and the wait for the server's answer after the message data, once the connection is open. Opening the connection (the TCP connect, and the TLS handshake for `smtps://`) has a fixed limit of 30 seconds of its own. For `smtp://`, the greeting, EHLO and STARTTLS run before this timeout is applied, under the SMTP library's 5-minute default. |
 
 0 or a negative value in any of these keys means its default. The event stream (`GET /events`) lifts both the read and the write deadline for itself.
@@ -174,7 +174,7 @@ With `"file"`, the pair is read once at startup: a renewed certificate takes eff
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `email` | String | None (required) | Email address for ACME registration. Start-up fails without it. |
-| `domains` | Array | None (required) | Domains to obtain certificates for; at least one is required. Only the listed domains get certificates, and a handshake naming an IP address is refused. |
+| `domains` | Array | None (required) | Domains to obtain certificates for; at least one is required. Only the listed domains get certificates, and a handshake whose SNI is an IP address is refused. A handshake without SNI, as a client connecting to an IP address usually sends, gets the `default_domain` certificate. |
 | `default_domain` | String | The first entry of `domains` | (Optional) Domain used for connections that send no SNI. |
 | `storage_provider`| String | `"s3"` | `"s3"`: certificates are shared through the `[tls.letsencrypt.s3]` bucket, with a local copy in `cache_dir`. The bucket must be reachable at startup, or ALPS does not start. `"file"`: `cache_dir` only, for a single node. Any other value stops startup. Because the default is `"s3"`, a single node without an S3 bucket must set `storage_provider = "file"`. With `[cluster]` enabled it must be `"s3"`. |
 | `cache_dir` | String | `"cert-cache"`| Local filesystem cache directory for certificates. A relative path is relative to the working directory of the ALPS process. |
@@ -218,7 +218,7 @@ Configures the backend mail services.
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `type` | String | `"imap"` | Mail provider protocol (`"imap"`, `"maildir"`, or `"multi"`). |
-| `timeout_sec` | Integer | `30` | Timeout of the IMAP backends, in seconds: the TCP connect (plus the TLS handshake for `imaps://`), and the wait for the server's answer to IDLE, DONE, ENABLE, NOTIFY, the STATUS after an IDLE, and the STATUS and UID lookup around an APPEND to a server without UIDPLUS. It does not bound LOGIN or ordinary commands. With `multi` it applies to every backend; `maildir` ignores it. For the `imap` provider, `[server] imap_timeout_sec` is used in its place when `timeout_sec` is unset or 0. |
+| `timeout_sec` | Integer | `30` | Timeout of the IMAP backends, in seconds: the TCP connect (plus the TLS handshake for `imaps://`), and the wait for each of the server's answers: the greeting, LOGIN and every later command. A fetched message, or a part of one, has a fixed 5 minutes to arrive instead. ALPS's own waits for the answers to IDLE, DONE, ENABLE, NOTIFY, the STATUS after an IDLE, and the STATUS and UID lookup around an APPEND to a server without UIDPLUS use the same limit. An answer that does not come in time closes the connection. With `multi` it applies to every backend; `maildir` ignores it. For the `imap` provider, `[server] imap_timeout_sec` is used in its place when `timeout_sec` is unset or 0. |
 
 A `[provider.<type>]` section matching `type` is required.
 
@@ -287,7 +287,7 @@ Each plugin has a configuration section. Common properties:
 - `options`: Map of plugin-specific settings.
 
 Which plugins load is decided at startup in two steps:
-1. **Each plugin is set up.** `base` and `gpg` always are, and `password` only when its section sets `enabled = true`. `caldav` and `carddav` are set up only when their section sets `server` or `enabled = true`, or a `[provider.multi]` backend names their endpoint. `managesieve` is set up only when its section sets `server` or a backend names a `managesieve` endpoint; `enabled = true` alone leaves it out, and startup logs `ManageSieve enabled without a server or routed endpoint; plugin disabled`. A `server` is parsed in this step, whether or not step 2 keeps the plugin, so one that does not parse stops startup either way (a `caldav` bare host whose DNS discovery fails leaves the plugin out instead, unless a backend names a `caldav` endpoint).
+1. **Each plugin is set up.** `base` and `gpg` always are, and `password` only when its section sets `enabled = true` and an `endpoint` or `command` is configured, in its options or in a `[provider.multi]` backend's `password` block. `caldav` and `carddav` are set up only when their section sets `server` or `enabled = true`, or a `[provider.multi]` backend names their endpoint. `managesieve` is set up only when its section sets `server` or a backend names a `managesieve` endpoint; `enabled = true` alone leaves it out, and startup logs `ManageSieve enabled without a server or routed endpoint; plugin disabled`. A `server` is parsed in this step, whether or not step 2 keeps the plugin, so one that does not parse stops startup either way (a `caldav` bare host whose DNS discovery fails leaves the plugin out instead, unless a backend names a `caldav` endpoint).
 2. **The set-up plugins are filtered by `enabled`.** `base` always loads, whatever its section says. A plugin whose section does not set `enabled = true`, because it says `enabled = false` or leaves `enabled` out, does not load. A plugin without a section loads only while no section sets `enabled = true`: as soon as one does, those sections form an allow-list, and only `base` and the plugins whose own sections set `enabled = true` load. A plugin dropped here is logged as `Plugin "<name>" is disabled`.
 
 Then:
@@ -321,7 +321,7 @@ No other plugin reads `options`, apart from `password`.
 ### Password Plugin (`[plugin.password]`)
 Changes user passwords through an external HTTP API, or a command run on the ALPS host.
 
-The enabled plugin loads only when a global endpoint or command, or a per-domain password backend under `provider.multi`, is configured. Otherwise startup logs why Password settings remain unavailable.
+With `enabled = true`, the plugin loads only when something can change a password: an `endpoint` or a `command` in `[plugin.password.options]`, or a `[provider.multi]` backend whose `password` block sets one of them. Otherwise it stays off, as without `enabled`, and startup logs `password: enabled without an endpoint, command or routed backend; plugin disabled`.
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -357,7 +357,7 @@ What a deployment changes about how ALPS looks. Without this section ALPS looks 
 | `default_theme` | String | `"alps"` | Colour theme for anyone who has not picked one: `"alps"`, `"migadu"`, `"nord"` or `"ocean"`. A theme picked in Settings stays that user's. Light or dark still follows each user's Theme Mode. |
 | `logo` | String | The default theme's own logo, else the edelweiss | The logo in the edelweiss's place, on the sign-in page and in the header, and the icon of the browser tab and the home screen. A logo ALPS ships, by name: `"migadu"` (the Migadu mammoth, in the theme's colours), or `"alps"` for the edelweiss. Or a folder holding a favicon package: `favicon.svg`, `favicon-96x96.png`, `favicon.ico`, `apple-touch-icon.png`, `web-app-manifest-192x192.png` and `web-app-manifest-512x512.png`, the files RealFaviconGenerator writes, each at most 1 MiB. The page shows its `favicon.svg`. With `default_theme = "migadu"` the Migadu logo is shown unless this names another. |
 
-ALPS refuses to start with a theme or built-in logo it does not know, or a favicon package missing a file.
+ALPS refuses to start with a theme it does not know, or a `logo` that is neither a built-in name nor a folder (a file, for example, or a path that does not exist or that ALPS may not look into). It also refuses a favicon package with one of the six files missing, over 1 MiB, or unreadable. A relative folder path is taken from ALPS's working directory.
 
 ---
 

@@ -158,7 +158,7 @@ Sieve does not allow two `vacation` actions in one script, so the pages keep the
 The raw editor shows the script as Sieve text, with syntax highlighting. It has two buttons:
 
 - **Validate** sends the text in the editor, without the auto-reply block, to `POST /managesieve/validate` and shows the result. Nothing is saved.
-- **Save** sends the text, merged with the auto-reply block, to `PUT /managesieve/script`, which also validates it before uploading it. A script that does not validate is not saved, and the stored one stays as it was.
+- **Save** sends the text, merged with the auto-reply block, to `PUT /managesieve/script`, which validates it too (see [Validation and Limits](#6-validation-and-limits)). A script that does not validate is not saved, and the stored one stays as it was.
 
 The visual editor shows a **Raw Editor** button once there is at least one rule. It asks for confirmation and then opens the raw editor with the script the rules compile to, the `# ALPS_VISUAL_STATE:` comment included. The raw editor has no way back. The next time the page opens, it shows the visual editor only if the script still matches its rules (see [When the Filters Page Opens the Raw Editor](#when-the-filters-page-opens-the-raw-editor)).
 
@@ -173,23 +173,24 @@ The server lists the Sieve extensions it runs in its `SIEVE` capability. `GET /m
 - **Auto-reply** works only when the server lists `vacation`. Otherwise the tab shows **This mail server does not offer automatic replies.** Start and end dates are offered only when the server also lists `date` and `relational`. Without them, dates stored earlier are dropped from the form, and the next save writes the reply without them.
 - **Filters** does not check the list. The visual editor writes the `require` its rules need whatever the server lists, and a save the server's extensions do not cover is refused by validation, for example with `Invalid Sieve script: extension 'body' is not supported`.
 
-Validation also accepts only the extensions the go-sieve library implements: `fileinto`, `envelope`, `encoded-character`, `comparator-i;octet`, `comparator-i;ascii-casemap`, `comparator-i;ascii-numeric`, `comparator-i;unicode-casemap`, `imap4flags`, `variables`, `relational`, `vacation`, `copy`, `regex`, `date`, `index`, `editheader`, `mailbox`, `subaddress` and `body`. A script that requires any other extension cannot be saved from ALPS, even when the server lists it.
+ALPS's own check, with the go-sieve library, knows these extensions: `fileinto`, `envelope`, `encoded-character`, `comparator-i;octet`, `comparator-i;ascii-casemap`, `comparator-i;ascii-numeric`, `comparator-i;unicode-casemap`, `imap4flags`, `variables`, `relational`, `vacation`, `copy`, `regex`, `date`, `index`, `editheader`, `mailbox`, `subaddress` and `body`. A script that requires another extension the server lists, such as `include`, is left to the server: Save uploads it and the server accepts or refuses it, and Validate asks the server where it can (see [Validation and Limits](#6-validation-and-limits)). A script that requires an extension the server does not list is refused before it is sent.
 
 ---
 
 ## 6. Validation and Limits
 
-`PUT /managesieve/script` (before it uploads anything) and `POST /managesieve/validate` check the script with the go-sieve library. A `PUT` with empty or whitespace-only content is not checked: it switches filtering off (see [Which Script ALPS Edits](#2-which-script-alps-edits)).
+`PUT /managesieve/script` and `POST /managesieve/validate` check the script first in ALPS, with the go-sieve library, before the script is sent, and then on the server: on `PUT` as the server stores it (`PUTSCRIPT`), and on `POST` with `CHECKSCRIPT`, which stores nothing. `CHECKSCRIPT` is sent only to a server that lists `VERSION` among its capabilities; on any other server, `POST` relies on ALPS's check alone. A `PUT` with empty or whitespace-only content is not checked: it switches filtering off (see [Which Script ALPS Edits](#2-which-script-alps-edits)).
 
 - Only the extensions in the server's `SIEVE` capability are allowed. A server that lists none allows none.
-- An invalid script is answered with 400 and `{"error": "Invalid Sieve script: ..."}`, with the library's message. A syntax error in the script's structure, or a command the library does not know, starts with its line and column, as in `3:1: LoadBlock: unsupported command: fileintoo`. An unsupported extension or an unexpected character is reported without a position. The Filters page shows the message as it is.
+- When a script requires an extension that go-sieve does not know but the server lists (see [Sieve Extensions](#5-sieve-extensions)), ALPS's check stops at that `require` and lets the script through, for the server to judge. Where `POST` cannot ask the server, it refuses such a script with `loadRequire: unsupported extension: <name>`.
+- An invalid script is answered with 400 and `{"error": "Invalid Sieve script: ..."}`, followed by the library's message or the server's. A syntax error in the script's structure, or a command the library does not know, starts with its line and column, as in `3:1: LoadBlock: unsupported command: fileintoo`. An unsupported extension or an unexpected character is reported without a position. The server's message is passed on whole, on several lines when the server sends several. A server that answers `NO (TRYLATER)` has not refused the script: that answer is 500 `sieve_unavailable`, as in [Routes](#8-routes). The Filters page shows the message as it is.
 - The parser's limits apply: at most 5000 tokens, and blocks and tests nested at most 15 deep.
 
 Size limits:
 
 - The request body of both routes is capped at 1 MiB. A larger body, or one that is not JSON, is answered with 400 and `{"error": "Invalid request payload"}`.
 - ALPS reads a stored script of at most 1 MiB. A larger one cannot be read, and the page shows that it could not load.
-- The server applies its own limits, such as a maximum script size, when ALPS uploads. A script the server refuses there is answered like any other server failure (see [Routes](#8-routes)).
+- The server applies its own limits, such as a maximum script size, when ALPS uploads. A script the server refuses there is answered 400 with the server's message, as above.
 
 The check for two `vacation` actions (see [The Auto-Reply Block](#the-auto-reply-block)) runs in the browser, before the upload.
 
@@ -223,7 +224,7 @@ The Auto-reply page edits one reply:
 
 `PUT` and `POST` answer 400 with `{"error": "Invalid request payload"}` or `{"error": "Invalid Sieve script: ..."}` (see [Validation and Limits](#6-validation-and-limits)).
 
-All three routes need a signed-in session; without one they answer 401. When ALPS cannot connect or sign in to the ManageSieve server, has no server for the login, or the server refuses a command, the route answers 500 with `{"error": "sieve_unavailable"}`. The reason goes to the log only, as `managesieve: failed to <step>: <error>`.
+All three routes need a signed-in session; without one they answer 401. When ALPS cannot connect or sign in to the ManageSieve server, has no server for the login, or the server refuses a command, the route answers 500 with `{"error": "sieve_unavailable"}`, and the reason goes to the log only, as `managesieve: failed to <step>: <error>`. The exception is the server refusing the script itself, on upload or on `CHECKSCRIPT`: that is the 400 above, unless the refusal says `TRYLATER`.
 
 ---
 

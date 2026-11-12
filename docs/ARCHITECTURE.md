@@ -135,7 +135,7 @@ Which plugins load:
 - `base` always loads. A plugin whose `[plugin.<name>]` section does not set `enabled = true` does not load.
 - If any section sets `enabled = true`, only `base` and the plugins so enabled load.
 - Otherwise no list is applied, and a plugin without a section loads too. `caldav` and `carddav` load only with a `server`, with `enabled = true`, or when a `multi` backend names their endpoint; `managesieve` only with a `server` or when a backend names its endpoint.
-- `password` loads only when `[plugin.password] enabled = true`, which also applies the list above, so every other plugin wanted needs `enabled = true` beside it.
+- `password` loads only when `[plugin.password] enabled = true` and an endpoint or command is configured, globally or in a `multi` backend's `password` block. `enabled = true` also applies the list above, so every other plugin wanted needs `enabled = true` beside it.
 
 A plugin's optional frontend is `plugins/<name>/frontend/index.ts`. It registers nav tabs, settings tabs, routes and hooks with `frontend/src/plugin-registry.ts`, which shows the tabs and routes, and runs the hooks, only of the plugins that `GET /session` lists in `EnabledPlugins`. `base` has no plugin frontend: its UI is `frontend/src`. See [PLUGINS.md](PLUGINS.md), and for the individual plugins [CDAV.md](CDAV.md), [FILTERS.md](FILTERS.md), [GPG.md](GPG.md) and [PASSWORD_CHANGE.md](PASSWORD_CHANGE.md).
 
