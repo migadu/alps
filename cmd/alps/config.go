@@ -468,10 +468,10 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	}
 
 	// Set session limit config
-	if c.Server.MaxSessions > 0 {
+	if c.Server.MaxSessions > 0 || (c.Server.MaxSessions == 0 && c.provider.meta.IsDefined("server", "max_sessions")) {
 		options.MaxSessions = c.Server.MaxSessions
 	}
-	if c.Server.MaxSessionsPerUser > 0 {
+	if c.Server.MaxSessionsPerUser > 0 || (c.Server.MaxSessionsPerUser == 0 && c.provider.meta.IsDefined("server", "max_sessions_per_user")) {
 		options.MaxSessionsPerUser = c.Server.MaxSessionsPerUser
 	}
 

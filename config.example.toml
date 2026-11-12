@@ -114,12 +114,14 @@ smtp_timeout_sec = 30
 # Maximum total concurrent sessions globally (default: 10000)
 # Set to 0 for unlimited sessions (not recommended)
 # When limit is reached, oldest sessions are evicted (LRU policy)
+# Omit for 10000; set 0 for unlimited.
 max_sessions = 10000
 
 # Maximum concurrent sessions per user (default: 10)
 # Set to 0 for unlimited sessions per user (not recommended)
 # Prevents a single user or compromised account from creating excessive sessions
 # When limit is reached, oldest user sessions are evicted (LRU policy)
+# Omit for 10; set 0 for unlimited.
 max_sessions_per_user = 10
 
 # Example configurations for different deployment sizes:
