@@ -46,7 +46,7 @@ There is no CI. Run what your change touches before you open a PR:
 go fmt ./... && go vet ./...
 go test ./...                          # needs no external services
 cd frontend && npx tsc                 # typechecks src and every plugin frontend; writes nothing
-cd frontend && npm test                # Vitest; collects frontend/test/**/*.test.ts only
+cd frontend && npm test                # typechecks tests, then runs Vitest on frontend/test/**/*.test.ts
 cd frontend && npm run typecheck:e2e   # after changing browser specs
 scripts/e2e.sh e2e/reading.spec.ts     # browser tests: sora at ../sora and PostgreSQL
 ```
@@ -55,9 +55,9 @@ scripts/e2e.sh e2e/reading.spec.ts     # browser tests: sora at ../sora and Post
 
 - A file argument is a regular expression: keep the `e2e/` prefix, or `reading.spec.ts` also runs
   `threading.spec.ts`.
-- `E2E_PORT` (default 8900) claims nine consecutive ports, or twelve with `E2E_CLUSTER=1`. When
-  someone else may be running the suite, pick a free base and give each run its own
-  `E2E_RESULTS`.
+- `E2E_PORT` (default 8900) claims nine consecutive ports, or twelve with `E2E_CLUSTER=1`, and
+  gives the run its own state, logs and `E2E_RESULTS` directories. When someone else may be
+  running the suite, pick a free base.
 - Specs import `test` and `expect` from `./fixtures`. A console error fails the test. Treat it as
   a finding, not noise; allow an expected one in that test alone with `allowConsoleErrors`.
 - Wait with `expect(…)` or `expect.poll(…)`, never a fixed sleep. Use unique subjects, and put back
