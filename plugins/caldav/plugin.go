@@ -90,8 +90,8 @@ func parseCalDAVURL(raw string) (*url.URL, error) {
 	case "caldav+insecure", "http+insecure":
 		u.Scheme = "http"
 	}
-	if u.Scheme == "" {
-		return nil, fmt.Errorf("CalDAV server requires a scheme (https://, http+insecure://), got: %v", u.String())
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return nil, fmt.Errorf("CalDAV server requires an HTTP(S) URL (https://, http://, caldavs://, caldav+insecure://, http+insecure://), got: %v", u.String())
 	}
 	return u, nil
 }
@@ -172,21 +172,20 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 			return nil, fmt.Errorf("failed to parse CalDAV server: %v", err)
 		}
 
-		switch u.Scheme {
-		case "caldavs":
-			u.Scheme = "https"
-		case "caldav+insecure", "http+insecure":
-			u.Scheme = "http"
-		}
 		if u.Scheme == "" {
 			s, err := caldav.DiscoverContextURL(context.Background(), u.Host)
 			if err != nil {
 				srv.Logger().Printf("caldav: failed to discover CalDAV server: %v", err)
 				return nil, nil
 			}
-			u, err = url.Parse(s)
+			u, err = parseCalDAVURL(s)
 			if err != nil {
 				return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
+			}
+		} else {
+			u, err = parseCalDAVURL(cfg.Server)
+			if err != nil {
+				return nil, err
 			}
 		}
 
