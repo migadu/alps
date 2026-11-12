@@ -1,7 +1,7 @@
 package managesieve
 
 import (
-	"fmt"
+	"github.com/migadu/alps/internal/serviceurl"
 	"github.com/migadu/alps/provider"
 	"net/url"
 	"sync"
@@ -29,21 +29,8 @@ type sieveEndpoint struct {
 
 // parseSieveURL normalises a configured ManageSieve endpoint.
 func parseSieveURL(raw string) (sieveEndpoint, error) {
-	u, err := alps.ParseServerURL(raw)
-	if err != nil {
-		return sieveEndpoint{}, fmt.Errorf("failed to parse ManageSieve server: %v", err)
-	}
-
-	insecure := false
-	switch u.Scheme {
-	case "managesieves", "managesieve", "sieve", "":
-		// TLS required (STARTTLS must succeed before authenticating).
-	case "managesieve+insecure", "sieve+insecure":
-		insecure = true
-	default:
-		return sieveEndpoint{}, fmt.Errorf("unknown scheme for ManageSieve server: %q (use managesieves://, managesieve://, or managesieve+insecure://)", u.Scheme)
-	}
-	return sieveEndpoint{url: u, insecure: insecure}, nil
+	u, insecure, err := serviceurl.ParseSieve(raw)
+	return sieveEndpoint{url: u, insecure: insecure}, err
 }
 
 // endpointFor resolves the ManageSieve target for a session. A provider that
