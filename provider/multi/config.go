@@ -3,6 +3,7 @@ package multi
 import (
 	"context"
 	"fmt"
+	"github.com/migadu/alps/internal/serviceurl"
 	"log/slog"
 	"net"
 	"net/url"
@@ -57,7 +58,7 @@ type serviceProbe struct {
 	Password    map[string]interface{} `toml:"password"`
 }
 
-func (p serviceProbe) toServices() services {
+func (p serviceProbe) toServices() (services, error) {
 	urls := make(map[string]string)
 	for name, raw := range map[string]string{
 		provider.ServiceSMTP:        p.SMTP,
@@ -66,10 +67,13 @@ func (p serviceProbe) toServices() services {
 		provider.ServiceManageSieve: p.ManageSieve,
 	} {
 		if v := strings.TrimSpace(raw); v != "" {
+			if err := serviceurl.Validate(name, v); err != nil {
+				return services{}, fmt.Errorf("%s: %w", name, err)
+			}
 			urls[name] = v
 		}
 	}
-	return services{urls: urls, password: p.Password}
+	return services{urls: urls, password: p.Password}, nil
 }
 
 // Options implements provider.Options for the multi-provider router.
@@ -128,7 +132,11 @@ func (c *Config) ToOptions() (provider.Options, error) {
 			if subType == "" {
 				subType = "imap"
 			}
-			domainServices[domainClean] = probe.toServices()
+			svc, err := probe.toServices()
+			if err != nil {
+				return nil, fmt.Errorf("multi: invalid service for domain %q: %w", domain, err)
+			}
+			domainServices[domainClean] = svc
 
 			subCfg, err := provider.LoadConfig(subType, c.meta, &prim)
 			if err != nil {
@@ -184,10 +192,14 @@ func (c *Config) ToOptions() (provider.Options, error) {
 				}
 			}
 
+			svc, err := probe.toServices()
+			if err != nil {
+				return nil, fmt.Errorf("multi: invalid service for route [%d]: %w", i, err)
+			}
 			routes = append(routes, routeEntry{
 				domains:  cleanedDomains,
 				options:  subOpt,
-				services: probe.toServices(),
+				services: svc,
 			})
 		}
 	}
@@ -207,7 +219,11 @@ func (c *Config) ToOptions() (provider.Options, error) {
 		if subType == "" {
 			subType = "imap"
 		}
-		defaultServices = probe.toServices()
+		var err error
+		defaultServices, err = probe.toServices()
+		if err != nil {
+			return nil, fmt.Errorf("multi: invalid service for default provider: %w", err)
+		}
 
 		subCfg, err := provider.LoadConfig(subType, c.meta, c.Default)
 		if err != nil {

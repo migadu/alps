@@ -4,6 +4,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"github.com/migadu/alps/internal/serviceurl"
 	"io/fs"
 	"net"
 	"net/http"
@@ -206,59 +207,13 @@ func (s *Server) DAVDefaultServer(service, username string) string {
 
 // ParseServerURL parses a connection string into a url.URL.
 // If the string lacks a scheme, it prepends // to ensure correct parsing of the hostname.
-func ParseServerURL(str string) (*url.URL, error) {
-	if !strings.ContainsAny(str, ":/") {
-		// This is a raw domain name, make it an URL with an empty scheme
-		str = "//" + str
-	}
-	return url.Parse(str)
-}
+func ParseServerURL(raw string) (*url.URL, error) { return serviceurl.ParseServer(raw) }
 
 // parseSMTPURL resolves a submission server URL into the address to dial and
 // the transport it implies. insecureOpt forces insecure mode on regardless of
 // scheme, mirroring the [smtp] insecure option.
-func parseSMTPURL(raw string, insecureOpt bool) (host string, tls bool, insecure bool, err error) {
-	if !strings.Contains(raw, "://") {
-		return "", false, false, fmt.Errorf("SMTP server requires a scheme (smtps://, smtp://, smtp+insecure://), got: %v", raw)
-	}
-	u, err := ParseServerURL(raw)
-	if err != nil {
-		return "", false, false, fmt.Errorf("failed to parse SMTP server: %v", err)
-	}
-
-	if u.Scheme == "" {
-		return "", false, false, fmt.Errorf("SMTP server requires a scheme (smtps://, smtp://, smtp+insecure://), got: %v", u.String())
-	}
-
-	switch u.Scheme {
-	case "smtps":
-		tls = true
-	case "smtp+insecure":
-		insecure = true
-	case "smtp":
-	default:
-		return "", false, false, fmt.Errorf("unknown scheme for SMTP server: %v", u.Scheme)
-	}
-
-	if insecureOpt {
-		insecure = true
-	}
-
-	hostname := u.Hostname()
-	if hostname == "" {
-		return "", false, false, fmt.Errorf("SMTP server host cannot be empty")
-	}
-	port := u.Port()
-	if port == "" {
-		if u.Scheme == "smtps" {
-			port = "465"
-		} else {
-			port = "587"
-		}
-	}
-	host = net.JoinHostPort(hostname, port)
-
-	return host, tls, insecure, nil
+func parseSMTPURL(raw string, insecureOpt bool) (string, bool, bool, error) {
+	return serviceurl.ParseSMTP(raw, insecureOpt)
 }
 
 func (s *Server) parseSMTPServer() error {
