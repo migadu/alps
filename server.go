@@ -109,6 +109,8 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 }
 
 func cleanupTempAttachments() error {
+	temporaryUploads.Lock()
+	defer temporaryUploads.Unlock()
 	tempDir := os.TempDir()
 	entries, err := os.ReadDir(tempDir)
 	if err != nil {
@@ -123,12 +125,16 @@ func cleanupTempAttachments() error {
 		if !strings.HasPrefix(entry.Name(), "multipart-") {
 			continue
 		}
+		path, err := filepath.Abs(filepath.Join(tempDir, entry.Name()))
+		if err != nil || temporaryUploads.paths[path] > 0 {
+			continue
+		}
 		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
-		if info.ModTime().Before(threshold) {
-			os.Remove(filepath.Join(tempDir, entry.Name()))
+		if info.Mode().IsRegular() && info.ModTime().Before(threshold) {
+			os.Remove(path)
 		}
 	}
 	return nil
@@ -230,10 +236,6 @@ func (s *Server) parseSMTPServer() error {
 }
 
 func (s *Server) loadPlugins() error {
-	if s.Scheduler != nil {
-		s.Scheduler.Clear()
-	}
-
 	var plugins []Plugin
 	for _, load := range pluginLoaders {
 		l, err := load(s)

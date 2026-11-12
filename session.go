@@ -206,13 +206,22 @@ type Attachment struct {
 // upload is one upload request's form, and how many hold its files: each of
 // its attachments the session keeps, and the request while it stores them.
 type upload struct {
-	form *multipart.Form
-	held atomic.Int64
+	form      *multipart.Form
+	held      atomic.Int64
+	tempPaths []string
 }
 
 func (u *upload) release() {
 	if u.held.Add(-1) == 0 {
+		temporaryUploads.Lock()
+		defer temporaryUploads.Unlock()
 		u.form.RemoveAll()
+		for _, path := range u.tempPaths {
+			temporaryUploads.paths[path]--
+			if temporaryUploads.paths[path] == 0 {
+				delete(temporaryUploads.paths, path)
+			}
+		}
 	}
 }
 
@@ -835,6 +844,7 @@ func (s *Session) putAttachments(composerID string, files []*multipart.FileHeade
 	// The request's own hold, while it stores the files: an attachment of it
 	// evicted meanwhile does not take the bytes the next one is stored with.
 	up.held.Store(1)
+	up.protectTemporaryFiles()
 	defer up.release()
 
 	// Refuse a request whose session has already ended before making room
