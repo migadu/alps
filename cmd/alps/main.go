@@ -8,6 +8,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -164,6 +165,8 @@ func main() {
 	if len(config.WebAuthn.RPOrigins) > 0 {
 		rpOrigins = config.WebAuthn.RPOrigins
 	}
+
+	warnWebAuthnOrigins(logger, rpID, rpOrigins)
 
 	s.WebAuthn, err = webauthn.New(&webauthn.Config{
 		RPDisplayName: rpDisplayName,
@@ -412,4 +415,21 @@ func shutdownHTTPServers(ctx context.Context, servers ...*http.Server) error {
 	}
 	wg.Wait()
 	return errors.Join(errs...)
+}
+
+// warnWebAuthnOrigins catches deployments that retain localhost origins while
+// setting a public RPID. Ports do not affect the relying-party hostname check.
+func warnWebAuthnOrigins(logger alps.Logger, rpID string, origins []string) {
+	rpID = strings.ToLower(strings.TrimSuffix(rpID, "."))
+	for _, origin := range origins {
+		u, err := url.Parse(origin)
+		if err != nil || u.Hostname() == "" {
+			logger.Warnf("WebAuthn: origin %q has no usable hostname; check [webauthn] origins", origin)
+			continue
+		}
+		host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+		if host != rpID && !strings.HasSuffix(host, "."+rpID) {
+			logger.Warnf("WebAuthn: origin %q is outside rpid %q; security-key enrolment will fail; set [webauthn] origins to the browser-facing origin", origin, rpID)
+		}
+	}
 }
