@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG鍵'
   },
   gpg: {
+    encryptionFailed: 'このメッセージを暗号化できませんでした。再試行してください。',
     keyringUnreadable: 'GPG鍵を読み取れませんでした。再試行してください。',
     noPrivateKey: '秘密GPG鍵が保存されていません。設定で鍵をインポートまたは生成してください。',
     passphraseCancelled: '復号をキャンセルしました。',

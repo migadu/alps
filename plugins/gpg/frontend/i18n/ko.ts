@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG 키'
   },
   gpg: {
+    encryptionFailed: '이 메시지를 암호화하지 못했습니다. 다시 시도하세요.',
     keyringUnreadable: 'GPG 키를 읽지 못했습니다. 다시 시도하세요.',
     noPrivateKey: '저장된 GPG 개인 키가 없습니다. 설정에서 키를 가져오거나 생성하세요.',
     passphraseCancelled: '복호화가 취소되었습니다.',

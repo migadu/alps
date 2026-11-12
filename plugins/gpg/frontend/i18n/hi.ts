@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG कुंजियाँ'
   },
   gpg: {
+    encryptionFailed: 'यह संदेश एन्क्रिप्ट नहीं किया जा सका। फिर कोशिश करें।',
     keyringUnreadable: 'आपकी GPG कुंजियाँ पढ़ी नहीं जा सकीं। फिर कोशिश करें।',
     noPrivateKey: 'कोई निजी GPG कुंजी सहेजी नहीं गई है। सेटिंग में कुंजी आयात करें या बनाएँ।',
     passphraseCancelled: 'डिक्रिप्शन रद्द कर दिया गया।',

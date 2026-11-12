@@ -5,13 +5,14 @@
  * hold angle brackets of its own: the address is the one in the last pair.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { waitFor } from './helpers/dom';
 
 /** Stands in for openpgp: a key is its armour, and the ciphertext names the keys it was made for. */
 const openpgp = vi.hoisted(() => ({
   readKey: vi.fn(async ({ armoredKey }: { armoredKey: string }) => ({ armoredKey })),
   readPrivateKey: vi.fn(async ({ armoredKey }: { armoredKey: string }) => ({
     armoredKey,
-    isDecrypted: () => true,
+    isDecrypted: (): boolean => true,
     toPublic: () => ({ armoredKey: `${armoredKey}-public` }),
   })),
   createMessage: vi.fn(async ({ text }: { text: string }) => ({ text })),
@@ -167,6 +168,32 @@ describe('an encrypted message to the user', () => {
 
     expect(await send(['me@example.net'])).toBeInstanceOf(FormData);
     expect(queries).toEqual([]);
+    expect(alerts).toEqual([]);
+  });
+});
+
+describe('translated send failures', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    localStorage.setItem('alps_active_user', 'me@example.com');
+    localStorage.setItem('alps_settings_me@example.com', JSON.stringify({ loginUsername: 'me@example.com' }));
+  });
+  it('translates keyring read failures', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 500 })));
+    expect(await send(['me@example.com'])).toBe(false);
+    expect(alerts).toEqual(['gpg.keyringUnreadable']);
+  });
+  it('translates encryption failures without exposing library errors', async () => {
+    openpgp.encrypt.mockRejectedValueOnce(new Error('English library error'));
+    expect(await send(['me@example.com'])).toBe(false);
+    expect(alerts).toEqual(['gpg.encryptionFailed']);
+  });
+  it('cancels sending without an error alert when the prompt is cancelled', async () => {
+    openpgp.readPrivateKey.mockResolvedValueOnce({ armoredKey: 'MY-KEY', isDecrypted: () => false, toPublic: () => ({ armoredKey: 'pub' }) });
+    const pending = send(['me@example.com']);
+    await waitFor(() => !!document.querySelector('ui-prompt'), 'passphrase prompt');
+    document.querySelector('ui-prompt')!.dispatchEvent(new CustomEvent('cancel'));
+    expect(await pending).toBe(false);
     expect(alerts).toEqual([]);
   });
 });
