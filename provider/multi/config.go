@@ -268,6 +268,18 @@ func (c *Config) ToOptions() (provider.Options, error) {
 
 	autodiscDomains := cleanDomainList(c.AutodiscoverDomains)
 	templateDomains := cleanDomainList(c.TemplateDomains)
+	if c.Autodiscover && len(autodiscDomains) == 0 {
+		return nil, fmt.Errorf("multi: autodiscover requires non-empty autodiscover_domains")
+	}
+	if c.Template != "" {
+		if len(templateDomains) == 0 {
+			return nil, fmt.Errorf("multi: template requires non-empty template_domains")
+		}
+		sample := strings.NewReplacer("%d", "example.test", "%u", "sample", "%n", "sample@example.test").Replace(c.Template)
+		if _, err := (&imap.Config{Server: sample}).ToOptions(); err != nil {
+			return nil, fmt.Errorf("multi: invalid template: %w", err)
+		}
+	}
 
 	if len(domains) == 0 && len(routes) == 0 && defaultOpt == nil && c.Template == "" && !c.Autodiscover {
 		return nil, fmt.Errorf("multi: no domains, routes, template, autodiscover, or default provider configured")
