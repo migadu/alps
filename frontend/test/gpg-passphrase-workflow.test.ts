@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, mount, shadow, waitFor } from './helpers/dom';
+import { cleanup, mount, shadow, shadowAll, text, waitFor } from './helpers/dom';
 import { I18nStore } from '../src/store/i18n-store';
 
 const pgp = vi.hoisted(() => ({
@@ -401,5 +401,138 @@ describe('purging the keypair', () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).toMatch(/^Failed to purge keys: /);
     expect(await read()).toContain('opened with OLD-KEY');
+  });
+});
+
+/**
+ * The page offers to generate or import a keypair only once a read has
+ * answered that there is none. A read that failed, refused or timed out, left
+ * the page saying "No key present" beside both, and either one saved a new
+ * keypair over the one stored: for a keypair generated here, the only copy of
+ * its private key.
+ */
+describe('reading the keypair', () => {
+  const stored = { public_key: 'public armour', encrypted_private_key: 'OLD-KEY' };
+  /** How the server answers the read: the keypair, a refusal, or no answer in time. */
+  let answer: 'ok' | 'refused' | 'timed out';
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      if (answer === 'timed out') throw new DOMException('The operation was aborted.', 'AbortError');
+      if (answer === 'refused') return new Response('{"error":"An internal error occurred"}', { status: 500, statusText: 'Internal Server Error' });
+      return new Response(JSON.stringify(stored));
+    }));
+  });
+
+  /** The labels of the pane's buttons. */
+  const buttons = (el: El) => shadowAll<HTMLElement>(el, 'alps-button').map(b => b.textContent?.trim());
+
+  it.each(['refused', 'timed out'] as const)('a read %s says so, offers Try again, and offers no new keypair', async (how) => {
+    answer = how;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const el = await pane();
+    expect(text(el)).not.toContain('No key present');
+    expect(text(el, '[role="alert"]')).toBe('Could not load the GPG keys.');
+    expect(buttons(el)).toEqual(['Try again']);
+
+    // Try again reads once more, and this time shows the keypair stored.
+    answer = 'ok';
+    shadow<El>(el, 'alps-button').click();
+    await waitFor(() => !el.loading && !!el.shadowRoot?.querySelector('.key-info'), 'the keypair');
+    expect(text(el, '.key-info')).toBe('public armour');
+    expect(buttons(el)).toEqual(['Purge Keypair']);
+  });
+
+  it('a read that answers no keypair offers to generate or import one', async () => {
+    answer = 'ok';
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"public_key":"","encrypted_private_key":""}')));
+    const el = await pane();
+    expect(el.shadowRoot!.querySelector('[role="alert"]')).toBeNull();
+    expect(text(el)).toContain('No key present');
+    expect(buttons(el)).toEqual(['Generate New Keypair', 'Import Existing GPG Keypair']);
+  });
+});
+
+/**
+ * A save from a page that showed no keypair does not ask the server to
+ * replace one, and the server keeps a keypair stored since the page read. The
+ * page then reads again, and shows the keypair the server kept.
+ */
+describe('saving a keypair the page did not show', () => {
+  let keyring: Record<string, string>;
+  let posted: string[];
+  let alerts: string[];
+
+  beforeEach(() => {
+    keyring = {};
+    posted = [];
+    alerts = [];
+    vi.stubGlobal('alert', (message: string) => { alerts.push(message); });
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        posted.push(url);
+        if (keyring.public_key && !new URL(url, 'http://alps.test').searchParams.has('replace')) {
+          return new Response('{"error":"a keypair is stored already"}', { status: 409, statusText: 'Conflict' });
+        }
+        keyring = JSON.parse(String(init.body));
+        return new Response('{"success":true}');
+      }
+      return new Response(JSON.stringify(keyring));
+    }));
+    pgp.readPrivateKey.mockResolvedValue({ isDecrypted: () => true });
+  });
+
+  async function generate(el: El) {
+    const finished = el.generateKeys();
+    const first = await prompt(el);
+    await submit(first, 'new secret');
+    await submit(await prompt(el, first), 'new secret');
+    await finished;
+  }
+
+  async function importPasted(el: El) {
+    el.viewState = 'import';
+    el.pubKeyInput = 'pasted public';
+    el.privKeyInput = 'pasted private';
+    const finished = el.importKeys();
+    const first = await prompt(el);
+    await submit(first, 'new secret');
+    await submit(await prompt(el, first), 'new secret');
+    await finished;
+  }
+
+  it.each(['generate', 'import'] as const)('%s, over a keypair stored meanwhile, keeps it and shows it', async (method) => {
+    const el = await pane();
+    expect(el.keyring).toBeNull();
+    // Another session stores a keypair after this page read none.
+    keyring = { public_key: 'stored elsewhere', encrypted_private_key: 'OTHER-KEY' };
+    if (method === 'generate') await generate(el);
+    else await importPasted(el);
+    expect(posted).toEqual(['/gpg/keys']);
+    expect(keyring).toEqual({ public_key: 'stored elsewhere', encrypted_private_key: 'OTHER-KEY' });
+    await waitFor(() => !el.loading, 'the read after the refusal');
+    await el.updateComplete;
+    expect(text(el, '.key-info')).toBe('stored elsewhere');
+    if (method === 'generate') expect(alerts).toEqual(['Failed to generate keys: 409 Conflict']);
+    else expect(el.importError).toBe('Import failed: 409 Conflict');
+  });
+
+  it('generate, with no keypair stored, saves one without asking to replace any', async () => {
+    const el = await pane();
+    await generate(el);
+    expect(posted).toEqual(['/gpg/keys']);
+    expect(keyring).toEqual({ public_key: 'public armour', encrypted_private_key: 'encrypted armour' });
+    expect(alerts).toEqual([]);
+    await el.updateComplete;
+    expect(text(el, '.key-info')).toBe('public armour');
+  });
+
+  it('a save over the keypair the page shows asks to replace it', async () => {
+    keyring = { public_key: 'shown', encrypted_private_key: 'SHOWN-KEY' };
+    const el = await pane();
+    expect(el.keyring).not.toBeNull();
+    await generate(el);
+    expect(posted).toEqual(['/gpg/keys?replace=1']);
+    expect(keyring).toEqual({ public_key: 'public armour', encrypted_private_key: 'encrypted armour' });
   });
 });

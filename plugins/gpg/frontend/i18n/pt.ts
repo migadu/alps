@@ -25,6 +25,8 @@ export default {
     generating: 'A gerar o par de chaves...',
     enableEncryptionDesc: 'Para ativar a encriptação ponto a ponto entre contactos que a suportam, precisa de um par de chaves GPG.',
     noKeyPresent: 'Nenhuma chave presente',
+    loadError: 'Não foi possível carregar as chaves GPG.',
+    loadErrorRetry: 'Tentar novamente',
     passphraseRequiredLabel: 'Frase de acesso (obrigatória)',
     generateKeysBtn: 'Gerar chaves',
     importExistingKeys: 'Importar par de chaves GPG existente',

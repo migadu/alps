@@ -25,6 +25,8 @@ export default {
     generating: 'Generisanje para ključeva...',
     enableEncryptionDesc: 'Da biste omogućili end-to-end kripciju sa kontaktima koji je podržavaju, potreban vam je GPG par ključeva.',
     noKeyPresent: 'Nema ključeva',
+    loadError: 'GPG ključevi nisu mogli da se učitaju.',
+    loadErrorRetry: 'Pokušajte ponovo',
     passphraseRequiredLabel: 'Lozinka (obavezno)',
     generateKeysBtn: 'Generiši ključeve',
     importExistingKeys: 'Uvezi postojeći GPG par ključeva',
