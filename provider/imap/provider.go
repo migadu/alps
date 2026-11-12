@@ -426,13 +426,13 @@ func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provid
 		fallbackNames = []string{"Draft", "Drafts"}
 	case provider.MailboxTypeTrash:
 		attr = imap.MailboxAttrTrash
-		fallbackNames = []string{"Trash", "Deleted"}
+		fallbackNames = []string{"Trash", "Deleted", "Deleted Items"}
 	case provider.MailboxTypeJunk:
 		attr = imap.MailboxAttrJunk
 		fallbackNames = []string{"Junk", "Spam"}
 	case provider.MailboxTypeArchive:
 		attr = imap.MailboxAttrArchive
-		fallbackNames = []string{"Archive"}
+		fallbackNames = []string{"Archive", "Archives"}
 	}
 
 	ns, err := p.readNamespaces()

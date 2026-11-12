@@ -244,7 +244,7 @@ func TestNamespaceOf(t *testing.T) {
 		kind, prefix string
 	}{
 		{cyrus, "INBOX", "", ""},
-		{cyrus, "INBOX.Sent", "", ""},
+		{cyrus, "INBOX.Sent", "", "INBOX."},
 		{cyrus, "user.bob.Plans", provider.NamespaceOther, "user."},
 		{cyrus, "user", provider.NamespaceOther, "user."},
 		{cyrus, "Announcements", provider.NamespaceShared, ""},

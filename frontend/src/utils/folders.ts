@@ -58,7 +58,8 @@ const ATTR_TO_ROLE: Record<string, MailboxRole> = {
 };
 
 // Well-known English mailbox names -> role, used only as a fallback when the
-// server does not advertise special-use attributes.
+// server does not advertise special-use attributes. Keep these aliases aligned
+// with provider/imap.listMailboxByType.
 const NAME_TO_ROLE: Record<string, MailboxRole> = {
   [FOLDER_INBOX.toLowerCase()]: 'inbox',
   [FOLDER_DRAFTS.toLowerCase()]: 'drafts',
@@ -71,6 +72,8 @@ const NAME_TO_ROLE: Record<string, MailboxRole> = {
   // Exchange's Trash. Was a private regex in message-list's isDiscardableFolder,
   // which meant the Delete All banner knew this name and nothing else did.
   'deleted items': 'trash',
+  'deleted': 'trash',
+  'draft': 'drafts',
 };
 
 /**
@@ -111,7 +114,7 @@ export function mailboxRole(mb: any, advertised?: Set<MailboxRole>): MailboxRole
   if (lowerAttrs.includes('\\noselect') || lowerAttrs.includes('\\nonexistent')) {
     return null;
   }
-  const name: string = mb.Name || mb.Mailbox || '';
+  const name = nameInNamespace(mb);
   const byName = lookupRole(NAME_TO_ROLE, name.toLowerCase());
   // A name is a guess, and only for a role the server has not assigned itself.
   // This used to answer by name for ANY mailbox lacking an attribute, even when

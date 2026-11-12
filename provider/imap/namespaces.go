@@ -76,9 +76,6 @@ func namespaceOf(ns *imap.NamespaceData, name string) (kind, prefix string) {
 	consider("", ns.Personal)
 	consider(provider.NamespaceOther, ns.Other)
 	consider(provider.NamespaceShared, ns.Shared)
-	if kind == "" {
-		prefix = ""
-	}
 	return kind, prefix
 }
 

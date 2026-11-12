@@ -178,6 +178,19 @@ describe('the sidebar draws a special folder below the top level as one', () => 
     ]);
   });
 
+  it('under a personal prefix without special-use attributes', async () => {
+    const own = (Name: string) => ({ Name, Attrs: [], Delimiter: '.', NamespacePrefix: Name === 'INBOX' ? '' : 'INBOX.' });
+    const mailboxes = ['INBOX', 'INBOX.Archive', 'INBOX.Draft', 'INBOX.Sent', 'INBOX.Spam', 'INBOX.Deleted'].map(own);
+    expect(await rows(mailboxes, ['INBOX'])).toEqual([
+      ['folderList.inbox', 'tray'],
+      ['folderList.archive', 'archiveBox'],
+      ['folderList.trash', 'trash'],
+      ['folderList.drafts', 'fileText'],
+      ['folderList.sent', 'paperPlaneTilt'],
+      ['folderList.spam', 'warningDiamond'],
+    ]);
+  });
+
   it('once per role: the second folder carrying it keeps its own name', async () => {
     const dotted = (Name: string, Attrs: string[] = []) => ({ Name, Attrs, Delimiter: '.' });
     const dovecot = [
