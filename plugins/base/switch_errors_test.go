@@ -1,13 +1,17 @@
 package alpsbase
 
 import (
+	"errors"
 	"github.com/migadu/alps"
+	"github.com/migadu/alps/provider"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestHTTP_SwitchRefusalsKeepTheCurrentAccount(t *testing.T) {
@@ -40,6 +44,77 @@ func TestHTTP_SwitchRefusalsKeepTheCurrentAccount(t *testing.T) {
 			s.mailbox("INBOX")
 			if got := s.signedInSession().Username(); got != testUser {
 				t.Errorf("current account changed to %s", got)
+			}
+		})
+	}
+}
+
+type switchCurrentConnectionOptions struct {
+	provider.Options
+	mode *atomic.Int32
+}
+
+func (o switchCurrentConnectionOptions) CreateFactory(timeout time.Duration, debug bool) provider.AuthenticatedProviderFactory {
+	connect := o.Options.CreateFactory(timeout, debug)
+	return func(username, password string) (provider.MailProvider, error) {
+		if username == testUser && o.mode.Load() == 2 {
+			return nil, errors.New("current mail server offline")
+		}
+		p, err := connect(username, password)
+		if err != nil {
+			return nil, err
+		}
+		return switchCurrentConnectionProvider{p, o.mode, username == testUser}, nil
+	}
+}
+
+type switchCurrentConnectionProvider struct {
+	provider.MailProvider
+	mode    *atomic.Int32
+	primary bool
+}
+
+func (p switchCurrentConnectionProvider) GetStore() (provider.Store, error) {
+	if p.primary && p.mode.Load() != 0 {
+		return nil, io.EOF
+	}
+	return p.MailProvider.GetStore()
+}
+
+func TestHTTP_SwitchPreservesCurrentAccountReconnectFailures(t *testing.T) {
+	for _, outage := range []bool{false, true} {
+		t.Run(map[bool]string{false: "current password revoked", true: "current server offline"}[outage], func(t *testing.T) {
+			mode := &atomic.Int32{}
+			s := newTestServerWithOptions(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(o *alps.Options) { o.Provider = switchCurrentConnectionOptions{o.Provider, mode} })
+			s.addBob()
+			s.expect(s.signInKeeping(true), http.StatusOK)
+			s.expect(s.do("POST", "/accounts", url.Values{"username": {bobUser}, "password": {bobPassword}}), http.StatusOK)
+			if outage {
+				mode.Store(2)
+			} else {
+				if err := os.WriteFile(filepath.Join(filepath.Dir(s.dir), "passwd"), []byte(testUser+":{PLAIN}changed\n"+bobUser+":{PLAIN}"+bobPassword+"\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				mode.Store(1)
+			}
+			r := s.do("POST", "/accounts/switch", url.Values{"username": {bobUser}})
+			if outage {
+				s.expect(r, http.StatusServiceUnavailable)
+				if refusal(t, r) != "mail_server_unavailable" {
+					t.Fatalf("wrong current-account outage: %s", r.body)
+				}
+			} else {
+				s.expect(r, http.StatusUnauthorized)
+			}
+			address, _ := url.Parse(s.url)
+			hasLogin := false
+			for _, cookie := range s.client.Jar.Cookies(address) {
+				if cookie.Name == "alps_login_token" && cookie.Value != "" {
+					hasLogin = true
+				}
+			}
+			if hasLogin != outage {
+				t.Errorf("login token retained=%v after current-account failure", hasLogin)
 			}
 		})
 	}
