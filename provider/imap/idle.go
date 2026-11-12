@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -14,9 +15,9 @@ import (
 
 var _ provider.Idler = (*IMAPProvider)(nil)
 
-// defaultResponseTimeout bounds the wait for the answer to DONE on a
-// connection made without a timeout of its own: the client's own response
-// timeout.
+// defaultResponseTimeout bounds waits for the server's answers on a
+// connection made without a timeout of its own, matching the client's
+// default response timeout.
 const defaultResponseTimeout = 30 * time.Second
 
 // mailboxNews passes on what the mail server says unasked about the mailbox
@@ -152,12 +153,11 @@ func (p *IMAPProvider) OnMailboxNews(news func(mailbox string)) {
 // Where the folders are watched (see WatchFolders) and the server stops
 // telling of them, the wait ends too, for the session to ask again.
 //
-// Neither the server's continuation to IDLE nor its answer to DONE is waited
-// for longer than the connection's response timeout. The client waits for
-// either under its read deadline for IDLE, half an hour, and whoever waits
-// for the connection, background work and a password change among them,
-// waited as long. Either left unanswered loses the connection: it is closed,
-// and the error says so.
+// The client bounds every answer, including the continuation to IDLE and the
+// answer to DONE, by the connection's response timeout. Its half-hour IDLE
+// deadline applies only while waiting for news after the continuation. Either
+// answer left pending past the response timeout loses the connection: it is
+// closed, and the error says so whichever deadline fires first.
 func (p *IMAPProvider) Idle(mailbox string, stop <-chan struct{}, started func()) error {
 	select {
 	case <-stop:
@@ -261,8 +261,9 @@ func (p *IMAPProvider) rememberIdled(ask bool) error {
 var errUnanswered = errors.New("imap: no answer in time")
 
 // answeredWithin runs wait, which waits for the server's answer to what, for
-// no longer than the connection's response timeout. Past it, the connection
-// is closed, and the error is a lost connection's.
+// no longer than the connection's response timeout. Its timer and the client's
+// read deadline use the same timeout. Whichever fires first closes the
+// connection and returns the same unanswered, lost-connection error.
 func (p *IMAPProvider) answeredWithin(what string, wait func() error) error {
 	answered := make(chan error, 1)
 	go func() { answered <- wait() }()
@@ -272,13 +273,22 @@ func (p *IMAPProvider) answeredWithin(what string, wait func() error) error {
 	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
+	unanswered := func() error {
+		// The client releases failed commands before closing its Closed channel.
+		// Finish closing before callers classify the answer as a lost connection.
+		p.client.Close()
+		return fmt.Errorf("%w: %s within %v, connection closed: %w", errUnanswered, what, timeout, net.ErrClosed)
+	}
 	select {
 	case err := <-answered:
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			return unanswered()
+		}
 		return err
 	case <-timer.C:
-		p.client.Close()
+		err := unanswered()
 		<-answered
-		return fmt.Errorf("%w: %s within %v, connection closed: %w", errUnanswered, what, timeout, net.ErrClosed)
+		return err
 	}
 }
 
