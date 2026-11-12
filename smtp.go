@@ -40,6 +40,11 @@ func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
 	// A failure to connect is wrapped, so that DoSMTP can tell a connection
 	// that failed, which it tries again, from a refusal or a certificate it
 	// cannot trust, which it does not.
+	dialTimeout := timeout
+	if dialTimeout < 0 {
+		dialTimeout = 0
+	}
+
 	var c *smtp.Client
 	var err error
 	if useTLS {
@@ -48,7 +53,7 @@ func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
 			return nil, fmt.Errorf("failed to connect to SMTPS server: %w", err)
 		}
 	} else if !insecure {
-		conn, dialErr := net.DialTimeout("tcp", host, timeout)
+		conn, dialErr := net.DialTimeout("tcp", host, dialTimeout)
 		if dialErr != nil {
 			return nil, fmt.Errorf("failed to connect to SMTP server: %w", dialErr)
 		}
@@ -60,9 +65,12 @@ func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
 		// NewClientStartTLS reads the greeting and negotiates STARTTLS before
 		// callers can set CommandTimeout. Bound that exchange at the connection.
 		expired := make(chan struct{})
-		timer := time.AfterFunc(timeout, func() { conn.Close(); close(expired) })
+		var timer *time.Timer
+		if timeout > 0 {
+			timer = time.AfterFunc(timeout, func() { conn.Close(); close(expired) })
+		}
 		c, err = smtp.NewClientStartTLS(conn, &tls.Config{ServerName: serverName})
-		if !timer.Stop() {
+		if timer != nil && !timer.Stop() {
 			<-expired
 			if c != nil {
 				c.Close()
@@ -70,6 +78,7 @@ func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
 			return nil, fmt.Errorf("SMTP STARTTLS setup timed out: %w", os.ErrDeadlineExceeded)
 		}
 		if err != nil {
+			conn.Close()
 			return nil, fmt.Errorf("failed to connect to SMTP server: %w", err)
 		}
 	} else {
@@ -80,8 +89,10 @@ func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
 	}
 
 	// Set timeouts on the client
-	c.CommandTimeout = timeout
-	c.SubmissionTimeout = timeout
+	if timeout > 0 {
+		c.CommandTimeout = timeout
+		c.SubmissionTimeout = timeout
+	}
 
 	return c, err
 }
