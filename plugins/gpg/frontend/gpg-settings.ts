@@ -215,10 +215,15 @@ export class AlpsGpgSettings extends LitElement {
             // @ts-ignore
             const openpgp = await import('openpgp');
             const settings = readUserSettings();
+            const address = ownAddress(settings).trim();
+            // Match the OpenPGP user-ID email constraints; bare mail logins
+            // belong in the name field instead of an invented address.
+            const email = /^[^\p{C}\p{Z}@<>\\]+@[^\p{C}\p{Z}@<>\\]+[^\p{C}\p{Z}\p{P}]$/u.test(address) ? address : '';
+            const name = settings.name?.trim() || (email ? '' : address || 'ALPS User');
             const { privateKey, publicKey } = await openpgp.generateKey({
                 type: 'ecc',
                 curve: 'curve25519',
-                userIDs: [{ name: settings.name || '', email: ownAddress(settings) }],
+                userIDs: [{ name, ...(email ? { email } : {}) }],
                 passphrase: pass
             });
 
