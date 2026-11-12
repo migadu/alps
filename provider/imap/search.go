@@ -76,8 +76,8 @@ func searchTokens(query string) []searchTerm {
 			continue
 		}
 		flush()
-		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-			value = value[1 : len(value)-1]
+		if strings.HasPrefix(value, `"`) {
+			value = strings.TrimSuffix(value[1:], `"`)
 		}
 		terms = append(terms, searchTerm{prefix: strings.ToLower(key), value: value})
 	}
@@ -154,8 +154,8 @@ func prepareIMAPSearch(terms string) *imap.SearchCriteria {
 				hParts := strings.SplitN(value, ":", 2)
 				if len(hParts) == 2 {
 					hVal := hParts[1]
-					if len(hVal) >= 2 && hVal[0] == '"' && hVal[len(hVal)-1] == '"' {
-						hVal = hVal[1 : len(hVal)-1]
+					if strings.HasPrefix(hVal, `"`) {
+						hVal = strings.TrimSuffix(hVal[1:], `"`)
 					}
 					criteria = searchCriteriaAnd(
 						criteria, searchCriteriaHeader(hParts[0], hVal))
