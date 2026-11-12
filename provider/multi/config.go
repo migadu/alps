@@ -66,12 +66,14 @@ func decodeBackend(meta *toml.MetaData, raw toml.Primitive, target any) error {
 	if err := meta.PrimitiveDecode(raw, target); err != nil {
 		return err
 	}
-	var fields map[string]any
-	if err := meta.PrimitiveDecode(raw, &fields); err != nil {
+	var pw struct {
+		Password any `toml:"password"`
+	}
+	if err := meta.PrimitiveDecode(raw, &pw); err != nil {
 		return err
 	}
-	if value, ok := fields["password"]; ok {
-		if _, ok := value.(map[string]any); !ok {
+	if pw.Password != nil {
+		if _, ok := pw.Password.(map[string]any); !ok {
 			return fmt.Errorf("password must be a table")
 		}
 	}

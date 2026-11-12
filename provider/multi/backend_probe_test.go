@@ -30,3 +30,27 @@ func TestBackendProbeRejectsWrongValueTypes(t *testing.T) {
 		}
 	}
 }
+
+func TestBackendProbePreservesUndecodedKeys(t *testing.T) {
+	var raw toml.Primitive
+	meta, err := toml.Decode("[default]\ntype = \"imap\"\nserver = \"imaps://mail.example.test\"\nmisspelled_option = true\n", &raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := provider.LoadConfig("multi", &meta, &raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cfg.ToOptions(); err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, key := range meta.Undecoded() {
+		if key.String() == "default.misspelled_option" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("undecoded keys=%v, want default.misspelled_option preserved", meta.Undecoded())
+	}
+}
