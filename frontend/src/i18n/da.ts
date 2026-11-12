@@ -29,8 +29,6 @@ export const da: TranslationDictionary = {
     dav: {
       caldav: "Kalender (CalDAV)",
       carddav: "Kontakter (CardDAV)",
-      description: "Forbind denne mailkonto med dine kalendere eller kontakter. Gem for at kontrollere forbindelsen og anvende ændringerne.",
-      connection: "Forbindelse",
       server: "Serverens URL",
       defaultServer: "Lad feltet være tomt for at bruge den konfigurerede server:",
       serverRequired: "Indtast den fulde HTTPS-adresse på din DAV-server.",
@@ -43,7 +41,6 @@ export const da: TranslationDictionary = {
       save: "Gem forbindelse",
       saving: "Kontrollerer forbindelsen…",
       saved: "Forbindelsen er gemt.",
-      reset: "Brug standardforbindelse",
       remove: "Fjern forbindelse",
       removeConfirm: "Vil du fjerne denne personlige DAV-forbindelse? Den konfigurerede standardforbindelse bruges, hvis den er tilgængelig.",
       resetDone: "Standardforbindelsen er gendannet.",

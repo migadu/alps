@@ -36,7 +36,10 @@ either requires entering the password again.
 Personal connections persist in the mail account's IMAP METADATA. Separate
 passwords are encrypted with the administrator's `server.login_key`, which must
 be configured to save them. Rotating that key requires re-entering saved DAV
-passwords; ALPS does not fall back to the mail password when decryption fails.
+passwords; ALPS does not fall back to the mail password when decryption fails,
+and Settings asks for the password again instead of offering to keep it. The
+same happens when the administrator's default server changes. A saved password
+belongs to the mail account whatever the letter case it signs in with.
 Usernames and password-configured status are public settings; passwords and
 encrypted password records are excluded from ordinary settings and browser
 storage.
@@ -64,10 +67,22 @@ default server is optional: users can set up personal endpoints in Settings.
 - `caldavs://` and `carddavs://` (Resolves to `https://`)
 - `caldav+insecure://` and `carddav+insecure://` (Resolves to `http://` for local/trusted networks)
 
-Personal URLs also accept `https://` and `http+insecure://`. They require an
+Personal URLs accept `https://`, `caldavs://` and `carddavs://`. They require an
 explicit scheme and cannot contain credentials, a query, or a fragment. DAV
 requests and redirects stay on the configured origin so credentials are not
 sent to another server through a redirect or a discovered resource URL.
+
+Because any signed-in user can enter a personal URL, ALPS connects to personal
+servers over HTTPS only and refuses, when it connects and on every redirect,
+addresses that are not public: loopback, private, link-local and similar
+ranges. A mail account therefore cannot use the setting to reach services on
+the network ALPS runs in. If your users keep DAV servers on a trusted intranet,
+set `dav_allow_private_servers = true` in `[server]`: personal URLs may then
+also use `http+insecure://`, `caldav+insecure://` and `carddav+insecure://`,
+and any address. Personal connections that need this stop working, and are
+offered for removal in Settings, while the option is off. Servers the
+administrator configures are never restricted, including when a user supplies
+separate credentials for them.
 
 ### CalDAV Auto-Discovery
 If you provide a bare domain without a scheme (e.g., `caldav.example.com`), the CalDAV plugin will attempt standard WebDAV auto-discovery (`DiscoverContextURL`) using well-known URIs or SRV records to locate the correct endpoint automatically.

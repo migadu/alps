@@ -27,8 +27,6 @@ export const id = {
     dav: {
       caldav: "Kalender (CalDAV)",
       carddav: "Kontak (CardDAV)",
-      description: "Hubungkan akun email ini ke kalender atau kontak Anda. Simpan untuk memeriksa koneksi dan menerapkan perubahan.",
-      connection: "Koneksi",
       server: "URL server",
       defaultServer: "Biarkan kosong untuk menggunakan server yang telah dikonfigurasi:",
       serverRequired: "Masukkan alamat HTTPS lengkap server DAV Anda.",
@@ -41,7 +39,6 @@ export const id = {
       save: "Simpan koneksi",
       saving: "Memeriksa koneksi…",
       saved: "Koneksi disimpan.",
-      reset: "Gunakan koneksi bawaan",
       remove: "Hapus koneksi",
       removeConfirm: "Hapus koneksi DAV pribadi ini? Koneksi bawaan yang telah dikonfigurasi akan digunakan jika tersedia.",
       resetDone: "Koneksi bawaan dipulihkan.",

@@ -1238,12 +1238,15 @@ type (
 // SessionManager keeps track of active sessions. It connects and re-connects
 // to the mail provider as necessary. It prunes expired sessions.
 type SessionManager struct {
-	connectProviderFunc      provider.AuthenticatedProviderFactory
-	dialSMTP                 DialSMTPFunc
-	logger                   Logger
-	cacheTTL                 time.Duration
-	cacheEnabled             bool
-	loginKey                 *fernet.Key // for encrypting linked account passwords
+	connectProviderFunc provider.AuthenticatedProviderFactory
+	dialSMTP            DialSMTPFunc
+	logger              Logger
+	cacheTTL            time.Duration
+	cacheEnabled        bool
+	loginKey            *fernet.Key // for encrypting linked account passwords
+	// davAllowPrivate lets personal DAV servers use plain HTTP and loopback
+	// or private addresses: see Options.DAVAllowPrivateServers.
+	davAllowPrivate          bool
 	sessionDuration          time.Duration
 	maxSessionDuration       time.Duration
 	absoluteSessionDuration  time.Duration

@@ -27,8 +27,6 @@ export const ptBR = {
     dav: {
       caldav: "Calendário (CalDAV)",
       carddav: "Contatos (CardDAV)",
-      description: "Conecte esta conta de e-mail aos seus calendários ou contatos. Salve para verificar a conexão e aplicar as alterações.",
-      connection: "Conexão",
       server: "URL do servidor",
       defaultServer: "Deixe em branco para usar o servidor configurado:",
       serverRequired: "Digite o endereço HTTPS completo do seu servidor DAV.",
@@ -41,7 +39,6 @@ export const ptBR = {
       save: "Salvar conexão",
       saving: "Verificando conexão…",
       saved: "Conexão salva.",
-      reset: "Usar conexão padrão",
       remove: "Remover conexão",
       removeConfirm: "Remover esta conexão DAV pessoal? A conexão padrão configurada será usada, se estiver disponível.",
       resetDone: "Conexão padrão restaurada.",

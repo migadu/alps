@@ -14,6 +14,7 @@ This section contains core settings for the ALPS HTTP server, session management
 | `trusted_proxies`| Array | `[]` | Array of IPs/CIDR blocks to trust `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Proto` and `X-Forwarded-Host` headers from (e.g. `["127.0.0.1/32"]`). Must be set if behind a proxy — see [Running behind a reverse proxy](TLS.md#5-reverse-proxies). |
 | `trusted_origins`| Array | `[]` | (Optional) Additional origins accepted by the CSRF check, in addition to the one ALPS derives from the request (e.g. `["https://webmail.example.com"]`). Use when the proxy cannot set `X-Forwarded-Proto`/`X-Forwarded-Host`. |
 | `login_key` | String | None | (Optional) Fernet key for encrypting user credentials in browser cookies. Enables "remember me" functionality and session restoration across server restarts. Changing this key invalidates all persisted sessions. |
+| `dav_allow_private_servers` | Boolean | `false` | (Optional) Let the personal CalDAV/CardDAV servers users enter in Settings use plain HTTP and loopback or private addresses. Off, they are reached over HTTPS at public addresses only. See [CalDAV and CardDAV](CDAV.md). |
 | `temp_dir` | String | OS Default | (Optional) Directory for temporary file uploads and processing. |
 | `session_minutes` | Integer | `30` | Duration of user sessions in minutes without activity. |
 | `max_session_minutes` | Integer | `1440` | Maximum absolute duration of a session (e.g., 24 hours), capping user preferences. |

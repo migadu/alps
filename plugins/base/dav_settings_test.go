@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/migadu/alps"
@@ -39,6 +40,8 @@ func newDAVSettingsServer(t *testing.T, adjust func(*alps.Options)) *testServer 
 			"caldav":  {Enabled: true, Options: map[string]interface{}{"dav_settings_test": true}},
 			"carddav": {Enabled: true, Options: map[string]interface{}{"dav_settings_test": true}},
 		}
+		// The personal endpoints in these tests are loopback HTTP servers.
+		options.DAVAllowPrivateServers = true
 		if adjust != nil {
 			adjust(options)
 		}
@@ -277,4 +280,36 @@ func TestHTTP_DAVPublicDefaultsRedactEmbeddedSecretsAndDisabledServicesAreUnavai
 	disabled := newDAVSettingsServer(t, func(options *alps.Options) { options.EnabledPlugins = []string{"base"} })
 	disabled.login()
 	disabled.expect(disabled.do(http.MethodGet, "/settings/dav/caldav", nil), http.StatusNotFound)
+}
+
+// By default the settings API takes no personal endpoint a mail account could
+// use to reach into the server's own network: plain HTTP is not a valid
+// server, and an HTTPS URL at a private address fails like any unreachable one.
+func TestHTTP_DAVPersonalServersArePublicHTTPSUnlessTheAdministratorOptsIn(t *testing.T) {
+	var contacted atomic.Int32
+	internal := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { contacted.Add(1) }))
+	defer internal.Close()
+	dav := settingsDiscoveryServer(t, testUser, testPassword)
+	s := newDAVSettingsServer(t, func(options *alps.Options) { options.DAVAllowPrivateServers = false })
+	s.login()
+	r := s.do(http.MethodPut, "/settings/dav/caldav", map[string]any{"server": dav, "use_mail_credentials": true})
+	s.expect(r, http.StatusBadRequest)
+	if !strings.Contains(string(r.body), "dav_invalid_server") {
+		t.Fatalf("plain HTTP personal server: %s", r.body)
+	}
+	r = s.do(http.MethodPut, "/settings/dav/carddav", map[string]any{"server": internal.URL + "/dav/", "use_mail_credentials": true})
+	s.expect(r, http.StatusBadRequest)
+	if !strings.Contains(string(r.body), "dav_auth_failed") {
+		t.Fatalf("private HTTPS personal server: %s", r.body)
+	}
+	if contacted.Load() != 0 {
+		t.Fatal("a private address was contacted")
+	}
+	var settings alps.DAVSettings
+	r = s.do(http.MethodGet, "/settings/dav/caldav", nil)
+	s.expect(r, http.StatusOK)
+	r.json(t, &settings)
+	if settings.PersonalConfigured || settings.Configured {
+		t.Fatalf("a refused server was saved: %+v", settings)
+	}
 }

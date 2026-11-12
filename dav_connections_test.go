@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -39,6 +40,8 @@ func davSession(t *testing.T, store *rawStore, key *fernet.Key) *Session {
 	connects := 0
 	s := newStoreSession(&connectionStore{account: store, copies: map[string]*string{}}, &connects)
 	s.manager.loginKey = key
+	// The test DAV servers listen on loopback over plain HTTP.
+	s.manager.davAllowPrivate = true
 	t.Cleanup(func() { s.Close() })
 	return s
 }
@@ -218,14 +221,191 @@ func TestDAVConnectionsRefreshAcrossSessionsAndBindPasswordsToDefaults(t *testin
 }
 
 func TestDAVPersonalEndpointsRequireExplicitTransportAndNoURLCredentials(t *testing.T) {
-	for _, raw := range []string{"http://dav.example/", "dav.example", "ftp://dav.example/", "https:///dav", "https://user:pass@dav.example/", "https://dav.example/?token=secret", "https://dav.example/#fragment"} {
-		if _, err := ParseDAVServerURL("caldav", raw); err == nil {
-			t.Errorf("accepted %q", raw)
+	for _, allowInsecure := range []bool{false, true} {
+		for _, raw := range []string{"http://dav.example/", "dav.example", "ftp://dav.example/", "https:///dav", "https://user:pass@dav.example/", "https://dav.example/?token=secret", "https://dav.example/#fragment"} {
+			if _, err := parsePersonalDAVURL("caldav", raw, allowInsecure); err == nil {
+				t.Errorf("accepted %q (insecure allowed: %v)", raw, allowInsecure)
+			}
+		}
+		for _, raw := range []string{"https://dav.example/", "caldavs://dav.example/"} {
+			if _, err := parsePersonalDAVURL("caldav", raw, allowInsecure); err != nil {
+				t.Errorf("refused %q: %v", raw, err)
+			}
 		}
 	}
-	for _, raw := range []string{"https://dav.example/", "caldavs://dav.example/", "http+insecure://dav.example/", "caldav+insecure://dav.example/"} {
-		if _, err := ParseDAVServerURL("caldav", raw); err != nil {
-			t.Errorf("refused %q: %v", raw, err)
+	for _, raw := range []string{"http+insecure://dav.example/", "caldav+insecure://dav.example/"} {
+		if _, err := parsePersonalDAVURL("caldav", raw, false); !errors.Is(err, ErrDAVInvalidServer) {
+			t.Errorf("accepted %q without the administrator's opt-in: %v", raw, err)
+		}
+		if _, err := parsePersonalDAVURL("caldav", raw, true); err != nil {
+			t.Errorf("refused %q with the opt-in: %v", raw, err)
+		}
+	}
+}
+
+// Without the administrator's opt-in a mail account must not be able to point
+// alps at its own network: personal endpoints are HTTPS only and are refused
+// at dial time when they resolve to a non-public address. The administrator's
+// own default stays reachable wherever it is.
+func TestDAVPersonalEndpointsCannotReachPrivateAddressesByDefault(t *testing.T) {
+	var contacted atomic.Int32
+	internal := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { contacted.Add(1) }))
+	defer internal.Close()
+	dav := davDiscoveryServer(t, "dav-user", "secret")
+	store := &rawStore{entries: map[string]string{}}
+	s := davSession(t, store, davTestKey(t))
+
+	// A connection saved while private servers were allowed.
+	insecure := DAVConnectionInput{Server: personalDAVURL(dav), Username: "dav-user", Password: "secret"}
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", insecure); err != nil {
+		t.Fatal(err)
+	}
+	s.manager.davAllowPrivate = false
+	if resolved, err := s.ResolveDAVConnection("caldav", ""); err == nil {
+		t.Fatalf("a saved plain-HTTP personal endpoint still resolved: %+v", resolved.Server)
+	}
+	if _, err := s.DeleteDAVConnection("caldav", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", insecure); !errors.Is(err, ErrDAVInvalidServer) {
+		t.Fatalf("plain-HTTP personal endpoint: %v", err)
+	}
+	for _, auth := range []DAVConnectionInput{
+		{Server: internal.URL + "/dav/", UseMailCredentials: true},
+		{Server: internal.URL + "/dav/", Username: "dav-user", Password: "secret"},
+	} {
+		if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", auth); !errors.Is(err, ErrDAVValidationFailed) {
+			t.Fatalf("loopback personal endpoint: %v", err)
+		}
+	}
+	// A record written around the settings API is held to the same rule.
+	key, _ := davStoreKey("caldav")
+	if err := store.Put(key, davConnectionRecord{Version: 1, Server: internal.URL + "/dav/", UseMailCredentials: true}); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := s.ResolveDAVConnection("caldav", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := DAVHTTPClient(resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response, err := client.Get(internal.URL + "/dav/"); !errors.Is(err, ErrBlockedAddress) {
+		if err == nil {
+			response.Body.Close()
+		}
+		t.Fatalf("forged loopback endpoint: %v", err)
+	}
+	if contacted.Load() != 0 {
+		t.Fatal("a private address was contacted for a personal endpoint")
+	}
+	if _, err := s.DeleteDAVConnection("caldav", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// The administrator's default is not the user's choice: separate
+	// credentials for it work on a private address without the opt-in.
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", dav.URL+"/dav/", DAVConnectionInput{Username: "dav-user", Password: "secret"}); err != nil {
+		t.Fatalf("administrator default on a private address: %v", err)
+	}
+	if resolved, err := s.ResolveDAVConnection("caldav", dav.URL+"/dav/"); err != nil || resolved.restricted {
+		t.Fatalf("administrator default was restricted: %+v, %v", resolved.restricted, err)
+	}
+}
+
+func TestDAVSavedCredentialsFollowTheMailAccountWhateverItsCase(t *testing.T) {
+	dav := davDiscoveryServer(t, "dav-user", "secret")
+	s := davSession(t, &rawStore{entries: map[string]string{}}, davTestKey(t))
+	s.username = "Ada@Example.com"
+	input := DAVConnectionInput{Server: personalDAVURL(dav), Username: "dav-user", Password: "secret"}
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", input); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := s.ResolveDAVConnection("caldav", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.username = "ada@example.com"
+	resolved, err := s.ResolveDAVConnection("caldav", "")
+	if err != nil || resolved.Password != "secret" {
+		t.Fatalf("another spelling of the login lost the saved password: %v", err)
+	}
+	if resolved.CacheKey != saved.CacheKey {
+		t.Fatal("another spelling of the login changed the cache key")
+	}
+	if settings, err := s.DAVConnectionSettings("caldav", ""); err != nil || !settings.PasswordConfigured {
+		t.Fatalf("settings: %+v, %v", settings, err)
+	}
+	input.Password = ""
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", input); err != nil {
+		t.Fatalf("blank password did not keep the saved one: %v", err)
+	}
+}
+
+// The page says "Password configured. Leave blank to keep it." only while
+// that is true: after a key rotation, or once the administrator's default
+// moved, it has to ask again, and a blank save says why it failed.
+func TestDAVSettingsReportOnlyAUsableSavedPassword(t *testing.T) {
+	dav := davDiscoveryServer(t, "dav-user", "secret")
+	s := davSession(t, &rawStore{entries: map[string]string{}}, davTestKey(t))
+	defaultServer := dav.URL + "/dav/"
+	input := DAVConnectionInput{Username: "dav-user", Password: "secret"}
+	if settings, err := s.SaveDAVConnection(context.Background(), "caldav", defaultServer, input); err != nil || !settings.PasswordConfigured {
+		t.Fatalf("save: %+v, %v", settings, err)
+	}
+	input.Password = ""
+
+	moved := davDiscoveryServer(t, "dav-user", "secret")
+	if settings, err := s.DAVConnectionSettings("caldav", moved.URL+"/dav/"); err != nil || settings.PasswordConfigured || !settings.PersonalConfigured {
+		t.Fatalf("after the default moved: %+v, %v", settings, err)
+	}
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", moved.URL+"/dav/", input); !errors.Is(err, ErrDAVPasswordRequired) {
+		t.Fatalf("blank save after the default moved: %v", err)
+	}
+
+	s.manager.loginKey = davTestKey(t)
+	if settings, err := s.DAVConnectionSettings("caldav", defaultServer); err != nil || settings.PasswordConfigured || !settings.PersonalConfigured || settings.Username != "dav-user" {
+		t.Fatalf("after key rotation: %+v, %v", settings, err)
+	}
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", defaultServer, input); !errors.Is(err, ErrDAVPasswordRequired) {
+		t.Fatalf("blank save after key rotation: %v", err)
+	}
+	input.Password = "secret"
+	if settings, err := s.SaveDAVConnection(context.Background(), "caldav", defaultServer, input); err != nil || !settings.PasswordConfigured {
+		t.Fatalf("re-entered password: %+v, %v", settings, err)
+	}
+}
+
+func TestDAVOriginTreatsDefaultPortsAsImplicit(t *testing.T) {
+	parse := func(raw string) *url.URL {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u
+	}
+	for _, pair := range [][2]string{
+		{"https://dav.example.com:443/dav/", "https://dav.example.com/principals/"},
+		{"https://dav.example.com/dav/", "https://DAV.example.com:443/"},
+		{"http://dav.example.com:80/", "http://dav.example.com/"},
+		{"https://[2001:db8::1]:443/", "https://[2001:db8::1]/"},
+	} {
+		if !sameDAVOrigin(parse(pair[0]), parse(pair[1])) || !sameDAVOrigin(parse(pair[1]), parse(pair[0])) {
+			t.Errorf("%s and %s are one origin", pair[0], pair[1])
+		}
+	}
+	for _, pair := range [][2]string{
+		{"https://dav.example.com/", "http://dav.example.com/"},
+		{"https://dav.example.com/", "http://dav.example.com:443/"},
+		{"https://dav.example.com/", "https://dav.example.com:8443/"},
+		{"https://dav.example.com:80/", "http://dav.example.com:80/"},
+		{"https://dav.example.com/", "https://dav.example.com.evil.example/"},
+		{"https://dav.example.com:443/", "https://dav.example.com:4430/"},
+	} {
+		if sameDAVOrigin(parse(pair[0]), parse(pair[1])) || sameDAVOrigin(parse(pair[1]), parse(pair[0])) {
+			t.Errorf("%s and %s are different origins", pair[0], pair[1])
 		}
 	}
 }

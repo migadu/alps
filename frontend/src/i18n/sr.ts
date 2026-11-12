@@ -21,8 +21,6 @@ export const sr = {
     dav: {
       caldav: "Kalendar (CalDAV)",
       carddav: "Kontakti (CardDAV)",
-      description: "Povežite ovaj nalog e-pošte sa svojim kalendarima ili kontaktima. Sačuvajte da biste proverili vezu i primenili izmene.",
-      connection: "Veza",
       server: "URL servera",
       defaultServer: "Ostavite prazno da biste koristili podešeni server:",
       serverRequired: "Unesite punu HTTPS adresu svog DAV servera.",
@@ -35,7 +33,6 @@ export const sr = {
       save: "Sačuvaj vezu",
       saving: "Proveravanje veze…",
       saved: "Veza je sačuvana.",
-      reset: "Koristi podrazumevanu vezu",
       remove: "Ukloni vezu",
       removeConfirm: "Ukloniti ovu ličnu DAV vezu? Ako je dostupna, koristiće se podešena podrazumevana veza.",
       resetDone: "Podrazumevana veza je vraćena.",

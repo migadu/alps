@@ -328,6 +328,9 @@ addr = "127.0.0.1:$ALPS_PORT"
 temp_dir = "$STATE/alps-tmp"
 # A fixed test-only key lets the DAV tests persist independent passwords.
 login_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+# The personal DAV servers the tests enter are this stack's own, on loopback
+# over plain HTTP, which a deployment refuses unless it opts in.
+dav_allow_private_servers = true
 # On, unlike a deployment's default, so that every spec runs with the server's
 # change numbers (CONDSTORE); e2e/condstore.spec.ts is about them.
 condstore = true

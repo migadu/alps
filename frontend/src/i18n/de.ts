@@ -23,8 +23,6 @@ export const de: TranslationDictionary = {
     dav: {
       caldav: "Kalender (CalDAV)",
       carddav: "Kontakte (CardDAV)",
-      description: "Verbinden Sie dieses E-Mail-Konto mit Ihren Kalendern oder Kontakten. Beim Speichern wird die Verbindung geprüft und Ihre Änderung übernommen.",
-      connection: "Verbindung",
       server: "Server-URL",
       defaultServer: "Leer lassen, um den konfigurierten Server zu verwenden:",
       serverRequired: "Geben Sie die vollständige HTTPS-Adresse Ihres DAV-Servers ein.",
@@ -37,7 +35,6 @@ export const de: TranslationDictionary = {
       save: "Verbindung speichern",
       saving: "Verbindung wird geprüft…",
       saved: "Verbindung gespeichert.",
-      reset: "Standardverbindung verwenden",
       remove: "Verbindung entfernen",
       removeConfirm: "Diese persönliche DAV-Verbindung entfernen? Falls verfügbar, wird die konfigurierte Standardverbindung verwendet.",
       resetDone: "Standardverbindung wiederhergestellt.",

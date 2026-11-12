@@ -27,8 +27,6 @@ export const zhHant = {
     dav: {
       caldav: "行事曆 (CalDAV)",
       carddav: "聯絡人 (CardDAV)",
-      description: "將此郵件帳號連線至您的行事曆或聯絡人。儲存時會檢查連線並套用變更。",
-      connection: "連線",
       server: "伺服器 URL",
       defaultServer: "留空以使用已設定的伺服器：",
       serverRequired: "請輸入 DAV 伺服器的完整 HTTPS 位址。",
@@ -41,7 +39,6 @@ export const zhHant = {
       save: "儲存連線",
       saving: "正在檢查連線…",
       saved: "連線已儲存。",
-      reset: "使用預設連線",
       remove: "移除連線",
       removeConfirm: "要移除此個人 DAV 連線嗎？如果已設定的預設連線可用，將使用該連線。",
       resetDone: "已還原預設連線。",

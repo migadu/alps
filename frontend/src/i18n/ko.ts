@@ -27,8 +27,6 @@ export const ko = {
     dav: {
       caldav: "캘린더 (CalDAV)",
       carddav: "연락처 (CardDAV)",
-      description: "이 메일 계정을 캘린더 또는 연락처에 연결하세요. 저장하면 연결을 확인하고 변경 사항을 적용합니다.",
-      connection: "연결",
       server: "서버 URL",
       defaultServer: "설정된 서버를 사용하려면 비워 두세요:",
       serverRequired: "DAV 서버의 전체 HTTPS 주소를 입력하세요.",
@@ -41,7 +39,6 @@ export const ko = {
       save: "연결 저장",
       saving: "연결 확인 중…",
       saved: "연결을 저장했습니다.",
-      reset: "기본 연결 사용",
       remove: "연결 삭제",
       removeConfirm: "이 개인 DAV 연결을 삭제할까요? 설정된 기본 연결이 있으면 해당 연결을 사용합니다.",
       resetDone: "기본 연결로 복원했습니다.",

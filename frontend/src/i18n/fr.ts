@@ -21,8 +21,6 @@ export const fr = {
     dav: {
       caldav: "Calendrier (CalDAV)",
       carddav: "Contacts (CardDAV)",
-      description: "Connectez ce compte de messagerie à vos calendriers ou contacts. Enregistrez pour vérifier la connexion et appliquer vos modifications.",
-      connection: "Connexion",
       server: "URL du serveur",
       defaultServer: "Laissez vide pour utiliser le serveur configuré :",
       serverRequired: "Saisissez l’adresse HTTPS complète de votre serveur DAV.",
@@ -35,7 +33,6 @@ export const fr = {
       save: "Enregistrer la connexion",
       saving: "Vérification de la connexion…",
       saved: "Connexion enregistrée.",
-      reset: "Utiliser la connexion par défaut",
       remove: "Supprimer la connexion",
       removeConfirm: "Supprimer cette connexion DAV personnelle ? La connexion par défaut configurée sera utilisée si elle est disponible.",
       resetDone: "Connexion par défaut rétablie.",

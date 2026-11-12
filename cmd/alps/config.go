@@ -104,6 +104,7 @@ type ServerConfig struct {
 	Addr                    string          `toml:"addr"`
 	Debug                   bool            `toml:"debug"`
 	LoginKey                string          `toml:"login_key"`
+	DAVAllowPrivateServers  bool            `toml:"dav_allow_private_servers"` // Let personal CalDAV/CardDAV servers use plain HTTP and private addresses
 	TempDir                 string          `toml:"temp_dir"`
 	TrustedProxies          []string        `toml:"trusted_proxies"`            // Trust X-Forwarded-For/Proto/Host headers from these proxy IPs/CIDRs
 	TrustedOrigins          []string        `toml:"trusted_origins"`            // Extra origins accepted by the CSRF check, e.g. "https://webmail.example.com" (for TLS-terminating reverse proxies)
@@ -566,6 +567,8 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	if options.SMTP.Server == "" {
 		return options, fmt.Errorf("no SMTP server specified in config file ([smtp] server)")
 	}
+
+	options.DAVAllowPrivateServers = c.Server.DAVAllowPrivateServers
 
 	if c.Server.LoginKey != "" {
 		fernetKey, err := fernet.DecodeKey(c.Server.LoginKey)

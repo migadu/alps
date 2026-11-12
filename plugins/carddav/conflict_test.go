@@ -253,6 +253,8 @@ func startConnectionHarness(t *testing.T, wrap func(http.Handler) http.Handler, 
 		SMTP:     alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
 		LoginKey: &key,
 		Plugins:  map[string]alps.PluginConfig{"carddav": {Server: davServer.URL}},
+		// The personal endpoints in these tests are loopback HTTP servers.
+		DAVAllowPrivateServers: true,
 	}
 	if noDefault {
 		opts.Plugins["carddav"] = alps.PluginConfig{Enabled: true}

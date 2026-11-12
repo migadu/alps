@@ -20,8 +20,6 @@ export const pt = {
     dav: {
       caldav: "Calendário (CalDAV)",
       carddav: "Contactos (CardDAV)",
-      description: "Ligue esta conta de correio aos seus calendários ou contactos. Guarde para verificar a ligação e aplicar as alterações.",
-      connection: "Ligação",
       server: "URL do servidor",
       defaultServer: "Deixe em branco para utilizar o servidor configurado:",
       serverRequired: "Introduza o endereço HTTPS completo do seu servidor DAV.",
@@ -34,7 +32,6 @@ export const pt = {
       save: "Guardar ligação",
       saving: "A verificar a ligação…",
       saved: "Ligação guardada.",
-      reset: "Utilizar a ligação predefinida",
       remove: "Remover ligação",
       removeConfirm: "Remover esta ligação DAV pessoal? A ligação predefinida configurada será utilizada, se estiver disponível.",
       resetDone: "Ligação predefinida reposta.",

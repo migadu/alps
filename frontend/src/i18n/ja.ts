@@ -27,8 +27,6 @@ export const ja = {
     dav: {
       caldav: "カレンダー (CalDAV)",
       carddav: "連絡先 (CardDAV)",
-      description: "このメールアカウントをカレンダーや連絡先に接続します。保存すると接続を確認し、変更を適用します。",
-      connection: "接続",
       server: "サーバーのURL",
       defaultServer: "設定済みのサーバーを使用するには空欄にしてください：",
       serverRequired: "DAVサーバーの完全なHTTPSアドレスを入力してください。",
@@ -41,7 +39,6 @@ export const ja = {
       save: "接続を保存",
       saving: "接続を確認しています…",
       saved: "接続を保存しました。",
-      reset: "既定の接続を使用",
       remove: "接続を削除",
       removeConfirm: "この個人用DAV接続を削除しますか？設定済みの既定の接続がある場合は、その接続を使用します。",
       resetDone: "既定の接続に戻しました。",

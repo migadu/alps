@@ -34,6 +34,14 @@ debug = true
 # This is a security feature - use it to invalidate all persisted credentials
 # during security incidents or when you suspect credential compromise.
 
+# Personal CalDAV/CardDAV servers that users enter in Settings are reached over
+# HTTPS only, and only at public addresses, so that a mail account cannot make
+# alps connect into the network it runs in. Set this to true to also allow the
+# +insecure (plain HTTP) schemes and loopback or private addresses, for example
+# when your users keep their own DAV servers on a trusted intranet.
+# Servers configured in this file are never restricted.
+# dav_allow_private_servers = false
+
 # Temporary directory for file uploads and processing (optional)
 # Uses OS default temp directory if not specified
 # temp_dir = "/tmp/alps"
@@ -648,6 +656,7 @@ enabled = true
 # When enabled without a default, users can set up a personal server in Settings.
 # Users may also supply separate credentials for this default server.
 # Supported schemes: caldavs://, caldav+insecure://, https://, http+insecure://
+# Personal servers are HTTPS only unless server.dav_allow_private_servers is set.
 # server = "https://caldav.example.com"
 
 # Plugin-specific options (optional map)
@@ -663,6 +672,7 @@ enabled = true
 # When enabled without a default, users can set up a personal server in Settings.
 # Users may also supply separate credentials for this default server.
 # Supported schemes: carddavs://, carddav+insecure://, https://, http+insecure://
+# Personal servers are HTTPS only unless server.dav_allow_private_servers is set.
 # server = "https://carddav.example.com"
 
 # Plugin-specific options (optional map)

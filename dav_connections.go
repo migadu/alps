@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -56,6 +57,11 @@ type ResolvedDAVConnection struct {
 	Username string `json:"username"`
 	Password string `json:"-"`
 	CacheKey string `json:"-"`
+	// restricted marks an endpoint the user chose, on a server that has not
+	// opted in to private personal servers: it is reached over HTTPS only,
+	// and only at public addresses. Administrator defaults are never
+	// restricted, whichever credentials they are used with.
+	restricted bool
 }
 
 type davConnectionRecord struct {
@@ -79,8 +85,15 @@ type davCredentialPayload struct {
 	Password string `json:"password"`
 }
 
+// davOwner names the mail account a DAV credential belongs to. Mail logins
+// are compared without regard to case (see SessionManager), so signing in as
+// Ada@example.com must unlock what ada@example.com saved.
+func (s *Session) davOwner() string {
+	return strings.ToLower(s.Username())
+}
+
 func (s *Session) encryptDAVPassword(service, server, username, password string) (string, error) {
-	payload, err := json.Marshal(davCredentialPayload{Version: 1, Owner: s.Username(), Service: service, Server: server, Username: username, Password: password})
+	payload, err := json.Marshal(davCredentialPayload{Version: 1, Owner: s.davOwner(), Service: service, Server: server, Username: username, Password: password})
 	if err != nil {
 		return "", err
 	}
@@ -96,7 +109,7 @@ func (s *Session) decryptDAVPassword(service, server, username, ciphertext strin
 	if err := json.Unmarshal([]byte(plaintext), &payload); err != nil {
 		return "", errors.New("invalid saved DAV credential")
 	}
-	if payload.Version != 1 || payload.Owner != s.Username() || payload.Service != service || payload.Server != server || payload.Username != username || payload.Password == "" {
+	if payload.Version != 1 || !strings.EqualFold(payload.Owner, s.Username()) || payload.Service != service || payload.Server != server || payload.Username != username || payload.Password == "" {
 		return "", errors.New("saved DAV credential does not match this connection")
 	}
 	return payload.Password, nil
@@ -109,9 +122,11 @@ func davStoreKey(service string) (string, error) {
 	return "dav.connection." + service, nil
 }
 
-// ParseDAVServerURL requires an explicit secure scheme, or an explicit opt-in
-// to unencrypted HTTP. Credentials never belong in the endpoint itself.
-func ParseDAVServerURL(service, raw string) (*url.URL, error) {
+// parsePersonalDAVURL parses an endpoint a user supplied. It requires an
+// explicit HTTPS scheme; unencrypted HTTP needs both the explicit +insecure
+// scheme and the administrator's opt-in (server.dav_allow_private_servers).
+// Credentials never belong in the endpoint itself.
+func parsePersonalDAVURL(service, raw string, allowInsecure bool) (*url.URL, error) {
 	if _, err := davStoreKey(service); err != nil {
 		return nil, err
 	}
@@ -123,6 +138,9 @@ func ParseDAVServerURL(service, raw string) (*url.URL, error) {
 	case "https", service + "s":
 		u.Scheme = "https"
 	case "http+insecure", service + "+insecure":
+		if !allowInsecure {
+			return nil, ErrDAVInvalidServer
+		}
 		u.Scheme = "http"
 	default:
 		return nil, ErrDAVInvalidServer
@@ -131,6 +149,12 @@ func ParseDAVServerURL(service, raw string) (*url.URL, error) {
 		return nil, err
 	}
 	return u, nil
+}
+
+// davAllowPrivate reports whether the administrator lets personal DAV
+// servers use plain HTTP and loopback or private addresses.
+func (s *Session) davAllowPrivate() bool {
+	return s.manager.davAllowPrivate
 }
 
 func checkDAVURL(u *url.URL) error {
@@ -174,7 +198,7 @@ func (s *Session) readDAVConnection(service string) (*davConnectionRecord, error
 		return nil, fmt.Errorf("%w: invalid record fields or version", ErrDAVCorruptSavedRecord)
 	}
 	if record.Server != "" {
-		if _, err := ParseDAVServerURL(service, record.Server); err != nil {
+		if _, err := parsePersonalDAVURL(service, record.Server, s.davAllowPrivate()); err != nil {
 			return nil, fmt.Errorf("%w: invalid endpoint", ErrDAVCorruptSavedRecord)
 		}
 	}
@@ -194,10 +218,36 @@ func (s *Session) DAVConnectionSettings(service, defaultServer string) (DAVSetti
 		if !record.UseMailCredentials {
 			settings.Username = record.Username
 		}
-		settings.PasswordConfigured = record.PasswordEnc != ""
+		settings.PasswordConfigured = s.davSavedPasswordUsable(service, defaultServer, record)
 		settings.Configured = record.Server != "" || defaultServer != ""
 	}
 	return settings, nil
+}
+
+// davSavedPasswordUsable reports whether a blank password in the settings form
+// can stand for the saved one: it must still decrypt with the current login
+// key, and belong to the endpoint the connection now resolves to. After a key
+// rotation or a change of the administrator's default the page must ask for
+// the password again instead of promising to keep one it cannot read.
+func (s *Session) davSavedPasswordUsable(service, defaultServer string, record *davConnectionRecord) bool {
+	if record.UseMailCredentials || record.PasswordEnc == "" {
+		return false
+	}
+	server := record.Server
+	if server == "" {
+		server = defaultServer
+	}
+	// A default without a scheme is found by DNS discovery, which a settings
+	// read must not wait for; the binding inside the ciphertext is still
+	// checked, and saving compares against the discovered endpoint.
+	if strings.Contains(server, "://") {
+		endpoint, err := normalDAVURL(server)
+		if err != nil || endpoint.String() != record.PasswordServer {
+			return false
+		}
+	}
+	_, err := s.decryptDAVPassword(service, record.PasswordServer, record.Username, record.PasswordEnc)
+	return err == nil
 }
 
 // ResolveDAVConnection reads past session caches so changes in another browser
@@ -212,6 +262,7 @@ func (s *Session) ResolveDAVConnection(service, fallbackServer string) (Resolved
 	if record != nil {
 		if record.Server != "" {
 			connection.Server = record.Server
+			connection.restricted = !s.davAllowPrivate()
 		}
 		if !record.UseMailCredentials {
 			endpoint, err := normalDAVURL(connection.Server)
@@ -225,7 +276,7 @@ func (s *Session) ResolveDAVConnection(service, fallbackServer string) (Resolved
 			}
 		}
 	}
-	sum := sha256.Sum256([]byte(service + "\x00" + s.Username() + "\x00" + connection.Server + "\x00" + connection.Username + "\x00" + connection.Password))
+	sum := sha256.Sum256([]byte(service + "\x00" + s.davOwner() + "\x00" + connection.Server + "\x00" + connection.Username + "\x00" + connection.Password))
 	connection.CacheKey = hex.EncodeToString(sum[:])
 	return connection, nil
 }
@@ -247,7 +298,7 @@ func (s *Session) SaveDAVConnection(ctx context.Context, service, defaultServer 
 		return DAVSettings{}, ErrDAVCredentialsRequired
 	}
 	if input.Server != "" {
-		if _, err := ParseDAVServerURL(service, input.Server); err != nil {
+		if _, err := parsePersonalDAVURL(service, input.Server, s.davAllowPrivate()); err != nil {
 			return DAVSettings{}, err
 		}
 	}
@@ -264,7 +315,7 @@ func (s *Session) SaveDAVConnection(ctx context.Context, service, defaultServer 
 	if err != nil {
 		return DAVSettings{}, err
 	}
-	connection := ResolvedDAVConnection{Server: endpoint.String(), Username: s.Username(), Password: s.Password()}
+	connection := ResolvedDAVConnection{Server: endpoint.String(), Username: s.Username(), Password: s.Password(), restricted: input.Server != "" && !s.davAllowPrivate()}
 	record := davConnectionRecord{Version: 1, Server: input.Server, UseMailCredentials: input.UseMailCredentials}
 	if !input.UseMailCredentials {
 		if s.manager.loginKey == nil {
@@ -284,7 +335,9 @@ func (s *Session) SaveDAVConnection(ctx context.Context, service, defaultServer 
 			}
 			connection.Password, err = s.decryptDAVPassword(service, endpoint.String(), input.Username, old.PasswordEnc)
 			if err != nil {
-				return DAVSettings{}, err
+				// The saved secret cannot be read any more (a rotated login
+				// key, say): only a newly entered password can replace it.
+				return DAVSettings{}, ErrDAVPasswordRequired
 			}
 		}
 		record.Username = input.Username
@@ -320,9 +373,35 @@ type davAuthTransport struct {
 	transport          http.RoundTripper
 }
 
-func sameDAVOrigin(a, b *url.URL) bool {
-	return a.Scheme == b.Scheme && strings.EqualFold(a.Host, b.Host)
+// davPort is the port a URL connects to, with the scheme's default made
+// explicit so that https://host and https://host:443 are one origin.
+func davPort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	switch u.Scheme {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	}
+	return ""
 }
+
+func sameDAVOrigin(a, b *url.URL) bool {
+	return a.Scheme == b.Scheme && strings.EqualFold(a.Hostname(), b.Hostname()) && davPort(a) == davPort(b)
+}
+
+// davPublicTransport serves endpoints that users chose. It refuses, at dial
+// time and so after DNS resolution and on every redirect, any address that
+// is not public, and it ignores proxy settings: through a proxy the guard
+// would only ever see the proxy's address.
+var davPublicTransport = func() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.DialContext = (&net.Dialer{Timeout: davConnectionTimeout, KeepAlive: 30 * time.Second, Control: SafeDialControl}).DialContext
+	return transport
+}()
 
 func (t *davAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if !sameDAVOrigin(t.server, req.URL) || req.URL.User != nil {
@@ -340,9 +419,16 @@ func DAVHTTPClient(connection ResolvedDAVConnection) (*http.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	var transport http.RoundTripper = http.DefaultTransport
+	if connection.restricted {
+		if u.Scheme != "https" {
+			return nil, ErrDAVInvalidServer
+		}
+		transport = davPublicTransport
+	}
 	return &http.Client{
 		Timeout:   davConnectionTimeout,
-		Transport: &davAuthTransport{server: u, username: connection.Username, password: connection.Password, transport: http.DefaultTransport},
+		Transport: &davAuthTransport{server: u, username: connection.Username, password: connection.Password, transport: transport},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 || !sameDAVOrigin(u, req.URL) {
 				return errors.New("DAV redirect left the configured origin")

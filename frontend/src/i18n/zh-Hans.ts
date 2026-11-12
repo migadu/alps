@@ -29,8 +29,6 @@ export const zhHans: TranslationDictionary = {
     dav: {
       caldav: "日历 (CalDAV)",
       carddav: "联系人 (CardDAV)",
-      description: "将此邮件账户连接到您的日历或联系人。保存时会检查连接并应用更改。",
-      connection: "连接",
       server: "服务器 URL",
       defaultServer: "留空以使用已配置的服务器：",
       serverRequired: "请输入 DAV 服务器的完整 HTTPS 地址。",
@@ -43,7 +41,6 @@ export const zhHans: TranslationDictionary = {
       save: "保存连接",
       saving: "正在检查连接…",
       saved: "连接已保存。",
-      reset: "使用默认连接",
       remove: "移除连接",
       removeConfirm: "要移除此个人 DAV 连接吗？如果已配置的默认连接可用，将使用该连接。",
       resetDone: "已恢复默认连接。",

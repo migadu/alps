@@ -27,8 +27,6 @@ export const tr = {
     dav: {
       caldav: "Takvim (CalDAV)",
       carddav: "Kişiler (CardDAV)",
-      description: "Bu posta hesabını takvimlerinize veya kişilerinize bağlayın. Bağlantıyı denetlemek ve değişiklikleri uygulamak için kaydedin.",
-      connection: "Bağlantı",
       server: "Sunucu URL’si",
       defaultServer: "Yapılandırılmış sunucuyu kullanmak için boş bırakın:",
       serverRequired: "DAV sunucunuzun tam HTTPS adresini girin.",
@@ -41,7 +39,6 @@ export const tr = {
       save: "Bağlantıyı kaydet",
       saving: "Bağlantı denetleniyor…",
       saved: "Bağlantı kaydedildi.",
-      reset: "Varsayılan bağlantıyı kullan",
       remove: "Bağlantıyı kaldır",
       removeConfirm: "Bu kişisel DAV bağlantısı kaldırılsın mı? Varsa yapılandırılmış varsayılan bağlantı kullanılacak.",
       resetDone: "Varsayılan bağlantı geri yüklendi.",
