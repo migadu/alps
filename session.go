@@ -1947,6 +1947,12 @@ func (sm *SessionManager) SwitchAccount(currentSession *Session, targetUsername 
 	// Create new session with the linked account
 	newSession, err := sm.Put(targetUsername, password)
 	if err != nil {
+		var authErr provider.AuthError
+		if errors.As(err, &authErr) {
+			err = errors.Join(ErrLinkedCredentialsRefused, err)
+		} else {
+			err = errors.Join(ErrLinkedAccountUnavailable, err)
+		}
 		return nil, fmt.Errorf("failed to create session for %s: %w", targetUsername, err)
 	}
 

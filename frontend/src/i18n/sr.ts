@@ -174,7 +174,7 @@ export const sr = {
     },
   },
   linkedAccounts: {
-    relinkRequired: "Ponovo povežite ovaj nalog sa trenutnom lozinkom u podešavanjima.",
+    relinkRequired: "Uklonite ovaj povezani nalog u podešavanjima, zatim ga ponovo povežite sa trenutnom lozinkom.",
     accountNotFound: "Ovaj nalog više nije povezan. Osvežite listu naloga.",
     switchUnavailable: "Drugi nalog je privremeno nedostupan. Pokušajte kasnije.",
     description: 'Povežite drugi nalog da biste brzo prelazili između njih bez odjavljivanja.',

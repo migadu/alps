@@ -22,6 +22,7 @@ var (
 	// ErrLinkedCredentialsRefused identifies a refusal while signing in to the
 	// account being added, rather than an error in either account's metadata.
 	ErrLinkedCredentialsRefused = errors.New("linked account credentials refused")
+	ErrLinkedAccountUnavailable = errors.New("linked account unavailable")
 )
 
 // LinkedAccount represents an additional account linked to the primary account.

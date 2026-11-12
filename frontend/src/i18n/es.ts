@@ -173,7 +173,7 @@ export const es = {
     },
   },
   linkedAccounts: {
-    relinkRequired: "Vuelve a vincular esta cuenta con su contraseña actual en ajustes.",
+    relinkRequired: "Elimina esta cuenta vinculada en los ajustes y vuelve a vincularla con su contraseña actual.",
     accountNotFound: "Esta cuenta ya no está vinculada. Actualiza la lista de cuentas.",
     switchUnavailable: "La otra cuenta no está disponible temporalmente. Inténtalo más tarde.",
     description: 'Conecta otra cuenta para cambiar rápidamente entre ellas sin cerrar sesión.',

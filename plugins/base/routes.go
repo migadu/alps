@@ -5291,12 +5291,16 @@ func handleProxy(ctx *alps.Context) error {
 func accountSwitchFailure(ctx *alps.Context, err error) error {
 	ctx.Server.Logger().Errorf("Switching linked account: %v", err)
 	status, code := http.StatusServiceUnavailable, "service_unavailable"
-	var auth provider.AuthError
 	switch {
 	case errors.Is(err, alps.ErrAccountNotFound):
 		status, code = http.StatusNotFound, "account_not_found"
-	case errors.Is(err, alps.ErrRelinkRequired), errors.Is(err, alps.ErrLoginKeyRequired), errors.As(err, &auth):
+	case errors.Is(err, alps.ErrRelinkRequired), errors.Is(err, alps.ErrLoginKeyRequired), errors.Is(err, alps.ErrLinkedCredentialsRefused):
 		status, code = http.StatusConflict, "relink_required"
+	case errors.Is(err, alps.ErrLinkedAccountUnavailable):
+		// This failure belongs to the target, rather than the account whose
+		// active session the browser still holds.
+	default:
+		return fmt.Errorf("failed to read the current account's linked accounts: %w", err)
 	}
 	return ctx.JSON(status, map[string]string{"error": code})
 }

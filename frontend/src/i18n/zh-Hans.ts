@@ -180,7 +180,7 @@ export const zhHans: TranslationDictionary = {
     }
   },
   linkedAccounts: {
-    relinkRequired: "请在设置中使用当前密码重新关联此账户。",
+    relinkRequired: "请在设置中移除此关联账户，然后使用当前密码重新关联。",
     accountNotFound: "此账户已解除关联。请刷新账户列表。",
     switchUnavailable: "另一个账户暂时不可用。请稍后重试。",
     description: '关联另一个账户，以便在多个账户间快速切换，而无需退出登录。',

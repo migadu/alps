@@ -175,7 +175,7 @@ export const de: TranslationDictionary = {
     },
   },
   linkedAccounts: {
-    relinkRequired: "Verknüpfen Sie dieses Konto in den Einstellungen erneut mit dem aktuellen Passwort.",
+    relinkRequired: "Entfernen Sie dieses verknüpfte Konto in den Einstellungen und verknüpfen Sie es erneut mit dem aktuellen Passwort.",
     accountNotFound: "Dieses Konto ist nicht mehr verknüpft. Aktualisieren Sie die Kontoliste.",
     switchUnavailable: "Das andere Konto ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
     description: 'Verknüpfen Sie ein weiteres Konto, um schnell zwischen ihnen zu wechseln, ohne sich abzumelden.',

@@ -179,7 +179,7 @@ export const ptBR = {
     }
   },
   linkedAccounts: {
-    relinkRequired: "Vincule esta conta novamente com a senha atual nas Configurações.",
+    relinkRequired: "Remova esta conta vinculada nas configurações e vincule-a novamente com a senha atual.",
     accountNotFound: "Esta conta não está mais vinculada. Atualize a lista de contas.",
     switchUnavailable: "A outra conta está temporariamente indisponível. Tente novamente mais tarde.",
     description: 'Conecte outra conta para alternar entre elas rapidamente, sem sair.',

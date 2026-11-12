@@ -172,7 +172,7 @@ export const pt = {
     }
   },
   linkedAccounts: {
-    relinkRequired: "Volte a associar esta conta com a palavra-passe atual nas Definições.",
+    relinkRequired: "Remova esta conta associada nas definições e volte a associá-la com a palavra-passe atual.",
     accountNotFound: "Esta conta já não está associada. Atualize a lista de contas.",
     switchUnavailable: "A outra conta está temporariamente indisponível. Tente novamente mais tarde.",
     description: 'Associe outra conta para alternar rapidamente entre elas sem precisar de terminar sessão.',
