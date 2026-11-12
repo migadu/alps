@@ -216,6 +216,19 @@ describe('hooks', () => {
   });
 });
 
+describe('synchronous async-hook failures', () => {
+  it('counts a synchronous throw and still invokes every handler immediately', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const seen: string[] = [];
+    registry.registerHook('composer:presend', () => { seen.push('first'); return 'first'; });
+    registry.registerHook('composer:presend', () => { seen.push('bad'); throw new Error('broken'); });
+    registry.registerHook('composer:presend', () => { seen.push('last'); return Promise.resolve('last'); });
+    const pending = registry.invokeHookSettled('composer:presend', {});
+    expect(seen).toEqual(['first', 'bad', 'last']);
+    expect(await pending).toEqual({ results: ['first', 'last'], failed: 1 });
+  });
+});
+
 describe('page modules', () => {
   it('fetches a page when it is first shown, not when it is registered, and once', async () => {
     const tag = 'lazy-shown-page';
