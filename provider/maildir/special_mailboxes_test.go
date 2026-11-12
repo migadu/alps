@@ -33,3 +33,23 @@ func TestSpecialFolderNamesMustMatchExactly(t *testing.T) {
 		}
 	}
 }
+
+func TestSpecialFolderAliasesMatchTheWebmail(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		kind provider.MailboxType
+	}{
+		{"Draft", provider.MailboxTypeDrafts}, {"Deleted", provider.MailboxTypeTrash}, {"Deleted Items", provider.MailboxTypeTrash}, {"Spam", provider.MailboxTypeJunk}, {"Archives", provider.MailboxTypeArchive},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := NewProvider(t.TempDir(), "alice@example.com")
+			if err := p.CreateMailbox(tc.name); err != nil {
+				t.Fatal(err)
+			}
+			box, err := p.FindMailboxByType(tc.kind)
+			if err != nil || box == nil || box.Name != tc.name {
+				t.Fatalf("resolved %+v, %v; want %q", box, err, tc.name)
+			}
+		})
+	}
+}
