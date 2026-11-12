@@ -1632,7 +1632,8 @@ func (sm *SessionManager) removeSession(token string) {
 }
 
 // evictOldestAttachment evicts the oldest attachment across all sessions to free up global budget.
-// Returns true if an attachment was evicted, false if no attachments exist.
+// Returns true when the scan found a candidate, even if another request
+// removed it first. The caller must recheck the shared budget.
 func (sm *SessionManager) evictOldestAttachment() bool {
 	sm.locker.RLock()
 	var oldestSession *Session
@@ -1655,8 +1656,8 @@ func (sm *SessionManager) evictOldestAttachment() bool {
 	if oldestSession != nil {
 		if a := oldestSession.PopAttachment(oldestID); a != nil {
 			a.Remove()
-			return true
 		}
+		return true
 	}
 	return false
 }
