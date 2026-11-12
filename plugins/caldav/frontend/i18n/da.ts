@@ -1,6 +1,7 @@
 export default {
     calendar: {
       someCalendarsFailed: "Nogle kalendere kunne ikke læses. Deres begivenheder mangler.",
+      notConfigured: "Kalendere og opgaver er ikke konfigureret for denne konto.",
       deleteCalendarFailed: 'Kalenderen kunne ikke slettes.',
       deleteEventFailed: 'Begivenheden kunne ikke slettes.',
       saveCalendarFailed: 'Kalenderen kunne ikke gemmes.',

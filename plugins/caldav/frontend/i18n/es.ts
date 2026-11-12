@@ -1,6 +1,7 @@
 export default {
     calendar: {
       someCalendarsFailed: "No se pudieron leer algunos calendarios. Faltan sus eventos.",
+      notConfigured: "Los calendarios y las tareas no están configurados para esta cuenta.",
       deleteCalendarFailed: 'No se pudo eliminar el calendario.',
       deleteEventFailed: 'No se pudo eliminar el evento.',
       saveCalendarFailed: 'No se pudo guardar el calendario.',

@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      listLoadFailed: "Не удалось загрузить контакты. Проверьте подключение и повторите попытку.",
       notConfigured: "Контакты не настроены для этой учётной записи.",
     deleteFailed: {
       one: 'Не удалось удалить контакты: {count} из {total}.',

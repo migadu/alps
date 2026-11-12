@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      listLoadFailed: "無法載入聯絡人。請檢查連線後重試。",
       notConfigured: "此帳戶尚未設定聯絡人。",
     deleteFailed: {
       other: '{total} 位聯絡人中有 {count} 位無法刪除。'

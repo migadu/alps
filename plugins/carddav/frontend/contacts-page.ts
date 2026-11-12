@@ -597,7 +597,7 @@ export class ContactsPage extends LitElement {
       }
     } catch (e) {
       if (epoch !== this.readEpoch) return;
-      this.listError = e instanceof HttpStatusError && e.message === 'carddav_not_configured' ? 'contacts.notConfigured' : 'contacts.loadFailed';
+      this.listError = e instanceof HttpStatusError && e.message === 'carddav_not_configured' ? 'contacts.notConfigured' : 'contacts.listLoadFailed';
       if (this.listError !== 'contacts.notConfigured') console.error('Failed to fetch contacts', e);
     } finally {
       if (epoch === this.readEpoch) this.loading = false;
@@ -1913,7 +1913,7 @@ export class ContactsPage extends LitElement {
         </alps-sidebar>
         <div class="main-view">
           <div class="contact-list-pane" style="width: ${this.isMobile ? '100%' : this.listWidth + 'px'}; display: flex; flex-direction: column; flex-shrink: 0;">
-            ${this.listError ? html`<alps-banner variant="error">${this.i18nStore?.t(this.listError)}</alps-banner>` : ''}
+            ${this.listError ? html`<alps-banner variant=${this.listError === 'contacts.notConfigured' ? 'info' : 'error'} role="status">${this.i18nStore?.t(this.listError)}</alps-banner>` : ''}
             <alps-contacts-list
               .contacts=${this.contacts}
               .selectedCategory=${this.selectedCategory}

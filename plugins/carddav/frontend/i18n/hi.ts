@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      listLoadFailed: "संपर्क लोड नहीं हो सके। अपना कनेक्शन जाँचें और फिर से प्रयास करें।",
       notConfigured: "इस खाते के लिए संपर्क कॉन्फ़िगर नहीं किए गए हैं।",
     deleteFailed: {
       one: '{total} में से {count} संपर्क हटाया नहीं जा सका।',

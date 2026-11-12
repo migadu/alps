@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      listLoadFailed: "Није могуће учитати контакте. Проверите везу и покушајте поново.",
       notConfigured: "Контакти нису подешени за овај налог.",
     deleteFailed: {
       one: 'Није било могуће обрисати {count} контакт од укупно {total}.',

@@ -1,6 +1,7 @@
 export default {
     calendar: {
       someCalendarsFailed: "无法读取部分日历，这些日历的活动未显示。",
+      notConfigured: "此账户尚未配置日历和任务。",
       deleteCalendarFailed: '无法删除日历。',
       deleteEventFailed: '无法删除活动',
       saveCalendarFailed: '无法保存日历。',

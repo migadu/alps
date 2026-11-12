@@ -1,6 +1,7 @@
 export default {
   calendar: {
       someCalendarsFailed: "कुछ कैलेंडर पढ़े नहीं जा सके। उनके इवेंट दिखाई नहीं दे रहे हैं।",
+      notConfigured: "इस खाते के लिए कैलेंडर और कार्य कॉन्फ़िगर नहीं किए गए हैं।",
     deleteCalendarFailed: 'कैलेंडर हटाया नहीं जा सका।',
     deleteEventFailed: 'इवेंट हटाया नहीं जा सका।',
     saveCalendarFailed: 'कैलेंडर सहेजा नहीं जा सका।',

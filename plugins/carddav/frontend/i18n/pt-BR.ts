@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      listLoadFailed: "Não foi possível carregar os contatos. Verifique a conexão e tente novamente.",
       notConfigured: "Os contatos não estão configurados para esta conta.",
     deleteFailed: {
       one: 'Não foi possível excluir {count} de {total} contatos.',

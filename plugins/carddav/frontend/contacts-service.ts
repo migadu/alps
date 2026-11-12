@@ -105,6 +105,12 @@ function summarize(settled: PromiseSettledResult<unknown>[]): BulkOutcome {
   return { total: settled.length, done: settled.length - failed, failed, uncertain };
 }
 
+/** An absent address book is an expected state for optional collection. */
+export function isAddressBookUnavailable(error: unknown): boolean {
+  return error instanceof HttpStatusError && error.status === 409 &&
+    ['no_address_book', 'carddav_not_configured'].includes(error.message);
+}
+
 class ContactsService {
   async fetchContacts(query: string = '') {
     const url = query ? `/contacts?query=${encodeURIComponent(query)}` : '/contacts';
@@ -131,7 +137,8 @@ class ContactsService {
       body: JSON.stringify(payload)
     });
     if (!res.ok) {
-      throw new HttpStatusError(res.status, `Failed to create contact: ${res.statusText}`);
+      const data = await res.json().catch(() => ({}));
+      throw new HttpStatusError(res.status, data.error || 'contacts_unavailable');
     }
     return res.json();
   }

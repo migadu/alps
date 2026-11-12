@@ -1,6 +1,7 @@
 export default {
   calendar: {
       someCalendarsFailed: "Bazı takvimler okunamadı. Bu takvimlerin etkinlikleri eksik.",
+      notConfigured: "Bu hesap için takvimler ve görevler yapılandırılmamış.",
     deleteCalendarFailed: 'Takvim silinemedi.',
     deleteEventFailed: 'Etkinlik silinemedi.',
     saveCalendarFailed: 'Takvim kaydedilemedi.',

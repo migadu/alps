@@ -2,6 +2,7 @@ package alpscaldav
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/migadu/alps/internal/debuglog"
 	"github.com/migadu/alps/internal/serviceurl"
@@ -326,4 +327,17 @@ func usernameOf(session *alps.Session) string {
 		return ""
 	}
 	return session.Username()
+}
+
+// addRoute keeps expected account-configuration states out of request-error
+// logs while retaining their stable status and code for clients.
+func (p *plugin) addRoute(method, path string, handler alps.HandlerFunc) {
+	p.GoPlugin.AddRoute(method, path, func(ctx *alps.Context) error {
+		err := handler(ctx)
+		var state *alps.HTTPError
+		if errors.As(err, &state) && state.Code == http.StatusConflict && (state.Message == "caldav_not_configured") {
+			return ctx.JSON(http.StatusConflict, map[string]interface{}{"error": state.Message})
+		}
+		return err
+	})
 }
