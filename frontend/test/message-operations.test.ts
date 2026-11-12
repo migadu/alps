@@ -244,3 +244,19 @@ describe('saving and sending', () => {
     await expect(ops.sendDraft(new FormData())).rejects.toThrow('Failed to send message (502)');
   });
 });
+
+describe('message size refusals', () => {
+  it.each(['save', 'send'] as const)('classifies %s refusals by HTTP413 or the stable code', async operation => {
+    for (const response of [
+      htmlPage(413),
+      json(413, { error: 'message_too_large', code: 'message_too_large' }),
+      json(400, { error: 'message_too_large' }),
+      json(500, { code: 'message_too_large' }),
+    ]) {
+      fetchMock.mockResolvedValueOnce(response);
+      const request = operation === 'save' ? ops.saveDraft(new FormData()) : ops.sendDraft(new FormData());
+      await expect(request).rejects.toMatchObject({ name: 'MessageTooLargeError' });
+    }
+    expect(sync).not.toHaveBeenCalled();
+  });
+});
