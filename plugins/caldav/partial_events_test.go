@@ -1,7 +1,7 @@
 package alpscaldav
 
 import (
-	"github.com/emersion/go-webdav/caldav"
+	"github.com/migadu/go-webdav/caldav"
 	"net/http"
 	"testing"
 )
