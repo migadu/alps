@@ -3,7 +3,6 @@ package alpsbase
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -57,10 +56,7 @@ func handleDAVSettings(ctx *alps.Context) error {
 			// confirmations do.
 			username := ctx.Session.Username()
 			if allowed, reason, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
-				seconds := int(retryAfter.Seconds())
-				if seconds > 0 {
-					ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
-				}
+				seconds := ctx.RetryAfter(retryAfter)
 				return ctx.JSON(http.StatusTooManyRequests, map[string]any{"error": "rate_limited", "reason": reason, "retry_after": seconds})
 			}
 			ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, ctx.Session.CheckPassword(input.MailPassword))
