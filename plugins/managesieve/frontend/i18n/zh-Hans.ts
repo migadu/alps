@@ -17,6 +17,9 @@ export default {
     "warningRawSwitchConfirm": "切换",
     "warningRawSwitch": '切换到原始模式意味着脚本将不再能够可视化编辑，是否继续？',
     "toast": {
+      "saveError": "无法保存过滤规则，请重试。",
+      "validateError": "无法验证脚本，请重试。",
+
       "saved": '规则已保存并激活。',
       "deactivated": "规则已停用。",
       "valid": "脚本有效！",

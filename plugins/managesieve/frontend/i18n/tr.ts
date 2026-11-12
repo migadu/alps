@@ -17,6 +17,9 @@ export default {
     warningRawSwitchConfirm: 'Geç',
     warningRawSwitch: 'Betik düzenleyiciye geçerseniz kurallar artık görsel olarak düzenlenemez. Devam edilsin mi?',
     toast: {
+      "saveError": "Filtreler kaydedilemedi. Lütfen yeniden deneyin.",
+      "validateError": "Betik doğrulanamadı. Lütfen yeniden deneyin.",
+
       saved: 'Kurallar kaydedildi ve etkinleştirildi.',
       deactivated: 'Kurallar devre dışı bırakıldı.',
       valid: 'Betik geçerli!',

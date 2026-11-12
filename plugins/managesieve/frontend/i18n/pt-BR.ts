@@ -17,6 +17,9 @@ export default {
     warningRawSwitchConfirm: 'Mudar',
     warningRawSwitch: 'Ao mudar para o modo de script, não será mais possível editar o script visualmente. Continuar?',
     toast: {
+      "saveError": "Não foi possível salvar os filtros. Tente novamente.",
+      "validateError": "Não foi possível validar o script. Tente novamente.",
+
       saved: 'Regras salvas e ativadas.',
       deactivated: 'Regras desativadas.',
       valid: 'O script é válido!',

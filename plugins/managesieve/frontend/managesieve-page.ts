@@ -8,7 +8,7 @@ import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-setting-group';
 import './raw-editor';
 import './visual-editor';
-import { managesieveService, TwoVacationsError } from './managesieve-service';
+import { managesieveService, TwoVacationsError, scriptFailureMessage } from './managesieve-service';
 import '../../../frontend/src/components/ui-confirm';
 import { UnsavedEdit } from './unsaved';
 
@@ -231,7 +231,7 @@ export class ManageSievePage extends LitElement {
 			if (this.visit !== visit || !unsavedFilters.current(visit)) return;
 			const message = e instanceof TwoVacationsError
 				? this.i18nStore.t('managesieve.toast.autoReplyOn')
-				: e.message || this.i18nStore.t('managesieve.toast.networkError');
+				: scriptFailureMessage(e, this.i18nStore.t('managesieve.toast.saveError'));
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, duration: 5000, type: 'error' } }));
 		} finally {
 			if (this.visit === visit) this.isSaving = false;

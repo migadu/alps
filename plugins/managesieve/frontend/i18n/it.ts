@@ -17,6 +17,9 @@ export default {
     "warningRawSwitchConfirm": "Passa",
     "warningRawSwitch": "Passare alla modalità grezza significa che lo script non sarà più modificabile visivamente. Continuare?",
     "toast": {
+      "saveError": "Impossibile salvare i filtri. Riprova.",
+      "validateError": "Impossibile convalidare lo script. Riprova.",
+
       "saved": "Regole salvate e attivate.",
       "deactivated": "Regole disattivate.",
       "valid": "Lo script è valido!",

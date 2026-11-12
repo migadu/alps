@@ -17,6 +17,9 @@ export default {
     warningRawSwitchConfirm: '切換',
     warningRawSwitch: '切換至指令碼模式後，將無法再以視覺化方式編輯此指令碼。要繼續嗎？',
     toast: {
+      "saveError": "無法儲存篩選規則，請重試。",
+      "validateError": "無法驗證指令碼，請重試。",
+
       saved: '規則已儲存並啟用。',
       deactivated: '規則已停用。',
       valid: '指令碼有效。',

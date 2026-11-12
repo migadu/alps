@@ -127,3 +127,8 @@ class ManageSieveService {
 }
 
 export const managesieveService = new ManageSieveService();
+
+/** Script diagnostics are useful as written; transport failures need localised UI wording. */
+export function scriptFailureMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.startsWith('Invalid Sieve script:') ? error.message : fallback;
+}

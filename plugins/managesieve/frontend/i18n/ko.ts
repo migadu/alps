@@ -17,6 +17,9 @@ export default {
     warningRawSwitchConfirm: '전환',
     warningRawSwitch: '스크립트 모드로 전환하면 더 이상 시각적 편집기로 스크립트를 편집할 수 없습니다. 계속할까요?',
     toast: {
+      "saveError": "필터를 저장하지 못했습니다. 다시 시도하세요.",
+      "validateError": "스크립트를 검증하지 못했습니다. 다시 시도하세요.",
+
       saved: '규칙을 저장하고 활성화했습니다.',
       deactivated: '규칙을 비활성화했습니다.',
       valid: '올바른 스크립트입니다.',

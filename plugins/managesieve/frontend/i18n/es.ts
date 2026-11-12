@@ -17,6 +17,9 @@ export default {
     "warningRawSwitchConfirm": "Cambiar",
     "warningRawSwitch": "Cambiar al modo raw significa que el script ya no será editable visualmente. ¿Continuar?",
     "toast": {
+      "saveError": "No se pudieron guardar los filtros. Inténtalo de nuevo.",
+      "validateError": "No se pudo validar el script. Inténtalo de nuevo.",
+
       "saved": "Reglas guardadas y activadas.",
       "deactivated": "Reglas desactivadas.",
       "valid": "¡El script es válido!",

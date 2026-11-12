@@ -17,6 +17,9 @@ export default {
     "warningRawSwitchConfirm": "Skift",
     "warningRawSwitch": "Når du skifter til rå tilstand, kan scriptet ikke længere redigeres visuelt. Fortsæt?",
     "toast": {
+      "saveError": "Kunne ikke gemme filtrene. Prøv igen.",
+      "validateError": "Kunne ikke validere scriptet. Prøv igen.",
+
       "saved": "Regler gemt og aktiveret.",
       "deactivated": "Regler deaktiveret.",
       "valid": "Scriptet er gyldigt!",

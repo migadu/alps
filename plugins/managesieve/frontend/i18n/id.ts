@@ -17,6 +17,9 @@ export default {
     warningRawSwitchConfirm: 'Beralih',
     warningRawSwitch: 'Setelah beralih ke mode skrip, skrip tidak dapat lagi diedit secara visual. Lanjutkan?',
     toast: {
+      "saveError": "Filter tidak dapat disimpan. Silakan coba lagi.",
+      "validateError": "Skrip tidak dapat divalidasi. Silakan coba lagi.",
+
       saved: 'Aturan disimpan dan diaktifkan.',
       deactivated: 'Aturan dinonaktifkan.',
       valid: 'Skrip valid!',

@@ -17,6 +17,9 @@ export default {
     "warningRawSwitchConfirm": "Switch",
     "warningRawSwitch": "Switching to raw mode means the script will no longer be editable visually. Continue?",
     "toast": {
+      "saveError": "Could not save the filters. Please try again.",
+      "validateError": "Could not validate the script. Please try again.",
+
       "saved": "Rules saved and activated.",
       "deactivated": "Rules deactivated.",
       "valid": "Script is valid!",
