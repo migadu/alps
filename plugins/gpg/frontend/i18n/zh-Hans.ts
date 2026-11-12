@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG 密钥'
   },
   gpg: {
+    encryptionFailed: '无法加密此邮件，请重试。',
     keyringUnreadable: '无法读取您的 GPG 密钥，请重试。',
     noPrivateKey: '尚未保存 GPG 私钥。请在设置中导入或生成密钥。',
     passphraseCancelled: '已取消解密。',

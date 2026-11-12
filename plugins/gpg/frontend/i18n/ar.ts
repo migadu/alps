@@ -3,6 +3,7 @@ export default {
     gpg: 'مفاتيح GPG'
   },
   gpg: {
+    encryptionFailed: 'تعذر تشفير هذه الرسالة. أعد المحاولة.',
     keyringUnreadable: 'تعذرت قراءة مفاتيح GPG. أعد المحاولة.',
     noPrivateKey: 'لا يوجد مفتاح GPG خاص محفوظ. استورد مفتاحًا أو أنشئه في الإعدادات.',
     passphraseCancelled: 'تم إلغاء فك التشفير.',

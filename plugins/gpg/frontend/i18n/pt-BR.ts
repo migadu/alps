@@ -3,6 +3,7 @@ export default {
     gpg: 'Chaves GPG'
   },
   gpg: {
+    encryptionFailed: 'Não foi possível criptografar esta mensagem. Tente novamente.',
     keyringUnreadable: 'Não foi possível ler suas chaves GPG. Tente novamente.',
     noPrivateKey: 'Nenhuma chave GPG privada foi salva. Importe ou gere uma nas Configurações.',
     passphraseCancelled: 'A descriptografia foi cancelada.',

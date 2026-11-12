@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG-nøgler'
   },
   gpg: {
+    encryptionFailed: 'Kunne ikke kryptere beskeden. Prøv igen.',
     keyringUnreadable: 'Kunne ikke læse dine GPG-nøgler. Prøv igen.',
     noPrivateKey: 'Ingen privat GPG-nøgle er gemt. Importer eller opret en i indstillingerne.',
     passphraseCancelled: 'Dekrypteringen blev annulleret.',

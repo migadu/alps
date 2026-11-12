@@ -3,6 +3,7 @@ export default {
     gpg: 'Kunci GPG'
   },
   gpg: {
+    encryptionFailed: 'Pesan ini tidak dapat dienkripsi. Silakan coba lagi.',
     keyringUnreadable: 'Kunci GPG Anda tidak dapat dibaca. Silakan coba lagi.',
     noPrivateKey: 'Tidak ada kunci privat GPG tersimpan. Impor atau buat kunci di Pengaturan.',
     passphraseCancelled: 'Dekripsi dibatalkan.',

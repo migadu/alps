@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'lit';
-const pgp = vi.hoisted(() => ({ readPrivateKey: vi.fn(), readMessage: vi.fn(), decrypt: vi.fn() }));
+const pgp = vi.hoisted(() => ({ readPrivateKey: vi.fn(), readMessage: vi.fn(), decrypt: vi.fn(), decryptKey: vi.fn() }));
 vi.mock('openpgp', () => pgp);
 import { clearCachedPrivateKey, handleReaderContent } from '../../plugins/gpg/frontend/gpg-crypto';
 import { waitFor } from './helpers/dom';
@@ -39,6 +39,20 @@ describe('GPG reader failures', () => {
     pgp.readMessage.mockResolvedValueOnce({ getEncryptionKeyIDs: () => [{ toHex: () => 'bbbb' }] });
     expect(await banner()).toContain('gpg.noMatchingKey');
     expect(pgp.decrypt).not.toHaveBeenCalled();
+  });
+  it('translates the retry label without exposing the library error', async () => {
+    pgp.readPrivateKey.mockResolvedValueOnce({ isDecrypted: () => false });
+    pgp.decryptKey.mockRejectedValueOnce(new Error('English library explanation'));
+    const result = banner();
+    await waitFor(() => !!document.querySelector('ui-prompt'), 'passphrase prompt');
+    const first = document.querySelector('ui-prompt')!;
+    first.dispatchEvent(new CustomEvent('submit', { detail: { passphrase: 'wrong' } }));
+    await waitFor(() => !!document.querySelector('ui-prompt') && document.querySelector('ui-prompt') !== first, 'retry prompt');
+    const retry = document.querySelector('ui-prompt') as HTMLElement & { fields: { label: string }[] };
+    expect(retry.fields[0].label).toContain('gpg.importIncorrectPassphrase');
+    expect(retry.fields[0].label).not.toContain('English library explanation');
+    retry.dispatchEvent(new CustomEvent('cancel'));
+    await result;
   });
   it('distinguishes cancelling the passphrase prompt', async () => {
     pgp.readPrivateKey.mockResolvedValueOnce({ isDecrypted: () => false });

@@ -14,7 +14,7 @@ function promptForPassphrase(errorMsg?: string, i18nStore?: any): Promise<string
         prompt.cancelText = i18nStore?.t('general.cancel') as string;
         
         let label = i18nStore?.t('gpg.passphrasePrompt') as string;
-        if (errorMsg) label += ` (Error: ${errorMsg})`;
+        if (errorMsg) label += ` ${errorMsg}`;
             
         prompt.fields = [{
             id: 'passphrase',
@@ -111,7 +111,8 @@ async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
                 });
                 return remember(decryptedKey, epoch);
             } catch (e: any) {
-                errorMsg = 'Incorrect passphrase: ' + e.message;
+                console.error('GPG key unlock failed:', e);
+                errorMsg = i18nStore?.t('gpg.importIncorrectPassphrase');
                 pass = await promptForPassphrase(errorMsg, i18nStore);
             }
         }
@@ -266,7 +267,9 @@ export async function handlePresend(payload: any) {
         return formData;
 
     } catch (e: any) {
-        alert('GPG Encryption failed: ' + e.message);
+        if (e instanceof GPGFailure && e.translationKey === 'gpg.passphraseCancelled') return false;
+        console.error('GPG encryption failed:', e);
+        alert(composer?.i18nStore?.t(e instanceof GPGFailure ? e.translationKey : 'gpg.encryptionFailed'));
         return false; // Prevent sending
     }
 }

@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG-Schlüssel'
   },
   gpg: {
+    encryptionFailed: 'Diese Nachricht konnte nicht verschlüsselt werden. Bitte versuchen Sie es erneut.',
     keyringUnreadable: 'Ihre GPG-Schlüssel konnten nicht gelesen werden. Bitte versuchen Sie es erneut.',
     noPrivateKey: 'Es ist kein privater GPG-Schlüssel gespeichert. Importieren oder erstellen Sie einen in den Einstellungen.',
     passphraseCancelled: 'Die Entschlüsselung wurde abgebrochen.',
