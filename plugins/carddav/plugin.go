@@ -103,7 +103,7 @@ func (p *plugin) connection(ctx context.Context, session *alps.Session) (*reques
 		}
 	}
 	if resolved.Server == "" {
-		return nil, fmt.Errorf("CardDAV server is not configured")
+		return nil, alps.NewHTTPError(http.StatusConflict, "carddav_not_configured")
 	}
 	u, err := parseCardDAVURL(resolved.Server)
 	if err != nil {
@@ -140,11 +140,11 @@ func (p *plugin) httpClient(ctx *alps.Context) *http.Client {
 func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Session) (*carddav.Client, *carddav.AddressBook, error) {
 	conn, err := p.connection(ctx, session)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
+		return nil, nil, fmt.Errorf("failed to create CardDAV client: %w", err)
 	}
 	c, err := newClient(conn.url, conn.client)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
+		return nil, nil, fmt.Errorf("failed to create CardDAV client: %w", err)
 	}
 
 	p.cacheMutex.RLock()

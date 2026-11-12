@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      notConfigured: "Контакты не настроены для этой учётной записи.",
     deleteFailed: {
       one: 'Не удалось удалить контакты: {count} из {total}.',
       few: 'Не удалось удалить контакты: {count} из {total}.',

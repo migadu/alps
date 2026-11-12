@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      notConfigured: "इस खाते के लिए संपर्क कॉन्फ़िगर नहीं किए गए हैं।",
     deleteFailed: {
       one: '{total} में से {count} संपर्क हटाया नहीं जा सका।',
       other: '{total} में से {count} संपर्क हटाए नहीं जा सके।'

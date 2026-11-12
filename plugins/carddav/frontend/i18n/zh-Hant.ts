@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      notConfigured: "此帳戶尚未設定聯絡人。",
     deleteFailed: {
       other: '{total} 位聯絡人中有 {count} 位無法刪除。'
     },

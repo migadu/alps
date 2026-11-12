@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      notConfigured: "Контакти нису подешени за овај налог.",
     deleteFailed: {
       one: 'Није било могуће обрисати {count} контакт од укупно {total}.',
       few: 'Није било могуће обрисати {count} контакта од укупно {total}.',

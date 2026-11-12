@@ -122,7 +122,7 @@ func (p *plugin) connection(ctx context.Context, session *alps.Session) (*reques
 		}
 	}
 	if resolved.Server == "" {
-		return nil, fmt.Errorf("CalDAV server is not configured")
+		return nil, alps.NewHTTPError(http.StatusConflict, "caldav_not_configured")
 	}
 	u, err := parseCalDAVURL(resolved.Server)
 	if err != nil {
@@ -178,11 +178,11 @@ func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session)
 func (p *plugin) clientWithHomeSet(ctx context.Context, session *alps.Session) (*caldav.Client, string, []caldav.Calendar, error) {
 	conn, err := p.connection(ctx, session)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to create CalDAV client: %v", err)
+		return nil, "", nil, fmt.Errorf("failed to create CalDAV client: %w", err)
 	}
 	c, err := newClient(conn.url, conn.client)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to create CalDAV client: %v", err)
+		return nil, "", nil, fmt.Errorf("failed to create CalDAV client: %w", err)
 	}
 
 	p.cacheMutex.RLock()

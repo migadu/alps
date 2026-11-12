@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      notConfigured: "此账户尚未配置联系人。",
     deleteFailed: {
       other: '{total} 个联系人中有 {count} 个无法删除。'
     },

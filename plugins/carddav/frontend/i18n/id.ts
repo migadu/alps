@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      notConfigured: "Kontak belum dikonfigurasi untuk akun ini.",
     deleteFailed: {
       other: '{count} dari {total} kontak tidak dapat dihapus.'
     },

@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      notConfigured: "Kontakte ist für dieses Konto nicht eingerichtet.",
     deleteFailed: {
       one: '{count} von {total} Kontakten konnte nicht gelöscht werden.',
       other: '{count} von {total} Kontakten konnten nicht gelöscht werden.'

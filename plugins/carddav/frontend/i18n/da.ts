@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      notConfigured: "Kontakter er ikke konfigureret for denne konto.",
     deleteFailed: {
       one: '{count} af {total} kontakter kunne ikke slettes.',
       other: '{count} af {total} kontakter kunne ikke slettes.'

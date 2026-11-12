@@ -110,7 +110,8 @@ class ContactsService {
     const url = query ? `/contacts?query=${encodeURIComponent(query)}` : '/contacts';
     const res = await fetchWithTimeout(url);
     if (!res.ok) {
-      throw new Error(`Failed to fetch contacts: ${res.statusText}`);
+      const data = await res.json().catch(() => ({}));
+      throw new HttpStatusError(res.status, data.error || 'contacts_unavailable');
     }
     return res.json();
   }

@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      notConfigured: "Bu hesap için kişiler yapılandırılmamış.",
     deleteFailed: {
       one: '{total} kişiden {count} tanesi silinemedi.',
       other: '{total} kişiden {count} tanesi silinemedi.'

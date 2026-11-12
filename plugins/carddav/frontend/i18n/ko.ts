@@ -1,5 +1,6 @@
 export default {
   contacts: {
+      notConfigured: "이 계정의 연락처가 설정되지 않았습니다.",
     deleteFailed: {
       other: '연락처 {total}개 중 {count}개를 삭제하지 못했습니다.'
     },
