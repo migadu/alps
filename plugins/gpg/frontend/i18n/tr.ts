@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG Anahtarları'
   },
   gpg: {
+    loadError: 'GPG anahtarlarınız yüklenemedi. Anahtar oluşturmadan veya içe aktarmadan önce yeniden deneyin.',
     toggleEncryption: 'GPG Şifrelemesini Aç/Kapat',
     decryptedSuccess: 'Bu iletinin içeriği GPG ile uçtan uca şifrelenmişti.',
     decryptedFailed: 'Bu ileti şifreli, ancak sunucuda şifresini çözecek eşleşen bir özel anahtar bulunamadı.',

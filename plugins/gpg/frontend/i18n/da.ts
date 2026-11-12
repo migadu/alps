@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG-nøgler'
   },
   gpg: {
+    loadError: 'Kunne ikke indlæse dine GPG-nøgler. Prøv igen, før du opretter eller importerer nøgler.',
     toggleEncryption: 'Slå GPG-kryptering til/fra',
     decryptedSuccess: 'Indholdet af denne besked var end-to-end-krypteret med GPG.',
     decryptedFailed: 'Denne besked er krypteret, men der blev ikke fundet en matchende privat nøgle på serveren til at dekryptere den.',

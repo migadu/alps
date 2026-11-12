@@ -3,6 +3,7 @@ export default {
     gpg: 'Claves GPG'
   },
   gpg: {
+    loadError: 'No se pudieron cargar las claves GPG. Inténtalo de nuevo antes de generar o importar claves.',
     toggleEncryption: 'Alternar cifrado GPG',
     decryptedSuccess: 'El contenido de este mensaje fue cifrado de extremo a extremo con GPG.',
     decryptedFailed: 'Este mensaje está cifrado pero no se encontró una clave privada coincidente en el servidor para descifrarlo.',

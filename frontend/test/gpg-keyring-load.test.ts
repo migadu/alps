@@ -13,7 +13,7 @@ describe('a failed keyring read', () => {
       reads++;
       if (reads === 1) {
         if (failure === 'network') throw new Error('offline');
-        return new Response('{}', { status: 503 });
+        return new Response('{}', { status: 500 });
       }
       return new Response('{}');
     }));

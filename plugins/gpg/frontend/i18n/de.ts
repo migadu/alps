@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG-Schlüssel'
   },
   gpg: {
+    loadError: 'Ihre GPG-Schlüssel konnten nicht geladen werden. Versuchen Sie es erneut, bevor Sie Schlüssel erstellen oder importieren.',
     toggleEncryption: 'GPG-Verschlüsselung umschalten',
     decryptedSuccess: 'Der Inhalt dieser Nachricht wurde mit GPG Ende-zu-Ende verschlüsselt.',
     decryptedFailed: 'Diese Nachricht ist verschlüsselt, aber es wurde kein passender privater Schlüssel auf dem Server gefunden, um sie zu entschlüsseln.',

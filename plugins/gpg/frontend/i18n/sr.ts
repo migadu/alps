@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG ključevi'
   },
   gpg: {
+    loadError: 'Nije moguće učitati vaše GPG ključeve. Pokušajte ponovo pre pravljenja ili uvoza ključeva.',
     toggleEncryption: 'Uključi GPG kripciju',
     decryptedSuccess: 'Sadržaj ove poruke je end-to-end kriptovan pomoću GPG-a.',
     decryptedFailed: 'Ova poruka je kriptovana, ali na serveru nije pronađen odgovarajući privatni ključ za njeno dekriptovanje.',

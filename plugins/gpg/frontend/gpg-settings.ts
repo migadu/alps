@@ -19,6 +19,7 @@ export class AlpsGpgSettings extends LitElement {
     i18nStore?: I18nStore;
 
     @state() private loading = true;
+    @state() private loadFailed = false;
     @state() private generating = false;
     @state() private importing = false;
     @state() private importError = '';
@@ -87,8 +88,10 @@ export class AlpsGpgSettings extends LitElement {
 
     async fetchKeys() {
         this.loading = true;
+        this.loadFailed = false;
         try {
             const res = await fetchWithTimeout('/gpg/keys');
+            if (!res.ok) throw new Error(`Keyring read failed: ${res.status}`);
             if (res.ok) {
                 const data = await res.json();
                 if (data.public_key) {
@@ -98,6 +101,7 @@ export class AlpsGpgSettings extends LitElement {
                 }
             }
         } catch (e) {
+            this.loadFailed = true;
             console.error(e);
         } finally {
             this.loading = false;
@@ -186,6 +190,7 @@ export class AlpsGpgSettings extends LitElement {
     }
 
     async generateKeys() {
+        if (this.loadFailed) return;
         const pass = await this.getConfirmedPassphrase();
         if (!pass) return;
 
@@ -210,6 +215,7 @@ export class AlpsGpgSettings extends LitElement {
     }
 
     async importKeys() {
+        if (this.loadFailed) return;
         if (!this.pubKeyInput || !this.privKeyInput) {
             this.importError = this.i18nStore?.t('gpg.importMissing') as string;
             return;
@@ -304,6 +310,11 @@ export class AlpsGpgSettings extends LitElement {
     render() {
         if (this.loading || this.generating) {
             return html`<alps-loader full-height .text=${this.i18nStore?.t(this.generating ? 'gpg.generating' : 'settings.loading') ?? ''}></alps-loader>`;
+        }
+
+        if (this.loadFailed) {
+            return html`<div role="alert">${this.i18nStore?.t('gpg.loadError')}</div>
+                <alps-button @click=${this.fetchKeys}>${this.i18nStore?.t('messageReader.loadErrorRetry')}</alps-button>`;
         }
 
         return html`

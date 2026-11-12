@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG 키'
   },
   gpg: {
+    loadError: 'GPG 키를 불러오지 못했습니다. 키를 생성하거나 가져오기 전에 다시 시도하세요.',
     toggleEncryption: 'GPG 암호화 켜기/끄기',
     decryptedSuccess: '이 메일의 내용은 GPG로 종단 간 암호화되었습니다.',
     decryptedFailed: '이 메일은 암호화되어 있지만 서버에서 복호화에 필요한 개인 키를 찾을 수 없습니다.',

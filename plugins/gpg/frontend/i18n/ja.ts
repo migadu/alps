@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG鍵'
   },
   gpg: {
+    loadError: 'GPG鍵を読み込めませんでした。鍵を生成またはインポートする前に再試行してください。',
     toggleEncryption: 'GPG暗号化の切り替え',
     decryptedSuccess: 'このメールの内容はGPGでエンドツーエンド暗号化されていました。',
     decryptedFailed: 'このメールは暗号化されていますが、復号できる秘密鍵がサーバー上に見つかりません。',

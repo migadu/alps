@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG 金鑰'
   },
   gpg: {
+    loadError: '無法載入您的 GPG 金鑰。產生或匯入金鑰前請重試。',
     toggleEncryption: '切換 GPG 加密',
     decryptedSuccess: '此郵件的內容已使用 GPG 進行端對端加密。',
     decryptedFailed: '此郵件已加密，但在伺服器上找不到可解密的對應私密金鑰。',

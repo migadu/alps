@@ -3,6 +3,7 @@ export default {
     gpg: 'Clés GPG'
   },
   gpg: {
+    loadError: 'Impossible de charger vos clés GPG. Réessayez avant de générer ou d’importer des clés.',
     toggleEncryption: 'Basculer le chiffrement GPG',
     decryptedSuccess: 'Le contenu de ce message a été chiffré de bout en bout avec GPG.',
     decryptedFailed: 'Ce message est chiffré mais aucune clé privée correspondante n\'a été trouvée sur le serveur pour le déchiffrer.',

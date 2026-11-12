@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG 密钥'
   },
   gpg: {
+    loadError: '无法加载您的 GPG 密钥。生成或导入密钥前请重试。',
     toggleEncryption: '切换 GPG 加密',
     decryptedSuccess: '此消息内容已通过 GPG 进行端到端加密。',
     decryptedFailed: '此消息已加密，但服务器上未找到相匹配的可用于解密的私钥。',

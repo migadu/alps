@@ -3,6 +3,7 @@ export default {
     gpg: 'Kunci GPG'
   },
   gpg: {
+    loadError: 'Kunci GPG Anda tidak dapat dimuat. Coba lagi sebelum membuat atau mengimpor kunci.',
     toggleEncryption: 'Aktifkan/Nonaktifkan Enkripsi GPG',
     decryptedSuccess: 'Konten pesan ini dienkripsi secara end-to-end dengan GPG.',
     decryptedFailed: 'Pesan ini terenkripsi, tetapi tidak ada kunci privat yang cocok di server untuk mendekripsinya.',

@@ -3,6 +3,7 @@ export default {
     gpg: 'GPG Keys'
   },
   gpg: {
+    loadError: 'Could not load your GPG keys. Try again before generating or importing keys.',
     toggleEncryption: 'Toggle GPG Encryption',
     decryptedSuccess: 'The content of this message was end-to-end encrypted with GPG.',
     decryptedFailed: 'This message is encrypted but no matching private key is found on server to decrypt it.',

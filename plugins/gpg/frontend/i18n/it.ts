@@ -3,6 +3,7 @@ export default {
     gpg: 'Chiavi GPG'
   },
   gpg: {
+    loadError: 'Impossibile caricare le chiavi GPG. Riprova prima di generare o importare chiavi.',
     toggleEncryption: 'Attiva/disattiva crittografia GPG',
     decryptedSuccess: 'Il contenuto di questo messaggio è stato crittografato end-to-end con GPG.',
     decryptedFailed: 'Questo messaggio è crittografato ma non è stata trovata una chiave privata corrispondente sul server per decrittografarlo.',
