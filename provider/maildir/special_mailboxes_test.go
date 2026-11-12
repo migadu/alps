@@ -18,3 +18,18 @@ func TestFindMailboxByTypeDistinguishesAbsenceFromFailure(t *testing.T) {
 		t.Error("an unsupported mailbox type was treated as an absent mailbox")
 	}
 }
+
+func TestSpecialFolderNamesMustMatchExactly(t *testing.T) {
+	p := NewProvider(t.TempDir(), "ada@example.com")
+	for _, name := range []string{"Presentations", "Unsent", "Contract drafts", "Trashy", "Junkyard", "Archived contracts"} {
+		if err := p.CreateMailbox(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, kind := range []provider.MailboxType{provider.MailboxTypeSent, provider.MailboxTypeDrafts, provider.MailboxTypeTrash, provider.MailboxTypeJunk, provider.MailboxTypeArchive} {
+		box, err := p.FindMailboxByType(kind)
+		if err != nil || box != nil {
+			t.Errorf("type %v: got %v, %v; want absent", kind, box, err)
+		}
+	}
+}
