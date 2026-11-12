@@ -9,6 +9,7 @@ package cluster
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -96,14 +97,15 @@ func NewCluster(cfg Config) (*Cluster, error) {
 		case !ip.IsUnspecified():
 			mlConfig.AdvertiseAddr = cfg.BindAddr
 		case ip.To4() == nil:
-			private, err := sockaddr.GetPrivateIP()
+			private, err := sockaddr.GetPrivateInterfaces()
 			if err != nil {
 				return nil, fmt.Errorf("cluster bind address %q: cannot find a private address to advertise: %w", cfg.BindAddr, err)
 			}
-			if private == "" {
-				return nil, fmt.Errorf("cluster bind address %q: the host has no private address to advertise; set bind to this node's own address", cfg.BindAddr)
+			addr, err := ipv6WildcardAdvertiseAddr(true, private)
+			if err != nil {
+				return nil, fmt.Errorf("cluster bind address %q: %w", cfg.BindAddr, err)
 			}
-			mlConfig.AdvertiseAddr = private
+			mlConfig.AdvertiseAddr = addr
 		}
 	}
 	if cfg.BindPort >= 0 {
@@ -546,4 +548,15 @@ func (w *logWriter) Write(p []byte) (n int, err error) {
 	}
 	w.logger.Debug(msg)
 	return len(p), nil
+}
+
+// ipv6WildcardAdvertiseAddr picks the address a node bound to "::" advertises
+// from the host's private addresses, in the order memberlist ranks them for a
+// "0.0.0.0" bind.
+func ipv6WildcardAdvertiseAddr(servesIPv4 bool, private sockaddr.IfAddrs) (string, error) {
+	if len(private) == 0 {
+		return "", errors.New("the host has no private address to advertise; set bind to this node's own address")
+	}
+	ip := *sockaddr.ToIPAddr(private[0].SockAddr)
+	return ip.NetIP().String(), nil
 }
