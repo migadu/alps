@@ -586,9 +586,7 @@ func (c *Config) ToLogger() alps.Logger {
 			Format: c.Logging.Format,
 			Level:  c.Logging.Level,
 		}
-		if logOpts.Output == "" {
-			logOpts.Output = "stderr"
-		}
+		// An empty Output is stdout, as with no [logging] keys at all.
 		if logOpts.Format == "" {
 			if c.Server.Debug {
 				logOpts.Format = "console"
