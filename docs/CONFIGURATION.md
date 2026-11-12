@@ -321,6 +321,8 @@ No other plugin reads `options`, apart from `password`.
 ### Password Plugin (`[plugin.password]`)
 Changes user passwords through an external HTTP API, or a command run on the ALPS host.
 
+The enabled plugin loads only when a global endpoint or command, or a per-domain password backend under `provider.multi`, is configured. Otherwise startup logs why Password settings remain unavailable.
+
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `enabled` | Boolean | `false` | Toggle the password change feature. Without it, the plugin does not load: Settings has no Password page and there is no `/password/change` route. |

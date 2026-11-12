@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/emersion/go-vcard"
-	"github.com/emersion/go-webdav"
-	"github.com/emersion/go-webdav/caldav"
-	"github.com/emersion/go-webdav/carddav"
+	"github.com/migadu/go-webdav"
+	"github.com/migadu/go-webdav/caldav"
+	"github.com/migadu/go-webdav/carddav"
 )
 
 // The browser tests rely on these answers to see alps handle a conflicting

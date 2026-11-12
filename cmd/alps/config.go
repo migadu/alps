@@ -117,9 +117,9 @@ type ServerConfig struct {
 	MaxGlobalAttachmentMiB  int             `toml:"max_global_attachment_mib"`  // Max global attachment size in MiB (default: 1024)
 	RateLimit               RateLimitConfig `toml:"rate_limit"`                 // Rate limiting configuration
 	ReadTimeoutSec          int             `toml:"read_timeout_sec"`           // HTTP read timeout in seconds (default: 10)
-	WriteTimeoutSec         int             `toml:"write_timeout_sec"`          // HTTP write timeout in seconds (default: 30)
+	WriteTimeoutSec         int             `toml:"write_timeout_sec"`          // HTTP write timeout in seconds (default: 60)
 	IdleTimeoutSec          int             `toml:"idle_timeout_sec"`           // HTTP idle timeout in seconds (default: 120)
-	IMAPTimeoutSec          int             `toml:"imap_timeout_sec"`           // IMAP operation timeout in seconds (default: 30)
+	IMAPTimeoutSec          int             `toml:"imap_timeout_sec"`           // Fallback for [provider] timeout_sec with the imap provider (default: 30 seconds)
 	SMTPTimeoutSec          int             `toml:"smtp_timeout_sec"`           // SMTP operation timeout in seconds (default: 30)
 	BackgroundConnection    *bool           `toml:"background_connection"`      // A second mail connection per session for background work (default: true)
 	PushNewMail             bool            `toml:"push_new_mail"`              // Wait on that connection for news of the Inbox (IMAP IDLE) and push it to the pages (default: false)
@@ -157,7 +157,7 @@ type LoggingConfig struct {
 
 type ProviderConfig struct {
 	Type       string `toml:"type"`        // "imap" (default)
-	TimeoutSec int    `toml:"timeout_sec"` // Provider connect timeout in seconds (default: 30)
+	TimeoutSec int    `toml:"timeout_sec"` // Provider connection and response timeout in seconds (default: 30)
 	meta       *toml.MetaData
 	primitive  *toml.Primitive
 }

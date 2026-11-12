@@ -81,7 +81,8 @@ type IMAPProvider struct {
 	// selects counts the mailboxes selected, to tell whether the one
 	// selected now was selected again since the last IDLE (see Idle).
 	selects uint64
-	// responseTimeout bounds the wait for the server's answer to DONE.
+	// responseTimeout bounds every wait for a server answer, matching the
+	// client's ResponseTimeout. The longer IDLE wait only applies to news.
 	responseTimeout time.Duration
 	// condstore says that the server numbers the changes to the mailboxes'
 	// messages for this connection (see TrackChanges). kept is the status

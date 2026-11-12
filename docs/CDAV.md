@@ -117,7 +117,7 @@ With `[server] debug = true`, both DAV plugins write every CalDAV/CardDAV reques
 
 The backend does not proxy DAV. The frontend calls the plugins' JSON routes, and the backend turns each call into `PROPFIND`, `REPORT`, `GET`, `PUT`, `DELETE`, `MKCALENDAR`, `PROPPATCH` or `OPTIONS` requests to the user's DAV server (and `POST` where a server refuses `MKCALENDAR` or `PROPPATCH`, see [below](#address-books-and-calendars)).
 
-The go-webdav library (v0.7.0, pinned in `go.mod`) handles discovery, the principal and home-set `PROPFIND`s, collection listing, `REPORT` queries and reading single objects (`GET`). Writes of events, tasks and contacts, and every delete, go through ALPS's own `internal/davsave`. Calendar create (`MKCALENDAR`), rename (`PROPPATCH`) and the scheduling requests (`OPTIONS` on the calendar home, a `PROPFIND` for the principal's addresses) are built in `plugins/caldav`.
+The go-webdav library (`github.com/migadu/go-webdav` v1.0.0, Migadu's fork of `github.com/emersion/go-webdav`) handles discovery, the principal and home-set `PROPFIND`s, collection listing, `REPORT` queries and reading single objects (`GET`). Writes of events, tasks and contacts, and every delete, go through ALPS's own `internal/davsave`. Calendar create (`MKCALENDAR`), rename (`PROPPATCH`) and the scheduling requests (`OPTIONS` on the calendar home, a `PROPFIND` for the principal's addresses) are built in `plugins/caldav`.
 
 ### Routes
 CalDAV:

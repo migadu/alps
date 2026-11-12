@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/emersion/go-webdav/carddav"
 	"github.com/migadu/alps"
+	"github.com/migadu/go-webdav/carddav"
 )
 
 // sanityCheckTimeout bounds sanityCheckURL's OPTIONS probe. http.DefaultClient

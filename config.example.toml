@@ -371,7 +371,7 @@ enabled = true
 
 # Log output destination
 # Options:
-#   "stdout"  - Write logs to standard output
+#   "stdout"  - Write logs to standard output (default)
 #   "stderr"  - Write logs to standard error
 #   "syslog"  - Send logs to system syslog daemon
 #   "/path/to/file.log" - Write logs to a file (path can be absolute or relative).
@@ -608,13 +608,13 @@ enabled = false
 type = "imap"
 
 # Provider timeout in seconds (default: 30)
-# It bounds connecting to the IMAP server: the TCP connect, plus the TLS
-# handshake for imaps://. It also bounds ALPS's waits for the answers to
-# ENABLE (CONDSTORE), IDLE and DONE, NOTIFY, the STATUS after an IDLE, and the
-# STATUS and UID lookup around saving a message without UIDPLUS. It does not
-# bound LOGIN or other commands. Those use the IMAP client's fixed 30-second
-# response timeout (5 minutes while it reads a literal, such as a message
-# body).
+# It bounds connecting to the IMAP server (the TCP connect, plus the TLS
+# handshake for imaps://) and the wait for each of the server's answers: the
+# greeting, LOGIN and every later command (5 minutes while the client reads a
+# literal, such as a message body). It also bounds ALPS's own waits for the
+# answers to ENABLE (CONDSTORE), IDLE and DONE, NOTIFY, the STATUS after an
+# IDLE, and the STATUS and UID lookup around saving a message without
+# UIDPLUS. An answer that does not come in time loses the connection.
 # A mail operation runs until its request is cancelled: the page stops waiting
 # (25 seconds by default), the page goes away, or read_timeout_sec passes. It
 # may then run up to 10 more seconds. After that, the session's mail
@@ -864,6 +864,8 @@ enabled = true
 # run on this host. The request, or the command, must finish within 15
 # seconds. See docs/PASSWORD_CHANGE.md.
 [plugin.password]
+# Requires an endpoint or command below, or a provider.multi password backend.
+# If none is configured, the plugin stays off even when enabled.
 # Enable the password change feature (default: false)
 # With enabled = true, an options block that cannot run (endpoint and command
 # both set, a program path that is not absolute, ...) stops startup.

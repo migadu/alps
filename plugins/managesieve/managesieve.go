@@ -199,6 +199,62 @@ func (c *MSClient) PutScript(name, content string) error {
 	return c.readResponse()
 }
 
+// CheckScript asks the server to validate without storing or activating a script.
+func (c *MSClient) CheckScript(content string) error {
+	if err := c.sendCommand(fmt.Sprintf("CHECKSCRIPT {%d+}\r\n%s", len(content), content)); err != nil {
+		return err
+	}
+	return c.readResponse()
+}
+
+// serverRefusal distinguishes a protocol NO from a failed connection.
+type serverRefusal struct{ code, message string }
+
+func (e *serverRefusal) Error() string {
+	return fmt.Sprintf("server refused request (%s): %s", e.code, e.message)
+}
+
+// readStatusMessage consumes the optional code and complete response string.
+// The string can be a literal on OK, NO or BYE; leaving one unread corrupts
+// the next command's response on this connection.
+func (c *MSClient) readStatusMessage(line, status string) (string, string, error) {
+	rest := strings.TrimSpace(strings.TrimPrefix(line, status))
+	code := ""
+	if strings.HasPrefix(rest, "(") {
+		end := strings.IndexByte(rest, ')')
+		if end == -1 {
+			return "", "", fmt.Errorf("unclosed ManageSieve response code")
+		}
+		fields := strings.Fields(rest[1:end])
+		if len(fields) > 0 {
+			code = strings.ToUpper(fields[0])
+		}
+		rest = strings.TrimSpace(rest[end+1:])
+	}
+	if rest == "" {
+		return code, "", nil
+	}
+	parts, err := c.parseStringList(rest)
+	if err != nil {
+		return "", "", err
+	}
+	if len(parts) != 1 {
+		return "", "", fmt.Errorf("malformed ManageSieve response message")
+	}
+	return code, parts[0], nil
+}
+
+func (c *MSClient) readRefusal(line string) error {
+	code, message, err := c.readStatusMessage(line, "NO")
+	if err != nil {
+		return err
+	}
+	if message == "" {
+		message = "The server refused the script"
+	}
+	return &serverRefusal{code: code, message: message}
+}
+
 func (c *MSClient) SetActive(name string) error {
 	// An empty name switches every script off.
 	if err := c.sendCommand("SETACTIVE " + sieveString(name)); err != nil {
@@ -286,10 +342,18 @@ func (c *MSClient) readResponse() error {
 		}
 
 		if strings.HasPrefix(line, "OK") {
-			return nil
+			_, _, err := c.readStatusMessage(line, "OK")
+			return err
 		}
-		if strings.HasPrefix(line, "NO") || strings.HasPrefix(line, "BYE") {
-			return fmt.Errorf("server error: %s", line)
+		if strings.HasPrefix(line, "NO") {
+			return c.readRefusal(line)
+		}
+		if strings.HasPrefix(line, "BYE") {
+			code, message, err := c.readStatusMessage(line, "BYE")
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("server error (%s): %s", code, message)
 		}
 
 		// Parse capability line: "CAPABILITY" "VALUE"
