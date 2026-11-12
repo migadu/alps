@@ -278,6 +278,9 @@ func (s *Server) loadPlugins() error {
 		for _, p := range l {
 			if !s.PluginEnabled(p.Name()) {
 				s.logger.Printf("Plugin %q is disabled", p.Name())
+				if err := p.Close(); err != nil {
+					s.Logger().Errorf("Closing disabled plugin %q: %v", p.Name(), err)
+				}
 				continue
 			}
 			s.logger.Printf("Loaded plugin %q", p.Name())
