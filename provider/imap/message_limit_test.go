@@ -15,3 +15,20 @@ func TestMessageSizeLimitReadsAdvertisedAppendLimit(t *testing.T) {
 		})
 	}
 }
+
+func TestMessageSizeLimitReadsMailboxSpecificDraftsAndSent(t *testing.T) {
+	for _, value := range []string{"1024", "0", "NIL"} {
+		server := &scriptedIMAP{caps: "IMAP4rev1 APPENDLIMIT", list: []string{`* LIST (\Drafts) "/" "Drafts"`, `* LIST (\Sent) "/" "Sent"`}, appendLimits: map[string]string{"Drafts": "2048", "Sent": value}}
+		provider := scriptedProvider(t, server)
+		wanted := int64(1024)
+		if value == "0" {
+			wanted = 0
+		}
+		if value == "NIL" {
+			wanted = 2048
+		}
+		if got := provider.MessageSizeLimit(); got != wanted {
+			t.Fatalf("mailbox-specific%s: got%d want%d", value, got, wanted)
+		}
+	}
+}

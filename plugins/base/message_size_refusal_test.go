@@ -102,3 +102,16 @@ func TestMessageSizeRefusalDoesNotMislabelMailboxFull(t *testing.T) {
 		t.Fatal("mailbox quota is not a message-size refusal")
 	}
 }
+
+func TestHTTP_ZeroAppendLimitCannotDeliverWithoutSentCopy(t *testing.T) {
+	address, recorder := listenRecorder(t)
+	server := newTestServerWrapping(t, address, alps.NewLogger(), func(p provider.MailProvider) provider.MailProvider { return limitedMailStore{p, 0} })
+	server.login()
+	response := server.do(http.MethodPost, "/messages", url.Values{"to": {"b@example.test"}, "text": {"small"}})
+	server.expect(response, http.StatusRequestEntityTooLarge)
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	if recorder.data != "" {
+		t.Fatal("delivered when APPENDLIMIT=0 forbids its Sent copy")
+	}
+}

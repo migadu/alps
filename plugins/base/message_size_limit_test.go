@@ -38,9 +38,10 @@ func TestHTTP_AttachmentBudgetObservesAdvertisedMessageLimits(t *testing.T) {
 		configured   int
 		largest      float64
 	}{
-		{"no upstream limits", 0, 0, 32, 32},
+		{"no upstream limits", -1, 0, 32, 32},
+		{"zero APPENDLIMIT", 0, 10_000_000, 32, 0},
 		{"IMAP25MiB", 25 << 20, 0, 32, 19},
-		{"SMTP10MB", 0, 10_000_000, 32, 8},
+		{"SMTP10MB", -1, 10_000_000, 32, 8},
 		{"smaller SMTP wins", 25 << 20, 10_000_000, 32, 8},
 		{"configured limit wins", 25 << 20, 10_000_000, 4, 4},
 	} {
@@ -52,7 +53,7 @@ func TestHTTP_AttachmentBudgetObservesAdvertisedMessageLimits(t *testing.T) {
 				server.expect(response, http.StatusOK)
 				var data struct{ MaxAttachmentMiB float64 }
 				response.json(t, &data)
-				if data.MaxAttachmentMiB <= 0 || data.MaxAttachmentMiB > tc.largest {
+				if data.MaxAttachmentMiB < 0 || data.MaxAttachmentMiB > tc.largest || tc.largest > 0 && data.MaxAttachmentMiB == 0 {
 					t.Errorf("%s advertises %.3fMiB, want positive and <=%.1fMiB", path, data.MaxAttachmentMiB, tc.largest)
 				}
 			}
