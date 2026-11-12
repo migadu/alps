@@ -415,6 +415,9 @@ export const pt = {
     emptyMailboxSlow: 'A pasta {folder} ainda está a ser esvaziada. O servidor está a tratar disso — verifique novamente dentro de instantes.'
   },
   composer: {
+    sentNotFiled: "Mensagem enviada, mas não foi possível guardar uma cópia em enviadas.",
+    sentDraftNotRemoved: "Mensagem enviada, mas não foi possível remover o rascunho. Não a envie novamente.",
+    sentNotFiledDraftKept: "Mensagem enviada, mas a cópia não foi guardada e o rascunho permanece. Não a envie novamente.",
     windowLoadFailed: 'Não foi possível carregar a janela da mensagem.',
     discardFailed: 'Não foi possível eliminar o rascunho do servidor e este continua em Rascunhos.',
     attachmentsTooLarge: 'Os anexos excedem o tamanho máximo permitido.',

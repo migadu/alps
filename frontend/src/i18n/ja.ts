@@ -411,6 +411,9 @@ export const ja = {
     emptyMailboxSlow: '{folder}を空にしています。サーバーで処理中のため、しばらくしてからフォルダーを確認してください。'
   },
   composer: {
+    sentNotFiled: "メッセージは送信されましたが、送信済みにコピーを保存できませんでした。",
+    sentDraftNotRemoved: "メッセージは送信されましたが、下書きを削除できませんでした。再送しないでください。",
+    sentNotFiledDraftKept: "メッセージは送信されましたが、コピーは保存されず、下書きが残っています。再送しないでください。",
     windowLoadFailed: 'メールのウィンドウを読み込めませんでした。',
     discardFailed: '下書きをサーバーから削除できなかったため、下書きフォルダーに残っています。',
     attachmentsTooLarge: '添付ファイルがサイズの上限を超えています。',

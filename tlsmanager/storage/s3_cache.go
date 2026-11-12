@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -34,7 +35,7 @@ func (s *S3Cache) Get(ctx context.Context, key string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	fullKey := s.Prefix + key
+	fullKey := s.objectKey(key)
 
 	resp, err := s.S3Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.Bucket),
@@ -66,7 +67,7 @@ func (s *S3Cache) Put(ctx context.Context, key string, data []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	fullKey := s.Prefix + key
+	fullKey := s.objectKey(key)
 
 	// Log prefix usage for debugging
 	if s.Prefix == "" {
@@ -94,7 +95,7 @@ func (s *S3Cache) Delete(ctx context.Context, key string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	fullKey := s.Prefix + key
+	fullKey := s.objectKey(key)
 
 	_, err := s.S3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(s.Bucket),
@@ -107,4 +108,14 @@ func (s *S3Cache) Delete(ctx context.Context, key string) error {
 
 	s.Logger.Info("certificate deleted from S3", "key", fullKey)
 	return nil
+}
+
+// objectKey treats a non-empty prefix as a directory, with or without its
+// trailing slash. Keep this at the operation boundary so literal S3Cache values
+// and subsequently updated prefixes follow the same rules.
+func (s *S3Cache) objectKey(key string) string {
+	if s.Prefix == "" || strings.HasSuffix(s.Prefix, "/") {
+		return s.Prefix + key
+	}
+	return s.Prefix + "/" + key
 }

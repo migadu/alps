@@ -411,6 +411,9 @@ export const ko = {
     emptyMailboxSlow: '아직 {folder} 비우는 중입니다. 서버에서 처리하고 있으니 잠시 후 폴더를 다시 확인하세요.'
   },
   composer: {
+    sentNotFiled: "메시지는 전송되었지만 보낸 편지함에 사본을 저장하지 못했습니다.",
+    sentDraftNotRemoved: "메시지는 전송되었지만 임시보관함에서 삭제하지 못했습니다. 다시 보내지 마세요.",
+    sentNotFiledDraftKept: "메시지는 전송되었지만 사본이 저장되지 않았고 임시보관함에 남아 있습니다. 다시 보내지 마세요.",
     windowLoadFailed: '메일 창을 불러오지 못했습니다.',
     discardFailed: '서버에서 초안을 삭제하지 못해 임시보관함에 그대로 남아 있습니다.',
     attachmentsTooLarge: '첨부파일이 허용된 최대 크기를 초과합니다.',

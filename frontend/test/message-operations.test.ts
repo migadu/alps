@@ -220,6 +220,18 @@ describe('saving and sending', () => {
     expect(sync).toHaveBeenCalledTimes(1);
   });
 
+  it('reports filing warnings for a delivered message without inviting a resend', async () => {
+    const notices: CustomEvent[] = [];
+    const receive = (e: Event) => notices.push(e as CustomEvent);
+    window.addEventListener('show-toast', receive);
+    try {
+      fetchMock.mockResolvedValue(json(200, { ok: true, warning: 'not_filed_in_sent' }));
+      expect(await ops.sendDraft(new FormData())).toMatchObject({ sent: true, warning: 'not_filed_in_sent', draftRemoved: true });
+      expect(notices).toHaveLength(1);
+      expect(notices[0].detail).toMatchObject({ i18nKey: 'composer.sentNotFiled', duration: 0 });
+    } finally { window.removeEventListener('show-toast', receive); }
+  });
+
   it('answers false for an expired session instead of throwing', async () => {
     fetchMock.mockResolvedValue(json(401));
     expect(await ops.sendDraft(new FormData())).toBe(false);

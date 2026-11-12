@@ -48,7 +48,16 @@ func TestHTTP_DraftCleanupFailureForgetsRemovedParts(t *testing.T) {
 				form.Set("save_as_draft", "1")
 			}
 			failed := s.do("POST", "/messages", form)
-			if failed.status == http.StatusOK {
+			if send {
+				s.expect(failed, http.StatusOK)
+				var result struct {
+					Warning string `json:"warning"`
+				}
+				failed.json(t, &result)
+				if result.Warning != "draft_not_removed" {
+					t.Fatalf("missing delivered-message warning: %s", failed.body)
+				}
+			} else if failed.status == http.StatusOK {
 				t.Fatal("cleanup refusal unexpectedly succeeded")
 			}
 			oldID, err := s.store.ParseMessageID(first.UID)

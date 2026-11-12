@@ -344,6 +344,9 @@ export const fr = {
     emptyMailboxSlow: 'Vidage du dossier {folder} toujours en cours. Le serveur y travaille – revenez voir dans un instant.'
   },
   composer: {
+    sentNotFiled: "Message envoyé, mais aucune copie n’a pu être enregistrée dans les messages envoyés.",
+    sentDraftNotRemoved: "Message envoyé, mais le brouillon n’a pas pu être supprimé. Ne le renvoyez pas.",
+    sentNotFiledDraftKept: "Message envoyé, mais aucune copie n’a été enregistrée et le brouillon reste présent. Ne le renvoyez pas.",
     windowLoadFailed: 'Impossible de charger la fenêtre du message.',
     discardFailed: 'Le brouillon n’a pas pu être supprimé du serveur et se trouve toujours dans les brouillons.',
     attachmentsTooLarge: 'Les pièces jointes dépassent la taille maximale autorisée.',

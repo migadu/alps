@@ -346,6 +346,9 @@ export const de: TranslationDictionary = {
     emptyMailboxSlow: '{folder} wird noch geleert. Der Server arbeitet daran – sehen Sie gleich noch einmal nach.'
   },
   composer: {
+    sentNotFiled: "Nachricht gesendet, aber keine Kopie unter Gesendet gespeichert.",
+    sentDraftNotRemoved: "Nachricht gesendet, aber der Entwurf konnte nicht gelöscht werden. Nicht erneut senden.",
+    sentNotFiledDraftKept: "Nachricht gesendet, aber keine Kopie gespeichert und der Entwurf bleibt erhalten. Nicht erneut senden.",
     windowLoadFailed: 'Das Nachrichtenfenster konnte nicht geladen werden.',
     discardFailed: 'Der Entwurf konnte nicht vom Server gelöscht werden und liegt weiterhin in den Entwürfen.',
     attachmentsTooLarge: 'Die Anhänge überschreiten die maximal zulässige Größe.',
