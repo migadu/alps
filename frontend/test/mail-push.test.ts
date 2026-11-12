@@ -98,7 +98,7 @@ const settle = () => vi.advanceTimersByTimeAsync(0);
 
 /** What GET /settings answers the push service, while the stream is down. */
 let settingsAnswer: () => Response;
-let fetchMock: ReturnType<typeof vi.fn>;
+let fetchMock: ReturnType<typeof vi.fn<(url: string, init?: RequestInit) => Promise<Response>>>;
 
 /** A page put into the back-forward cache, or taken out of it. */
 function pageTransition(type: 'pagehide' | 'pageshow'): Event {
@@ -603,7 +603,7 @@ describe('the news', () => {
     svc.inboxChanged();
     await settle();
     await landed(svc, 'Archive');
-    answer?.(new Response('{"total":11,"unseen":11}', { status: 200 }));
+    (answer as ((r: Response) => void) | null)?.(new Response('{"total":11,"unseen":11}', { status: 200 }));
     await settle();
     expect(told).toEqual([]);
   });

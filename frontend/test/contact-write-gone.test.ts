@@ -57,7 +57,7 @@ describe('an edit of a contact deleted elsewhere', () => {
     const el = contactsPage(grace(), true);
     const source = el.selectedContact;
     const update = vi.spyOn(contactsService, 'updateContact');
-    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, gonePaths: [source.path] });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, uncertain: 0, gonePaths: [source.path] });
     await el.handleToggleStarEvent();
     vi.spyOn(contactsService, 'fetchContact').mockResolvedValue(ada());
     await el.selectContact(ada(), false);
@@ -72,7 +72,7 @@ describe('an edit of a contact deleted elsewhere', () => {
     let finish!: (saved: any) => void;
     vi.spyOn(contactsService, 'updateContact').mockReturnValue(new Promise(resolve => { finish = resolve; }));
     const saving = el.handleSave({ ...el.selectedContact, name: 'Grace Hopper' });
-    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, gonePaths: ['/book/grace.vcf'] });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, uncertain: 0, gonePaths: ['/book/grace.vcf'] });
     await el.handleToggleStarEvent();
     finish({ ok: 'true', path: '/book/grace.vcf', etag: 'v2' });
     await saving;
@@ -91,7 +91,7 @@ describe('an edit of a contact deleted elsewhere', () => {
     const saving = el.handleSave({ ...el.selectedContact, name: 'Ada Lovelace' });
     el.selectedContact = el.contacts[0];
     await el.handleSave({ ...el.selectedContact, name: 'Grace Hopper' });
-    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, gonePaths: ['/book/grace.vcf'] });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, uncertain: 0, gonePaths: ['/book/grace.vcf'] });
     await el.handleToggleStarEvent();
     vi.spyOn(contactsService, 'fetchContact').mockResolvedValue(ada());
     await el.selectContact(ada(), false);
@@ -261,7 +261,7 @@ describe('toolbar results that outlive their account', () => {
     const current = { ...grace(), name: 'Another account card' };
     el.selectedContact = current;
     el.contacts = [current];
-    finish({ total: 1, done: 0, failed: 1, gonePaths: [current.path] });
+    finish({ total: 1, done: 0, failed: 1, uncertain: 0, gonePaths: [current.path] });
     await writing!;
 
     expect(el.selectedContact).toBe(current);

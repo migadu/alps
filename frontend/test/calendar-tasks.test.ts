@@ -126,7 +126,7 @@ describe('the calendar page', () => {
         shadow(el, 'task-modal').dispatchEvent(new CustomEvent('delete', { detail: { task: rent } }));
         expect([el.taskModalOpen, el.eventToDelete.task]).toEqual([false, rent]);
 
-        const deleteTask = vi.spyOn(tasksService, 'deleteTask').mockResolvedValue();
+        const deleteTask = vi.spyOn(tasksService, 'deleteTask').mockResolvedValue({});
         const deleteEvent = vi.spyOn(calendarService, 'deleteEvent');
         await el._executeDeleteEvent();
         expect(deleteTask).toHaveBeenCalledWith(rent.path, { notify: true, lang: 'en' });

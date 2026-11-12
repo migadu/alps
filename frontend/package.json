@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test:e2e": "bash ../scripts/e2e.sh",
     "typecheck:e2e": "tsc --noEmit -p tsconfig.e2e.json",
-    "typecheck:test": "tsc --noEmit -p tsconfig.test.json"
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
+    "pretest": "npm run typecheck:test"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",

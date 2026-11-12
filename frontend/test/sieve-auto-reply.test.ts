@@ -31,7 +31,7 @@ const reply = (overrides: Partial<AutoReply> = {}): AutoReply => ({
   ...overrides,
 });
 /** Summer time until the 25th of October, as in central Europe. */
-const zoneOf = (year: number, month: number, day: number) => (month < 10 || (month === 10 && day < 25) ? '+0200' : '+0100');
+const zoneOf = (_year: number, month: number, day: number) => (month < 10 || (month === 10 && day < 25) ? '+0200' : '+0100');
 const compile = (r: AutoReply, address: string | null = ADDRESS) => compileAutoReply(r, { address: address ?? undefined, zoneOf });
 
 /** Reads the quoted string starting at `start`, the way a Sieve parser does. */

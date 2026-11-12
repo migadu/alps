@@ -13,10 +13,10 @@ function deferred<T>() {
 }
 
 describe('leaving security-key verification', () => {
-  let begins: ReturnType<typeof vi.fn>;
-  let finishes: ReturnType<typeof vi.fn>;
+  let begins: ReturnType<typeof vi.fn<(init?: RequestInit) => Promise<Response>>>;
+  let finishes: ReturnType<typeof vi.fn<(init?: RequestInit) => Promise<Response>>>;
   let key: ReturnType<typeof vi.spyOn>;
-  let loggedIn: ReturnType<typeof vi.fn>;
+  let loggedIn: ReturnType<typeof vi.fn<() => void>>;
   const originalCredentials = Object.getOwnPropertyDescriptor(navigator, 'credentials');
 
   beforeEach(() => {
@@ -68,7 +68,7 @@ describe('leaving security-key verification', () => {
     await run;
     expect(key).not.toHaveBeenCalled();
     expect(finishes).not.toHaveBeenCalled();
-    expect(begins.mock.calls[0][0].signal.aborted).toBe(true);
+    expect(begins.mock.calls[0][0]?.signal?.aborted).toBe(true);
   });
 
   it('does not finish verification when an old prompt resolves after removal', async () => {
@@ -81,7 +81,7 @@ describe('leaving security-key verification', () => {
     credential.resolve({ id: 'late-key' });
     await run;
     expect(finishes).not.toHaveBeenCalled();
-    expect(key.mock.calls[0][0].signal.aborted).toBe(true);
+    expect(key.mock.calls[0][0]?.signal?.aborted).toBe(true);
   });
 
   it('ignores a late finish without changing a newer pending login or navigating', async () => {
@@ -99,7 +99,7 @@ describe('leaving security-key verification', () => {
     expect(loggedIn).not.toHaveBeenCalled();
     expect(window.location.hash).toBe('#/login');
     expect(sessionStorage.getItem('pending_2fa_username')).toBe('newer@example.com');
-    expect(finishes.mock.calls[0][0].signal.aborted).toBe(true);
+    expect(finishes.mock.calls[0][0]?.signal?.aborted).toBe(true);
   });
 
   it('cancels the delayed login notification after a successful page is left', async () => {
