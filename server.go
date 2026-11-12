@@ -218,6 +218,9 @@ func ParseServerURL(str string) (*url.URL, error) {
 // the transport it implies. insecureOpt forces insecure mode on regardless of
 // scheme, mirroring the [smtp] insecure option.
 func parseSMTPURL(raw string, insecureOpt bool) (host string, tls bool, insecure bool, err error) {
+	if !strings.Contains(raw, "://") {
+		return "", false, false, fmt.Errorf("SMTP server requires a scheme (smtps://, smtp://, smtp+insecure://), got: %v", raw)
+	}
 	u, err := ParseServerURL(raw)
 	if err != nil {
 		return "", false, false, fmt.Errorf("failed to parse SMTP server: %v", err)
