@@ -4,8 +4,10 @@ import (
 	"errors"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
+	"io"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"testing"
 )
 
@@ -72,5 +74,42 @@ func TestHTTP_DeliveredMessageReturnsWarningsForFilingFailures(t *testing.T) {
 				t.Errorf("sent draft remains: %d", got)
 			}
 		})
+	}
+}
+
+// A post-delivery connection loss prevents both the append and any reconnect.
+// A message composed without a saved draft must still report only the Sent loss.
+type disconnectedSentProvider struct {
+	provider.MailProvider
+	down *atomic.Bool
+}
+
+func (p disconnectedSentProvider) AppendMessage(mailbox string, msg provider.OutgoingMessageWriter, kind provider.MailboxType) (*provider.Mailbox, provider.MessageID, uint32, error) {
+	if kind == provider.MailboxTypeSent {
+		p.down.Store(true)
+		return nil, nil, 0, io.EOF
+	}
+	return p.MailProvider.AppendMessage(mailbox, msg, kind)
+}
+func TestHTTP_DeliveredWithoutDraftReportsOnlySentFilingFailure(t *testing.T) {
+	smtp, rec := listenRecorder(t)
+	var down atomic.Bool
+	s := newTestServerWithOptionsWrapping(t, smtp, alps.NewLogger(), func(o *alps.Options) { o.Provider = downOptions{Options: o.Provider, down: &down} }, func(p provider.MailProvider) provider.MailProvider { return disconnectedSentProvider{p, &down} })
+	s.login()
+	r := s.do("POST", "/messages", url.Values{"to": {"charles@remote.test"}, "subject": {"no saved draft"}, "text": {"hello"}})
+	s.expect(r, http.StatusOK)
+	var answer struct {
+		OK      bool   `json:"ok"`
+		Warning string `json:"warning"`
+	}
+	r.json(t, &answer)
+	if !answer.OK || answer.Warning != "not_filed_in_sent" {
+		t.Errorf("warning invents a draft: %s", r.body)
+	}
+	rec.mu.Lock()
+	data := rec.data
+	rec.mu.Unlock()
+	if data == "" {
+		t.Fatal("message was not delivered")
 	}
 }
