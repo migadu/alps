@@ -1,4 +1,4 @@
-.PHONY: all clean build build-frontend install build-freebsd build-linux help test test-coverage test-frontend test-e2e test-all
+.PHONY: all clean build build-frontend install build-freebsd build-linux help test test-coverage test-frontend test-e2e test-all site
 
 # Binary names
 ALPS_BINARY ?= build/alps
@@ -61,6 +61,16 @@ test-e2e: frontend/node_modules
 # Run all three suites: Go, frontend unit and browser tests
 test-all: test test-frontend test-e2e
 
+# Assemble the project website in _site/: the page in site/, the favicon, and the funders'
+# logos from docs/assets. .github/workflows/pages.yml publishes it to GitHub Pages.
+site:
+	rm -rf _site
+	mkdir -p _site/assets
+	cp -R site/. _site/
+	cp frontend/public/favicon.svg frontend/public/apple-touch-icon.png _site/
+	cp docs/assets/nlnet.svg docs/assets/nlnet-dark.svg _site/assets/
+	cp docs/assets/ngi-zero-commons-fund.svg docs/assets/ngi-zero-commons-fund-dark.svg _site/assets/
+
 # Help
 help:
 	@echo "Available targets:"
@@ -75,6 +85,7 @@ help:
 	@echo "  test-frontend  - Run the frontend unit tests (typecheck, then Vitest)"
 	@echo "  test-e2e       - Run the browser tests (needs a sora checkout and PostgreSQL)"
 	@echo "  test-all       - Run the Go, frontend unit and browser tests"
+	@echo "  site           - Assemble the project website in _site/"
 	@echo "  test-coverage  - Run tests and show coverage in HTML"
 
 # Run tests and show coverage

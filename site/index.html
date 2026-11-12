@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="text-scale" content="scale">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8fafc">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b1120">
+  <title>Alps: a simple and extensible webmail</title>
+  <meta name="description" content="Alps is a free, MIT-licensed webmail for your own mail server: mail, calendars, tasks, contacts, filters and OpenPGP, with no database of its own.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Alps webmail">
+  <meta property="og:description" content="A simple and extensible webmail. Free and open source, under the MIT License.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --text: #0f172a;
+      --muted: #475569;
+      --line: #e2e8f0;
+      --brand: #2563eb;
+      --brand-strong: #1d4ed8;
+      --on-brand: #ffffff;
+      --brand-soft: #eff6ff;
+      --migadu: #2b5bee;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1120;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --line: #1e293b;
+        --brand: #60a5fa;
+        --brand-strong: #93c5fd;
+        --on-brand: #0b1120;
+        --brand-soft: #132756;
+        --migadu: #5b82f5;
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.6;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+
+    a { color: var(--brand); text-underline-offset: 0.2em; }
+    a:hover { color: var(--brand-strong); }
+    a:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 3px;
+      border-radius: 0.25rem;
+    }
+
+    main {
+      flex: 1;
+      width: min(100% - 2rem, 42rem);
+      margin-inline: auto;
+      padding-block: clamp(3rem, 2rem + 6vh, 6rem) 3rem;
+      text-align: center;
+    }
+
+    .mark {
+      display: block;
+      width: 7.5rem;
+      height: 7.5rem;
+      margin-inline: auto;
+      color: var(--brand);
+    }
+
+    h1 {
+      margin: 1rem 0 0;
+      font-size: clamp(2.75rem, 2.25rem + 2vw, 3.75rem);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.025em;
+    }
+
+    .tagline {
+      margin: 0.5rem 0 0;
+      font-size: 1.25rem;
+      color: var(--muted);
+    }
+
+    .licence {
+      display: inline-block;
+      margin-top: 1.25rem;
+      padding: 0.25rem 0.875rem;
+      border-radius: 999px;
+      background: var(--brand-soft);
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .lede {
+      max-width: 36rem;
+      margin: 2.25rem auto 0;
+      font-size: 1.0625rem;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+      gap: 0.5rem 2rem;
+      max-width: 38rem;
+      margin: 1.75rem auto 0;
+      padding: 0;
+      list-style: none;
+      text-align: start;
+      color: var(--muted);
+    }
+
+    .features li {
+      display: flex;
+      gap: 0.625rem;
+      align-items: baseline;
+    }
+
+    .features li::before {
+      content: "";
+      flex: none;
+      width: 0.4em;
+      height: 0.4em;
+      border-radius: 50%;
+      background: var(--brand);
+      transform: translateY(-0.15em);
+    }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.75rem;
+      max-width: 32rem;
+      margin: 2.75rem auto 0;
+    }
+
+    .button {
+      flex: 1 1 14rem;
+      display: inline-flex;
+      justify-content: center;
+      padding: 0.75rem 1.375rem;
+      border-radius: 0.625rem;
+      background: var(--brand);
+      color: var(--on-brand);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .button:hover { background: var(--brand-strong); color: var(--on-brand); }
+
+    .download-note {
+      margin: 1rem 0 0;
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.5rem 1.75rem;
+      margin-top: 2.25rem;
+      font-weight: 500;
+    }
+
+    .links a { text-decoration: none; }
+    .links a:hover { text-decoration: underline; }
+
+    .supporters {
+      margin-top: 4.5rem;
+      padding-top: 2.5rem;
+      border-top: 1px solid var(--line);
+    }
+
+    .supporters h2 {
+      margin: 0 0 1.75rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .supporters ul {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 1.75rem 2.75rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .supporters a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .supporters img {
+      display: block;
+      width: auto;
+      height: 3rem;
+    }
+
+    .migadu svg {
+      width: 2.25rem;
+      height: 2.25rem;
+      color: var(--migadu);
+    }
+
+    .migadu span {
+      font-size: 1.625rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    footer {
+      width: min(100% - 2rem, 40rem);
+      margin-inline: auto;
+      padding-block: 1rem 3rem;
+      text-align: center;
+      font-size: 0.8125rem;
+      color: var(--muted);
+    }
+
+    footer p { margin: 0.5rem 0 0; }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <svg class="mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M10.03 7.41Q9.21 4.24 11.89 2.36Q14.60 4.31 13.82 7.56Q15.49 4.66 18.79 5.24Q19.45 8.48 16.61 10.18Q19.56 9.72 21.08 12.29Q19.25 14.58 16.46 13.67Q18.89 14.96 19.00 17.72Q15.99 18.32 13.72 16.25Q14.07 19.51 10.98 20.61Q8.49 19.29 9.90 16.84Q8.22 19.75 4.92 20.37Q4.81 16.87 7.30 14.40Q3.95 15.38 1.62 12.79Q3.63 9.83 7.18 10.25Q4.44 8.70 5.57 5.76Q8.51 4.65 10.03 7.41Z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/>
+        <g fill="currentColor">
+          <circle cx="12.00" cy="10.70" r="0.8"/>
+          <circle cx="13.25" cy="11.65" r="0.75"/>
+          <circle cx="12.80" cy="13.15" r="0.8"/>
+          <circle cx="11.20" cy="13.10" r="0.75"/>
+          <circle cx="10.75" cy="11.60" r="0.8"/>
+        </g>
+      </svg>
+      <h1>Alps</h1>
+      <p class="tagline">A simple and extensible webmail.</p>
+      <a class="licence" href="https://github.com/migadu/alps/blob/main/LICENSE">Free and open source · MIT License</a>
+    </header>
+
+    <p class="lede">
+      Alps is a webmail you run beside your own mail server. It signs in to IMAP and SMTP with each
+      user’s own credentials and keeps no database: every account’s settings live on the mail
+      server, and the whole web interface ships inside a single binary.
+    </p>
+
+    <ul class="features">
+      <li>Mail, conversations and search</li>
+      <li>Calendars, tasks and contacts</li>
+      <li>Filters and auto-reply</li>
+      <li>OpenPGP in the browser</li>
+      <li>Security keys for sign-in</li>
+      <li>19 languages, right-to-left too</li>
+    </ul>
+
+    <div class="buttons">
+      <a class="button" href="https://github.com/migadu/alps/releases/latest/download/alps-linux-amd64.zip">Download for Linux</a>
+      <a class="button" href="https://github.com/migadu/alps/releases/latest/download/alps-freebsd-amd64.zip">Download for FreeBSD</a>
+    </div>
+    <p class="download-note">
+      The latest release for amd64, one static binary per zip.
+      <a href="https://github.com/migadu/alps/releases">All releases</a> ·
+      <a href="https://github.com/migadu/alps/releases/latest/download/SHA256SUMS">Checksums</a> ·
+      <a href="https://github.com/migadu/alps#usage">Build from source</a>
+    </p>
+
+    <nav class="links" aria-label="Project">
+      <a href="https://github.com/migadu/alps#documentation">Documentation</a>
+      <a href="https://github.com/migadu/alps/wiki">Wiki</a>
+      <a href="https://github.com/migadu/alps">Source code</a>
+      <a href="https://github.com/migadu/alps/issues">Issues</a>
+    </nav>
+
+    <section class="supporters" aria-labelledby="supporters">
+      <h2 id="supporters">Supported by</h2>
+      <ul>
+        <li>
+          <a class="migadu" href="https://migadu.com/">
+            <svg viewBox="0 -2.53 24.36 24.36" aria-hidden="true" focusable="false">
+              <g fill="currentColor">
+                <path d="M10.8887 14.1311C8.03946 14.1311 5.72144 16.4491 5.72144 19.2984H8.20707C8.20707 17.8199 9.41027 16.6167 10.8887 16.6167C12.3672 16.6167 13.5704 17.8199 13.5704 19.2984H16.0561C16.0561 16.4491 13.738 14.1311 10.8887 14.1311Z"/>
+                <path d="M21.7841 10.1782V7.15063C21.7841 3.20785 18.5762 0 14.6334 0H5.72091V5.51369C5.72091 5.86922 5.74732 6.21865 5.7976 6.56046C2.49934 7.19837 0 10.1071 0 13.5897V19.2994H2.48563V13.5897C2.48563 11.2011 4.28713 9.22639 6.60262 8.94959C7.82004 11.1615 10.1736 12.6638 12.8715 12.6638H19.2979V19.2994H21.7836V12.6638H24.3586V10.1782H21.7836H21.7841ZM19.2984 10.1782H12.8721C10.3001 10.1782 8.20705 8.08566 8.20705 5.51318V2.48563H14.6334C17.2054 2.48563 19.2984 4.57815 19.2984 7.15063V10.1782Z"/>
+                <path d="M16.7021 8.79464C17.3683 8.79464 17.9083 8.25458 17.9083 7.58839C17.9083 6.9222 17.3683 6.38214 16.7021 6.38214C16.0359 6.38214 15.4958 6.9222 15.4958 7.58839C15.4958 8.25458 16.0359 8.79464 16.7021 8.79464Z"/>
+              </g>
+            </svg>
+            <span>Migadu</span>
+          </a>
+        </li>
+        <li>
+          <a href="https://nlnet.nl/">
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="assets/nlnet-dark.svg" width="449" height="168">
+              <img src="assets/nlnet.svg" alt="NLnet" width="1086" height="415">
+            </picture>
+          </a>
+        </li>
+        <li>
+          <a href="https://nlnet.nl/commonsfund/">
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="assets/ngi-zero-commons-fund-dark.svg" width="540" height="151">
+              <img src="assets/ngi-zero-commons-fund.svg" alt="NGI Zero Commons Fund" width="540" height="151">
+            </picture>
+          </a>
+        </li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      Alps has received funding from the <a href="https://nlnet.nl/commonsfund/">NGI Zero Commons Fund</a>,
+      managed by <a href="https://nlnet.nl/">NLnet</a>; see the <a href="https://nlnet.nl/project/Alps/">grant page</a>.
+      The fund is supported by the European Union’s Horizon Europe programme under grant agreement
+      No. 101135429, with additional support from the Swiss State Secretariat for Education, Research
+      and Innovation (SERI).
+    </p>
+    <p>© 2026 Migadu-Mail GmbH · <a href="https://github.com/migadu/alps/blob/main/LICENSE">MIT License</a></p>
+  </footer>
+</body>
+</html>
