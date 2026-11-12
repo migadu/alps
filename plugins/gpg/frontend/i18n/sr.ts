@@ -3,6 +3,13 @@ export default {
     gpg: 'GPG ključevi'
   },
   gpg: {
+    keyringUnreadable: 'Nije moguće pročitati vaše GPG ključeve. Pokušajte ponovo.',
+    noPrivateKey: 'Privatni GPG ključ nije sačuvan. Uvezite ga ili napravite u podešavanjima.',
+    passphraseCancelled: 'Dešifrovanje je otkazano.',
+    messageUnreadable: 'Šifrovanu poruku nije moguće pročitati. Možda je oštećena.',
+    noMatchingKey: 'Ova poruka nije šifrovana za vaš sačuvani GPG ključ.',
+    decryptionFailed: 'Poruku nije moguće dešifrovati vašim GPG ključem.',
+
     toggleEncryption: 'Uključi GPG kripciju',
     decryptedSuccess: 'Sadržaj ove poruke je end-to-end kriptovan pomoću GPG-a.',
     decryptedFailed: 'Ova poruka je kriptovana, ali na serveru nije pronađen odgovarajući privatni ključ za njeno dekriptovanje.',

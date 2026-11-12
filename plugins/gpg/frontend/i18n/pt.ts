@@ -3,6 +3,13 @@ export default {
     gpg: 'Chaves GPG'
   },
   gpg: {
+    keyringUnreadable: 'Não foi possível ler as suas chaves GPG. Tente novamente.',
+    noPrivateKey: 'Não existe uma chave GPG privada guardada. Importe ou gere uma nas Definições.',
+    passphraseCancelled: 'A decifragem foi cancelada.',
+    messageUnreadable: 'Não foi possível ler esta mensagem cifrada. Pode estar danificada.',
+    noMatchingKey: 'Esta mensagem não foi cifrada para a sua chave GPG guardada.',
+    decryptionFailed: 'Não foi possível decifrar esta mensagem com a sua chave GPG.',
+
     toggleEncryption: 'Alternar encriptação GPG',
     decryptedSuccess: 'O conteúdo desta mensagem foi encriptado ponto a ponto com GPG.',
     decryptedFailed: 'Esta mensagem está encriptada, mas não foi encontrada no servidor nenhuma chave privada correspondente para a desencriptar.',

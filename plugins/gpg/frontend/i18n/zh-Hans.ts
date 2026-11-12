@@ -3,6 +3,13 @@ export default {
     gpg: 'GPG 密钥'
   },
   gpg: {
+    keyringUnreadable: '无法读取您的 GPG 密钥，请重试。',
+    noPrivateKey: '尚未保存 GPG 私钥。请在设置中导入或生成密钥。',
+    passphraseCancelled: '已取消解密。',
+    messageUnreadable: '无法读取此加密邮件，邮件可能已损坏。',
+    noMatchingKey: '此邮件并非使用您保存的 GPG 密钥加密。',
+    decryptionFailed: '无法使用您的 GPG 密钥解密此邮件。',
+
     toggleEncryption: '切换 GPG 加密',
     decryptedSuccess: '此消息内容已通过 GPG 进行端到端加密。',
     decryptedFailed: '此消息已加密，但服务器上未找到相匹配的可用于解密的私钥。',

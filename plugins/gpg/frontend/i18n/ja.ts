@@ -3,6 +3,13 @@ export default {
     gpg: 'GPG鍵'
   },
   gpg: {
+    keyringUnreadable: 'GPG鍵を読み取れませんでした。再試行してください。',
+    noPrivateKey: '秘密GPG鍵が保存されていません。設定で鍵をインポートまたは生成してください。',
+    passphraseCancelled: '復号をキャンセルしました。',
+    messageUnreadable: 'この暗号化メッセージを読み取れませんでした。破損している可能性があります。',
+    noMatchingKey: 'このメッセージは保存されたGPG鍵宛てに暗号化されていません。',
+    decryptionFailed: 'GPG鍵でこのメッセージを復号できませんでした。',
+
     toggleEncryption: 'GPG暗号化の切り替え',
     decryptedSuccess: 'このメールの内容はGPGでエンドツーエンド暗号化されていました。',
     decryptedFailed: 'このメールは暗号化されていますが、復号できる秘密鍵がサーバー上に見つかりません。',

@@ -3,6 +3,13 @@ export default {
     gpg: 'GPG 키'
   },
   gpg: {
+    keyringUnreadable: 'GPG 키를 읽지 못했습니다. 다시 시도하세요.',
+    noPrivateKey: '저장된 GPG 개인 키가 없습니다. 설정에서 키를 가져오거나 생성하세요.',
+    passphraseCancelled: '복호화가 취소되었습니다.',
+    messageUnreadable: '이 암호화된 메시지를 읽지 못했습니다. 손상되었을 수 있습니다.',
+    noMatchingKey: '이 메시지는 저장된 GPG 키로 암호화되지 않았습니다.',
+    decryptionFailed: 'GPG 키로 이 메시지를 복호화하지 못했습니다.',
+
     toggleEncryption: 'GPG 암호화 켜기/끄기',
     decryptedSuccess: '이 메일의 내용은 GPG로 종단 간 암호화되었습니다.',
     decryptedFailed: '이 메일은 암호화되어 있지만 서버에서 복호화에 필요한 개인 키를 찾을 수 없습니다.',

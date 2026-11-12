@@ -3,6 +3,13 @@ export default {
     gpg: 'Chaves GPG'
   },
   gpg: {
+    keyringUnreadable: 'Não foi possível ler suas chaves GPG. Tente novamente.',
+    noPrivateKey: 'Nenhuma chave GPG privada foi salva. Importe ou gere uma nas Configurações.',
+    passphraseCancelled: 'A descriptografia foi cancelada.',
+    messageUnreadable: 'Não foi possível ler esta mensagem criptografada. Ela pode estar danificada.',
+    noMatchingKey: 'Esta mensagem não foi criptografada para sua chave GPG salva.',
+    decryptionFailed: 'Não foi possível descriptografar esta mensagem com sua chave GPG.',
+
     toggleEncryption: 'Ativar/desativar criptografia GPG',
     decryptedSuccess: 'O conteúdo desta mensagem foi criptografado de ponta a ponta com GPG.',
     decryptedFailed: 'Esta mensagem está criptografada, mas nenhuma chave privada correspondente foi encontrada no servidor para descriptografá-la.',
