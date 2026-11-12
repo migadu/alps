@@ -28,6 +28,9 @@ type scriptedIMAP struct {
 	// LIST-EXTENDED does: INBOX subscribed, Work not, and each folder's
 	// STATUS when that is asked for.
 	takesReturn bool
+	// specialUse emulates servers that only include special-use attributes
+	// in an extended LIST when SPECIAL-USE is explicitly requested.
+	specialUse bool
 	// list is its answer to a plain LIST, line by line; INBOX and Work when
 	// nil. lsub is its answer to LSUB; INBOX alone when nil. A line may carry
 	// a literal: "{4}\r\nWork".
@@ -135,6 +138,14 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 			s.lists = append(s.lists, args)
 			s.mu.Unlock()
 			if countArgs(args) != 2 && s.takesReturn {
+				if s.specialUse {
+					attrs := `\Subscribed`
+					if strings.Contains(args, "SPECIAL-USE") {
+						attrs += ` \Sent`
+					}
+					reply(`* LIST (`+attrs+`) "/" "Sent Messages"`, tag+" OK LIST completed")
+					continue
+				}
 				reply(`* LIST (\HasNoChildren \Subscribed) "/" INBOX`)
 				if strings.Contains(args, "STATUS") {
 					reply(`* STATUS INBOX (MESSAGES 2 UIDVALIDITY 7 UNSEEN 1)`)
