@@ -4244,7 +4244,7 @@ func handleSetFlags(ctx *alps.Context) error {
 			invalidateMailboxCache(ctx, mboxName)
 			forgetMessages(ctx.Session.Cache(), mboxName, idStrings(alpsMsgIDs)...)
 		}
-		return err
+		return respondMailboxError(ctx, "Set message flags", err)
 	}
 
 	// A whole folder's worth of messages is not patched into the cache one at a

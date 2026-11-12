@@ -639,6 +639,14 @@ func (p *Provider) GetMessagePartWithData(mailbox string, id provider.MessageID,
 // Messages already gone are skipped; all other failures remain visible so
 // the HTTP layer invalidates cached flags instead of reporting a false star.
 func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op provider.FlagOperation) error {
+	for _, flag := range op.Flags {
+		switch flag {
+		case provider.FlagAnswered, provider.FlagSeen, provider.FlagDeleted, provider.FlagDraft, provider.FlagFlagged:
+		default:
+			return refused("Maildir cannot store flag %q", flag)
+		}
+	}
+
 	b, err := p.openBox(mailbox)
 	if err != nil {
 		return err
