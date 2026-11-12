@@ -613,7 +613,14 @@ func (o *Options) RoutesService(service string) bool {
 	}
 	names := func(s services) bool {
 		if service == provider.ServicePassword {
-			return len(s.password) > 0
+			endpoint, _ := s.password["endpoint"].(string)
+			if strings.TrimSpace(endpoint) != "" {
+				return true
+			}
+			// A declared command is checked by the password plugin when used.
+			// HTTP metadata alone does not name a backend that can run.
+			_, hasCommand := s.password["command"]
+			return hasCommand
 		}
 		return strings.TrimSpace(s.urls[service]) != ""
 	}

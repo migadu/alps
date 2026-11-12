@@ -684,6 +684,8 @@ enabled = true
 # Allows users to change their password via an external HTTP API, or a command
 # run on this host
 [plugin.password]
+# Requires an endpoint or command below, or a provider.multi password backend.
+# If none is configured, the plugin stays off even when enabled.
 # Enable the password change feature (default: false)
 enabled = false
 
