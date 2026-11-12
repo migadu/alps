@@ -12,7 +12,7 @@ const openpgp = vi.hoisted(() => ({
   readKey: vi.fn(async ({ armoredKey }: { armoredKey: string }) => ({ armoredKey })),
   readPrivateKey: vi.fn(async ({ armoredKey }: { armoredKey: string }) => ({
     armoredKey,
-    isDecrypted: () => true,
+    isDecrypted: (): boolean => true,
     toPublic: () => ({ armoredKey: `${armoredKey}-public` }),
   })),
   createMessage: vi.fn(async ({ text }: { text: string }) => ({ text })),
