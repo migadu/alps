@@ -255,6 +255,8 @@ func startConnectionHarness(t *testing.T, wrap func(http.Handler) http.Handler, 
 		Plugins:  map[string]alps.PluginConfig{"carddav": {Server: davServer.URL}},
 		// The personal endpoints in these tests are loopback HTTP servers.
 		DAVAllowPrivateServers: true,
+		// These tests save a connection in one session and use it in another.
+		DAVConnectionFreshFor: -1,
 	}
 	if noDefault {
 		opts.Plugins["carddav"] = alps.PluginConfig{Enabled: true}

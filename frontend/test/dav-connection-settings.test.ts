@@ -37,7 +37,7 @@ beforeEach(() => {
       };
     }
     if (method === 'DELETE') stored = { ...defaults(), default_server: stored.default_server, configured: !!stored.default_server };
-    const { password: _password, ...publicRecord } = stored as typeof stored & { password?: string };
+    const { password: _password, mail_password: _mail, ...publicRecord } = stored as typeof stored & { password?: string; mail_password?: string };
     return Response.json(publicRecord);
   }));
 });
@@ -143,8 +143,39 @@ describe('DAV settings using the shared settings controls', () => {
     await useMail(el, true);
     await input(el, 'server', 'https://personal.example.test/dav/');
     expect(shadow<HTMLInputElement>(el, '[name="use_mail_credentials"]').checked).toBe(true);
+    await input(el, 'mail_password', 'mail secret');
     await save(el);
-    expect(puts()[0].body).toEqual({ server: 'https://personal.example.test/dav/', use_mail_credentials: true, username: '' });
+    expect(puts()[0].body).toEqual({ server: 'https://personal.example.test/dav/', use_mail_credentials: true, username: '', mail_password: 'mail secret' });
+  });
+  it('asks for the mail password before sending it to a personal server, and only then', async () => {
+    const el = await open();
+    // The administrator's server gets the mail password anyway.
+    expect(el.shadowRoot!.querySelector('alps-input[name="mail_password"]')).toBeNull();
+    await input(el, 'server', 'https://personal.example.test/dav/');
+    // Separate credentials send no mail password.
+    expect(el.shadowRoot!.querySelector('alps-input[name="mail_password"]')).toBeNull();
+    await useMail(el, true);
+    expect(nativeInput(el, 'mail_password').required).toBe(true);
+    expect(nativeInput(el, 'mail_password').type).toBe('password');
+    expect(text(el, '.mail-password-hint')).toBe('settings.dav.mailPasswordHint');
+
+    putError = 'dav_mail_password_incorrect';
+    await input(el, 'mail_password', 'a guess'); await save(el);
+    expect(text(el, '[role="alert"]')).toBe('settings.dav.mailPasswordIncorrect');
+    expect(nativeInput(el, 'mail_password').value).toBe('a guess');
+
+    putError = null;
+    await input(el, 'mail_password', 'mail secret'); await save(el);
+    expect(puts()[1].body?.mail_password).toBe('mail secret');
+    // Saved: the password is gone from the page, and the same connection is
+    // not asked about again.
+    expect(el.shadowRoot!.querySelector('alps-input[name="mail_password"]')).toBeNull();
+    expect(JSON.stringify(el.saved)).not.toContain('mail secret');
+    await save(el);
+    expect(puts()[2].body).not.toHaveProperty('mail_password');
+    // Another server is another confirmation.
+    await input(el, 'server', 'https://other.example.test/dav/'); await useMail(el, true);
+    expect(nativeInput(el, 'mail_password').value).toBe('');
   });
   it('sends separate credentials once, clears the password, and announces success through the existing toast', async () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem'); const el = await open();

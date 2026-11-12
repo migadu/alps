@@ -49,6 +49,23 @@ password authentication. A proxy exposing only an interactive browser SSO login
 needs a DAV-compatible authentication path. DAV requests originate from the ALPS
 backend, so the DAV server may be hosted on a different domain.
 
+Using the mail username and password with a personal server sends the mail
+password to that server. Settings asks for the mail password before saving such
+a connection and ALPS checks it before contacting the server, so a session that
+someone else holds cannot have the password delivered to a server of theirs.
+
+ALPS follows redirects from an administrator-configured server, such as an
+upgrade to HTTPS or a `/.well-known` address handing over to another host. A
+personal URL must be the DAV server's own address: its redirects to another
+origin are refused, because following one would send the user's credentials
+wherever that server points. Requests to personal servers are also limited to
+60 seconds and 64 MiB per response.
+
+A session reads an account's saved connection from the mail store at most every
+30 seconds, and keeps using the last one it read while the store cannot be
+reached. Changes made in the same session apply at once; changes made in
+another browser apply within that interval.
+
 An enabled plugin always exposes its Settings section. Calendar and Tasks tabs,
 or Contacts, appear once a default or personal endpoint is configured. An
 unavailable server does not remove a configured connection's tabs. Disabled

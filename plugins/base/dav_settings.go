@@ -3,6 +3,7 @@ package alpsbase
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -24,11 +25,8 @@ func defaultDAVServer(ctx *alps.Context, service string) string {
 func activeSessionPlugins(ctx *alps.Context, loaded []string) []string {
 	active := make([]string, 0, len(loaded))
 	for _, name := range loaded {
-		if name == provider.ServiceCalDAV || name == provider.ServiceCardDAV {
-			settings, err := ctx.Session.DAVConnectionSettings(name, defaultDAVServer(ctx, name))
-			if err != nil || !settings.Configured {
-				continue
-			}
+		if (name == provider.ServiceCalDAV || name == provider.ServiceCardDAV) && !ctx.Session.DAVConnectionConfigured(name, defaultDAVServer(ctx, name)) {
+			continue
 		}
 		active = append(active, name)
 	}
@@ -53,6 +51,20 @@ func handleDAVSettings(ctx *alps.Context) error {
 		if decodeErr := decoder.Decode(new(any)); decodeErr != io.EOF {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "dav_invalid_server"})
 		}
+		if alps.DAVSaveSendsMailPassword(input) && input.MailPassword != "" {
+			// The confirmation counts against the login limits for the account
+			// and the address it comes from, as the other password
+			// confirmations do.
+			username := ctx.Session.Username()
+			if allowed, reason, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
+				seconds := int(retryAfter.Seconds())
+				if seconds > 0 {
+					ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
+				}
+				return ctx.JSON(http.StatusTooManyRequests, map[string]any{"error": "rate_limited", "reason": reason, "retry_after": seconds})
+			}
+			ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, ctx.Session.CheckPassword(input.MailPassword))
+		}
 		settings, err = ctx.Session.SaveDAVConnection(ctx.Request.Context(), service, defaultServer, input)
 	case http.MethodDelete:
 		settings, err = ctx.Session.DeleteDAVConnection(service, defaultServer)
@@ -70,6 +82,10 @@ func handleDAVSettings(ctx *alps.Context) error {
 			code, status = "dav_password_required", http.StatusBadRequest
 		case errors.Is(err, alps.ErrLoginKeyRequired):
 			code, status = "dav_login_key_required", http.StatusBadRequest
+		case errors.Is(err, alps.ErrDAVMailPasswordRequired):
+			code, status = "dav_mail_password_required", http.StatusBadRequest
+		case errors.Is(err, alps.ErrDAVMailPasswordIncorrect):
+			code, status = "dav_mail_password_incorrect", http.StatusForbidden
 		case errors.Is(err, alps.ErrDAVValidationFailed):
 			code, status = "dav_auth_failed", http.StatusBadRequest
 		}

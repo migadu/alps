@@ -12,7 +12,11 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"bytes"
+	"compress/gzip"
 	"github.com/fernet/fernet-go"
+	"io"
+	"time"
 )
 
 func davDiscoveryServer(t *testing.T, username, password string) *httptest.Server {
@@ -42,6 +46,9 @@ func davSession(t *testing.T, store *rawStore, key *fernet.Key) *Session {
 	s.manager.loginKey = key
 	// The test DAV servers listen on loopback over plain HTTP.
 	s.manager.davAllowPrivate = true
+	// Most of these tests change the store behind the session's back, as
+	// another session would, and look at once.
+	s.manager.davFreshFor = -1
 	t.Cleanup(func() { s.Close() })
 	return s
 }
@@ -272,7 +279,7 @@ func TestDAVPersonalEndpointsCannotReachPrivateAddressesByDefault(t *testing.T) 
 		t.Fatalf("plain-HTTP personal endpoint: %v", err)
 	}
 	for _, auth := range []DAVConnectionInput{
-		{Server: internal.URL + "/dav/", UseMailCredentials: true},
+		{Server: internal.URL + "/dav/", UseMailCredentials: true, MailPassword: "p"},
 		{Server: internal.URL + "/dav/", Username: "dav-user", Password: "secret"},
 	} {
 		if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", auth); !errors.Is(err, ErrDAVValidationFailed) {
@@ -421,7 +428,7 @@ func TestDAVClientNeverForwardsCredentialsToAnotherOrigin(t *testing.T) {
 		http.Redirect(w, r, other.URL, http.StatusTemporaryRedirect)
 	}))
 	defer origin.Close()
-	client, err := DAVHTTPClient(ResolvedDAVConnection{Server: origin.URL, Username: "u", Password: "secret"})
+	client, err := DAVHTTPClient(ResolvedDAVConnection{Server: origin.URL, Username: "u", Password: "secret", personal: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +453,7 @@ func TestDAVMailAuthenticationClearsCustomSecrets(t *testing.T) {
 	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", DAVConnectionInput{Server: personalDAVURL(custom), Username: "dav-user", Password: "custom-secret"}); err != nil {
 		t.Fatal(err)
 	}
-	settings, err := s.SaveDAVConnection(context.Background(), "caldav", "", DAVConnectionInput{Server: personalDAVURL(mail), UseMailCredentials: true, Username: "discard-me", Password: "discard-me-too"})
+	settings, err := s.SaveDAVConnection(context.Background(), "caldav", "", DAVConnectionInput{Server: personalDAVURL(mail), UseMailCredentials: true, MailPassword: "p", Username: "discard-me", Password: "discard-me-too"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -563,5 +570,235 @@ func TestDAVCredentialBindingCannotBeRewrittenOrTransplantedInMetadata(t *testin
 				t.Fatal("blank-password save accepted transplanted credentials")
 			}
 		})
+	}
+}
+
+func TestDAVMailPasswordConfirmsSendingItToAPersonalServer(t *testing.T) {
+	var contacted atomic.Int32
+	personal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { contacted.Add(1) }))
+	defer personal.Close()
+	mail := davDiscoveryServer(t, "u", "p")
+	s := davSession(t, &rawStore{entries: map[string]string{}}, davTestKey(t))
+	input := DAVConnectionInput{Server: personalDAVURL(personal), UseMailCredentials: true}
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", input); !errors.Is(err, ErrDAVMailPasswordRequired) {
+		t.Fatalf("no mail password: %v", err)
+	}
+	input.MailPassword = "not p"
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", input); !errors.Is(err, ErrDAVMailPasswordIncorrect) {
+		t.Fatalf("wrong mail password: %v", err)
+	}
+	if contacted.Load() != 0 {
+		t.Fatal("the personal server was contacted before the mail password was confirmed")
+	}
+
+	// The administrator's server gets the mail password anyway, and separate
+	// credentials send none: neither is confirmed.
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", mail.URL+"/dav/", DAVConnectionInput{UseMailCredentials: true}); err != nil {
+		t.Fatalf("administrator default with mail credentials: %v", err)
+	}
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", DAVConnectionInput{Server: personalDAVURL(mail), Username: "u", Password: "p"}); err != nil {
+		t.Fatalf("personal server with separate credentials: %v", err)
+	}
+
+	// Confirmed once for a server, saving the same connection again asks no
+	// more; another server does.
+	confirmed := DAVConnectionInput{Server: personalDAVURL(mail), UseMailCredentials: true, MailPassword: "p"}
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", confirmed); err != nil {
+		t.Fatal(err)
+	}
+	confirmed.MailPassword = ""
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", confirmed); err != nil {
+		t.Fatalf("saving the confirmed connection again: %v", err)
+	}
+	other := davDiscoveryServer(t, "u", "p")
+	confirmed.Server = personalDAVURL(other)
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", confirmed); !errors.Is(err, ErrDAVMailPasswordRequired) {
+		t.Fatalf("another personal server: %v", err)
+	}
+}
+
+// failingStore is a connection's store that fails while its account's is down.
+type failingStore struct{ connectionStore }
+
+func (s *failingStore) failure() error {
+	s.account.mu.Lock()
+	defer s.account.mu.Unlock()
+	return s.account.down
+}
+
+func (s *failingStore) Get(key string, out interface{}) error {
+	if err := s.failure(); err != nil {
+		return err
+	}
+	return s.connectionStore.Get(key, out)
+}
+
+func (s *failingStore) GetFresh(key string, out interface{}) error {
+	if err := s.failure(); err != nil {
+		return err
+	}
+	return s.connectionStore.GetFresh(key, out)
+}
+
+func (s *failingStore) Put(key string, v interface{}) error {
+	if err := s.failure(); err != nil {
+		return err
+	}
+	return s.connectionStore.Put(key, v)
+}
+
+// DAV requests and the list of active plugins ask for the connection on every
+// request. They answer from what the session last read, so they neither wait
+// for the mail connection each time nor fail when it does.
+func TestDAVConnectionIsKeptBetweenRequestsAndSurvivesAnUnreadableStore(t *testing.T) {
+	dav := davDiscoveryServer(t, "dav-user", "secret")
+	store := &rawStore{entries: map[string]string{}}
+	connects := 0
+	s := newStoreSession(&failingStore{connectionStore{account: store, copies: map[string]*string{}}}, &connects)
+	t.Cleanup(func() { s.Close() })
+	s.manager.loginKey = davTestKey(t)
+	s.manager.davAllowPrivate = true
+	s.manager.davFreshFor = time.Hour
+	other := davSession(t, store, s.manager.loginKey)
+
+	if !s.DAVConnectionConfigured("caldav", "https://default.example/") || s.DAVConnectionConfigured("caldav", "") {
+		t.Fatal("without a saved connection the default decides")
+	}
+	// Another session saves a personal connection: this one still answers
+	// from what it read, without asking the store.
+	input := DAVConnectionInput{Server: personalDAVURL(dav), Username: "dav-user", Password: "secret"}
+	if _, err := other.SaveDAVConnection(context.Background(), "caldav", "", input); err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	store.down = errors.New("mail server away")
+	store.mu.Unlock()
+	if resolved, err := s.ResolveDAVConnection("caldav", "https://default.example/"); err != nil || resolved.Username != "u" {
+		t.Fatalf("kept answer: %+v, %v", resolved.Username, err)
+	}
+	// The settings page reads the store, and says so when it cannot.
+	if _, err := s.DAVConnectionSettings("caldav", ""); err == nil {
+		t.Fatal("settings were answered from the kept copy")
+	}
+	store.mu.Lock()
+	store.down = nil
+	store.mu.Unlock()
+	if settings, err := s.DAVConnectionSettings("caldav", ""); err != nil || !settings.PersonalConfigured {
+		t.Fatalf("settings: %+v, %v", settings, err)
+	}
+	if resolved, err := s.ResolveDAVConnection("caldav", ""); err != nil || resolved.Username != "dav-user" {
+		t.Fatalf("after the settings page read the store: %+v, %v", resolved.Username, err)
+	}
+
+	// Its own changes take effect at once.
+	if _, err := s.DeleteDAVConnection("caldav", ""); err != nil {
+		t.Fatal(err)
+	}
+	if s.DAVConnectionConfigured("caldav", "") {
+		t.Fatal("a removed connection stayed configured")
+	}
+	if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", input); err != nil {
+		t.Fatal(err)
+	}
+	if resolved, err := s.ResolveDAVConnection("caldav", ""); err != nil || resolved.Username != "dav-user" {
+		t.Fatalf("own save: %+v, %v", resolved.Username, err)
+	}
+
+	// Once the kept answer is old the store is asked again; while it cannot
+	// be read the last answer stands.
+	s.manager.davFreshFor = -1
+	store.mu.Lock()
+	store.down = errors.New("mail server away")
+	store.mu.Unlock()
+	if resolved, err := s.ResolveDAVConnection("caldav", ""); err != nil || resolved.Username != "dav-user" {
+		t.Fatalf("unreadable store: %+v, %v", resolved.Username, err)
+	}
+	if !s.DAVConnectionConfigured("caldav", "") {
+		t.Fatal("an unreadable store took the personal connection off the page")
+	}
+
+	// A session that never could read it has only the default to go by, and
+	// never guesses at credentials.
+	blind := newStoreSession(&rawStore{entries: map[string]string{}, down: errors.New("mail server away")}, &connects)
+	t.Cleanup(func() { blind.Close() })
+	if !blind.DAVConnectionConfigured("caldav", "https://default.example/") || blind.DAVConnectionConfigured("caldav", "") {
+		t.Fatal("with the store unreadable the default decides whether the plugin shows")
+	}
+	if _, err := blind.ResolveDAVConnection("caldav", "https://default.example/"); err == nil {
+		t.Fatal("a connection was resolved without knowing what the account saved")
+	}
+}
+
+// The administrator's server is trusted as it was before users could choose
+// one: a default that redirects elsewhere is followed, and one written with
+// credentials or a query of its own still works.
+func TestDAVAdministratorDefaultsFollowRedirectsAndMayCarryExtras(t *testing.T) {
+	var got atomic.Value
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		username, password, _ := r.BasicAuth()
+		got.Store(username + ":" + password + " " + r.URL.RequestURI())
+	}))
+	defer target.Close()
+	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/dav/", http.StatusPermanentRedirect)
+	}))
+	defer front.Close()
+	s := davSession(t, &rawStore{entries: map[string]string{}}, nil)
+	for _, fallback := range []string{front.URL + "/.well-known/caldav", strings.Replace(front.URL, "http://", "http://svc:token@", 1) + "/dav?tenant=1"} {
+		resolved, err := s.ResolveDAVConnection("caldav", fallback)
+		if err != nil {
+			t.Fatal(err)
+		}
+		client, err := DAVHTTPClient(resolved)
+		if err != nil {
+			t.Fatalf("%s: %v", fallback, err)
+		}
+		if client.Timeout != 0 {
+			t.Fatal("requests to the administrator's server were given a time limit of their own")
+		}
+		response, err := client.Get(fallback)
+		if err != nil {
+			t.Fatalf("%s: %v", fallback, err)
+		}
+		response.Body.Close()
+		if got.Load() != "u:p /dav/" {
+			t.Fatalf("%s reached the target as %v", fallback, got.Load())
+		}
+	}
+}
+
+func TestDAVPersonalServerResponsesAreBounded(t *testing.T) {
+	var compressed bytes.Buffer
+	zip := gzip.NewWriter(&compressed)
+	chunk := make([]byte, 1<<20)
+	for i := 0; i < davPersonalResponseLimit>>20+1; i++ {
+		zip.Write(chunk)
+	}
+	zip.Close()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Write(compressed.Bytes())
+	}))
+	defer server.Close()
+	for _, personal := range []bool{true, false} {
+		client, err := DAVHTTPClient(ResolvedDAVConnection{Server: server.URL, personal: personal})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.Get(server.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, err := io.Copy(io.Discard, response.Body)
+		response.Body.Close()
+		if personal && (err == nil || n > davPersonalResponseLimit) {
+			t.Fatalf("read %d bytes of a personal server's response: %v", n, err)
+		}
+		if !personal && (err != nil || n <= davPersonalResponseLimit) {
+			t.Fatalf("the administrator's server was cut off at %d bytes: %v", n, err)
+		}
+		if personal && client.Timeout == 0 {
+			t.Fatal("requests to a personal server have no time limit")
+		}
 	}
 }

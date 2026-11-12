@@ -54,6 +54,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
   @state() private useMailCredentials = true;
   @state() private username = '';
   @state() private password = '';
+  @state() private mailPassword = '';
   @state() private loading = true;
   @state() private submitting = false;
   @state() private error = '';
@@ -99,6 +100,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     if (this.submitting) this.invalidateDAVPages();
     this.invalidate();
     this.password = '';
+    this.mailPassword = '';
     const password = this.shadowRoot?.querySelector<AlpsInput>('alps-input[name="password"]');
     if (password) {
       password.value = '';
@@ -169,6 +171,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     this.username = settings.username;
     this.useMailCredentials = useMailCredentials;
     this.password = '';
+    this.mailPassword = '';
     this.mailCredentialsChosenForServer = false;
   }
 
@@ -211,6 +214,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
       dav_invalid_server: 'invalidServer', dav_credentials_required: 'credentialsRequired',
       dav_password_required: 'passwordRequired', dav_login_key_required: 'keyRequired',
       dav_auth_failed: 'authFailed', dav_session_ended: 'sessionEnded',
+      dav_mail_password_required: 'mailPasswordHint', dav_mail_password_incorrect: 'mailPasswordIncorrect',
     };
     return `settings.dav.${error instanceof SettingsError ? codes[error.code] ?? 'unavailable' : 'unavailable'}`;
   }
@@ -248,6 +252,18 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
       || this.username.trim() !== this.saved.username;
   }
 
+  /**
+   * Sending the mail password to a server of the user's own choosing takes
+   * that password: the server checks it before anything is sent, so that
+   * whoever merely holds the session cannot have it delivered elsewhere. A
+   * connection already saved this way is not asked about again.
+   */
+  private get needsMailPassword(): boolean {
+    const server = this.server.trim();
+    return this.useMailCredentials && server !== ''
+      && !(this.saved?.personal_configured && this.saved.use_mail_credentials && this.saved.server === server);
+  }
+
   private onInput = (event: Event) => {
     const input = event.target as HTMLInputElement;
     if (input.name === 'server') {
@@ -260,6 +276,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     }
     if (input.name === 'username') this.username = input.value;
     if (input.name === 'password') this.password = input.value;
+    if (input.name === 'mail_password') this.mailPassword = input.value;
     this.error = '';
   };
 
@@ -267,6 +284,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     this.useMailCredentials = (event.target as HTMLInputElement).checked;
     this.mailCredentialsChosenForServer = this.useMailCredentials;
     this.password = '';
+    this.mailPassword = '';
     this.error = '';
   };
 
@@ -290,6 +308,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
       server: this.server.trim(), use_mail_credentials: this.useMailCredentials,
       username: this.useMailCredentials ? '' : this.username.trim(),
       ...(!this.useMailCredentials && this.password ? { password: this.password } : {}),
+      ...(this.needsMailPassword && this.mailPassword ? { mail_password: this.mailPassword } : {}),
     };
     await this.mutate('PUT', body);
   };
@@ -339,6 +358,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
       const refused = error instanceof SettingsError && [
         'dav_invalid_server', 'dav_credentials_required', 'dav_password_required',
         'dav_login_key_required', 'dav_auth_failed', 'dav_session_ended',
+        'dav_mail_password_required', 'dav_mail_password_incorrect', 'rate_limited',
       ].includes(error.code);
       if (!refused) this.invalidateDAVPages();
       this.error = this.errorKey(error);
@@ -396,6 +416,14 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
               ${this.t('settings.dav.useMailCredentials')}
             </label>
             ${!this.saved.can_save ? html`<span class="hint">${this.t('settings.dav.keyRequired')}</span>` : nothing}
+            ${this.needsMailPassword ? html`
+              <alps-input name="mail_password" type="password" icon="key" label=${this.t('settings.dav.mailPassword')}
+                placeholder=${this.t('settings.dav.mailPassword')}
+                .value=${this.mailPassword} required ?disabled=${this.submitting} maxlength="4096"
+                autocomplete="current-password" @input=${this.onInput}
+              ></alps-input>
+              <span class="hint mail-password-hint">${this.t('settings.dav.mailPasswordHint')}</span>
+            ` : nothing}
             ${!this.useMailCredentials ? html`
               <alps-input name="username" type="text" icon="user" label=${this.t('settings.dav.username')}
                 placeholder=${this.t('settings.dav.username')}

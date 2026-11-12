@@ -284,6 +284,8 @@ func startHarness(t *testing.T, o harnessOptions) *harness {
 		Plugins:  map[string]alps.PluginConfig{"caldav": {Server: davServer.URL}},
 		// The personal endpoints in these tests are loopback HTTP servers.
 		DAVAllowPrivateServers: true,
+		// These tests save a connection in one session and use it in another.
+		DAVConnectionFreshFor: -1,
 	}
 	if o.noDefault {
 		opts.Plugins["caldav"] = alps.PluginConfig{Enabled: true}

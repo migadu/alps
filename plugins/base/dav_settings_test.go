@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -42,6 +43,7 @@ func newDAVSettingsServer(t *testing.T, adjust func(*alps.Options)) *testServer 
 		}
 		// The personal endpoints in these tests are loopback HTTP servers.
 		options.DAVAllowPrivateServers = true
+		options.DAVConnectionFreshFor = -1
 		if adjust != nil {
 			adjust(options)
 		}
@@ -159,7 +161,7 @@ func TestHTTP_DAVSettingsWithoutKeyAllowMailCredentialsAndRejectCustomSecrets(t 
 	if settings.PersonalConfigured {
 		t.Fatal("failed initial save created a personal connection")
 	}
-	r = s.do(http.MethodPut, "/settings/dav/caldav", map[string]any{"server": dav, "use_mail_credentials": true})
+	r = s.do(http.MethodPut, "/settings/dav/caldav", map[string]any{"server": dav, "use_mail_credentials": true, "mail_password": testPassword})
 	s.expect(r, http.StatusOK)
 	r.json(t, &settings)
 	if !settings.UseMailCredentials || settings.PasswordConfigured || !settings.Configured || !settings.PersonalConfigured {
@@ -297,7 +299,7 @@ func TestHTTP_DAVPersonalServersArePublicHTTPSUnlessTheAdministratorOptsIn(t *te
 	if !strings.Contains(string(r.body), "dav_invalid_server") {
 		t.Fatalf("plain HTTP personal server: %s", r.body)
 	}
-	r = s.do(http.MethodPut, "/settings/dav/carddav", map[string]any{"server": internal.URL + "/dav/", "use_mail_credentials": true})
+	r = s.do(http.MethodPut, "/settings/dav/carddav", map[string]any{"server": internal.URL + "/dav/", "use_mail_credentials": true, "mail_password": testPassword})
 	s.expect(r, http.StatusBadRequest)
 	if !strings.Contains(string(r.body), "dav_auth_failed") {
 		t.Fatalf("private HTTPS personal server: %s", r.body)
@@ -311,5 +313,48 @@ func TestHTTP_DAVPersonalServersArePublicHTTPSUnlessTheAdministratorOptsIn(t *te
 	r.json(t, &settings)
 	if settings.PersonalConfigured || settings.Configured {
 		t.Fatalf("a refused server was saved: %+v", settings)
+	}
+}
+
+// Sending the mail password to a server of the user's choosing takes that
+// password, checked before anything is sent: a session someone else holds
+// must not be able to have it delivered to a server of theirs.
+func TestHTTP_DAVMailCredentialsForAPersonalServerTakeTheMailPassword(t *testing.T) {
+	var mu sync.Mutex
+	var seen []string
+	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Header.Get("Authorization"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer collector.Close()
+	server := strings.Replace(collector.URL, "http://", "http+insecure://", 1) + "/"
+	s := newDAVSettingsServer(t, nil)
+	s.login()
+	r := s.do(http.MethodPut, "/settings/dav/caldav", map[string]any{"server": server, "use_mail_credentials": true})
+	s.expect(r, http.StatusBadRequest)
+	if !strings.Contains(string(r.body), "dav_mail_password_required") {
+		t.Fatalf("no mail password: %s", r.body)
+	}
+	r = s.do(http.MethodPut, "/settings/dav/caldav", map[string]any{"server": server, "use_mail_credentials": true, "mail_password": "a guess"})
+	s.expect(r, http.StatusForbidden)
+	if !strings.Contains(string(r.body), "dav_mail_password_incorrect") {
+		t.Fatalf("wrong mail password: %s", r.body)
+	}
+	mu.Lock()
+	if len(seen) != 0 {
+		t.Fatalf("the server was contacted before the mail password was confirmed: %q", seen)
+	}
+	mu.Unlock()
+	r = s.do(http.MethodPut, "/settings/dav/caldav", map[string]any{"server": server, "use_mail_credentials": true, "mail_password": testPassword})
+	s.expect(r, http.StatusBadRequest)
+	if !strings.Contains(string(r.body), "dav_auth_failed") {
+		t.Fatalf("confirmed save to a refusing server: %s", r.body)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) == 0 {
+		t.Fatal("a confirmed save did not reach the server")
 	}
 }
