@@ -390,7 +390,7 @@ type Options struct {
 	ReadTimeout             time.Duration           // HTTP read timeout, 0 means use default (10 seconds)
 	WriteTimeout            time.Duration           // HTTP write timeout, 0 means use default (30 seconds)
 	IdleTimeout             time.Duration           // HTTP idle timeout, 0 means use default (120 seconds)
-	ProviderTimeout         time.Duration           // Provider connect timeout, 0 means use default (30 seconds)
+	ProviderTimeout         time.Duration           // Provider connection and response timeout, 0 means use default (30 seconds)
 	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
 	WebAuthn                WebAuthnOptions         // WebAuthn configuration
 	Branding                BrandingOptions         // Default theme and login logo; the zero value is alps as it ships

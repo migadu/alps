@@ -157,7 +157,7 @@ type LoggingConfig struct {
 
 type ProviderConfig struct {
 	Type       string `toml:"type"`        // "imap" (default)
-	TimeoutSec int    `toml:"timeout_sec"` // Provider connect timeout in seconds (default: 30)
+	TimeoutSec int    `toml:"timeout_sec"` // Provider connection and response timeout in seconds (default: 30)
 	meta       *toml.MetaData
 	primitive  *toml.Primitive
 }
