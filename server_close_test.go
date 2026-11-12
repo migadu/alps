@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/migadu/alps/provider"
+	"github.com/migadu/alps/provider/providertest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +43,7 @@ func newServerWithPlugins(t *testing.T, logger Logger, plugins ...Plugin) *Serve
 	t.Cleanup(func() { pluginLoaders = saved })
 
 	s, err := New(logger, &Options{
-		Provider: &provider.MockOptions{},
+		Provider: &providertest.MockOptions{},
 		SMTP:     SMTPOptions{Server: "smtps://smtp.example.com"},
 	})
 	require.NoError(t, err)

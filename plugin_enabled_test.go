@@ -1,8 +1,9 @@
 package alps
 
 import (
-	"github.com/migadu/alps/provider"
 	"testing"
+
+	"github.com/migadu/alps/provider/providertest"
 )
 
 func TestExplicitlyDisabledPluginStaysOffWithoutAllowList(t *testing.T) {
@@ -10,7 +11,7 @@ func TestExplicitlyDisabledPluginStaysOffWithoutAllowList(t *testing.T) {
 	t.Cleanup(func() { pluginLoaders = old })
 	base, gpg := GoPlugin{Name: "base"}, GoPlugin{Name: "gpg"}
 	pluginLoaders = []PluginLoaderFunc{base.Loader(), gpg.Loader()}
-	s, err := New(&NilLogger{}, &Options{Provider: &provider.MockOptions{}, SMTP: SMTPOptions{Server: "smtps://example.com"}, Plugins: map[string]PluginConfig{"gpg": {Enabled: false}, "base": {Enabled: false}}})
+	s, err := New(&NilLogger{}, &Options{Provider: &providertest.MockOptions{}, SMTP: SMTPOptions{Server: "smtps://example.com"}, Plugins: map[string]PluginConfig{"gpg": {Enabled: false}, "base": {Enabled: false}}})
 	if err != nil {
 		t.Fatal(err)
 	}
