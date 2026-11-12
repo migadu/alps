@@ -4,7 +4,18 @@ import (
 	"errors"
 	"github.com/migadu/alps/provider"
 	"testing"
+	"time"
 )
+
+// Startup never authenticates; this factory keeps the test independent of
+// the shared provider mocks that are moving to a test-only package.
+type startupResourceProviderOptions struct{}
+
+func (startupResourceProviderOptions) CreateFactory(time.Duration, bool) provider.AuthenticatedProviderFactory {
+	return func(string, string) (provider.MailProvider, error) {
+		return nil, errors.New("unexpected authentication during startup")
+	}
+}
 
 type startupResourcePlugin struct {
 	name     string
@@ -33,7 +44,7 @@ func TestFailedStartupReleasesBackgroundWorkersAndPlugins(t *testing.T) {
 					return []Plugin{second}, nil
 				},
 			}
-			opts := &Options{Provider: &provider.MockOptions{}, SMTP: SMTPOptions{Server: "smtps://example.com"}, RateLimitEnabled: true}
+			opts := &Options{Provider: startupResourceProviderOptions{}, SMTP: SMTPOptions{Server: "smtps://example.com"}, RateLimitEnabled: true}
 			if failure == "branding" {
 				opts.Branding.LogoBuiltin = "does-not-exist"
 			}
