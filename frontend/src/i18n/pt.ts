@@ -45,6 +45,7 @@ export const pt = {
       passwordRequired: "Introduza uma palavra-passe ao alterar o servidor DAV ou o nome de utilizador.",
       keyRequired: "As palavras-passe separadas estarão disponíveis quando o administrador configurar a encriptação das credenciais.",
       authFailed: "Não foi possível aceder a esta conta DAV. Verifique o URL do servidor, o nome de utilizador, a palavra-passe e as permissões de acesso.",
+      unreachable: "Não foi possível contactar este servidor DAV. Verifique o URL do servidor e se este está disponível.",
       unavailable: "Não foi possível carregar ou guardar a ligação DAV. Tente novamente.",
       sessionEnded: "A sua sessão de correio terminou. Inicie sessão novamente para alterar esta ligação.",
     },

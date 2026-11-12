@@ -52,6 +52,7 @@ export const en = {
       passwordRequired: 'Enter a password when changing the DAV server or username.',
       keyRequired: 'Separate passwords are unavailable until your administrator configures credential encryption.',
       authFailed: 'Could not access this DAV account. Check the server URL, username, password, and access permissions.',
+      unreachable: 'Could not reach this DAV server. Check the server URL and that the server is available.',
       unavailable: 'Could not load or save the DAV connection. Please try again.',
       sessionEnded: 'Your mail session has ended. Sign in again to change this connection.',
     },

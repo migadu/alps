@@ -46,6 +46,7 @@ export const fr = {
       passwordRequired: "Saisissez un mot de passe lorsque vous changez de serveur DAV ou de nom d’utilisateur.",
       keyRequired: "Les mots de passe distincts ne sont disponibles qu’une fois le chiffrement des identifiants configuré par votre administrateur.",
       authFailed: "Impossible d’accéder à ce compte DAV. Vérifiez l’URL du serveur, le nom d’utilisateur, le mot de passe et les droits d’accès.",
+      unreachable: "Impossible de joindre ce serveur DAV. Vérifiez l’URL du serveur et sa disponibilité.",
       unavailable: "Impossible de charger ou d’enregistrer la connexion DAV. Veuillez réessayer.",
       sessionEnded: "Votre session de messagerie a expiré. Reconnectez-vous pour modifier cette connexion.",
     },

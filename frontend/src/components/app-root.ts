@@ -27,7 +27,7 @@ import './settings-window';
 import './alps-attachment-preview';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import type { ComposerInstance } from '../store/compose-store';
-import { settingsContext, SettingsStore } from '../store/settings-store';
+import { activeUsername, settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { linkedAccountsContext, linkedAccountsStore } from '../store/linked-accounts-store';
 import { autoLogoutService } from '../services/auto-logout';
@@ -75,6 +75,32 @@ interface ToastItem {
    * wherever it is drawn (see `renderToasts`). */
   expiresAt?: number;
   show: boolean;
+}
+
+/** How long after a failed /session to ask again, the last one from then on. */
+const SESSION_RETRY_DELAYS = [2000, 5000, 15000, 30000];
+
+const DAV_PLUGINS = ['caldav', 'carddav'];
+const rememberedDAVKey = (account: string) => `alps_dav_active:${account}`;
+
+/** The DAV plugins /session last named as connected for account, or null. */
+function rememberedDAVPlugins(account: string | null): string[] | null {
+  if (!account) return null;
+  try {
+    const value = JSON.parse(localStorage.getItem(rememberedDAVKey(account)) ?? 'null');
+    return Array.isArray(value) ? value.filter(name => DAV_PLUGINS.includes(name)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberDAVPlugins(account: string | null, active: string[]) {
+  if (!account) return;
+  try {
+    localStorage.setItem(rememberedDAVKey(account), JSON.stringify(active.filter(name => DAV_PLUGINS.includes(name))));
+  } catch {
+    // Without storage the tabs wait for /session, as they did.
+  }
 }
 
 @customElement('app-root')
@@ -256,28 +282,47 @@ export class AppRoot extends LitElement {
     // connection starts with fresh pages, including the mail reader's calendar
     // invitation banner, rather than carrying those objects into another DAV
     // account at the same paths.
-    for (const route of registry.routes) {
-      if (route.pluginId === service) this.pluginPages.delete(route.path);
+    if ((event as CustomEvent).detail?.unchanged !== true) {
+      for (const route of registry.routes) {
+        if (route.pluginId === service) this.pluginPages.delete(route.path);
+      }
     }
-    if (service === 'caldav') this.mailboxPage = null;
+    // Unless the save changed nothing: the open message and its place in
+    // the list are then worth keeping.
+    if (service === 'caldav' && (event as CustomEvent).detail?.unchanged !== true) this.mailboxPage = null;
     if (typeof configured === 'boolean') registry.setDAVConnectionConfigured(service, configured);
     this.requestUpdate();
     void this._fetchSessionData();
   };
 
   private sessionDataGeneration = 0;
+  private sessionDataRetry: ReturnType<typeof setTimeout> | undefined;
 
-  private async _fetchSessionData() {
+  /**
+   * /session says which plugins are on and which have a connection. Until it
+   * answers, Calendar, Tasks and Contacts go by what it said for this account
+   * the last time; a request that fails is tried again, so one bad moment at
+   * start-up does not leave them off for the whole page load.
+   */
+  private async _fetchSessionData(attempt = 0) {
     const generation = ++this.sessionDataGeneration;
+    clearTimeout(this.sessionDataRetry);
+    const account = activeUsername();
+    if (!registry.activeKnown) registry.setRememberedActive(rememberedDAVPlugins(account));
+    let answered = false;
     try {
       const response = await fetch('/session');
+      // A session that has ended is not asked again: the sign-in page is.
+      answered = response.ok || response.status === 401;
       if (response.ok) {
         const data = await response.json();
         // A sign-out, a newer sign-in or a disconnected shell invalidates
         // this account's answer, even if its request finishes afterwards.
         if (!this.isConnected || generation !== this.sessionDataGeneration) return;
         if (data.EnabledPlugins) {
-          registry.setEnabledPlugins(data.EnabledPlugins, data.ActivePlugins ?? data.EnabledPlugins);
+          const active: string[] = data.ActivePlugins ?? data.EnabledPlugins;
+          registry.setEnabledPlugins(data.EnabledPlugins, active);
+          rememberDAVPlugins(account, active);
         }
       }
     } catch (e) {
@@ -285,11 +330,17 @@ export class AppRoot extends LitElement {
         console.error('Failed to fetch session data', e);
       }
     }
+    if (answered || !this.isConnected || generation !== this.sessionDataGeneration) return;
+    const delay = SESSION_RETRY_DELAYS[Math.min(attempt, SESSION_RETRY_DELAYS.length - 1)];
+    this.sessionDataRetry = setTimeout(() => {
+      if (this.isConnected && generation === this.sessionDataGeneration) void this._fetchSessionData(attempt + 1);
+    }, delay);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.sessionDataGeneration++;
+    clearTimeout(this.sessionDataRetry);
     this.composeStore.removeEventListener('change', this._handleComposeChange);
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     window.removeEventListener('auth-error', this._handleAuthError);
@@ -694,8 +745,10 @@ export class AppRoot extends LitElement {
 
   private _handleSessionCleared = () => {
     this.sessionDataGeneration++;
+    clearTimeout(this.sessionDataRetry);
     this.mailboxPage = null;
     this.pluginPages.clear();
+    registry.setRememberedActive(null);
     registry.setEnabledPlugins(null);
   };
 
@@ -735,7 +788,9 @@ export class AppRoot extends LitElement {
   private loadFailurePath: string | null = null;
   private router = new Router(
     this.getRoutes(),
-    () => html`<div>404 — ${this.i18nStore.t('general.notFound')}</div>`,
+    // Not "not found" before /session has said which pages there are: the
+    // address may be a calendar or contacts page it is about to add.
+    () => registry.activeKnown ? html`<div>404 — ${this.i18nStore.t('general.notFound')}</div>` : nothing,
     (event) => {
       const path = this.router.currentPath;
       if (path !== this.loadFailurePath) {

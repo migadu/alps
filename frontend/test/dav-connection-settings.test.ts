@@ -177,6 +177,26 @@ describe('DAV settings using the shared settings controls', () => {
     await input(el, 'server', 'https://other.example.test/dav/'); await useMail(el, true);
     expect(nativeInput(el, 'mail_password').value).toBe('');
   });
+  it('is unchanged again once a typed server is deleted, and says when a save changed nothing', async () => {
+    const el = await open();
+    await input(el, 'server', 'h');
+    expect(shadow<HTMLInputElement>(el, '[name="use_mail_credentials"]').checked).toBe(false);
+    await input(el, 'server', '');
+    expect(shadow<HTMLInputElement>(el, '[name="use_mail_credentials"]').checked).toBe(true);
+    expect(el.hasUnsavedChanges).toBe(false);
+    // An explicit choice is kept, whatever the server field then does.
+    await useMail(el, false); await input(el, 'server', 'h'); await input(el, 'server', '');
+    expect(shadow<HTMLInputElement>(el, '[name="use_mail_credentials"]').checked).toBe(false);
+    await useMail(el, true);
+
+    stored = { ...stored, personal_configured: true };
+    const again = await open();
+    const updates = record(window, 'dav-connections-updated');
+    await save(again);
+    expect(updates.at(-1)?.detail).toMatchObject({ service: 'caldav', unchanged: true });
+    await useMail(again); await input(again, 'username', 'radicale-ada'); await input(again, 'password', 'secret'); await save(again);
+    expect(updates.at(-1)?.detail).not.toHaveProperty('unchanged');
+  });
   it('sends separate credentials once, clears the password, and announces success through the existing toast', async () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem'); const el = await open();
     const notices = record<CustomEvent>(window, 'dav-connections-updated');

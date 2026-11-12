@@ -46,6 +46,7 @@ export const sr = {
       passwordRequired: "Unesite lozinku kada menjate DAV server ili korisničko ime.",
       keyRequired: "Zasebne lozinke biće dostupne kada administrator podesi kriptovanje pristupnih podataka.",
       authFailed: "Nije moguće pristupiti ovom DAV nalogu. Proverite URL servera, korisničko ime, lozinku i prava pristupa.",
+      unreachable: "Nije moguće pristupiti ovom DAV serveru. Proverite URL servera i da li je dostupan.",
       unavailable: "Nije moguće učitati ili sačuvati DAV vezu. Pokušajte ponovo.",
       sessionEnded: "Vaša sesija e-pošte je završena. Prijavite se ponovo da biste promenili ovu vezu.",
     },

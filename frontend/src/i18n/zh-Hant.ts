@@ -52,6 +52,7 @@ export const zhHant = {
       passwordRequired: "變更 DAV 伺服器或使用者名稱時，請輸入密碼。",
       keyRequired: "管理員設定憑證加密後，才能使用個別密碼。",
       authFailed: "無法存取此 DAV 帳號。請檢查伺服器 URL、使用者名稱、密碼和存取權限。",
+      unreachable: "無法連線至此 DAV 伺服器。請檢查伺服器 URL 以及伺服器是否可用。",
       unavailable: "無法載入或儲存 DAV 連線。請重試。",
       sessionEnded: "您的郵件工作階段已結束。請重新登入以變更此連線。",
     },

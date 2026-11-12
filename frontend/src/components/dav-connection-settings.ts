@@ -65,6 +65,8 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
   private account = '';
   private controller: AbortController | null = null;
   private mailCredentialsChosenForServer = false;
+  /** Set while the box is unticked only because a new server was typed. */
+  private mailCredentialsCleared = false;
 
   static styles = css`
     :host { display: block; }
@@ -152,6 +154,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     this.loading = true;
     this.submitting = false;
     this.mailCredentialsChosenForServer = false;
+    this.mailCredentialsCleared = false;
     this.unreadablePersonal = false;
   }
 
@@ -173,6 +176,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     this.password = '';
     this.mailPassword = '';
     this.mailCredentialsChosenForServer = false;
+    this.mailCredentialsCleared = false;
   }
 
   private async request(method: 'GET' | 'PUT' | 'DELETE', generation: number, body?: object): Promise<ConnectionSettings | null> {
@@ -213,7 +217,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     const codes: Record<string, string> = {
       dav_invalid_server: 'invalidServer', dav_credentials_required: 'credentialsRequired',
       dav_password_required: 'passwordRequired', dav_login_key_required: 'keyRequired',
-      dav_auth_failed: 'authFailed', dav_session_ended: 'sessionEnded',
+      dav_auth_failed: 'authFailed', dav_unreachable: 'unreachable', dav_session_ended: 'sessionEnded',
       dav_mail_password_required: 'mailPasswordHint', dav_mail_password_incorrect: 'mailPasswordIncorrect',
     };
     return `settings.dav.${error instanceof SettingsError ? codes[error.code] ?? 'unavailable' : 'unavailable'}`;
@@ -271,7 +275,13 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
       // A new destination must not silently receive the mail password. The
       // user can explicitly choose that after entering their personal URL.
       if (this.server.trim() && this.server.trim() !== this.saved?.server && !this.mailCredentialsChosenForServer) {
+        if (this.useMailCredentials) this.mailCredentialsCleared = true;
         this.useMailCredentials = false;
+      } else if (this.mailCredentialsCleared && this.server.trim() === this.saved?.server) {
+        // Back at the saved server, with nothing chosen meanwhile: the form
+        // is as it was, not a change waiting for a password.
+        this.useMailCredentials = this.saved.use_mail_credentials;
+        this.mailCredentialsCleared = false;
       }
     }
     if (input.name === 'username') this.username = input.value;
@@ -283,6 +293,7 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
   private onCredentialsChanged = (event: Event) => {
     this.useMailCredentials = (event.target as HTMLInputElement).checked;
     this.mailCredentialsChosenForServer = this.useMailCredentials;
+    this.mailCredentialsCleared = false;
     this.password = '';
     this.mailPassword = '';
     this.error = '';
@@ -346,18 +357,25 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
     try {
       const settings = await this.request(method, generation, body);
       if (!settings || !this.current(generation)) return;
+      // A save that leaves the connection as it was gives the shell no
+      // reason to drop the pages it keeps for it.
+      const before = this.saved;
+      const unchanged = method === 'PUT' && !!before && !(body && 'password' in body)
+        && settings.server === before.server && settings.use_mail_credentials === before.use_mail_credentials
+        && settings.username === before.username && settings.configured === before.configured
+        && settings.personal_configured === before.personal_configured;
       this.apply(settings);
       const success = method === 'PUT' ? 'settings.dav.saved'
         : settings.default_server ? 'settings.dav.resetDone' : 'settings.dav.removed';
       window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.t(success) } }));
       window.dispatchEvent(new CustomEvent('dav-connections-updated', {
-        detail: { service: this.service, configured: settings.configured },
+        detail: { service: this.service, configured: settings.configured, ...(unchanged ? { unchanged: true } : {}) },
       }));
     } catch (error) {
       if (!this.current(generation)) return;
       const refused = error instanceof SettingsError && [
         'dav_invalid_server', 'dav_credentials_required', 'dav_password_required',
-        'dav_login_key_required', 'dav_auth_failed', 'dav_session_ended',
+        'dav_login_key_required', 'dav_auth_failed', 'dav_unreachable', 'dav_session_ended',
         'dav_mail_password_required', 'dav_mail_password_incorrect', 'rate_limited',
       ].includes(error.code);
       if (!refused) this.invalidateDAVPages();

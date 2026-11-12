@@ -155,11 +155,37 @@ class PluginRegistry {
         return this.enabledPlugins === null || this.enabledPlugins.has(pluginName);
     }
 
+    /** What this account's last /session said of its DAV connections, to go
+     * by until this page load's own answer: see setRememberedActive. */
+    private rememberedActive: Set<string> | null = null;
+
     private isActive(pluginName: string): boolean {
         // Until /session answers, do not issue DAV reads against an account
-        // that may have no server. Other plugins keep their startup behavior.
-        return this.isEnabled(pluginName) && (this.activePlugins?.has(pluginName)
-            ?? (pluginName !== 'caldav' && pluginName !== 'carddav'));
+        // that may have no server: only one known to have had a connection
+        // the last time gets its pages. Other plugins keep their startup
+        // behavior.
+        if (!this.isEnabled(pluginName)) return false;
+        if (this.activePlugins) return this.activePlugins.has(pluginName);
+        return (pluginName !== 'caldav' && pluginName !== 'carddav')
+            || this.rememberedActive?.has(pluginName) === true;
+    }
+
+    /** Whether /session has said which plugins have a connection. */
+    get activeKnown(): boolean {
+        return this.activePlugins !== null;
+    }
+
+    /**
+     * The DAV plugins the account had a connection for when /session last
+     * answered, or null for none known. A reload on a calendar page then has
+     * its page and tabs at once, rather than only after /session answers, or
+     * never when that request fails. /session still has the last word.
+     */
+    setRememberedActive(plugins: string[] | null) {
+        const next = plugins === null ? null : new Set(plugins);
+        if (sameEnablement(this.rememberedActive, next)) return;
+        this.rememberedActive = next;
+        if (this.activePlugins === null) window.dispatchEvent(new CustomEvent('plugins-updated'));
     }
 
     /** Apply a saved/reset connection before the next /session read returns,

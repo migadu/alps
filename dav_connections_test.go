@@ -152,7 +152,7 @@ func TestDAVFailedValidationDoesNotReplaceSavedConnection(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	input.Password = "good"
-	if _, err := s.SaveDAVConnection(ctx, "carddav", "", input); !errors.Is(err, ErrDAVValidationFailed) {
+	if _, err := s.SaveDAVConnection(ctx, "carddav", "", input); !errors.Is(err, ErrDAVUnreachable) {
 		t.Fatalf("canceled validation: %v", err)
 	}
 	if store.entries[key] != before {
@@ -282,7 +282,7 @@ func TestDAVPersonalEndpointsCannotReachPrivateAddressesByDefault(t *testing.T) 
 		{Server: internal.URL + "/dav/", UseMailCredentials: true, MailPassword: "p"},
 		{Server: internal.URL + "/dav/", Username: "dav-user", Password: "secret"},
 	} {
-		if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", auth); !errors.Is(err, ErrDAVValidationFailed) {
+		if _, err := s.SaveDAVConnection(context.Background(), "caldav", "", auth); !errors.Is(err, ErrDAVUnreachable) {
 			t.Fatalf("loopback personal endpoint: %v", err)
 		}
 	}
@@ -470,12 +470,25 @@ func TestDAVMailAuthenticationClearsCustomSecrets(t *testing.T) {
 	}
 }
 
-func TestDAVPersonalConfiguredIncludesSavedMailAuthenticationAtTheDefault(t *testing.T) {
+// The administrator's server with the mail login is what an account has
+// without a record. Saving just that keeps none, so the page offers nothing to
+// remove, and it replaces a personal connection saved before.
+func TestDAVSavingTheDefaultWithMailAuthenticationKeepsNoRecord(t *testing.T) {
 	dav := davDiscoveryServer(t, "u", "p")
-	s := davSession(t, &rawStore{entries: map[string]string{}}, nil)
+	store := &rawStore{entries: map[string]string{}}
+	s := davSession(t, store, davTestKey(t))
 	settings, err := s.SaveDAVConnection(context.Background(), "caldav", dav.URL, DAVConnectionInput{UseMailCredentials: true})
-	if err != nil || settings.Server != "" || !settings.Configured || !settings.PersonalConfigured || !settings.UseMailCredentials {
+	if err != nil || settings.Server != "" || !settings.Configured || settings.PersonalConfigured || !settings.UseMailCredentials {
 		t.Fatalf("saved default connection: %+v, %v", settings, err)
+	}
+	if len(store.entries) != 0 {
+		t.Fatalf("a record was kept for the default: %v", store.entries)
+	}
+	if settings, err = s.SaveDAVConnection(context.Background(), "caldav", dav.URL, DAVConnectionInput{Username: "u", Password: "p"}); err != nil || !settings.PersonalConfigured {
+		t.Fatalf("separate credentials: %+v, %v", settings, err)
+	}
+	if settings, err = s.SaveDAVConnection(context.Background(), "caldav", dav.URL, DAVConnectionInput{UseMailCredentials: true}); err != nil || settings.PersonalConfigured || len(store.entries) != 0 {
+		t.Fatalf("back to the default: %+v, %v, %v", settings, err, store.entries)
 	}
 	settings, err = s.DeleteDAVConnection("caldav", dav.URL)
 	if err != nil || !settings.Configured || settings.PersonalConfigured {

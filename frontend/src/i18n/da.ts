@@ -54,6 +54,7 @@ export const da: TranslationDictionary = {
       passwordRequired: "Indtast en adgangskode, når du ændrer DAV-server eller brugernavn.",
       keyRequired: "Separate adgangskoder er først tilgængelige, når administratoren har konfigureret kryptering af loginoplysninger.",
       authFailed: "Kunne ikke få adgang til denne DAV-konto. Kontrollér serverens URL, brugernavn, adgangskode og adgangsrettigheder.",
+      unreachable: "Denne DAV-server kunne ikke nås. Kontrollér serverens URL, og at serveren er tilgængelig.",
       unavailable: "DAV-forbindelsen kunne ikke indlæses eller gemmes. Prøv igen.",
       sessionEnded: "Din mailsession er afsluttet. Log ind igen for at ændre denne forbindelse.",
     },
