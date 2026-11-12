@@ -11,8 +11,10 @@ import (
 	"io"
 	"math"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -3614,6 +3616,15 @@ func handleComposeAttachment(ctx *alps.Context) error {
 			return ctx.JSON(http.StatusRequestEntityTooLarge, map[string]string{
 				"error": "Your attachments exceed the maximum file size. Remove some and try again.",
 			})
+		}
+		ctx.Logger().Errorf("upload multipart: %v", err)
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			return ctx.JSON(http.StatusRequestTimeout, map[string]string{"error": "Upload timed out. Try again.", "code": "upload_timed_out"})
+		}
+		var pathError *os.PathError
+		if errors.As(err, &pathError) {
+			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "The server could not store the upload. Try again later.", "code": "upload_storage_failed"})
 		}
 		return ctx.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Invalid request",
