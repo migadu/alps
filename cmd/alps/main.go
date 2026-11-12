@@ -79,6 +79,9 @@ func main() {
 
 	// Create logger based on config or defaults
 	logger := config.ToLogger()
+	// Bridge standard-library log calls and structured subsystem logs to the
+	// configured destination, format and level.
+	slog.SetDefault(logger.Slog())
 
 	// Initialize cluster for leader election and gossip broadcasting (if enabled)
 	var clusterMgr *cluster.Cluster
@@ -110,7 +113,7 @@ func main() {
 			Peers:         config.Cluster.Peers,
 			SecretKey:     secretKey,
 			AllowInsecure: config.Cluster.AllowInsecure,
-			Logger:        slog.Default(),
+			Logger:        logger.Slog(),
 		})
 		if err != nil {
 			// Fatal, not a silent single-node fallback: with clustering
@@ -177,7 +180,7 @@ func main() {
 		}
 
 		// Create slog logger from alps logger for TLS manager
-		slogLogger := slog.Default()
+		slogLogger := logger.Slog()
 
 		if clusterMgr != nil {
 			// Cluster enabled: only leader can request new certs from Let's Encrypt
