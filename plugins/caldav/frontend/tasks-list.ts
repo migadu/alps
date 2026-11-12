@@ -7,7 +7,7 @@ import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isolatedCaption } from '../../../frontend/src/utils/bidi';
 import '../../../frontend/src/components/alps-loader';
-import { compareClosed, compareTasks, formatDue, groupOf, intlLocale, priorityBand, TASK_GROUP_ORDER } from './tasks-service';
+import { compareClosed, compareTasks, formatDue, groupOf, priorityBand, TASK_GROUP_ORDER } from './tasks-service';
 import type { TaskData, TaskGroup } from './tasks-service';
 
 const GROUP_LABELS: Record<TaskGroup, string> = {
@@ -319,7 +319,7 @@ export class TasksList extends LitElement {
                                   task,
                                   now,
                                   t('tasks.today'),
-                                  intlLocale(this.i18nStore?.getLanguage?.()),
+                                  this.i18nStore?.getIntlLanguage?.(),
                                   this.clock.hour12 ? '12' : '24',
                               )}</span>`
                             : ''}
