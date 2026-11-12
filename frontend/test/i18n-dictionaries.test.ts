@@ -256,7 +256,7 @@ describe('keys used in source', () => {
 });
 
 describe('Serbian scripts', () => {
-  const CYRILLIC = /[\u0400-\u04FF]/;
+  const CYRILLIC = /\p{Script=Cyrillic}/u;
   const LATIN = /[A-Za-zČčĆćŠšŽžĐđ]/;
 
   it('detects Cyrillic letters outside the basic block', () => {
@@ -464,6 +464,29 @@ function latinTokens(text: string): string[] {
 }
 
 const strayLatin = (text: string) => latinTokens(text).filter((token) => !LATIN_IN_CYRILLIC.has(token));
+
+/** Per-leaf script checks catch a single swapped translation without relying on ratios. */
+function wrongSerbianScript(code: 'rs' | 'sr', dict: Dict): string[] {
+  return leaves(dict)
+    .filter(([key]) => !isLanguageName(key))
+    .filter(([, text]) => code === 'rs' ? strayLatin(String(text)).length > 0 : /\p{Script=Cyrillic}/u.test(String(text)))
+    .map(([key]) => key);
+}
+
+describe('every Serbian dictionary keeps its alphabet', () => {
+  for (const code of ['rs', 'sr'] as const) {
+    it.each(dictionariesOf(code))('%s checks every translated leaf', (_file, dict) => {
+      expect(wrongSerbianScript(code, dict)).toEqual([]);
+    });
+  }
+
+  it('detects one swapped translation in either direction, including beside an allowed acronym', () => {
+    expect(wrongSerbianScript('rs', { oneNewKey: 'Sačuvaj GPG ključ' })).toEqual(['oneNewKey']);
+    expect(wrongSerbianScript('sr', { oneNewKey: 'Сачувај GPG кључ' })).toEqual(['oneNewKey']);
+    expect(wrongSerbianScript('sr', { extended: 'Sačuvaj ԁatoteku' })).toEqual(['extended']);
+    expect(wrongSerbianScript('rs', { valid: 'Сачувај GPG кључ {name}' })).toEqual([]);
+  });
+});
 
 describe('Serbian Cyrillic in its own script', () => {
   const RS_FILES = dictionariesOf('rs').map(([file]) => file);
