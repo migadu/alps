@@ -137,14 +137,20 @@ func (p *plugin) connection(ctx context.Context, session *alps.Session) (*reques
 	return &requestConnection{url: u, client: hc, cacheKey: resolved.CacheKey}, nil
 }
 
+// addRoute keeps each request on its resolved account and returns expected
+// configuration states directly, without request-error logging.
 func (p *plugin) addRoute(method, path string, handler alps.HandlerFunc) {
 	p.GoPlugin.AddRoute(method, path, func(ctx *alps.Context) error {
 		conn, err := p.connection(ctx.Request.Context(), ctx.Session)
-		if err != nil {
-			return err
+		if err == nil {
+			ctx.Request = ctx.Request.WithContext(context.WithValue(ctx.Request.Context(), connectionKey{}, conn))
+			err = handler(ctx)
 		}
-		ctx.Request = ctx.Request.WithContext(context.WithValue(ctx.Request.Context(), connectionKey{}, conn))
-		return handler(ctx)
+		var state *alps.HTTPError
+		if errors.As(err, &state) && state.Code == http.StatusConflict && (state.Message == "caldav_not_configured") {
+			return ctx.JSON(http.StatusConflict, map[string]interface{}{"error": state.Message})
+		}
+		return err
 	})
 }
 
@@ -327,17 +333,4 @@ func usernameOf(session *alps.Session) string {
 		return ""
 	}
 	return session.Username()
-}
-
-// addRoute keeps expected account-configuration states out of request-error
-// logs while retaining their stable status and code for clients.
-func (p *plugin) addRoute(method, path string, handler alps.HandlerFunc) {
-	p.GoPlugin.AddRoute(method, path, func(ctx *alps.Context) error {
-		err := handler(ctx)
-		var state *alps.HTTPError
-		if errors.As(err, &state) && state.Code == http.StatusConflict && (state.Message == "caldav_not_configured") {
-			return ctx.JSON(http.StatusConflict, map[string]interface{}{"error": state.Message})
-		}
-		return err
-	})
 }

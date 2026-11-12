@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/migadu/alps"
 	"github.com/migadu/go-webdav/carddav"
 )
 
