@@ -484,7 +484,7 @@ describe('a toast that says a save failed', () => {
 
     expect(toasts.map(t => [t.detail.message, t.detail.duration])).toEqual([
       ['managesieve.autoReply.errors.saveError', 5000],
-      ['sieve_unavailable', 5000],
+      ['managesieve.toast.saveError', 5000],
       ['managesieve.toast.autoReplyOn', 5000],
     ]);
   });
