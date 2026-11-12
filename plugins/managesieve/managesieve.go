@@ -227,15 +227,16 @@ func (e *serverRefusal) Error() string {
 	return fmt.Sprintf("server refused request (%s): %s", e.code, e.message)
 }
 
-// readRefusal consumes the optional response code and the complete RFC 5804
-// response string. Compile diagnostics commonly use a literal for CRLF lines.
-func (c *MSClient) readRefusal(line string) error {
-	rest := strings.TrimSpace(strings.TrimPrefix(line, "NO"))
+// readStatusMessage consumes the optional code and complete response string.
+// The string can be a literal on OK, NO or BYE; leaving one unread corrupts
+// the next command's response on this connection.
+func (c *MSClient) readStatusMessage(line, status string) (string, string, error) {
+	rest := strings.TrimSpace(strings.TrimPrefix(line, status))
 	code := ""
 	if strings.HasPrefix(rest, "(") {
 		end := strings.IndexByte(rest, ')')
 		if end == -1 {
-			return fmt.Errorf("unclosed ManageSieve response code")
+			return "", "", fmt.Errorf("unclosed ManageSieve response code")
 		}
 		fields := strings.Fields(rest[1:end])
 		if len(fields) > 0 {
@@ -243,16 +244,26 @@ func (c *MSClient) readRefusal(line string) error {
 		}
 		rest = strings.TrimSpace(rest[end+1:])
 	}
-	message := "The server refused the script"
-	if rest != "" {
-		parts, err := c.parseStringList(rest)
-		if err != nil {
-			return err
-		}
-		if len(parts) != 1 {
-			return fmt.Errorf("malformed ManageSieve response message")
-		}
-		message = parts[0]
+	if rest == "" {
+		return code, "", nil
+	}
+	parts, err := c.parseStringList(rest)
+	if err != nil {
+		return "", "", err
+	}
+	if len(parts) != 1 {
+		return "", "", fmt.Errorf("malformed ManageSieve response message")
+	}
+	return code, parts[0], nil
+}
+
+func (c *MSClient) readRefusal(line string) error {
+	code, message, err := c.readStatusMessage(line, "NO")
+	if err != nil {
+		return err
+	}
+	if message == "" {
+		message = "The server refused the script"
 	}
 	return &serverRefusal{code: code, message: message}
 }
@@ -344,13 +355,18 @@ func (c *MSClient) readResponse() error {
 		}
 
 		if strings.HasPrefix(line, "OK") {
-			return nil
+			_, _, err := c.readStatusMessage(line, "OK")
+			return err
 		}
 		if strings.HasPrefix(line, "NO") {
 			return c.readRefusal(line)
 		}
 		if strings.HasPrefix(line, "BYE") {
-			return fmt.Errorf("server error: %s", line)
+			code, message, err := c.readStatusMessage(line, "BYE")
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("server error (%s): %s", code, message)
 		}
 
 		// Parse capability line: "CAPABILITY" "VALUE"
