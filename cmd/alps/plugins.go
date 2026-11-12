@@ -9,6 +9,6 @@ import (
 	_ "github.com/migadu/alps/plugins/password"
 )
 
-// All plugins are imported here for registration.
-// When using a config file, you can control which plugins are enabled
-// via the [plugins] section. Without a config file, all plugins are enabled.
+// All plugins are imported here for registration. They load once, at start-up.
+// The [plugin.<name>] sections of the config file choose which: if any of them
+// sets enabled = true, only the plugins so enabled load; otherwise all do.
