@@ -49,7 +49,7 @@ export const id = {
       retry: "Coba lagi",
       invalidServer: "Masukkan URL HTTPS server DAV yang valid, tanpa kredensial, parameter kueri, atau fragmen.",
       credentialsRequired: "Masukkan nama pengguna DAV Anda.",
-      passwordRequired: "Masukkan kata sandi saat mengubah server DAV atau nama pengguna.",
+      passwordRequired: 'Masukkan kata sandi DAV Anda untuk menyimpan koneksi ini.',
       keyRequired: "Kata sandi terpisah tersedia setelah administrator mengonfigurasi enkripsi kredensial.",
       authFailed: "Tidak dapat mengakses akun DAV ini. Periksa URL server, nama pengguna, kata sandi, dan izin akses.",
       unavailable: "Tidak dapat memuat atau menyimpan koneksi DAV. Coba lagi.",

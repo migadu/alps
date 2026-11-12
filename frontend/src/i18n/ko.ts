@@ -49,7 +49,7 @@ export const ko = {
       retry: "다시 시도",
       invalidServer: "인증 정보, 쿼리 또는 프래그먼트가 없는 올바른 DAV 서버 HTTPS URL을 입력하세요.",
       credentialsRequired: "DAV 사용자 이름을 입력하세요.",
-      passwordRequired: "DAV 서버 또는 사용자 이름을 변경할 때는 비밀번호를 입력하세요.",
+      passwordRequired: '이 연결을 저장하려면 DAV 비밀번호를 입력하세요.',
       keyRequired: "관리자가 인증 정보 암호화를 설정한 후에 별도 비밀번호를 사용할 수 있습니다.",
       authFailed: "이 DAV 계정에 액세스할 수 없습니다. 서버 URL, 사용자 이름, 비밀번호 및 액세스 권한을 확인하세요.",
       unavailable: "DAV 연결을 불러오거나 저장하지 못했습니다. 다시 시도하세요.",

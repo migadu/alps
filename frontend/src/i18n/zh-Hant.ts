@@ -49,7 +49,7 @@ export const zhHant = {
       retry: "重試",
       invalidServer: "請輸入有效的 DAV 伺服器 HTTPS URL，不含登入憑證、查詢參數或片段。",
       credentialsRequired: "請輸入您的 DAV 使用者名稱。",
-      passwordRequired: "變更 DAV 伺服器或使用者名稱時，請輸入密碼。",
+      passwordRequired: '請輸入您的 DAV 密碼以儲存此連線。',
       keyRequired: "管理員設定憑證加密後，才能使用個別密碼。",
       authFailed: "無法存取此 DAV 帳號。請檢查伺服器 URL、使用者名稱、密碼和存取權限。",
       unavailable: "無法載入或儲存 DAV 連線。請重試。",

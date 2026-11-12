@@ -49,7 +49,7 @@ export const tr = {
       retry: "Yeniden dene",
       invalidServer: "Kimlik bilgisi, sorgu parametresi veya parça içermeyen geçerli bir HTTPS DAV sunucusu URL’si girin.",
       credentialsRequired: "DAV kullanıcı adınızı girin.",
-      passwordRequired: "DAV sunucusunu veya kullanıcı adını değiştirirken parola girin.",
+      passwordRequired: 'Bu bağlantıyı kaydetmek için DAV parolanızı girin.',
       keyRequired: "Ayrı parolalar, yöneticiniz kimlik bilgilerinin şifrelenmesini yapılandırdıktan sonra kullanılabilir.",
       authFailed: "Bu DAV hesabına erişilemedi. Sunucu URL’sini, kullanıcı adını, parolayı ve erişim izinlerini denetleyin.",
       unavailable: "DAV bağlantısı yüklenemedi veya kaydedilemedi. Lütfen yeniden deneyin.",

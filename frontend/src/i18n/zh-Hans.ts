@@ -51,7 +51,7 @@ export const zhHans: TranslationDictionary = {
       retry: "重试",
       invalidServer: "请输入有效的 DAV 服务器 HTTPS URL，不包含登录凭据、查询参数或片段。",
       credentialsRequired: "请输入您的 DAV 用户名。",
-      passwordRequired: "更改 DAV 服务器或用户名时，请输入密码。",
+      passwordRequired: '请输入您的 DAV 密码以保存此连接。',
       keyRequired: "管理员配置凭据加密后，才能使用单独的密码。",
       authFailed: "无法访问此 DAV 账户。请检查服务器 URL、用户名、密码和访问权限。",
       unavailable: "无法加载或保存 DAV 连接。请重试。",

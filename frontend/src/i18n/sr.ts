@@ -43,7 +43,7 @@ export const sr = {
       retry: "Pokušajte ponovo",
       invalidServer: "Unesite ispravan HTTPS URL DAV servera bez pristupnih podataka, parametara upita ili fragmenta.",
       credentialsRequired: "Unesite svoje DAV korisničko ime.",
-      passwordRequired: "Unesite lozinku kada menjate DAV server ili korisničko ime.",
+      passwordRequired: 'Unesite svoju DAV lozinku da biste sačuvali ovu vezu.',
       keyRequired: "Zasebne lozinke biće dostupne kada administrator podesi kriptovanje pristupnih podataka.",
       authFailed: "Nije moguće pristupiti ovom DAV nalogu. Proverite URL servera, korisničko ime, lozinku i prava pristupa.",
       unavailable: "Nije moguće učitati ili sačuvati DAV vezu. Pokušajte ponovo.",

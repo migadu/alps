@@ -449,8 +449,8 @@ curl -sf -X POST "http://127.0.0.1:$ADMIN_PORT/admin/accounts" \
 
 if [ "${E2E_CLUSTER:-}" = 1 ]; then
   # Separate processes, session managers and gossip members; only the IMAP
-  # backend is shared. No in-process mutex can arbitrate. Neither config has a
-  # login_key, so a session is known only to the node that opened it.
+  # backend is shared. No in-process mutex can arbitrate. Both configurations
+  # share the fixed test login_key so cross-node sessions can be verified.
   sed "s/addr = \"127.0.0.1:$ALPS_PORT\"/addr = \"127.0.0.1:$SECONDARY_PORT\"/" "$STATE/alps.toml" > "$STATE/alps-secondary.toml"
   cat >> "$STATE/alps.toml" <<EOF
 

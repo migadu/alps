@@ -49,7 +49,7 @@ export const en = {
       retry: 'Try again',
       invalidServer: 'Enter a valid HTTPS DAV server URL without credentials, a query, or a fragment.',
       credentialsRequired: 'Enter your DAV username.',
-      passwordRequired: 'Enter a password when changing the DAV server or username.',
+      passwordRequired: 'Enter your DAV password to save this connection.',
       keyRequired: 'Separate passwords are unavailable until your administrator configures credential encryption.',
       authFailed: 'Could not access this DAV account. Check the server URL, username, password, and access permissions.',
       unavailable: 'Could not load or save the DAV connection. Please try again.',

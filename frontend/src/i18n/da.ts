@@ -51,7 +51,7 @@ export const da: TranslationDictionary = {
       retry: "Prøv igen",
       invalidServer: "Indtast en gyldig HTTPS-URL til DAV-serveren uden loginoplysninger, forespørgselsparametre eller fragment.",
       credentialsRequired: "Indtast dit DAV-brugernavn.",
-      passwordRequired: "Indtast en adgangskode, når du ændrer DAV-server eller brugernavn.",
+      passwordRequired: 'Indtast din DAV-adgangskode for at gemme forbindelsen.',
       keyRequired: "Separate adgangskoder er først tilgængelige, når administratoren har konfigureret kryptering af loginoplysninger.",
       authFailed: "Kunne ikke få adgang til denne DAV-konto. Kontrollér serverens URL, brugernavn, adgangskode og adgangsrettigheder.",
       unavailable: "DAV-forbindelsen kunne ikke indlæses eller gemmes. Prøv igen.",

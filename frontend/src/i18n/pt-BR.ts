@@ -49,7 +49,7 @@ export const ptBR = {
       retry: "Tentar novamente",
       invalidServer: "Digite uma URL HTTPS válida do servidor DAV, sem credenciais, parâmetros de consulta ou fragmentos.",
       credentialsRequired: "Digite seu nome de usuário DAV.",
-      passwordRequired: "Digite uma senha ao alterar o servidor DAV ou o nome de usuário.",
+      passwordRequired: 'Digite sua senha DAV para salvar esta conexão.',
       keyRequired: "As senhas separadas estarão disponíveis quando o administrador configurar a criptografia das credenciais.",
       authFailed: "Não foi possível acessar esta conta DAV. Verifique a URL do servidor, o nome de usuário, a senha e as permissões de acesso.",
       unavailable: "Não foi possível carregar ou salvar a conexão DAV. Tente novamente.",
