@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/emersion/go-ical"
-	"github.com/emersion/go-webdav"
-	"github.com/emersion/go-webdav/caldav"
 	"github.com/google/uuid"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/internal/davsave"
 	"github.com/migadu/alps/internal/itip"
+	"github.com/migadu/go-webdav"
+	"github.com/migadu/go-webdav/caldav"
 )
 
 // resolveDAVPath returns the URL path to use for a DAV object href. DAV servers
@@ -405,30 +405,9 @@ func registerRoutes(p *plugin) {
 			}
 		}
 
-		_, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		_, homeSet, _, err := p.clientWithHomeSet(ctx.Request.Context(), ctx.Session)
 		if err != nil {
 			return err
-		}
-
-		p.cacheMutex.RLock()
-		homeSet, ok := p.homeSetCache[p.requestConnection(ctx).cacheKey]
-		p.cacheMutex.RUnlock()
-
-		if !ok || homeSet == "" {
-			if len(calendars) > 0 {
-				// The collection that holds the first calendar. A collection's
-				// path ends in a slash, and path.Dir of that is the calendar
-				// itself, which put the new calendar inside it.
-				homeSet = path.Dir(strings.TrimSuffix(calendars[0].Path, "/"))
-			} else if ok {
-				// An empty home set href, with no calendar in it yet. The
-				// calendars were listed where go-webdav resolves that href,
-				// the endpoint itself, and the first one is made there: at
-				// its path, or at the root when it has none.
-				homeSet = path.Join("/", resolveDAVPath(p.requestConnection(ctx).url, homeSet))
-			} else {
-				return fmt.Errorf("failed to determine calendar home set")
-			}
 		}
 
 		newID := uuid.New().String()

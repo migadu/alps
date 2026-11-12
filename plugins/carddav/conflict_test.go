@@ -20,12 +20,12 @@ import (
 	"time"
 
 	"github.com/emersion/go-vcard"
-	"github.com/emersion/go-webdav"
-	"github.com/emersion/go-webdav/carddav"
 	"github.com/fernet/fernet-go"
 	"github.com/migadu/alps"
 	_ "github.com/migadu/alps/plugins/base"
 	"github.com/migadu/alps/provider/maildir"
+	"github.com/migadu/go-webdav"
+	"github.com/migadu/go-webdav/carddav"
 )
 
 // These run the real server, with this plugin pointed at go-webdav's own

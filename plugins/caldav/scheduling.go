@@ -11,11 +11,11 @@ import (
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
-	"github.com/emersion/go-webdav/caldav"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/internal/davsave"
 	"github.com/migadu/alps/internal/imip"
 	"github.com/migadu/alps/internal/itip"
+	"github.com/migadu/go-webdav/caldav"
 	"github.com/teambition/rrule-go"
 )
 

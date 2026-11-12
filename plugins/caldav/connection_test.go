@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-webdav/caldav"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/internal/itip"
 	"github.com/migadu/alps/provider"
 	"github.com/migadu/alps/provider/maildir"
+	"github.com/migadu/go-webdav/caldav"
 )
 
 // authenticatedDAV records the protocol methods after enforcing credentials.

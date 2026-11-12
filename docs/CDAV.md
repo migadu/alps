@@ -114,7 +114,7 @@ On startup, ALPS will issue an `OPTIONS` HTTP request to the configured upstream
 
 ## 3. Backend Architecture
 
-The backend routes are powered by the excellent `github.com/emersion/go-webdav` library. 
+The backend routes are powered by the excellent `github.com/migadu/go-webdav` library (Migadu's fork of `github.com/emersion/go-webdav`). 
 
 ### Home Set Caching
 A common performance issue with WebDAV protocols is the "discovery tax". Finding a user's calendar typically requires three sequential XML `PROPFIND` requests:

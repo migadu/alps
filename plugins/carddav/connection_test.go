@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-webdav/carddav"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
 	"github.com/migadu/alps/provider/maildir"
+	"github.com/migadu/go-webdav/carddav"
 )
 
 // authenticatedDAV records the protocol methods after enforcing credentials.

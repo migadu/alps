@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/emersion/go-ical"
-	"github.com/emersion/go-webdav/caldav"
 	"github.com/google/uuid"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/internal/davsave"
 	"github.com/migadu/alps/internal/itip"
+	"github.com/migadu/go-webdav/caldav"
 	"github.com/teambition/rrule-go"
 )
 

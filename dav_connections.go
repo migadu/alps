@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/emersion/go-webdav/caldav"
-	"github.com/emersion/go-webdav/carddav"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/go-webdav/caldav"
+	"github.com/migadu/go-webdav/carddav"
 )
 
 var (

@@ -7,7 +7,7 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/emersion/go-webdav/caldav"
+	"github.com/migadu/go-webdav/caldav"
 )
 
 type authRoundTripper struct {
