@@ -4037,9 +4037,29 @@ func handleDelete(ctx *alps.Context) error {
 // server whose \Trash is "Deleted Items" a user's own folder named "Trash" could
 // be emptied. The frontend has offered Empty by role only since c5e0f81; this is
 // the check that holds for a request that did not come from that button.
+func personalMailboxName(mb provider.Mailbox) (string, bool) {
+	if mb.Namespace != "" {
+		return "", false
+	}
+	for _, attr := range mb.Attributes {
+		if strings.EqualFold(attr, string(imap.MailboxAttrNoSelect)) || strings.EqualFold(attr, string(imap.MailboxAttrNonExistent)) {
+			return "", false
+		}
+	}
+	return strings.TrimPrefix(mb.Name, mb.NamespacePrefix), true
+}
+
 func mayEmptyMailbox(name string, mailboxes []provider.Mailbox) bool {
 	trashClaimed, junkClaimed := false, false
+	fallbackName := ""
 	for _, mb := range mailboxes {
+		personalName, eligible := personalMailboxName(mb)
+		if !eligible {
+			continue
+		}
+		if mb.Name == name {
+			fallbackName = personalName
+		}
 		for _, attr := range mb.Attributes {
 			isTrash := strings.EqualFold(attr, string(imap.MailboxAttrTrash))
 			isJunk := strings.EqualFold(attr, string(imap.MailboxAttrJunk))
@@ -4050,8 +4070,8 @@ func mayEmptyMailbox(name string, mailboxes []provider.Mailbox) bool {
 			junkClaimed = junkClaimed || isJunk
 		}
 	}
-	switch strings.ToLower(name) {
-	case "trash", "deleted items":
+	switch strings.ToLower(fallbackName) {
+	case "trash", "deleted", "deleted items":
 		return !trashClaimed
 	case "junk", "spam":
 		return !junkClaimed
@@ -4396,23 +4416,34 @@ func planRenameSubscriptions(mailboxes []provider.Mailbox, oldName, newName stri
 // no listing to read, where unknown would be more honest, but the English name
 // is the best guess available.
 func isInTrash(mailboxes []provider.Mailbox, name string) bool {
-	trash := ""
 	for _, mb := range mailboxes {
+		if _, eligible := personalMailboxName(mb); !eligible {
+			continue
+		}
 		for _, attr := range mb.Attributes {
 			if strings.EqualFold(attr, string(imap.MailboxAttrTrash)) {
-				trash = mb.Name
-				break
+				return isAtOrUnderMailbox(name, mb.Name)
 			}
 		}
-		if trash != "" {
-			break
+	}
+	// No advertised Trash: recognize every personal fallback that the page can
+	// move a folder into, using the same boundary check as attributed Trash.
+	for _, mb := range mailboxes {
+		personalName, eligible := personalMailboxName(mb)
+		if !eligible {
+			continue
+		}
+		switch strings.ToLower(personalName) {
+		case "trash", "deleted", "deleted items":
+			if isAtOrUnderMailbox(name, mb.Name) {
+				return true
+			}
 		}
 	}
-	if trash == "" {
-		return strings.HasPrefix(strings.ToLower(name), "trash")
+	if len(mailboxes) == 0 {
+		return isAtOrUnderMailbox(name, "Trash") || isAtOrUnderMailbox(name, "Deleted") || isAtOrUnderMailbox(name, "Deleted Items")
 	}
-
-	return isAtOrUnderMailbox(name, trash)
+	return false
 }
 
 // isAtOrUnderMailbox reports whether `name` IS `parent` or sits beneath it.
