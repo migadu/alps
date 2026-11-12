@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -110,24 +111,22 @@ func (b box) unseen() error {
 	return nil
 }
 
-// messages answers every message in cur, as go-maildir's Walk does: a name
-// that is not a message's is reported, after the others.
+// messages answers the messages in cur, logging and skipping malformed names.
 func (b box) messages() ([]*mailFile, error) {
 	names, err := b.names("cur")
 	if err != nil {
 		return nil, err
 	}
 	var msgs []*mailFile
-	var malformed []error
 	for _, name := range names {
 		m, err := b.file(name)
 		if err != nil {
-			malformed = append(malformed, err)
+			log.Printf("alps/provider/maildir: skipping malformed message name %q: %v", name, err)
 			continue
 		}
 		msgs = append(msgs, m)
 	}
-	return msgs, errors.Join(malformed...)
+	return msgs, nil
 }
 
 func (b box) file(name string) (*mailFile, error) {
