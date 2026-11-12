@@ -25,6 +25,8 @@ export default {
     generating: '正在生成密钥对 ...',
     enableEncryptionDesc: '若要在支持端到端加密的联系人之间启用端到端加密功能，您需要拥有一对 GPG 密钥。',
     noKeyPresent: '暂无密钥',
+    loadError: '无法加载 GPG 密钥。',
+    loadErrorRetry: '重试',
     passphraseRequiredLabel: '加密短语 (必需)',
     generateKeysBtn: '生成密钥',
     importExistingKeys: '导入现有的 GPG 密钥对',

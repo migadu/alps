@@ -25,6 +25,8 @@ export default {
     generating: 'Genererer nøglepar...',
     enableEncryptionDesc: 'For at bruge end-to-end-kryptering med kontakter, der understøtter det, skal du have et GPG-nøglepar.',
     noKeyPresent: 'Ingen nøgle',
+    loadError: 'GPG-nøglerne kunne ikke indlæses.',
+    loadErrorRetry: 'Prøv igen',
     passphraseRequiredLabel: 'Adgangssætning (påkrævet)',
     generateKeysBtn: 'Generér nøgler',
     importExistingKeys: 'Importér eksisterende GPG-nøglepar',

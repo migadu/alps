@@ -25,6 +25,8 @@ export default {
     generating: '正在產生金鑰組…',
     enableEncryptionDesc: '您需要 GPG 金鑰組，才能與支援端對端加密的聯絡人進行加密通訊。',
     noKeyPresent: '沒有金鑰',
+    loadError: '無法載入 GPG 金鑰。',
+    loadErrorRetry: '重試',
     passphraseRequiredLabel: '密碼短語（必填）',
     generateKeysBtn: '產生金鑰',
     importExistingKeys: '匯入現有的 GPG 金鑰組',

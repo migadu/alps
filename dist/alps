@@ -4,7 +4,9 @@
 # Install: cp dist/alps /usr/local/etc/rc.d/alps && chmod +x /usr/local/etc/rc.d/alps
 # Enable:  sysrc alps_enable=YES
 # Start:   service alps start
-# Reload:  service alps reload  (sends SIGHUP for config reload)
+# Reload:  service alps reload  (sends SIGHUP, which only reopens the log
+#          file set in [logging] output; the config is not read again)
+# Restart: service alps restart  (applies a config or certificate change)
 # Logs:    tail -f /var/log/alps/alps.log
 
 # PROVIDE: alps
@@ -28,7 +30,9 @@ pidfile="/var/run/${name}.pid"
 command="/usr/sbin/daemon"
 command_args="-c -f -o ${alps_logdir}/alps.log -p ${pidfile} -u ${alps_user} /usr/local/bin/alps -config ${alps_config}"
 
-# SIGHUP triggers config reload
+# reload sends SIGHUP to alps, which reopens only the log file set in
+# [logging] output. It does not reopen daemon(8)'s alps.log, and it does not
+# read the config again: restart alps to apply a config or certificate change.
 sig_reload="HUP"
 
 start_precmd="alps_precmd"

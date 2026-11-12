@@ -25,6 +25,8 @@ export default {
     generating: 'Anahtar çifti oluşturuluyor…',
     enableEncryptionDesc: 'Destekleyen kişilerle uçtan uca şifrelemeyi etkinleştirmek için bir GPG anahtar çiftine ihtiyacınız var.',
     noKeyPresent: 'Anahtar yok',
+    loadError: 'GPG anahtarları yüklenemedi.',
+    loadErrorRetry: 'Tekrar dene',
     passphraseRequiredLabel: 'Anahtar parolası (zorunlu)',
     generateKeysBtn: 'Anahtar Oluştur',
     importExistingKeys: 'Mevcut GPG Anahtar Çiftini İçe Aktar',

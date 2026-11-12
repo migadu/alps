@@ -25,6 +25,8 @@ export default {
     generating: 'Generando par de claves...',
     enableEncryptionDesc: 'Para habilitar el cifrado de extremo a extremo entre los contactos que lo admiten, necesitarás un par de claves GPG.',
     noKeyPresent: 'No hay ninguna clave presente',
+    loadError: 'No se pudieron cargar las claves GPG.',
+    loadErrorRetry: 'Reintentar',
     passphraseRequiredLabel: 'Contraseña (obligatoria)',
     generateKeysBtn: 'Generar claves',
     importExistingKeys: 'Importar par de claves GPG existente',

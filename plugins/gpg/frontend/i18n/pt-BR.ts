@@ -25,6 +25,8 @@ export default {
     generating: 'Gerando o par de chaves…',
     enableEncryptionDesc: 'Para ativar a criptografia de ponta a ponta com contatos que oferecem suporte a ela, você precisa de um par de chaves GPG.',
     noKeyPresent: 'Nenhuma chave',
+    loadError: 'Não foi possível carregar as chaves GPG.',
+    loadErrorRetry: 'Tentar novamente',
     passphraseRequiredLabel: 'Frase secreta (obrigatória)',
     generateKeysBtn: 'Gerar chaves',
     importExistingKeys: 'Importar par de chaves GPG existente',

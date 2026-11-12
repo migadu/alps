@@ -25,6 +25,8 @@ export default {
     generating: 'Génération de la paire de clés...',
     enableEncryptionDesc: 'Pour activer le chiffrement de bout en bout entre les contacts qui le prennent en charge, vous aurez besoin d\'une paire de clés GPG.',
     noKeyPresent: 'Aucune clé présente',
+    loadError: 'Impossible de charger les clés GPG.',
+    loadErrorRetry: 'Réessayer',
     passphraseRequiredLabel: 'Mot de passe (requis)',
     generateKeysBtn: 'Générer les clés',
     importExistingKeys: 'Importer une paire de clés GPG existante',
