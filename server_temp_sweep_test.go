@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/alps/provider/providertest"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -31,7 +32,7 @@ func TestNew_TheTempSweepSurvivesPluginLoading(t *testing.T) {
 	pluginLoaders = append(loaders[:len(loaders):len(loaders)], plugin.Loader())
 
 	s, err := New(&NilLogger{}, &Options{
-		Provider: &provider.MockOptions{},
+		Provider: &providertest.MockOptions{},
 		SMTP:     SMTPOptions{Server: "smtps://example.com"},
 	})
 	if err != nil {
@@ -53,15 +54,15 @@ func sweepTestServer(t *testing.T) (*Server, string) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
 	s, err := newServer(&NilLogger{}, &Options{
-		Provider: &provider.MockOptions{},
+		Provider: &providertest.MockOptions{},
 		SMTP:     SMTPOptions{Server: "smtps://example.com"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	mockProvider := &provider.MockProvider{}
-	mockStore := &provider.MockStore{}
+	mockProvider := &providertest.MockProvider{}
+	mockStore := &providertest.MockStore{}
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(mockStore, nil)
 	mockStore.On("Get", mock.Anything, mock.Anything).Return(provider.ErrNoStoreEntry)

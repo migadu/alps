@@ -33,14 +33,14 @@ SIGHUP does nothing else:
 
 Either signal starts a graceful shutdown, which takes these steps in order:
 
-1. **HTTP.** The listener on `[server] addr` closes, so new connections are refused, and idle keep-alive connections are closed. Open `/events` streams are ended. Requests in progress get up to 30 seconds to finish. A request still running after that is cut off when the process exits.
+1. **HTTP.** The listener on `[server] addr` closes, and with Let's Encrypt so does the ACME HTTP-01 listener on `acme_http_addr`, so new connections are refused, and idle keep-alive connections are closed. Open `/events` streams are ended. Requests in progress on both listeners get up to 30 seconds together to finish. The connections of a request still running after that are closed, and ALPS logs `HTTP server shutdown: context deadline exceeded`.
 2. **Sessions.** Every session is told to close. Each one releases its mail connections and its uploaded attachment files in the background, and ALPS waits up to 5 seconds in all for that to finish, for sessions evicted just before the shutdown as well. If the cleanup takes longer, ALPS logs `Session shutdown timed out waiting for cleanup` and goes on, so some upload files can be left in the temp directory (see [Attachment Uploads](#attachment-uploads)). No `session ended` line is logged for these sessions.
 3. **Background jobs and plugins.** The rate limiter's cleanup and the hourly job scheduler stop. Then each loaded plugin is closed, once; the shipped plugins have nothing to release.
 4. **Let's Encrypt.** With `[tls] provider = "letsencrypt"`, the certificate warm loop stops, waiting up to 5 seconds for it. With S3 storage, the certificate sync worker also stops, waiting up to 10 seconds.
 5. **Cluster.** With `[cluster] enabled = true`, the node announces that it is leaving, waits up to 5 seconds for that to go out (not at all when no other node is up), and stops gossip ([CLUSTER.md](CLUSTER.md#3-startup-membership-and-shutdown)).
 6. ALPS exits with status 0.
 
-A shutdown therefore takes up to 35 seconds without Let's Encrypt and `[cluster]`. Let's Encrypt adds up to 5 seconds, or up to 15 with S3 storage, and `[cluster]` up to 5 more. With both, which means S3 storage, a shutdown takes up to 55 seconds. The ACME HTTP-01 listener on `acme_http_addr` is not drained: it closes when the process exits. ALPS logs no line of its own for the start or the end of a shutdown. With S3 storage, the certificate manager logs `stopping certificate sync worker` and then `certificate sync worker stopped gracefully` (or `certificate sync worker stop timed out`).
+A shutdown therefore takes up to 35 seconds without Let's Encrypt and `[cluster]`. Let's Encrypt adds up to 5 seconds, or up to 15 with S3 storage, and `[cluster]` up to 5 more. With both, which means S3 storage, a shutdown takes up to 55 seconds. ALPS logs no line of its own for the start or the end of a shutdown, only the HTTP line above when the 30 seconds run out. With S3 storage, the certificate manager logs `stopping certificate sync worker` and then `certificate sync worker stopped gracefully` (or `certificate sync worker stop timed out`).
 
 Once a shutdown has begun, further SIGINT, SIGTERM and SIGHUP signals are ignored, so a second SIGTERM does not make it end sooner. Only SIGKILL, or SIGQUIT (which prints a stack trace and exits with status 2), ends it sooner.
 
@@ -59,14 +59,14 @@ ALPS keeps sessions, and everything tied to them, in the memory of the process. 
 - **Sign-ins waiting for a security key or recovery code**, and security-key enrolments in progress. They have to start over ([WEBAUTHN.md](WEBAUTHN.md)).
 - **Open event streams** (`/events`, with `push_new_mail`).
 - **Rate-limit counts and lockouts** ([RATELIMIT.md](RATELIMIT.md#where-the-state-lives)).
-- **In-memory caches**: the CalDAV and CardDAV home sets and CalDAV's scheduling details for each login ([CDAV.md](CDAV.md#home-set-caching)), and the `multi` provider's autodiscovery answers.
+- **In-memory caches**: the CalDAV and CardDAV home sets and CalDAV's scheduling details for each connection ([CDAV.md](CDAV.md#home-set-caching)), and the `multi` provider's autodiscovery answers.
 
 A restart keeps:
 
 - everything on the mail server: the mail, and the per-account state ALPS stores in IMAP METADATA, such as settings, security keys and linked accounts ([ARCHITECTURE.md](ARCHITECTURE.md));
 - the files listed in [What ALPS Writes to Disk](#3-what-alps-writes-to-disk): the Let's Encrypt certificate cache (and the S3 store), the log file, and the BIMI logo cache unless the temp directory is private to the service.
 
-A changed `login_key` makes every login token unreadable, so after such a restart every user signs in again. It also makes the stored linked-account credentials unreadable (see [Changing the Key](SESSIONS.md#changing-the-key)).
+A changed `login_key` makes every login token unreadable, so after such a restart every user signs in again. It also makes the stored linked-account credentials, and the separate CalDAV and CardDAV passwords users saved in Settings, unreadable (see [Changing the Key](SESSIONS.md#changing-the-key)).
 
 ### Restarts and Upgrades
 
@@ -92,7 +92,7 @@ The modes are applied before the umask. ALPS writes nothing else to disk. Sessio
 
 ALPS's temp directory is `[server] temp_dir` when that is set, otherwise `$TMPDIR`, otherwise `/tmp`. ALPS applies `temp_dir` by setting `TMPDIR` for its own process at startup.
 
-ALPS does not create the temp directory at startup. Until it exists, every upload request whose files add up to more than 32 KiB is refused with 400 `Invalid request`. The first BIMI logo lookup does create it, with mode 0755, as the parent of `alps-avatars`. Create the directory before starting ALPS, owned by the user ALPS runs as and closed to other users, for example:
+ALPS does not create the temp directory at startup. Until it exists, every upload request whose files add up to more than 32 KiB is refused with 500 `upload_storage_failed`, and ALPS logs `upload multipart: ...` with the cause. The first BIMI logo lookup does create it, with mode 0755, as the parent of `alps-avatars`. Create the directory before starting ALPS, owned by the user ALPS runs as and closed to other users, for example:
 
 ```sh
 install -d -o alps -g alps -m 700 /var/lib/alps/tmp
@@ -133,9 +133,9 @@ With `[tls] provider = "letsencrypt"`, certificates are kept in `[tls.letsencryp
 
 ### The Log File
 
-A `[logging] output` path is opened for appending, and created with mode 0644 when it is missing. Its directory must already exist. If the file cannot be opened, ALPS writes `Failed to open log file ...` to standard error and logs there instead. ALPS never rotates or truncates the file: rotate it with newsyslog or logrotate, and have the tool send SIGHUP after moving it. The log holds user names and client addresses, so keep it in a directory that only the ALPS user and administrators can read.
+A `[logging] output` path is opened for appending, and created with mode 0644 when it is missing. Its directory must already exist. If the file cannot be opened, ALPS writes `Failed to open log file ...` to standard error and logs there instead. ALPS never rotates or truncates the file: rotate it with newsyslog or logrotate, and have the tool send SIGHUP after moving it. The log holds user names and client addresses, and, at level debug with `[server] debug` or `[provider.imap] debug` on, the protocol traces with message, contact and calendar content, so keep it in a directory that only the ALPS user and administrators can read.
 
-The cluster's and the certificate manager's lines ([CLUSTER.md](CLUSTER.md#7-checking-the-cluster)), and the warnings of the IMAP provider, such as the one for a server without METADATA, go through `[logging]` like every other line. The raw protocol traces that `[server] debug` turns on bypass it: they go straight to standard error (IMAP) or standard output (CalDAV, CardDAV and ManageSieve) ([CONFIGURATION.md](CONFIGURATION.md#1-server-configuration-server)).
+The cluster's and the certificate manager's lines ([CLUSTER.md](CLUSTER.md#7-checking-the-cluster)), the warnings of the IMAP provider, such as the one for a server without METADATA, and the protocol traces that `[server] debug` turns on go through `[logging]` like every other line. The traces are `protocol trace` lines at debug level, so they appear only while `level` is debug ([CONFIGURATION.md](CONFIGURATION.md#1-server-configuration-server)).
 
 ---
 
@@ -258,7 +258,7 @@ The three values are set when the binary is linked. `make build`, `make install`
 
 Each can be given on the make command line instead, for example `make build VERSION=v1.2.3`. A plain `go build ./cmd/alps`, `go install` or `go run` sets none of them, and the binary prints `alps unknown (unknown) built at unknown`.
 
-ALPS does not log its version at startup, and no HTTP endpoint reports it. Every response carries an `X-Alps-Build` header, but that header names the frontend build, not the binary: it is the first 16 hex digits of the SHA-256 of the `index.html` ALPS serves, which is the embedded frontend's with the `[branding]` settings (`default_theme`, `logo`) written into it. It changes when `frontend/dist` or those settings change, so two binaries built with the same frontend and run with the same `[branding]` send the same value. The web app uses it to notice that a newer frontend is being served. To read it:
+ALPS does not log its version at startup, and no HTTP endpoint reports it. Every response carries an `X-Alps-Build` header, but that header names the frontend build, not the binary: it is the first 16 hex digits of the SHA-256 of the `index.html` ALPS serves, which is the embedded frontend's with the `[branding]` settings (`default_theme`, `logo`) written into it. With a favicon package as `logo`, the `index.html` also carries a fingerprint of the package's files, so the header changes when any of those files changes too (ALPS reads them at startup). It changes when `frontend/dist` or those settings change, so two binaries built with the same frontend and run with the same `[branding]` and favicon files send the same value. The web app uses it to notice that a newer frontend is being served. To read it:
 
 ```sh
 curl -sI http://localhost:1323/ | grep -i x-alps-build
@@ -273,7 +273,7 @@ curl -sI http://localhost:1323/ | grep -i x-alps-build
 ALPS starts in this order:
 
 1. It reads and checks the configuration, and sets `TMPDIR` from `[server] temp_dir`.
-2. It opens the log.
+2. It opens the log, and logs a warning for each configuration key it does not know (`Unknown configuration key: ... (ignored)`, see [CONFIGURATION.md](CONFIGURATION.md)).
 3. With `[cluster] enabled = true`, it starts gossip and tries to join `peers` ([CLUSTER.md](CLUSTER.md#3-startup-membership-and-shutdown)).
 4. It sets up the server (the SMTP server URL and the mail provider) and loads the plugins. Here a `[plugin.caldav] server` without a scheme is discovered through DNS, and the global CalDAV and CardDAV `server` each get one `OPTIONS` request, with a 10-second timeout ([CDAV.md](CDAV.md#sanity-checks)).
 5. It sets up WebAuthn.
@@ -294,7 +294,7 @@ Errors found before the log is opened, such as `Error: -config flag is required`
 
 ## 7. Outbound Connections
 
-ALPS connects to the services it is configured for, and two features fetch from any host on the internet: the remote-content proxy and BIMI logos. The host's firewall must allow:
+ALPS connects to the services it is configured for, and two features fetch from any host on the internet: the remote-content proxy and BIMI logos. Users can also enter CalDAV and CardDAV servers of their own in Settings, which ALPS then connects to. The host's firewall must allow:
 
 | Destination | When | Protocol |
 | :--- | :--- | :--- |
@@ -302,6 +302,7 @@ ALPS connects to the services it is configured for, and two features fetch from 
 | The SMTP submission server (under `multi`, a domain's own `smtp`) | Each send | SMTP, as `[smtp] server` says |
 | The ManageSieve server | With the `managesieve` plugin, for each filter and auto-reply request | ManageSieve, 15-second connect timeout ([FILTERS.md](FILTERS.md)) |
 | The CalDAV and CardDAV servers | With the `caldav` and `carddav` plugins: one `OPTIONS` request to each global `server` at startup, then as the user works | HTTP or HTTPS ([CDAV.md](CDAV.md)) |
+| The CalDAV and CardDAV servers users enter in Settings | When a user saves a connection, then as the user works | HTTPS, at public addresses only; with `dav_allow_private_servers`, also HTTP and any address ([CDAV.md](CDAV.md#personal-servers)) |
 | The password-change endpoint | With `[plugin.password]` and an `endpoint`, for each change | HTTP or HTTPS, 15-second timeout ([PASSWORD_CHANGE.md](PASSWORD_CHANGE.md)) |
 | Let's Encrypt | With `provider = "letsencrypt"`: `https://acme-v02.api.letsencrypt.org/directory`, or `directory_url` | HTTPS ([TLS.md](TLS.md)) |
 | S3 | With `storage_provider = "s3"`: the S3 `endpoint`, or AWS S3 when none is set | HTTPS, or HTTP for an `http://` endpoint |
@@ -342,16 +343,21 @@ A DNS or network failure, a timeout, or a 5xx, 408 or 429 answer from the logo h
 
 The proxy and the BIMI fetch connect only to public addresses. At connection time, for the first request and for every redirect, ALPS checks the address the host name resolved to and refuses loopback, private (RFC 1918 and `fc00::/7`), unspecified, link-local and multicast addresses, as well as `0.0.0.0/8`, `100.64.0.0/10` (carrier-grade NAT), `192.0.0.0/24`, `198.18.0.0/15` and `240.0.0.0/4`. A resource on such an address, an intranet image server for example, does not load through the proxy (502), and a BIMI logo on one counts as no logo.
 
+The same check, with the same ranges, guards two other kinds of connection whose destination a user's input decides:
+
+- the CalDAV and CardDAV servers users enter in Settings, unless `[server] dav_allow_private_servers` is on ([CDAV.md](CDAV.md#personal-servers));
+- the IMAP servers the `multi` provider finds for a login through `template` or `autodiscover`, before connecting and again on the address each connection reaches ([CONFIGURATION.md](CONFIGURATION.md#providermulti)).
+
 ### HTTP Proxies
 
-The proxy and the BIMI fetch use no HTTP proxy: `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` are ignored for them. They resolve names through the host's resolver and connect directly. A host whose outbound web traffic has to pass an HTTP proxy cannot load remote content or BIMI logos. It needs direct outbound HTTP and HTTPS, and DNS.
+The proxy and the BIMI fetch use no HTTP proxy: `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` are ignored for them. Nor do the requests to the CalDAV and CardDAV servers users enter in Settings, while `dav_allow_private_servers` is off. They resolve names through the host's resolver and connect directly. A host whose outbound web traffic has to pass an HTTP proxy cannot load remote content or BIMI logos, nor reach such servers. It needs direct outbound HTTP and HTTPS, and DNS.
 
-The other HTTP clients (CalDAV, CardDAV, the startup `OPTIONS` checks, the password endpoint, ACME and S3) use Go's standard proxy settings, so `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` do apply to them. IMAP, SMTP, ManageSieve and gossip are direct TCP connections (and UDP for gossip), which no HTTP proxy carries.
+The other HTTP clients (CalDAV and CardDAV for the administrator's servers, and for the users' own when `dav_allow_private_servers` is on, the startup `OPTIONS` checks, the password endpoint, ACME and S3) use Go's standard proxy settings, so `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` do apply to them. IMAP, SMTP, ManageSieve and gossip are direct TCP connections (and UDP for gossip), which no HTTP proxy carries.
 
 ### DNS Lookups
 
 Besides resolving host names, ALPS makes these lookups itself:
 
 - For BIMI logos: TXT `_dmarc.<domain>` and `<selector>._bimi.<domain>`.
-- At startup, for a `[plugin.caldav] server` given without a scheme: SRV `_caldavs._tcp.<domain>`, and the TXT record of the same name for the path ([CDAV.md](CDAV.md#caldav-auto-discovery)). If discovery fails, ALPS runs without the CalDAV plugin, unless a `[provider.multi]` backend names a `caldav` endpoint.
+- At startup, for a `[plugin.caldav] server` given without a scheme: SRV `_caldavs._tcp.<domain>`, and the TXT record of the same name for the path ([CDAV.md](CDAV.md#caldav-auto-discovery)). If discovery fails, the CalDAV plugin loads without a global server.
 - At sign-in, with `[provider.multi] autodiscover = true` and a domain listed in `autodiscover_domains`: SRV `_imaps._tcp.<domain>`, then `_imap._tcp.<domain>`. An answer is kept for 15 minutes, and a lookup that fails or finds no usable record for 30 seconds ([CONFIGURATION.md](CONFIGURATION.md)).

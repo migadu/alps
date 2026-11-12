@@ -141,7 +141,7 @@ sync_interval_minutes = 5               # Retry interval for uploads that failed
 [tls.letsencrypt.s3]
 bucket = "alps-certs"                   # Required
 region = "us-east-1"
-prefix = "alps/"                        # End with "/" to get a folder (default: "")
+prefix = "alps/"                        # Folder in the bucket (default: "", the root)
 # endpoint = "minio.example.com:9000"   # Only for non-AWS S3 (MinIO, Backblaze B2, ...)
 # access_key = "..."                    # Omit both to use the default AWS credential chain
 # secret_key = "..."
@@ -151,7 +151,7 @@ prefix = "alps/"                        # End with "/" to get a folder (default:
 - `endpoint`: Optional for AWS, where the SDK resolves it. When set (MinIO, B2 and others), `https://` is added if no scheme is given, and path-style addressing is used.
 - `region`: Defaults to `us-east-1` when an `endpoint` is set. Otherwise the AWS configuration or environment decides.
 - `access_key` and `secret_key`: Used only when both are set. Otherwise the default AWS credential chain applies (environment, shared config files, instance or IAM role).
-- `prefix`: Put in front of every S3 key exactly as written, so end it with `/` to get a folder (for example `"alps/"`). The default is empty, which stores keys at the bucket root.
+- `prefix`: The folder in the bucket for every S3 key. `"alps"` and `"alps/"` both mean the folder `alps/`. The default is empty, which stores keys at the bucket root.
 
 When configured this way:
 1. A node reads a certificate from its local `cache_dir` first. When there is no local copy, it asks S3 (5-second timeout) and saves what it finds locally.

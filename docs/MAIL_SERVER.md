@@ -28,10 +28,12 @@ ALPS signs in with the IMAP `LOGIN` command, sending the username and password t
 | --- | --- |
 | `OK` | The session, or the request for a second factor |
 | `NO` without one of the codes below | 401 `{"error":"Failed to login"}`: wrong username or password |
-| `NO [UNAVAILABLE]`, `NO [SERVERBUG]`, `BAD`, or a lost connection | 503 `{"error":"Mail service temporarily unavailable","code":"service_unavailable"}` |
+| `NO [UNAVAILABLE]`, `NO [SERVERBUG]`, `NO [PRIVACYREQUIRED]`, `BAD`, or a lost connection | 503 `{"error":"Mail service temporarily unavailable","code":"service_unavailable"}` |
 | `NO [LIMIT]` | 503 `{"error":"connection_limit"}`: the account holds as many connections as the server allows |
 
-Only the plain `NO` counts as a failed attempt for the username in ALPS's own sign-in limits (see [RATELIMIT.md](RATELIMIT.md#limits-set-by-the-mail-server)).
+A server that lists `LOGINDISABLED` on the connection ALPS opens is not sent the credentials at all: ALPS closes the connection, and the sign-in gets the same 503. `PRIVACYREQUIRED` and `LOGINDISABLED` both say that the server wants a protected connection, so check the scheme of `server` (above).
+
+Only the plain `NO` counts as a failed attempt for the username in ALPS's own sign-in limits (see [RATELIMIT.md](RATELIMIT.md#limits-set-by-the-mail-server)). ALPS's log line for such a refusal (`sign-in failed`, reason `bad credentials`) carries the server's answer in `error`; the browser gets only the 401.
 
 Each session keeps its own IMAP connection, and by default opens a second one for background work when it first has some, closing it once it has gone unused for a minute. With `push_new_mail` on, that second connection stays open while a mail page is open. While a command the session gave up on is still running, the session can hold a third for a moment. Every connection comes from ALPS's own address, so the server's per-user and per-address connection limits must leave room for them. See [SESSIONS.md](SESSIONS.md#the-session-architecture), and `background_connection` and `push_new_mail` in [CONFIGURATION.md](CONFIGURATION.md#12-session-limits).
 
@@ -39,7 +41,7 @@ Each session keeps its own IMAP connection, and by default opens a second one fo
 
 ## 2. METADATA: Where ALPS Keeps Its Records
 
-ALPS has no database. It keeps an account's settings (identities among them), linked accounts, security keys and recovery codes, and GPG keyring on the IMAP server as server METADATA (RFC 5464). These are entries on mailbox `""`, all under `/private/vendor/alps/`. ALPS uses this store when the server lists `METADATA` or `METADATA-SERVER`. [ARCHITECTURE.md](ARCHITECTURE.md#4-stateless-persistence-imap-metadata) lists the entries and what each one holds.
+ALPS has no database. It keeps an account's settings (identities among them), linked accounts, security keys and recovery codes, GPG keyring and own CalDAV and CardDAV connections on the IMAP server as server METADATA (RFC 5464). These are entries on mailbox `""`, all under `/private/vendor/alps/`. ALPS uses this store when the server lists `METADATA` or `METADATA-SERVER`. [ARCHITECTURE.md](ARCHITECTURE.md#4-stateless-persistence-imap-metadata) lists the entries and what each one holds.
 
 ALPS does not check for METADATA at startup. On a server without it, ALPS still starts and signs users in, but each IMAP connection gets a store of its own, in memory:
 
@@ -132,11 +134,11 @@ ALPS never creates special folders. The account must already have them.
 - Otherwise ALPS takes a folder by name, compared in any case after the personal namespace prefix (such as `INBOX.`): `Sent` for Sent, `Draft` or `Drafts` for Drafts.
 - Without NAMESPACE, only top-level folders are looked at.
 
-Without a Sent folder, a send gets an error after the message has already gone (section 7). Without a Drafts folder, draft saves fail.
+Without a Sent folder, a send is answered as sent, with a warning that no copy was saved in Sent (section 7). Without a Drafts folder, draft saves fail.
 
 **Used by the page.** Delete moves messages into Trash, Archive into Archive, and Report spam into Junk. The page finds those folders, and draws Sent, Drafts and the others in the sidebar, by the attributes `\Trash`, `\Archive`, `\Junk`, `\Sent`, `\Drafts` and `\All`. For a role no folder of the user's own carries as an attribute, it matches the whole folder name in any case: `Trash` or `Deleted Items`, `Archive` or `Archives`, `Junk` or `Spam`, `Sent`, `Drafts`. When no folder has the role, the action names a folder called `Trash`, `Archive` or `Junk`, and the server refuses the move if that folder does not exist. Folders in other people's namespaces never take a role.
 
-A server that marks its folders with special-use attributes avoids every name guess.
+Mark the special folders with special-use attributes on the server: a folder that carries one is found by it, whatever its name.
 
 ---
 
@@ -174,7 +176,7 @@ ALPS keeps no SMTP connection open. For each send it:
 
 Because `MAIL FROM` is the chosen From address, the submission server must let the login send as each of its identities' addresses.
 
-**Timeouts.** The TCP connect, and for `smtps://` the TLS handshake, have a fixed limit of 30 seconds. `[server] smtp_timeout_sec` (default 30) then limits each command and the server's answer to the message. For `smtp://`, the greeting, the first EHLO and STARTTLS happen before that and use the SMTP client library's default of 5 minutes.
+**Timeouts.** `[server] smtp_timeout_sec` (default 30) limits the TCP connect, with the TLS handshake for `smtps://`. For `smtp://` it then limits the greeting, the first EHLO and STARTTLS together, and after that, for every scheme, each command and the server's answer to the message. A connection whose setup runs out of time is closed.
 
 **Retries.** A send is tried up to 3 times in all, with pauses of 1 second and then 2 seconds, and on a fresh connection each time. It is tried again only after a failed connection or a temporary (4xx) reply. These are not tried again:
 
@@ -199,7 +201,7 @@ With the `multi` provider, each `[provider.multi.domains."<domain>"]` table, eac
 4. **ALPS files the sent copy itself.** It stores the message as submitted, flagged `\Seen`, with IMAP `APPEND` into the account's Sent folder (section 4). After a network error during the APPEND, ALPS does not store the copy again: on another connection it looks in Sent for the copy by its Message-ID and carries on when it is there. When it is not, the filing counts as failed, since the first APPEND may still complete.
 5. **The draft is removed.** When the message was sent from a draft, that draft is deleted.
 
-If no Sent folder exists, or filing the copy or removing the draft fails, the send is answered with an error (`failed to save message to Sent mailbox: ...`) even though the message has already gone.
+The draft is removed even when filing the copy failed, so that it cannot be sent a second time. Once the submission server has accepted the message, the send is answered as sent (200), whatever happens to the copy and the draft. When no Sent folder exists, or filing the copy or removing the draft fails, the answer carries a `warning`: `not_filed_in_sent`, `draft_not_removed`, or `not_filed_in_sent_and_draft_not_removed`. ALPS logs the failures (`Sent message cleanup: filing=... draft=...`). The composer closes, and the page shows the warning until the user dismisses it: "Message sent, but no copy could be saved in Sent.", or, when the draft is still there, a warning not to send it again.
 
 Because ALPS files the sent copy over IMAP, the submission server should not also save a copy of each submitted message into Sent, or every sent message appears there twice.
 

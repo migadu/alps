@@ -92,13 +92,13 @@ Each plugin's routes are served at the paths it registers, from the root of the 
 
 | Group | Routes | For |
 | --- | --- | --- |
-| Session | `POST`, `GET` and `DELETE /session` | Sign in, the signed-in account and its `EnabledPlugins`, sign out ([SESSIONS.md](SESSIONS.md)) |
+| Session | `POST`, `GET` and `DELETE /session` | Sign in, the signed-in account with its `EnabledPlugins` and `ActivePlugins`, sign out ([SESSIONS.md](SESSIONS.md)) |
 | Second factor | `POST /webauthn/verify/begin`, `/finish` and `/recovery`; `GET /settings/2fa` and `POST /settings/2fa/...` | The security key or a recovery code at sign-in or account switch; enrolling and removing keys, Trust Linked Accounts, new recovery codes ([WEBAUTHN.md](WEBAUTHN.md)) |
 | Folders | `GET` and `POST /mailboxes`; `DELETE /mailboxes/{mbox}` and its `/status`, `/rename`, `/subscribe`, `/unsubscribe` and `/sharing` routes; `GET /quota` | The folder list and a folder's counts; creating, deleting, renaming, subscribing and sharing folders; the storage quota |
 | Messages | `GET /mailboxes/{mbox}` (a page of the folder, searched with `query`); `GET /mailboxes/{mbox}/previews` (message previews the listing did not carry); `/mailboxes/{mbox}/messages/{uid}`, `.../raw` and `.../thread`; `/mailboxes/{mbox}/messages/move`, `/copy`, `/flag`; `DELETE /mailboxes/{mbox}/messages`; `POST /mailboxes/{mbox}/empty`; `/mailboxes/{mbox}/verdicts`; `GET /bimi/avatar`; `GET /proxy` | Listing, reading (a part decoded, or raw) and the conversation; moving, copying, flagging, deleting, emptying a folder; authentication verdicts and brand logos; a message's remote images, fonts and stylesheets fetched through ALPS |
 | Compose | `POST /messages` | Sending a message, or saving it as a draft (`save_as_draft`) |
 | Attachments | `POST /attachments`, `DELETE /attachments/{uuid}` | Uploading an attachment for the composer, and removing one ([ATTACHMENTS.md](ATTACHMENTS.md)) |
-| Settings | `GET` and `PUT /settings` | The `base.settings` record ([section 4](#4-stateless-persistence-imap-metadata)), with what the page needs beside it, such as `PushNewMail` |
+| Settings | `GET` and `PUT /settings`; `GET`, `PUT` and `DELETE /settings/dav/{caldav,carddav}` | The `base.settings` record ([section 4](#4-stateless-persistence-imap-metadata)), with what the page needs beside it, such as `PushNewMail`; the account's own CalDAV and CardDAV connections ([CDAV.md](CDAV.md#connections-in-settings)) |
 | Accounts | `GET` and `POST /accounts`, `DELETE /accounts/{id}`, `POST /accounts/switch` | Linked accounts and switching ([SESSIONS.md](SESSIONS.md#linked-accounts)) |
 | Events | `GET /events` | The new-mail event stream ([New-Mail Push](#new-mail-push)) |
 | `caldav` | `/calendar/calendars`, `/calendar/events`, `/calendar/tasks`, `/calendar/invitation` | Calendars, events, tasks, and invitations found in messages ([CDAV.md](CDAV.md)) |
@@ -132,12 +132,12 @@ ALPS decodes charsets with the `go-message` charset package, which looks a name 
 Plugins are Go packages compiled into the binary through blank imports in `cmd/alps/plugins.go`: `base`, `caldav`, `carddav`, `gpg`, `managesieve` and `password`. Each registers a loader from `init()` with `alps.RegisterPluginLoader`, usually through `alps.GoPlugin`, which also offers `AddRoute`/`GET`/`POST`/... and `AddJob` for jobs the scheduler runs every hour. Loaders run once, at startup; ALPS has no reload, so a configuration change needs a restart.
 
 Which plugins load:
-- `base` always loads. A plugin whose `[plugin.<name>]` section does not set `enabled = true` does not load.
+- `base` always loads. A plugin whose `[plugin.<name>]` section says `enabled = false` does not load.
 - If any section sets `enabled = true`, only `base` and the plugins so enabled load.
-- Otherwise no list is applied, and a plugin without a section loads too. `caldav` and `carddav` load only with a `server`, with `enabled = true`, or when a `multi` backend names their endpoint; `managesieve` only with a `server` or when a backend names its endpoint.
+- Otherwise no list is applied, and a plugin whose section leaves `enabled` out loads, as does a plugin without a section. `caldav` and `carddav` load only with a section that does not say `enabled = false`, with or without a `server`, or when a `multi` backend names their endpoint; `managesieve` only with a `server` or when a backend names its endpoint.
 - `password` loads only when `[plugin.password] enabled = true` and an endpoint or command is configured, globally or in a `multi` backend's `password` block. `enabled = true` also applies the list above, so every other plugin wanted needs `enabled = true` beside it.
 
-A plugin's optional frontend is `plugins/<name>/frontend/index.ts`. It registers nav tabs, settings tabs, routes and hooks with `frontend/src/plugin-registry.ts`, which shows the tabs and routes, and runs the hooks, only of the plugins that `GET /session` lists in `EnabledPlugins`. `base` has no plugin frontend: its UI is `frontend/src`. See [PLUGINS.md](PLUGINS.md), and for the individual plugins [CDAV.md](CDAV.md), [FILTERS.md](FILTERS.md), [GPG.md](GPG.md) and [PASSWORD_CHANGE.md](PASSWORD_CHANGE.md).
+A plugin's optional frontend is `plugins/<name>/frontend/index.ts`. It registers nav tabs, settings tabs, routes and hooks with `frontend/src/plugin-registry.ts`, which shows the tabs and routes, and runs the hooks, only of the plugins that `GET /session` lists in `EnabledPlugins`. Nav tabs, routes and hooks also need the plugin in `ActivePlugins`, which leaves out `caldav` and `carddav` for an account with no server for them ([CDAV.md](CDAV.md#which-tabs-appear)). `base` has no plugin frontend: its UI is `frontend/src`. See [PLUGINS.md](PLUGINS.md), and for the individual plugins [CDAV.md](CDAV.md), [FILTERS.md](FILTERS.md), [GPG.md](GPG.md) and [PASSWORD_CHANGE.md](PASSWORD_CHANGE.md).
 
 ---
 
@@ -174,8 +174,9 @@ ALPS uses the `store` abstraction to read and write these entries:
 - `linked_accounts`: the linked accounts, each with its username, its password Fernet-encrypted with `[server] login_key`, an optional display name, and the time it was added. Linking needs `login_key`: without it, `POST /accounts` answers 400 (see [SESSIONS.md](SESSIONS.md#linked-accounts)). With a different key, the stored passwords cannot be decrypted, and the accounts have to be linked again.
 - `webauthn`: the account's 2FA record: the user ID, whether 2FA is enabled, the security keys, the trust-linked-accounts setting, and the unused recovery codes, which are kept only as hashes. On IMAP METADATA the record is kept as versioned entries under `webauthn-state/<number>-<id>`, which coordinate updates across ALPS instances: the newest committed one is the record, and the `webauthn` entry is read only until the first committed version exists. The maildir store keeps the record in `webauthn`. See [WEBAUTHN.md](WEBAUTHN.md) and [WEBAUTHN_COORDINATION.md](WEBAUTHN_COORDINATION.md).
 - `gpg_keys`: the `gpg` plugin's keyring (`public_key`, and `encrypted_private_key`, protected by the user's passphrase). See [GPG.md](GPG.md).
+- `dav.connection.caldav` and `dav.connection.carddav`: the account's own CalDAV and CardDAV connection, when the user has saved one in Settings: a server URL, or none for the administrator's, and either the mail credentials or a separate username and password, the password encrypted with `[server] login_key`. See [CDAV.md](CDAV.md#connections-in-settings).
 
-There are no other plugin entries. CalDAV, CardDAV and ManageSieve keep nothing in METADATA: their servers come from `[plugin.<name>] server` or from the `multi` provider's routes.
+There are no other plugin entries. ManageSieve keeps nothing in METADATA: its server comes from `[plugin.managesieve] server` or from the `multi` provider's routes.
 
 ### Without METADATA
 Persistence needs an IMAP server that advertises METADATA or METADATA-SERVER. Without it, ALPS logs once "IMAP server doesn't support the METADATA extension, using transient store instead" and keeps entries only in the memory of that one mail connection. Nothing saved then survives a reconnect or a new sign-in, and the session's background connection does not see it. Use the transient store only for trying ALPS out.
@@ -184,5 +185,5 @@ The `maildir` provider keeps the same entries, except the versioned `webauthn-st
 
 ### Why IMAP Metadata?
 1. **No Database to Run**: Administrators do not need to set up, secure, or back up a separate database to run ALPS.
-2. **Portability**: The data belongs to the account, not to the ALPS server. It follows a mailbox to another IMAP server only if the migration copies the private server METADATA under `/private/vendor/alps/` (including `webauthn-state/`); a migration that copies only messages leaves it behind. After the move, linked accounts also need the same `[server] login_key`, and security keys the same `[webauthn] rpid`, on the ALPS that serves the account.
+2. **Portability**: The data belongs to the account, not to the ALPS server. It follows a mailbox to another IMAP server only if the migration copies the private server METADATA under `/private/vendor/alps/` (including `webauthn-state/`); a migration that copies only messages leaves it behind. After the move, linked accounts and saved CalDAV and CardDAV passwords also need the same `[server] login_key`, and security keys the same `[webauthn] rpid`, on the ALPS that serves the account.
 3. **Data Stays with the Account**: An account's settings and keys are kept on the same server as its mail, rather than on the ALPS host.

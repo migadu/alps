@@ -2,6 +2,7 @@ package alps
 
 import (
 	"errors"
+	"github.com/migadu/alps/provider/providertest"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -62,7 +63,7 @@ type testNode struct {
 func newTestNode(t *testing.T, mail *rawStore, clock *fakeClock) *testNode {
 	t.Helper()
 	store := &countingStore{rawStore: mail, entered: make(chan struct{}), release: make(chan struct{})}
-	mockProvider := &provider.MockProvider{}
+	mockProvider := &providertest.MockProvider{}
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(store, nil)
 	mockProvider.On("HasThreadCapability").Return(false).Maybe()

@@ -3,6 +3,7 @@ package alps
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/migadu/alps/provider/providertest"
 	"io"
 	"sync"
 	"testing"
@@ -87,7 +88,7 @@ func TestSessionManagerPut_SecondFactor(t *testing.T) {
 			if c.record != "" {
 				store.entries[webAuthnKey] = c.record
 			}
-			mockProvider := &provider.MockProvider{}
+			mockProvider := &providertest.MockProvider{}
 			mockProvider.On("Close").Return(nil)
 			mockProvider.On("GetStore").Return(store, nil)
 			mockProvider.On("HasThreadCapability").Return(false).Maybe()
@@ -147,7 +148,7 @@ func (s *copyingStore) GetFresh(key string, out interface{}) error {
 func TestReadWebAuthn_SeesAKeyEnrolledElsewhere(t *testing.T) {
 	store := &copyingStore{rawStore: &rawStore{entries: map[string]string{}}, copies: map[string]string{}}
 	store.entries[webAuthnKey] = `{"enabled": false, "credentials": []}`
-	mockProvider := &provider.MockProvider{}
+	mockProvider := &providertest.MockProvider{}
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(store, nil)
 	mockProvider.On("HasThreadCapability").Return(false).Maybe()

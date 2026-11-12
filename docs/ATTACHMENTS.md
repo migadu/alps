@@ -27,14 +27,18 @@ If a send or draft save names an upload the session does not hold (it was evicte
 An upload is refused with:
 
 - **413** when the request body exceeds `max_attachment_mib` + 1 MiB.
-- **400** when the files do not fit a budget, the body is malformed, or a file part cannot be written to the temp directory.
+- **400** when the files do not fit a budget, or the body is malformed.
+- **408** with code `upload_timed_out` when the body does not arrive within the server's read timeout (`[server] read_timeout_sec`).
+- **500** with code `upload_storage_failed` when a file part cannot be written to the temp directory, for instance because it does not exist.
 - **401** when the session has ended. The file of an upload that finishes after its session has ended is removed.
+
+A body that fails while it is read, other than one over the size cap, is logged as `upload multipart: ...` with the cause. The answers name no server path.
 
 ---
 
 ## The Temporary Directory
 
-Uploads go in the process temp directory: `[server] temp_dir` when that is set, otherwise the OS default (`$TMPDIR`, else `/tmp`). ALPS applies `temp_dir` by setting `TMPDIR` at startup and does not create the directory, so it must already exist, or every upload over 32 KiB is refused with 400. See [CONFIGURATION.md](CONFIGURATION.md) for the key, and [OPERATIONS.md](OPERATIONS.md) for what else ALPS writes to disk.
+Uploads go in the process temp directory: `[server] temp_dir` when that is set, otherwise the OS default (`$TMPDIR`, else `/tmp`). ALPS applies `temp_dir` by setting `TMPDIR` at startup and does not create the directory, so it must already exist, or every upload over 32 KiB is refused with 500 `upload_storage_failed`. See [CONFIGURATION.md](CONFIGURATION.md) for the key, and [OPERATIONS.md](OPERATIONS.md) for what else ALPS writes to disk.
 
 All of one request's spilled file parts share a single `multipart-*` file. It is removed as soon as a refused request ends. Otherwise it stays until the last attachment stored from that request is removed: sent, saved into a draft, deleted, evicted, or dropped when its session ends. The web composer sends one file per request, so each of its uploads that is written to disk has a file of its own.
 

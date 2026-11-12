@@ -27,11 +27,11 @@ enabled = true
 server = "https://dav.example.com/"
 ```
 
-A `[plugin.gpg]` section that does not set `enabled = true` keeps the plugin out, and if any `[plugin.*]` section sets `enabled = true`, ALPS loads only `base` and the plugins whose own sections set it. So set it in `[plugin.gpg]`, as the example above and `config.example.toml` do. When the plugin is not loaded, the frontend drops its Settings tab and its hooks. The full key reference is in [CONFIGURATION.md](CONFIGURATION.md).
+A `[plugin.gpg]` section that says `enabled = false` keeps the plugin out. If any `[plugin.*]` section sets `enabled = true`, ALPS loads only `base` and the plugins whose own sections set it; otherwise gpg loads with or without a section. So with such sections, set it in `[plugin.gpg]` too, as the example above and `config.example.toml` do. When the plugin is not loaded, the frontend drops its Settings tab and its hooks. The full key reference is in [CONFIGURATION.md](CONFIGURATION.md).
 
 ### The carddav Dependency
 
-The plugin finds recipients' keys through carddav's `/contacts` route. Without carddav, or for a user with no CardDAV endpoint, that lookup fails, and every encrypted send to anyone other than yourself stops with an error and is not sent. Generating, importing and reading do not use carddav.
+The plugin finds recipients' keys through carddav's `/contacts` route. Without carddav, or for a user with no CardDAV server (neither the administrator's nor one of the user's own, see [CDAV.md](CDAV.md#connections-in-settings)), that lookup fails, and every encrypted send to anyone other than yourself stops with an error and is not sent. Generating, importing and reading do not use carddav.
 
 ### The Mail Server
 

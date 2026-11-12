@@ -11,8 +11,10 @@ import (
 	"io"
 	"math"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -81,6 +83,7 @@ func registerRoutes(p *alps.GoPlugin) {
 	// Settings & Accounts
 	p.GET("/settings", handleSettings)
 	p.PUT("/settings", handleSettings)
+	registerDAVSettingsRoutes(p)
 
 	// WebAuthn
 	p.GET("/settings/2fa", handleSetupPage)
@@ -1738,7 +1741,8 @@ func handleNewMailbox(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Name is required"})
 	}
 
-	err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err := ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		defer invalidateMailboxTree(ctx)
 		return createMailboxWithProvider(p, name)
 	})
 
@@ -1758,7 +1762,8 @@ func handleDeleteMailbox(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid mailbox name"})
 	}
 
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		defer invalidateMailboxTree(ctx)
 		_ = unsubscribeMailboxWithProvider(p, mboxName)
 		return deleteMailboxWithProvider(p, mboxName)
 	})
@@ -1786,7 +1791,8 @@ func handleRenameMailbox(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "New name is required"})
 	}
 
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		defer invalidateMailboxTree(ctx)
 		// Read fresh rather than from the session's cache: which folders are
 		// subscribed is the point, and another client may have changed that.
 		// A listing that fails leaves the rename to go ahead on the Trash
@@ -1935,6 +1941,7 @@ func handleLogin(ctx *alps.Context) error {
 					"user", username,
 					"ip", ctx.ClientIP(),
 					"reason", "bad credentials",
+					"error", err.Error(),
 					"agent", ctx.Request.UserAgent())
 				return ctx.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Failed to login"})
 			}
@@ -3450,12 +3457,33 @@ func handleComposeNew(ctx *alps.Context) error {
 				sentName = held
 			}
 		}
-		return deleteDraft(p, draftPath)
+		return nil
 	})
-	if err != nil {
+	filingErr := err
+	// Remove the sent draft even when filing failed, so it cannot invite
+	// another delivery. Each step keeps its own result.
+	var draftErr error
+	if draftPath != nil {
+		draftErr = ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+			// This callback may finish after the canceled request has returned and
+			// another request has cached the still-present draft. Forget that copy
+			// after the delete completes too, just as filing does for its writes.
+			defer forgetAppendOutcome(ctx.Session.Cache(), "", false, draftPath)
+			return deleteDraft(p, draftPath)
+		})
+	}
+	if filingErr != nil || draftErr != nil {
 		// As above, an abandoned callback can still be finishing its write.
 		ctx.Session.Cache().Clear()
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save message to Sent mailbox: " + err.Error()})
+		ctx.Server.Logger().Errorf("Sent message cleanup: filing=%v draft=%v", filingErr, draftErr)
+		warning := "draft_not_removed"
+		if filingErr != nil {
+			warning = "not_filed_in_sent"
+			if draftErr != nil {
+				warning = "not_filed_in_sent_and_draft_not_removed"
+			}
+		}
+		return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true, "warning": warning})
 	}
 
 	// The account's own Sent, which is not always named so, and the folder the
@@ -3589,6 +3617,15 @@ func handleComposeAttachment(ctx *alps.Context) error {
 			return ctx.JSON(http.StatusRequestEntityTooLarge, map[string]string{
 				"error": "Your attachments exceed the maximum file size. Remove some and try again.",
 			})
+		}
+		ctx.Logger().Errorf("upload multipart: %v", err)
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			return ctx.JSON(http.StatusRequestTimeout, map[string]string{"error": "Upload timed out. Try again.", "code": "upload_timed_out"})
+		}
+		var pathError *os.PathError
+		if errors.As(err, &pathError) {
+			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "The server could not store the upload. Try again later.", "code": "upload_storage_failed"})
 		}
 		return ctx.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Invalid request",
@@ -4007,7 +4044,7 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 	}
 
 	var discarded int
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		// Security check: Only allow emptying Trash or Junk
 		mailboxes, err := p.ListMailboxes()
 		if err != nil {
@@ -4068,6 +4105,7 @@ func handleGetSession(ctx *alps.Context) error {
 		"Address":               ctx.Session.Address(),
 		"PasswordChangeEnabled": passwordChangeEnabled,
 		"EnabledPlugins":        enabledPlugins,
+		"ActivePlugins":         activeSessionPlugins(ctx, enabledPlugins),
 		"MaxAttachmentMiB":      maxAttachmentMiB,
 	})
 }

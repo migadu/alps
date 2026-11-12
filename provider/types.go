@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"regexp"
 	"time"
 
@@ -60,6 +61,12 @@ type Config interface {
 type Options interface {
 	Type() string
 	CreateFactory(timeout time.Duration, debug bool) AuthenticatedProviderFactory
+}
+
+// LoggerAware is optional: provider options can receive the server's configured
+// logger before factories are created, without changing the Options contract.
+type LoggerAware interface {
+	SetLogger(*slog.Logger)
 }
 
 // MailProvider abstracts mail backend (IMAP, JMAP, etc.)

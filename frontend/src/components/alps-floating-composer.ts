@@ -1083,7 +1083,7 @@ export class AlpsFloatingComposer extends LitElement {
       // a card in a conversation, is told as a discard tells it
       // (alps-message-reader's `_handleDraftDiscarded`): it stayed open on the
       // deleted draft, still offering Edit Draft.
-      if (currentInstance.draftUid && currentInstance.draftMailbox) {
+      if ((sent === true || sent.draftRemoved) && currentInstance.draftUid && currentInstance.draftMailbox) {
         window.dispatchEvent(new CustomEvent('draft-discarded', {
           detail: { mailbox: currentInstance.draftMailbox, uid: String(currentInstance.draftUid) }
         }));

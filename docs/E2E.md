@@ -23,8 +23,10 @@ The repository has no CI configuration, so these tests run only when someone run
 
 ## Go tests
 
-Go tests sit beside the sources, in every package. They need neither sora nor PostgreSQL nor any
-other setup: the servers they talk to run in-process on
+Go tests sit beside the sources, in every package except three: `internal/netguard`, whose address
+check is tested through the packages that use it (`plugins/base`, `provider/multi` and the root
+package's DAV connections), and the two packages of shared mocks below. They need neither sora nor
+PostgreSQL nor any other setup: the servers they talk to run in-process on
 loopback (in-memory IMAP servers, go-smtp SMTP servers, HTTP servers from `net/http/httptest`, and
 the cluster tests' gossip members on fixed 127.0.0.1 ports).
 
@@ -32,9 +34,10 @@ the cluster tests' gossip members on fixed 127.0.0.1 ports).
   `newTestServer…` helpers in `plugins/base/http_test.go`) or over an in-memory IMAP server (the
   `newIMAPTestServer…` helpers in `plugins/base/verdicts_test.go`). The caldav and carddav plugins
   have harnesses of their own (`newHarness`).
-- Shared mocks: `provider.MockProvider`, `MockOptions` and `MockStore`
-  (`provider/mock_provider.go`, `provider/mock_store.go`) and `storage.MockS3Client`
-  (`tlsmanager/storage/mock_s3.go`).
+- Shared mocks: `providertest.MockProvider`, `MockOptions` and `MockStore`
+  (`provider/providertest`) and `storagetest.MockS3Client` (`tlsmanager/storage/storagetest`).
+  They are packages of their own, imported only by tests, so the mocks and testify stay out of the
+  `alps` binary.
 - `go test -short` skips `TestAnswerSavedWhenTheReplyCannotBeSent`, which waits out the SMTP
   submission retries. Some caldav tests skip themselves when the system has no tzdata.
 - `make test` runs `go test -v ./...`. `make test-coverage` writes `coverage.out` and opens its
@@ -121,10 +124,11 @@ regular expression over the spec's full path, so a bare `reading.spec.ts` also r
 | `E2E_LOGS` | `${TMPDIR:-/tmp}/alps-e2e-logs-<port>` | The server and build logs |
 | `E2E_RESULTS` | `$E2E_LOGS/test-results` | Playwright's output directory for traces and screenshots, emptied when a run starts. The default is made absolute, so with a relative `E2E_LOGS` it is under the directory the script was started in; a relative `E2E_RESULTS` that you set is read from `frontend/` |
 | `E2E_PREVIEW` | unset | Exactly `1` turns on FETCH PREVIEW in the generated sora config and runs the positive preview test; it needs a `SORA_DIR` checkout that supports PREVIEW |
+| `E2E_DAV_PERSONAL` | unset | Exactly `1` leaves out the default CalDAV and CardDAV servers in the generated `alps.toml`, so that `e2e/dav-connections.spec.ts` tests setting up a personal connection |
 | `PW_CHROMIUM_PATH` | unset | Use an already installed Chromium binary |
 
-`E2E_SKIP_BUILD` and `E2E_KEEP_STATE` act on any non-empty value, even `0`. `E2E_CLUSTER` and
-`E2E_PREVIEW` act only on exactly `1`.
+`E2E_SKIP_BUILD` and `E2E_KEEP_STATE` act on any non-empty value, even `0`. `E2E_CLUSTER`,
+`E2E_PREVIEW` and `E2E_DAV_PERSONAL` act only on exactly `1`.
 
 The default run leaves message previews off and tests that a server without them shows no previews
 and makes no extra requests. To test previews, point `SORA_DIR` at a checkout that implements FETCH
@@ -136,6 +140,15 @@ E2E_PREVIEW=1 SORA_DIR=../sora-preview scripts/e2e.sh e2e/message-preview.spec.t
 
 An opted-in run fails if the server cannot supply previews. Without the opt-in, the generated sora
 config has no PREVIEW keys, so the default suite also runs against sora checkouts without them.
+
+The DAV connection spec runs with the default servers and without them. Both runs save separate
+credentials for a DAV account other than the signed-in mail account (after one that the server
+refuses), make a calendar or a contact through them, reload the saved connection, and remove it:
+
+```sh
+scripts/e2e.sh e2e/dav-connections.spec.ts
+E2E_DAV_PERSONAL=1 scripts/e2e.sh e2e/dav-connections.spec.ts
+```
 
 Every run deletes `E2E_STATE` and `E2E_LOGS` (`rm -rf`) when it starts, and `E2E_STATE` again when
 it ends unless `E2E_KEEP_STATE` is set, so neither may point at a directory that holds anything
@@ -242,13 +255,17 @@ e2estack ───┼─► sora (IMAP, ManageSieve, admin API) ─┐
   - rate limiting is off (`[server.rate_limit] enabled = false`), because every sign-in comes from
     one address;
   - WebAuthn is bound to `rpid = "localhost"` with origin `http://localhost:<E2E_PORT>`;
-  - there is no `login_key`, so the browser suite does not exercise what needs one: the
-    `alps_login_token` cookie, session restore from it, and linked accounts and account switching
-    (see [SESSIONS.md](SESSIONS.md)).
+  - a fixed test `login_key` is set, which the DAV connection tests need to save separate
+    passwords. With it every sign-in also gets the `alps_login_token` cookie, but no spec tests
+    session restore from it, or linked accounts and account switching (see
+    [SESSIONS.md](SESSIONS.md));
+  - `dav_allow_private_servers = true`, because the personal DAV servers the tests enter are the
+    stack's own, on loopback over plain HTTP (see [CDAV.md](CDAV.md#personal-servers)).
 
   With `E2E_CLUSTER=1`, the second ALPS runs from a copy of this config with its own address, and
   each gets its own `[cluster]` section (see [CLUSTER.md](CLUSTER.md) for what the cluster
-  carries). Neither has a `login_key`, so a session is known only to the node that opened it.
+  carries). Both have the same `login_key`, so either node can restore a session from a login token
+  the other issued.
 
 One account, `alice@example.test`, is created for the run. The tests run serially against it.
 
@@ -268,7 +285,7 @@ The control API listens on `E2E_PORT`+7:
 | `GET /healthz` | The harness waits on it at startup |
 | `GET /outbox` | Every accepted submission, oldest first |
 | `DELETE /outbox` | Empties the outbox |
-| `POST /reset/settings` `{username, password}` | Deletes every METADATA entry under `/private/vendor/alps`: the account's ALPS settings, linked accounts, security keys and GPG keyring |
+| `POST /reset/settings` `{username, password}` | Deletes every METADATA entry under `/private/vendor/alps`: the account's ALPS settings, linked accounts, security keys, GPG keyring and CalDAV and CardDAV connections |
 | `POST /reset/sieve` `{username, password}` | Deactivates and deletes every Sieve script |
 | `POST /reset/dav` `{username}` | Drops the calendars the account made and empties the rest and the address book |
 | `POST /mailbox/create`, `/mailbox/subscribe`, `/mailbox/unsubscribe` `{username, password, mailbox}` | CREATE, SUBSCRIBE or UNSUBSCRIBE over IMAP as that account |

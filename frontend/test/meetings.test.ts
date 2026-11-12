@@ -144,8 +144,15 @@ describe('the event editor\'s guests', () => {
         expect(update).toHaveBeenCalledTimes(1);
 
         const moved = await editor({ event: over, scheduling: 'email' });
-        moved.startDate = '2026-09-21';
-        moved.endDate = '2026-09-21';
+        // Keep the editor's local day boundary: in UTC-9 this meeting
+        // crosses midnight, even though its UTC dates are the same.
+        const later = (day: string) => {
+            const date = new Date(`${day}T00:00:00Z`);
+            date.setUTCDate(date.getUTCDate() + 11);
+            return date.toISOString().slice(0, 10);
+        };
+        moved.startDate = later(moved.startDate);
+        moved.endDate = later(moved.endDate);
         await moved.handleSave();
         await moved.updateComplete;
         expect(shadowAll(moved, 'ui-confirm')).toHaveLength(1);

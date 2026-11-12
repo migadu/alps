@@ -3,6 +3,7 @@ package alps
 import (
 	"bytes"
 	"errors"
+	"github.com/migadu/alps/provider/providertest"
 	"mime/multipart"
 	"os"
 	"strings"
@@ -44,8 +45,8 @@ func uploadForm(t *testing.T, size int) (*multipart.FileHeader, *multipart.Form,
 
 func attachmentTestSession(t *testing.T, sessionMiB int) (*SessionManager, *Session) {
 	t.Helper()
-	mockProvider := &provider.MockProvider{}
-	mockStore := &provider.MockStore{}
+	mockProvider := &providertest.MockProvider{}
+	mockStore := &providertest.MockStore{}
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(mockStore, nil)
 	mockStore.On("Get", mock.Anything, mock.Anything).Return(provider.ErrNoStoreEntry)

@@ -2,6 +2,7 @@ package alps
 
 import (
 	"errors"
+	"github.com/migadu/alps/provider/providertest"
 	"net"
 	"testing"
 	"time"
@@ -12,7 +13,7 @@ import (
 // trackingConnection is a connection whose mail server can number its
 // changes.
 type trackingConnection struct {
-	provider.MockProvider
+	providertest.MockProvider
 	trackErr error
 	asked    int
 	closed   bool

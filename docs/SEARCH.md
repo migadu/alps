@@ -2,7 +2,7 @@
 
 ALPS lets you search the messages of a folder. You can search the whole message, or target specific fields with search prefixes. On an IMAP account ALPS turns your query into IMAP search criteria, and the mail server does the matching. Which capabilities ALPS uses on the server, and what it does without them, is in [Mail Server Requirements](MAIL_SERVER.md).
 
-The syntax on this page applies to IMAP accounts. A Maildir account matches differently (see [Maildir Accounts](#maildir-accounts)).
+The syntax on this page applies to IMAP and Maildir accounts alike. On a Maildir account ALPS does the matching itself (see [Maildir Accounts](#maildir-accounts)).
 
 ## Basic Search
 
@@ -27,8 +27,8 @@ Supported prefixes (case-insensitive) are:
 - `cc:` - Searches the Cc header (IMAP `CC`).
 - `subject:` - Searches the Subject header (IMAP `SUBJECT`).
 - `body:` - Restricts the search to the body of the message, excluding headers (IMAP `BODY`).
-- `is:` - Filters by message state. `is:starred` and `is:flagged` find flagged (starred) messages (IMAP `FLAGGED`). `is:unread` finds unread messages (IMAP `UNSEEN`). The value is case-insensitive, and any other `is:` value is ignored, with no warning.
-- `header:` - `header:Field:value` searches the named header field for the value, for example `header:In-Reply-To:"<id@example.com>"`. It is sent as an IMAP `HEADER` search, or as the `FROM`, `TO`, `CC`, `BCC` or `SUBJECT` key when the field is one of those. Double quotes around the value are removed, so the value may contain spaces. A `header:` term without a second colon (no `Field:value`) is ignored.
+- `is:` - Filters by message state. `is:starred` and `is:flagged` find flagged (starred) messages (IMAP `FLAGGED`). `is:unread` finds unread messages (IMAP `UNSEEN`), and `is:read` and `is:seen` read ones (IMAP `SEEN`). The value is case-insensitive. Any other `is:` value is searched for as text, as it is written (`is:answered` is the IMAP `TEXT` search `is:answered`), so it finds little or nothing.
+- `header:` - `header:Field:value` searches the named header field for the value, for example `header:In-Reply-To:"<id@example.com>"`. It is sent as an IMAP `HEADER` search, or as the `FROM`, `TO`, `CC`, `BCC` or `SUBJECT` key when the field is one of those. Double quotes around the value are removed, so the value may contain spaces. A `header:` term without `Field:value`, such as `header:X-Spam`, or with an empty field name, such as `header::foo`, is searched for as text, as it is written.
 
 These searches are evaluated by the mail server, as the plain words are. The server also decides which header fields `header:` can search. Sora, for example, finds nothing for fields other than From, To, Cc, Bcc, Reply-To, Subject, Message-ID, In-Reply-To and References.
 
@@ -68,7 +68,7 @@ You can combine multiple prefixes and basic search terms in a single query. Pref
 
 Plain words typed next to each other are not separate terms: they go to the server as one search string, so `urgent invoice` searches for "urgent invoice". A server that matches substrings (RFC 3501) then needs the words together and in that order, while a server with a word index may accept them anywhere. To require each word on its own, quote each one (`"urgent" "invoice"`) or put a prefixed term between them.
 
-An `is:` value other than `starred`, `flagged` or `unread`, and a `header:` term without `Field:value`, add no condition.
+Every term adds a condition, an `is:` value ALPS does not know and a `header:` term without `Field:value` included: they are searched for as text. Only an empty query, or one of spaces or an empty pair of quotes, lists the whole folder.
 
 **Example:**
 `from:alice@example.com subject:project urgent`
@@ -108,6 +108,4 @@ The query is carried in the page URL as `q` (`#/mailbox/<folder>?q=...`), so rel
 
 ## Maildir Accounts
 
-With the Maildir provider (see [Local Maildir Provider](MAILDIR.md)), the whole query, prefixes and quote characters included, is matched as one case-insensitive substring of each stored message file, headers and body as stored. Encoded headers and bodies (RFC 2047 words, base64, quoted-printable) are not decoded first.
-
-Prefixes, quotes and AND are therefore not interpreted. The Starred and Unread toolbar filters (`is:starred`, `is:unread`) find nothing in practice, and Search All is not offered. A prefix with an empty value, such as `from:`, is still refused with HTTP 400, as on an IMAP account.
+With the Maildir provider (see [Local Maildir Provider](MAILDIR.md#search)), ALPS reads the query as above and matches each message file itself, ignoring case. The flags of `is:` are those in the file name, so the Starred and Unread toolbar filters work. The header prefixes and `header:` look at the decoded header fields (RFC 2047 words decoded), `body:` at the decoded body of every MIME part (base64 and quoted-printable undone, the text converted from its charset), and plain text at both, and at the message file as stored. Search All is not offered. A prefix with an empty value, such as `from:`, is still refused with HTTP 400, as on an IMAP account.

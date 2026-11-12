@@ -18,6 +18,7 @@ beforeEach(() => {
   registry.routes = [];
   registry.hooks = new Map();
   registry.enabledPlugins = null;
+  registry.activePlugins = null;
   vi.restoreAllMocks();
 });
 
@@ -63,10 +64,40 @@ describe('enablement', () => {
     registry.registerRoute({ path: '/contacts/*', pluginId: 'carddav', component: 'contacts-page' });
   });
 
-  it('shows everything until the deployment has answered', () => {
-    expect(registry.getNavTabs()).toHaveLength(3);
+  it('waits for DAV connection availability while keeping settings accessible', () => {
+    expect(registry.getNavTabs()).toHaveLength(1);
     expect(registry.getSettingsTabs()).toHaveLength(1);
-    expect(registry.getRoutes()).toHaveLength(3);
+    expect(registry.getRoutes()).toHaveLength(1);
+  });
+
+  it('keeps enabled DAV settings while hiding unconfigured tabs, routes and hooks', async () => {
+    registry.registerNavTab({ id: 'tasks', pluginId: 'caldav', labelKey: 't' });
+    registry.registerSettingsTab({ id: 'caldav', pluginId: 'caldav', labelKey: 'cal', icon: 'calendar', component: 'cal-settings' });
+    registry.registerSettingsTab({ id: 'carddav', pluginId: 'carddav', labelKey: 'card', icon: 'users', component: 'card-settings' });
+    const suggest = vi.fn();
+    registry.registerHook('composer:suggest', suggest, 'carddav');
+    registry.setEnabledPlugins(['caldav', 'carddav', 'mail'], ['mail']);
+    expect(registry.getSettingsTabs().map(t => t.id)).toEqual(['caldav', 'carddav']);
+    expect(registry.getNavTabs().map(t => t.id)).toEqual(['mail']);
+    expect(registry.getRoutes().map(r => r.path)).toEqual(['/settings']);
+    await registry.invokeHookAsync('composer:suggest', {});
+    expect(suggest).not.toHaveBeenCalled();
+
+    registry.setEnabledPlugins(['caldav', 'carddav', 'mail'], ['mail', 'caldav']);
+    expect(registry.getNavTabs().map(t => t.id)).toEqual(['mail', 'calendar', 'tasks']);
+    expect(registry.getRoutes().map(r => r.path)).toEqual(['/settings', '/calendar/*']);
+    expect(registry.getSettingsTabs().map(t => t.id)).toEqual(['caldav', 'carddav']);
+  });
+
+  it('cannot activate a disabled plugin and announces connection-only changes once', () => {
+    const heard = vi.fn();
+    window.addEventListener('plugins-updated', heard);
+    registry.setEnabledPlugins(['caldav'], []);
+    registry.setEnabledPlugins(['caldav'], ['caldav', 'carddav']);
+    registry.setEnabledPlugins(['caldav'], ['carddav', 'caldav']);
+    window.removeEventListener('plugins-updated', heard);
+    expect(heard).toHaveBeenCalledTimes(2);
+    expect(registry.getNavTabs().map(t => t.id)).toEqual(['calendar']);
   });
 
   it('keeps only what the enabled plugins own, matching on pluginId before id', () => {
@@ -167,13 +198,13 @@ describe('hooks', () => {
     expect(seen).toEqual([]);
   });
 
-  it('runs a plugin\'s handlers before the deployment has answered, and when enabled', async () => {
+  it('waits for DAV availability before running its handlers', async () => {
     const seen: string[] = [];
     registry.registerHook('composer:send', async () => void seen.push('carddav'), 'carddav');
     await registry.invokeHookAsync('composer:send', {});
     registry.setEnabledPlugins(['carddav']);
     await registry.invokeHookAsync('composer:send', {});
-    expect(seen).toEqual(['carddav', 'carddav']);
+    expect(seen).toEqual(['carddav']);
   });
 
   it('always runs a handler that belongs to no plugin', async () => {

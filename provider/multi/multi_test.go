@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/migadu/alps/provider/providertest"
 	"net"
 	"os"
 	"path/filepath"
@@ -261,7 +262,7 @@ func TestMultiConfig_DomainValidationAndInjection(t *testing.T) {
 func TestMultiConfig_MultipleAtSymbols(t *testing.T) {
 	opts := &Options{
 		Domains: map[string]provider.Options{
-			"target.com": &provider.MockOptions{},
+			"target.com": &providertest.MockOptions{},
 		},
 	}
 	factory := opts.CreateFactory(time.Second, false)
@@ -476,7 +477,7 @@ func TestMultiConfig_TemplateSSRFBlocked(t *testing.T) {
 }
 
 func TestMultiConfig_RoutingDoesNotFailOpen(t *testing.T) {
-	mockDefault := &provider.MockOptions{}
+	mockDefault := &providertest.MockOptions{}
 	opts := &Options{
 		Template:        "imaps://unreachable.invalid.domain:993",
 		TemplateDomains: []string{"*"},
@@ -615,7 +616,7 @@ func TestMultiConfig_DynamicFactoryCachingIsRaceSafe(t *testing.T) {
 // allowlisted domains. A domain outside the list is not an error: the rule does
 // not match and routing continues to the default provider.
 func TestMultiConfig_TemplateRequiresAllowlist(t *testing.T) {
-	mockDefault := &provider.MockOptions{}
+	mockDefault := &providertest.MockOptions{}
 	opts := &Options{
 		Template:        "imaps://mail.%d:993",
 		TemplateDomains: []string{"allowed.example"},
@@ -640,7 +641,7 @@ func TestMultiConfig_TemplateRequiresAllowlist(t *testing.T) {
 // and routing continues to the default provider, even if the domain contains
 // characters not conforming to RFC 1035.
 func TestMultiConfig_AutodiscoverRequiresAllowlist(t *testing.T) {
-	mockDefault := &provider.MockOptions{}
+	mockDefault := &providertest.MockOptions{}
 	mockDisc := &mockAutodiscoverer{
 		server: &DiscoveredServer{Host: "mail.allowed.example", Port: 993, TLS: true},
 	}

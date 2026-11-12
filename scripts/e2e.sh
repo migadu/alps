@@ -39,6 +39,7 @@
 #                     the first over gossip on E2E_PORT+10 and +11
 #   E2E_PREVIEW=1     enable message previews (off by default); SORA_DIR must
 #                     point to a checkout that supports FETCH PREVIEW
+#   E2E_DAV_PERSONAL=1 enable DAV plugins without default servers for setup tests
 #   PW_CHROMIUM_PATH  a pre-installed Chromium to use instead of Playwright's
 set -euo pipefail
 
@@ -314,10 +315,22 @@ api_key = "$ADMIN_KEY"
 tls = false
 EOF
 
+DAV_CALDAV_DEFAULT="server = \"http+insecure://127.0.0.1:$DAV_PORT/caldav/\""
+DAV_CARDDAV_DEFAULT="server = \"http+insecure://127.0.0.1:$DAV_PORT/carddav/\""
+if [ "${E2E_DAV_PERSONAL:-0}" = 1 ]; then
+  DAV_CALDAV_DEFAULT=
+  DAV_CARDDAV_DEFAULT=
+fi
+
 cat >"$STATE/alps.toml" <<EOF
 [server]
 addr = "127.0.0.1:$ALPS_PORT"
 temp_dir = "$STATE/alps-tmp"
+# A fixed test-only key lets the DAV tests persist independent passwords.
+login_key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+# The personal DAV servers the tests enter are this stack's own, on loopback
+# over plain HTTP, which a deployment refuses unless it opts in.
+dav_allow_private_servers = true
 # On, unlike a deployment's default, so that every spec runs with the server's
 # change numbers (CONDSTORE); e2e/condstore.spec.ts is about them.
 condstore = true
@@ -358,11 +371,11 @@ enabled = true
 
 [plugin.caldav]
 enabled = true
-server = "http+insecure://127.0.0.1:$DAV_PORT/caldav/"
+$DAV_CALDAV_DEFAULT
 
 [plugin.carddav]
 enabled = true
-server = "http+insecure://127.0.0.1:$DAV_PORT/carddav/"
+$DAV_CARDDAV_DEFAULT
 
 [plugin.managesieve]
 enabled = true
@@ -436,8 +449,8 @@ curl -sf -X POST "http://127.0.0.1:$ADMIN_PORT/admin/accounts" \
 
 if [ "${E2E_CLUSTER:-}" = 1 ]; then
   # Separate processes, session managers and gossip members; only the IMAP
-  # backend is shared. No in-process mutex can arbitrate. Neither config has a
-  # login_key, so a session is known only to the node that opened it.
+  # backend is shared. No in-process mutex can arbitrate. Both configurations
+  # share the fixed test login_key so cross-node sessions can be verified.
   sed "s/addr = \"127.0.0.1:$ALPS_PORT\"/addr = \"127.0.0.1:$SECONDARY_PORT\"/" "$STATE/alps.toml" > "$STATE/alps-secondary.toml"
   cat >> "$STATE/alps.toml" <<EOF
 

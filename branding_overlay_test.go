@@ -144,3 +144,39 @@ func TestBrandedFrontendFSConformance(t *testing.T) {
 		require.Equal(t, original, unchanged)
 	}
 }
+
+func TestLogoPackageChangesInvalidateTheServedBuild(t *testing.T) {
+	packageWith := func(changed string) map[string][]byte {
+		pkg := make(map[string][]byte)
+		for _, name := range IconFiles {
+			pkg[name] = []byte("original " + name)
+		}
+		if changed != "" {
+			pkg[changed] = []byte("replacement " + changed)
+		}
+		return pkg
+	}
+	serve := func(pkg map[string][]byte) (string, string) {
+		site, icons, err := brandedFrontend(testDist(), BrandingOptions{LogoPackage: pkg})
+		require.NoError(t, err)
+		r := NewRouter(&Server{logger: &NilLogger{}})
+		r.Frontend(site, icons...)
+		r.build = frontendBuild(site)
+		response := get(r, "/")
+		return response.Header().Get(BuildHeader), response.Body.String()
+	}
+	original, shell := serve(packageWith(""))
+	require.NotEmpty(t, original)
+	for _, name := range IconFiles {
+		t.Run(name, func(t *testing.T) {
+			changed, changedShell := serve(packageWith(name))
+			require.NotEqual(t, original, changed, "replacing %s must offer open tabs a reload", name)
+			require.NotEqual(t, shell, changedShell)
+		})
+	}
+	// Map iteration and package path do not change a build with identical bytes.
+	for i := 0; i < 20; i++ {
+		same, _ := serve(packageWith(""))
+		require.Equal(t, original, same)
+	}
+}

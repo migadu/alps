@@ -9,8 +9,8 @@ With it, ALPS runs on the same server as your local mail delivery agent (MDA) an
 The Maildir provider implements the following natively:
 - **Direct Filesystem Access:** Reads and writes standard Maildir directories (`cur`, `new`, `tmp`) and Maildir++ folders (e.g., `.Sent`, `.Trash`). See [Maildir Layout](#maildir-layout).
 - **File-based Flags:** Stores the standard mail flags as the info letters of each message's file name, as the Maildir format defines them. See [Flags](#flags).
-- **Local Search:** Scans each message file for the query as a case-insensitive substring, reading it in 32 KiB chunks. See [Search](#search).
-- **JSON Local Store:** Keeps what the IMAP provider keeps in IMAP METADATA (the account's ALPS settings, GPG keyring, linked accounts and security-key record) in a JSON file, `alps_store.json`, at the root of the user's maildir. See [The Settings File](#the-settings-file).
+- **Local Search:** Matches the query, with the search prefixes and quotes of the IMAP provider, against each message file's flags, decoded headers and decoded body. See [Search](#search).
+- **JSON Local Store:** Keeps what the IMAP provider keeps in IMAP METADATA (the account's ALPS settings, GPG keyring, linked accounts, security-key record and CalDAV and CardDAV connections) in a JSON file, `alps_store.json`, at the root of the user's maildir. See [The Settings File](#the-settings-file).
 - **Dovecot-style Authentication:** Checks the login against a Dovecot-style `passwd` file. See [Password File Format](#password-file-format).
 
 Some features of the IMAP provider are not available; see [Limitations](#limitations).
@@ -87,7 +87,7 @@ ALPS reads only the user (field 1), the password (field 2) and the home director
 
 ### Supported Password Schemes
 
-The password field starts with a `{SCHEME}` tag. Scheme tags are case-insensitive. A password field without a tag is compared as plain text, so give every hashed entry its prefix. The following schemes are supported:
+The password field starts with a `{SCHEME}` tag. Scheme tags are case-insensitive. A tag's name is 1 to 32 ASCII letters, digits, hyphens, dots or underscores; a field that starts with `{` but has no such tag is compared as plain text, and so is a password field without a tag, so give every hashed entry its prefix. The following schemes are supported:
 - `{CRYPT}`: bcrypt only, hashes beginning `$2a$`, `$2b$`, `$2x$` or `$2y$`, such as `{CRYPT}$2y$10$...`. This is the recommended scheme.
 - `{PLAIN}`: cleartext. Not recommended for production. Because fields are separated by `:`, a `{PLAIN}` password cannot contain `:`.
 - `{MD5}`, `{SHA256}`, `{SHA512}`: an unsalted digest of the password, written in hex (upper or lower case). ALPS's `{MD5}` is what Dovecot calls `{PLAIN-MD5}`. Dovecot stores `{SHA256}` and `{SHA512}` in base64 by default, and ALPS does not accept base64 digests, so convert such entries or switch them to `{CRYPT}` bcrypt. Unsalted digests are weak, so prefer bcrypt.
@@ -97,7 +97,7 @@ Not supported:
 - the tags `{BLF-CRYPT}`, `{SHA256-CRYPT}` and `{SHA512-CRYPT}` (a `{BLF-CRYPT}` bcrypt hash works once its tag is changed to `{CRYPT}`);
 - salted and other schemes, such as `{SSHA*}`, `{SMD5}`, `{SHA}`, `{PLAIN-MD5}`, `{PBKDF2}`, `{ARGON2*}` and `{CRAM-MD5}`.
 
-An entry in a scheme ALPS does not support can never sign in. The user sees invalid credentials, and the log records an ordinary failed sign-in for bad credentials without naming the scheme.
+An entry in a scheme ALPS does not support can never sign in, and neither can a `{MD5}`, `{SHA256}` or `{SHA512}` entry whose digest is not hex of the right length (a base64 one, for example). The user sees invalid credentials. ALPS logs a warning naming the user and the tag at every such attempt, whatever the password typed, such as `alps/provider/maildir: warning: user "alice@example.com" has unsupported password scheme "{SHA512-CRYPT}"`, besides the failed sign-in. Neither the password nor the stored hash is logged.
 
 ### Example `users` file
 
@@ -117,7 +117,7 @@ John's and Alice's password is `secret`, and Bob's is `supersecret`. John's `{CR
 
 ### Folders
 
-INBOX is the maildir itself. Other folders are Maildir++ dot-directories with `.` as the hierarchy delimiter: `Archive.2024` is the directory `.Archive.2024`. Names are shown exactly as stored on disk, with no modified UTF-7 decoding, and folders ALPS creates are named in UTF-8. A name that is empty, starts or ends with `.`, or contains `..`, `/`, `\` or NUL is refused.
+INBOX is the maildir itself. Other folders are Maildir++ dot-directories with `.` as the hierarchy delimiter: `Archive.2024` is the directory `.Archive.2024`. Names are shown exactly as stored on disk, with no modified UTF-7 decoding, and folders ALPS creates are named in UTF-8. A name that is empty, starts or ends with `.`, or contains `..`, `/`, `\` or NUL is refused, and so is `*`, which names the all-folders view. INBOX cannot be deleted or renamed: either is refused with HTTP 400 `{"error":"cannot"}`, and INBOX is left as it is.
 
 Maildir has no special-use attributes, so special folders are recognised by name: the web app treats `Drafts`, `Sent`, `Archive`/`Archives`, `Junk`/`Spam` and `Trash`/`Deleted Items` (any case) as special. When filing a sent copy, ALPS uses the folder named exactly `Sent`, and for a draft the folder named `Drafts`, or `Draft` when there is no `Drafts` (any case). A folder whose name only contains the word, such as `Presentations` or `Contract drafts`, is never used. When there is none, ALPS creates `Sent` or `Drafts` on the first save. Sent copies are stored as read, and drafts as read and `\Draft`.
 
@@ -145,8 +145,9 @@ Every file and folder below the user's maildir, `alps_store.json` included, is o
 - `gpg_keys`: the GPG keyring, a public key and an encrypted private key (see [GPG.md](GPG.md)).
 - `linked_accounts`: linked accounts, their passwords encrypted with `login_key` (see [SESSIONS.md](SESSIONS.md)).
 - `webauthn`: the security-key record (see [WEBAUTHN.md](WEBAUTHN.md)).
+- `dav.connection.caldav` and `dav.connection.carddav`: the CalDAV and CardDAV connections the user saved in Settings, separate passwords encrypted with `login_key` (see [CDAV.md](CDAV.md#connections-in-settings)). Without them, the account uses the endpoints of `[plugin.caldav]` / `[plugin.carddav]`, or of its domain's entry under `[provider.multi]`.
 
-Back it up with the maildir, and keep it valid JSON if you edit it: while it does not parse, the account cannot sign in (a service error) and its settings cannot be read or saved. It holds no CardDAV or CalDAV configuration: those endpoints come from `[plugin.carddav]` / `[plugin.caldav]`, or from a domain's entry under `[provider.multi]` (see [CDAV.md](CDAV.md)).
+Back it up with the maildir, and keep it valid JSON if you edit it: while it does not parse, the account cannot sign in (a service error) and its settings cannot be read or saved.
 
 When the user's maildir does not exist yet, the first write of the file creates it, with its parents, mode `0700`, so settings can be saved before the first delivery.
 
@@ -156,7 +157,14 @@ With clustering enabled (`[cluster] enabled = true`, see [CLUSTER.md](CLUSTER.md
 
 ## Search
 
-Search opens every message file in the current folder. It matches the whole query, as typed, as one case-insensitive substring of the stored message: headers and body as they are on disk, with no decoding of base64, quoted-printable or RFC 2047 encoded headers. The prefixes (`from:`, `to:`, `cc:`, `subject:`, `body:`, `header:`, `is:`), quoting and the AND of several terms described in [SEARCH.md](SEARCH.md) do not apply to the Maildir provider. The toolbar's Starred and Unread filters are sent as the queries `is:starred` and `is:unread`, so they are matched as text too and find nothing in practice. A query with a prefix and no value, such as `from:` or `body:""`, is refused with HTTP 400, as on an IMAP account. Searching all folders at once is not offered.
+Search opens every message file in the current folder. It reads the query as on an IMAP account, with the prefixes (`from:`, `to:`, `cc:`, `subject:`, `body:`, `header:`, `is:`), the quoting and the AND of several terms described in [SEARCH.md](SEARCH.md), but ALPS does the matching itself, ignoring case:
+
+- `is:starred` (or `is:flagged`), `is:unread` and `is:read` (or `is:seen`) are matched against the flags in the file name, so the toolbar's Starred and Unread filters work.
+- `from:`, `to:`, `cc:`, `subject:` and `header:Field:value` find the value in any occurrence of that header field, with RFC 2047 encoded words decoded.
+- `body:` finds the value in the body of any MIME part, with base64 and quoted-printable undone and the text converted from its charset. A body is read in chunks, never whole into memory.
+- Plain text, a quoted phrase, and an `is:` or `header:` term searched as text find the value in any header field or part body, decoded as above, or in the message file as stored.
+
+The same matching picks the messages for a bulk action on all the results of a search. A query with a prefix and no value, such as `from:` or `body:""`, is refused with HTTP 400, as on an IMAP account. Searching all folders at once is not offered: the all-folders view is refused with HTTP 400 `{"error":"cannot"}`.
 
 ## Limitations
 

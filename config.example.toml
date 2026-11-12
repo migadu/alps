@@ -3,9 +3,10 @@
 # Copy this file to config.toml, edit it, and start ALPS with
 # -config config.toml. docs/CONFIGURATION.md describes every key.
 #
-# ALPS does not report keys or sections it does not know: a misspelled one is
-# ignored without warning, and the default applies. Check names against this
-# file.
+# ALPS ignores keys and sections it does not know, and logs a warning at
+# startup naming each one, such as
+# "Unknown configuration key: server.write_timeout (ignored)". A misspelled
+# key therefore keeps its default. Check names against this file.
 
 [server]
 # Server listening address (default: ":1323")
@@ -14,11 +15,13 @@ addr = ":1323"
 # Debug mode (default: false). For development only.
 # With debug = true, the default log level becomes "debug" and the default
 # format "console" (where [logging] does not set them), and TLS handshake
-# errors are logged at debug level. It also writes protocol traces straight to
-# the process output, outside [logging]: the IMAP exchange to stderr, every
-# CardDAV and CalDAV request and response to stdout, and the ManageSieve
-# exchange to stdout. Message, contact and calendar content is included
-# (passwords are redacted).
+# errors are logged at debug level. It also turns on protocol traces, logged
+# through [logging] as "protocol trace" lines at debug level: the IMAP
+# exchange, every CardDAV and CalDAV request and response, and the ManageSieve
+# exchange. They appear only while the log level is "debug", so not with the
+# level = "info" this example sets in [logging]. Message, contact and calendar
+# content is included (passwords, and the HTTP Authorization and cookie
+# headers, are redacted).
 debug = false
 
 # Addresses or CIDR blocks of your own reverse proxies (default: none; a bare
@@ -50,25 +53,39 @@ debug = false
 # for at most 30 days after it was issued. An invalid key stops startup.
 # login_key is also required for linked accounts: without it, linking an
 # account is refused, because the linked accounts' passwords are stored
-# encrypted with this key.
+# encrypted with this key. In the same way it encrypts the separate CalDAV and
+# CardDAV passwords users save in Settings (see docs/CDAV.md): without it, a
+# user's calendar and contacts connection can only use the mail username and
+# password.
 # Every node serving the same hostname must use the same login_key.
 # Generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 # login_key = "your-fernet-key-here"
 #
-# Security note: Rotating the login_key signs everyone out, and every linked
-# account must then be linked again. Use it to invalidate all persisted
+# Security note: Rotating the login_key signs everyone out, every linked
+# account must then be linked again, and users must enter their separate
+# CalDAV and CardDAV passwords again. Use it to invalidate all persisted
 # credentials during security incidents or when you suspect credential
 # compromise.
+
+# Private personal CalDAV and CardDAV servers (default: false)
+# The CalDAV and CardDAV servers that users enter in Settings are reached over
+# HTTPS only, and only at public addresses, so that a mail account cannot make
+# ALPS connect into the network it runs in. Set this to true to also allow the
+# +insecure (plain HTTP) schemes and loopback or private addresses, for
+# example when your users keep their own DAV servers on a trusted intranet.
+# Servers configured in this file are never restricted. See docs/CDAV.md.
+# dav_allow_private_servers = false
 
 # Temporary directory (optional, default: $TMPDIR, otherwise /tmp)
 # ALPS sets TMPDIR to it for its own process at startup. It holds the files of
 # attachment uploads and the BIMI logo cache (alps-avatars). Create it before
 # starting ALPS, writable only by the user ALPS runs as: until it exists, every
-# upload whose files add up to more than 32 KiB is refused with 400. Under the
-# shipped systemd unit (dist/alps.service), PrivateTmp gives ALPS a /tmp of its
-# own, so a directory under the host's /tmp does not exist for it; there, leave
-# temp_dir unset, or point it outside /tmp and /var/tmp and list it in
-# ReadWritePaths. See docs/OPERATIONS.md (section 3, "The Temp Directory").
+# upload whose files add up to more than 32 KiB is refused with 500
+# (upload_storage_failed). Under the shipped systemd unit (dist/alps.service),
+# PrivateTmp gives ALPS a /tmp of its own, so a directory under the host's
+# /tmp does not exist for it; there, leave temp_dir unset, or point it outside
+# /tmp and /var/tmp and list it in ReadWritePaths. See docs/OPERATIONS.md
+# (section 3, "The Temp Directory").
 # temp_dir = "/var/lib/alps/tmp"
 
 # Session idle timeout in minutes (default: 30; 0 or a negative value keeps it)
@@ -136,11 +153,9 @@ idle_timeout_sec = 120
 # imap_timeout_sec = 30
 
 # SMTP timeout in seconds (default: 30)
-# Bounds each SMTP command, and the wait after the message data, once
-# connected. Connecting (TCP, and the TLS handshake for smtps://) has the SMTP
-# library's fixed 30-second limit. For smtp://, the greeting, EHLO and STARTTLS
-# happen before this timeout is applied, under the library's own 5-minute
-# default.
+# Bounds connecting (the TCP connect, with the TLS handshake for smtps://),
+# then for smtp:// the greeting, EHLO and STARTTLS together, and after that
+# each SMTP command and the wait after the message data.
 smtp_timeout_sec = 30
 
 # Example configurations for different deployment scenarios
@@ -366,8 +381,9 @@ enabled = true
 [logging]
 # Messages from TLS certificate management (Let's Encrypt), from the cluster
 # and from the IMAP provider follow output, format and level like every other
-# line. The server.debug protocol traces do not go through [logging] (see
-# debug above), nor do the errors printed before the log is opened.
+# line, and so do the protocol traces of server.debug (see debug above), at
+# debug level. Only the errors printed before the log is opened do not go
+# through [logging].
 
 # Log output destination
 # Options:
@@ -409,7 +425,9 @@ format = "console"
 #   "error" - Errors only (least verbose)
 # Values are case-insensitive, and an unknown value means "info".
 #
-# Note: When server.debug = true, the level defaults to "debug"
+# Note: When server.debug = true, the level defaults to "debug". The
+# protocol traces of server.debug and [provider.imap] debug are logged at
+# debug level, so this example's "info" leaves them out.
 level = "info"
 
 # Log every request at info level (default: true): method, path (without the
@@ -552,7 +570,8 @@ level = "info"
 # otherwise the AWS SDK's own region setting applies)
 # region = "us-east-1"
 
-# Key prefix for certificate storage (default: "")
+# Folder in the bucket for certificate storage (default: "", the bucket
+# root). "alps" and "alps/" both store the certificates under alps/.
 # prefix = "alps/"
 
 
@@ -643,7 +662,8 @@ server = "imaps://imap.migadu.com:993"
 # alike.
 # insecure = false
 
-# Log the IMAP protocol exchange for this provider (default: false).
+# Log the IMAP protocol exchange for this provider (default: false), through
+# [logging] at debug level, so only with level = "debug" there.
 # OR-ed with [server] debug. Dumps message content, so keep it off in production.
 # debug = false
 
@@ -713,8 +733,10 @@ server = "imaps://imap.migadu.com:993"
 #
 # Either allowlist accepts the single entry "*" to match every domain. ALPS
 # then connects to whatever server the domain typed at sign-in leads to, so
-# use it only where the sign-in page is open to users you know. Private,
-# loopback, link-local and CGNAT targets stay blocked either way.
+# use it only where the sign-in page is open to users you know. Loopback,
+# private, link-local, CGNAT and the other reserved addresses that the
+# remote-content proxy refuses stay blocked either way (see
+# docs/OPERATIONS.md, "The Address Check").
 #
 # Explicit per-domain provider mappings. Alongside the mail store, a backend
 # may name the other endpoints its users should reach: smtp, carddav, caldav
@@ -783,24 +805,27 @@ server = "smtps://smtp.migadu.com:465"
 
 # Plugin Configuration
 # Each plugin can have its own section with enabled flag and settings.
-# base always loads. A section without enabled = true (one that says
-# enabled = false, or leaves enabled out) keeps its plugin out.
-# If any [plugin.*] section has enabled = true, only base and the plugins
-# with enabled = true load. If none has, which includes having no [plugin.*]
-# sections at all, the plugins without a section load too: gpg, and caldav,
-# carddav and managesieve when a [provider.multi] backend names their
-# endpoint. The password plugin loads only with [plugin.password]
-# enabled = true (and an endpoint or command, see below), so the allow-list
-# applies whenever it loads.
-# A caldav or carddav section with enabled = true and no server, as below,
-# loads without an endpoint: its requests fail, logged as "... server is not
-# configured", unless the user's multi backend names one. A managesieve
-# section with enabled = true and no server, as below, loads only when a
-# multi backend names a managesieve endpoint; otherwise startup logs
+# base always loads. A section with enabled = false keeps its plugin out, even
+# when it sets a server. A section that leaves enabled out (other than
+# [plugin.password]) sets its plugin up as enabled = true would, but only
+# enabled = true puts a plugin on the allow-list: if any [plugin.*] section has enabled = true, only base and the
+# plugins with enabled = true load. If none has, which includes having no
+# [plugin.*] sections at all, every plugin that is set up loads unless its
+# section says enabled = false: gpg, and caldav, carddav and managesieve when
+# a section or a [provider.multi] backend gives them what they need (see
+# docs/CONFIGURATION.md, section 9). The password plugin loads only with
+# [plugin.password] enabled = true (and an endpoint or command, see below),
+# so the allow-list applies whenever it loads.
+# A caldav or carddav section with no server, as below, still loads: users
+# whose multi backend names no endpoint then set up their own server in
+# Settings, and see Calendar and Tasks, or Contacts, once they have one. A
+# managesieve section with no server, as below, loads only when a multi
+# backend names a managesieve endpoint; otherwise startup logs
 # "ManageSieve enabled without a server or routed endpoint; plugin disabled".
-# A server value that cannot be used (an unknown ManageSieve scheme, a CardDAV
-# server without a scheme) stops startup, even in a section with
-# enabled = false. See docs/PLUGINS.md and docs/CONFIGURATION.md (section 9).
+# A server value that cannot be used (an unknown scheme, a host and port
+# without a scheme, a CardDAV server without a scheme) stops startup, even in
+# a section with enabled = false. See docs/PLUGINS.md and
+# docs/CONFIGURATION.md (section 9).
 # Only [plugin.caldav] and [plugin.password] read options.
 
 [plugin.base]
@@ -811,12 +836,17 @@ enabled = true
 [plugin.caldav]
 # CalDAV plugin for calendar support. See docs/CDAV.md.
 enabled = true
-# CalDAV server: a URL (caldavs:// or https:// for TLS; caldav+insecure://,
-# http+insecure:// or http:// for plain HTTP), or a bare host name with no
-# scheme or port. A bare host makes ALPS look up the CalDAV server in DNS
-# (SRV _caldavs._tcp) once, at startup; if that fails, the plugin is not
-# loaded, unless a multi backend names caldav. Without server, only users
-# whose multi backend names caldav get calendars.
+# The default CalDAV server: a URL (caldavs:// or https:// for TLS;
+# caldav+insecure://, http+insecure:// or http:// for plain HTTP), or a bare
+# host name with no scheme, port or path. A bare host makes ALPS look up the
+# CalDAV server in DNS (SRV _caldavs._tcp) once, at startup; if that fails,
+# the plugin loads without a default. A value that is neither, such as a host
+# and port without a scheme, stops startup. A user with no default (this
+# server, or a caldav endpoint from their multi backend) sets up a server of
+# their own under Settings > Calendar; any user may also enter a personal
+# server there, or a separate username and password for the default. Personal
+# servers are reached over HTTPS only, at public addresses only, unless
+# [server] dav_allow_private_servers = true.
 # server = "https://caldav.example.com"
 
 # Plugin-specific options (optional map)
@@ -832,10 +862,15 @@ enabled = true
 [plugin.carddav]
 # CardDAV plugin for contacts support. See docs/CDAV.md.
 enabled = true
-# CardDAV server URL, with a scheme: carddavs:// or https:// for TLS, or
-# carddav+insecure://, http+insecure:// or http:// for plain HTTP. There is no
-# discovery: a value without a scheme stops startup. Without server, only
-# users whose multi backend names carddav get contacts.
+# The default CardDAV server URL, with a scheme: carddavs:// or https:// for
+# TLS, or carddav+insecure://, http+insecure:// or http:// for plain HTTP.
+# There is no discovery: a value without a scheme, or with another scheme,
+# stops startup. A user with no default (this server, or a carddav endpoint
+# from their multi backend) sets up a server of their own under Settings >
+# Contacts; any user may also enter a personal server there, or a separate
+# username and password for the default. Personal servers are reached over
+# HTTPS only, at public addresses only, unless [server]
+# dav_allow_private_servers = true.
 # server = "https://carddav.example.com"
 
 

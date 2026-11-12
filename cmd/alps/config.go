@@ -104,6 +104,7 @@ type ServerConfig struct {
 	Addr                    string          `toml:"addr"`
 	Debug                   bool            `toml:"debug"`
 	LoginKey                string          `toml:"login_key"`
+	DAVAllowPrivateServers  bool            `toml:"dav_allow_private_servers"` // Let personal CalDAV/CardDAV servers use plain HTTP and private addresses
 	TempDir                 string          `toml:"temp_dir"`
 	TrustedProxies          []string        `toml:"trusted_proxies"`            // Trust X-Forwarded-For/Proto/Host headers from these proxy IPs/CIDRs
 	TrustedOrigins          []string        `toml:"trusted_origins"`            // Extra origins accepted by the CSRF check, e.g. "https://webmail.example.com" (for TLS-terminating reverse proxies)
@@ -260,16 +261,25 @@ func (b BrandingConfig) toOptions() (alps.BrandingOptions, error) {
 }
 
 type PluginConfig struct {
-	Enabled bool                   `toml:"enabled"`
+	Enabled *bool                  `toml:"enabled"`
 	Server  string                 `toml:"server"`
 	Options map[string]interface{} `toml:"options"`
+}
+
+// effectiveEnabled preserves loader defaults when the flag is omitted. The
+// password-changing feature remains an explicit opt-in even with options set.
+func (c PluginConfig) effectiveEnabled(name string) bool {
+	if c.Enabled != nil {
+		return *c.Enabled
+	}
+	return name != "password"
 }
 
 // GetEnabledPlugins returns a list of plugin names that are enabled
 func (c *Config) GetEnabledPlugins() []string {
 	var enabled []string
 	for name, cfg := range c.Plugin {
-		if cfg.Enabled {
+		if cfg.Enabled != nil && *cfg.Enabled {
 			enabled = append(enabled, name)
 		}
 	}
@@ -279,8 +289,8 @@ func (c *Config) GetEnabledPlugins() []string {
 // GetPluginServers returns additional servers from plugin configs
 func (c *Config) GetPluginServers() []string {
 	var servers []string
-	for _, cfg := range c.Plugin {
-		if cfg.Enabled && cfg.Server != "" {
+	for name, cfg := range c.Plugin {
+		if cfg.effectiveEnabled(name) && cfg.Server != "" {
 			servers = append(servers, cfg.Server)
 		}
 	}
@@ -549,7 +559,7 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		options.Plugins = make(map[string]alps.PluginConfig)
 		for name, cfg := range c.Plugin {
 			options.Plugins[name] = alps.PluginConfig{
-				Enabled: cfg.Enabled,
+				Enabled: cfg.effectiveEnabled(name),
 				Server:  cfg.Server,
 				Options: cfg.Options,
 			}
@@ -566,6 +576,8 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	if options.SMTP.Server == "" {
 		return options, fmt.Errorf("no SMTP server specified in config file ([smtp] server)")
 	}
+
+	options.DAVAllowPrivateServers = c.Server.DAVAllowPrivateServers
 
 	if c.Server.LoginKey != "" {
 		fernetKey, err := fernet.DecodeKey(c.Server.LoginKey)
@@ -607,4 +619,57 @@ func (c *Config) ToLogger() alps.Logger {
 	} else {
 		return alps.NewLogger()
 	}
+}
+
+// freeFormConfigKey recognizes option maps whose descendants are interpreted
+// by a plugin rather than by the fixed TOML configuration structs. The decoder
+// leaves nested interface{} values undecoded even though those keys are used.
+func freeFormConfigKey(key toml.Key) bool {
+	if len(key) >= 3 && strings.EqualFold(key[0], "plugin") && strings.EqualFold(key[2], "options") {
+		return true
+	}
+	if len(key) < 4 || !strings.EqualFold(key[0], "provider") || !strings.EqualFold(key[1], "multi") {
+		return false
+	}
+	switch strings.ToLower(key[2]) {
+	case "default", "routes":
+		return strings.EqualFold(key[3], "password")
+	case "domains":
+		return len(key) >= 5 && strings.EqualFold(key[4], "password")
+	default:
+		return false
+	}
+}
+
+// UnknownKeys reports unused configuration after ToOptions has decoded the
+// selected provider. Generic primitive maps consume their direct keys, so those
+// keys must also be checked against the provider envelope explicitly.
+func (c *Config) UnknownKeys() []toml.Key {
+	if c.provider == nil || c.provider.meta == nil {
+		return nil
+	}
+	var keys []toml.Key
+	for _, key := range c.provider.meta.Undecoded() {
+		if freeFormConfigKey(key) && (!strings.EqualFold(key[0], "provider") || c.provider.Type == "multi") {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	for _, key := range c.provider.meta.Keys() {
+		if len(key) != 2 || !strings.EqualFold(key[0], "provider") || strings.EqualFold(key[1], "type") || strings.EqualFold(key[1], "timeout_sec") || strings.EqualFold(key[1], c.provider.Type) {
+			continue
+		}
+		covered := false
+		for _, existing := range keys {
+			if len(existing) >= 2 && existing[0] == key[0] && existing[1] == key[1] {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			keys = append(keys, key)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i].String() < keys[j].String() })
+	return keys
 }

@@ -25,9 +25,9 @@ The full key reference is in [CONFIGURATION.md](CONFIGURATION.md#9-plugins-plugi
 
 ### Loading the Plugin
 
-The plugin loads only when `[plugin.managesieve]` sets `server`, or a `[provider.multi]` backend names a `managesieve` endpoint. `enabled = true` without either leaves it out, and startup logs `ManageSieve enabled without a server or routed endpoint; plugin disabled`.
+The plugin loads only when `[plugin.managesieve]` sets `server`, or a `[provider.multi]` backend names a `managesieve` endpoint. A section with neither leaves it out, and unless it says `enabled = false`, startup logs `ManageSieve enabled without a server or routed endpoint; plugin disabled`.
 
-A `[plugin.managesieve]` section that does not set `enabled = true`, because it says `enabled = false` or leaves `enabled` out, keeps the plugin out, and once any `[plugin.*]` section sets `enabled = true`, so does having no section. ALPS then logs `Plugin "managesieve" is disabled` at startup. So set `enabled = true` here, as `config.example.toml` does. To switch filters off, set `enabled = false`.
+A `[plugin.managesieve]` section that says `enabled = false` keeps the plugin out. Once any `[plugin.*]` section sets `enabled = true`, so does a section that leaves `enabled` out, or having no section. ALPS then logs `Plugin "managesieve" is disabled` at startup. So with such sections set `enabled = true` here, as `config.example.toml` does. To switch filters off, set `enabled = false`.
 
 A loaded plugin's tabs show for every user. When the plugin loaded for the endpoints that some backends name, a user with neither a global nor a per-domain server sees **Could not load the filters.** on the Filters tab and **Could not load the auto-reply.** on the Auto-reply tab, and each request is logged as `managesieve: failed to connect to the sieve server: ManageSieve server is not configured`.
 
@@ -48,7 +48,7 @@ ALPS signs in with SASL PLAIN, using the username and password of the signed-in 
 
 Every request to the plugin opens a new connection and closes it when the request is done. The connection attempt times out after 15 seconds, and so does each command ALPS writes and each line it waits for from the server. A script the server sends as a literal has 30 seconds to arrive.
 
-With `[server] debug = true`, ALPS writes the ManageSieve exchange to standard output. The `AUTHENTICATE` argument is written as `[REDACTED]`, but script contents can appear in full: a script ALPS uploads is always written out.
+With `[server] debug = true`, ALPS logs the ManageSieve exchange through `[logging]`, as `protocol trace` lines at debug level (`protocol` `managesieve`), so only while `[logging] level` is debug. The `AUTHENTICATE` argument is written as `[REDACTED]`, but script contents can appear in full: a script ALPS uploads is always written out.
 
 ### Per-Domain Servers (multi)
 

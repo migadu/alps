@@ -198,6 +198,9 @@ func valueOf(card vcard.Card, field string) string {
 }
 
 type harness struct {
+	srv    *alps.Server
+	davURL string
+	passwd string
 	t      *testing.T
 	url    string
 	client *http.Client
@@ -212,6 +215,10 @@ func newHarness(t *testing.T) *harness {
 // newHarnessWrapping is newHarness with the CardDAV server's handler passed
 // through wrap, for a test that answers some requests itself.
 func newHarnessWrapping(t *testing.T, wrap func(http.Handler) http.Handler) *harness {
+	return startConnectionHarness(t, wrap, false)
+}
+
+func startConnectionHarness(t *testing.T, wrap func(http.Handler) http.Handler, noDefault bool) *harness {
 	t.Helper()
 	dav := &memBooks{objects: map[string]carddav.AddressObject{}}
 	var handler http.Handler = &carddav.Handler{Backend: dav}
@@ -246,6 +253,13 @@ func newHarnessWrapping(t *testing.T, wrap func(http.Handler) http.Handler) *har
 		SMTP:     alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
 		LoginKey: &key,
 		Plugins:  map[string]alps.PluginConfig{"carddav": {Enabled: true, Server: davServer.URL}},
+		// The personal endpoints in these tests are loopback HTTP servers.
+		DAVAllowPrivateServers: true,
+		// These tests save a connection in one session and use it in another.
+		DAVConnectionFreshFor: -1,
+	}
+	if noDefault {
+		opts.Plugins["carddav"] = alps.PluginConfig{Enabled: true}
 	}
 	srv, err := alps.New(alps.NewLogger(), opts)
 	if err != nil {
@@ -258,7 +272,7 @@ func newHarnessWrapping(t *testing.T, wrap func(http.Handler) http.Handler) *har
 	})
 
 	jar, _ := cookiejar.New(nil)
-	h := &harness{t: t, url: ts.URL, client: &http.Client{Jar: jar}, dav: dav}
+	h := &harness{t: t, srv: srv, davURL: davServer.URL, passwd: passwd, url: ts.URL, client: &http.Client{Jar: jar}, dav: dav}
 	h.expect(h.do("POST", "/session", map[string]string{"username": testUser, "password": testPassword}), http.StatusOK)
 	return h
 }

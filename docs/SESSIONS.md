@@ -60,7 +60,7 @@ Besides the limits above, a session ends in these ways:
 
 ## Session Persistence (`login_key`)
 
-Because ALPS stores Session objects in memory, **all sessions are lost if the ALPS server restarts**. To prevent users from being abruptly logged out during server updates or restarts, ALPS implements an encrypted session restoration mechanism. Without `login_key`, no session is restored, and account linking and switching are unavailable.
+Because ALPS stores Session objects in memory, **all sessions are lost if the ALPS server restarts**. To prevent users from being abruptly logged out during server updates or restarts, ALPS implements an encrypted session restoration mechanism. Without `login_key`, no session is restored, account linking and switching are unavailable, and CalDAV and CardDAV connections in Settings can use only the mail credentials.
 
 ### The `alps_login_token`
 
@@ -109,10 +109,10 @@ Separately, `POST /session` with an empty username and password signs in from th
 
 ### Changing the Key
 
-`login_key` encrypts two things: the login tokens, and the passwords stored in each account's `linked_accounts` entry. Login tokens expire 30 days after they were written. Linked-account credentials do not expire.
+`login_key` encrypts three things: the login tokens, the passwords stored in each account's `linked_accounts` entry, and the separate CalDAV and CardDAV passwords users save in Settings ([CDAV.md](CDAV.md#connections-in-settings)). Login tokens expire 30 days after they were written. Linked-account credentials and DAV passwords do not expire.
 
 > [!WARNING]
-> Rotating or changing `login_key` makes every login token unreadable, so users sign in again. It also makes every stored linked-account credential unreadable, so switching to a linked account fails. To repair a link, the user removes the linked account and adds it again (adding an account that is still listed is refused with `This account is already linked`). Removing it after a rotation cannot clear the copy stored in the other account and returns the warning `reverse_link_not_cleared`, but adding it again rewrites both sides.
+> Rotating or changing `login_key` makes every login token unreadable, so users sign in again. It also makes every stored linked-account credential unreadable, so switching to a linked account fails. To repair a link, the user removes the linked account and adds it again (adding an account that is still listed is refused with `This account is already linked`). Removing it after a rotation cannot clear the copy stored in the other account and returns the warning `reverse_link_not_cleared`, but adding it again rewrites both sides. A saved separate CalDAV or CardDAV password becomes unreadable too: the connection's requests fail, without falling back to the mail password, until the user enters the password again in Settings.
 
 ### "Stay signed in after closing the browser"
 
@@ -166,6 +166,6 @@ Afterwards ALPS holds mail connections for this browser only for the account it 
 
 ## User Information Persistence
 
-ALPS keeps no database. An account's settings (`base.settings`, identities included), linked accounts (`linked_accounts`), security-key record (`webauthn`, and its versions under `webauthn-state/`) and GPG keyring (`gpg_keys`) are kept as IMAP METADATA entries under `/private/vendor/alps/`, or in `alps_store.json` with the maildir provider. [ARCHITECTURE.md](ARCHITECTURE.md#4-stateless-persistence-imap-metadata) lists what each entry holds and what happens on a server without METADATA, where nothing ALPS saves persists. Contacts and calendars stay on the CardDAV and CalDAV servers ([CDAV.md](CDAV.md)).
+ALPS keeps no database. An account's settings (`base.settings`, identities included), linked accounts (`linked_accounts`), security-key record (`webauthn`, and its versions under `webauthn-state/`), GPG keyring (`gpg_keys`) and own CalDAV and CardDAV connections (`dav.connection.caldav`, `dav.connection.carddav`) are kept as IMAP METADATA entries under `/private/vendor/alps/`, or in `alps_store.json` with the maildir provider. [ARCHITECTURE.md](ARCHITECTURE.md#4-stateless-persistence-imap-metadata) lists what each entry holds and what happens on a server without METADATA, where nothing ALPS saves persists. Contacts and calendars stay on the CardDAV and CalDAV servers ([CDAV.md](CDAV.md)).
 
-A move to another IMAP server keeps this state only if the migration copies the `/private/vendor/alps/` server annotations and the new server supports METADATA. Linked accounts then work only under the same `login_key`; otherwise users remove and add them again (see [Changing the Key](#changing-the-key)). Security keys work only under the same `[webauthn] rpid`, because a key is bound to the RP ID it was enrolled under (see [WEBAUTHN.md](WEBAUTHN.md)).
+A move to another IMAP server keeps this state only if the migration copies the `/private/vendor/alps/` server annotations and the new server supports METADATA. Linked accounts and saved DAV passwords then work only under the same `login_key`; otherwise users remove and add the linked accounts again, and enter the DAV passwords again (see [Changing the Key](#changing-the-key)). Security keys work only under the same `[webauthn] rpid`, because a key is bound to the RP ID it was enrolled under (see [WEBAUTHN.md](WEBAUTHN.md)).

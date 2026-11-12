@@ -183,11 +183,11 @@ When a request reaches a node that does not hold its session (after a failover o
 
 Must be the same on every node:
 
-- **`[server] login_key`**, so that any node can restore a session from the login token. It also encrypts the credentials stored for linked accounts, so account switching needs the same key on every node ([SESSIONS.md](SESSIONS.md#session-persistence-login_key)).
+- **`[server] login_key`**, so that any node can restore a session from the login token. It also encrypts the credentials stored for linked accounts and the separate CalDAV and CardDAV passwords users save, so account switching and those connections need the same key on every node ([SESSIONS.md](SESSIONS.md#session-persistence-login_key)).
 - **`[webauthn] rpid` and `origins`.** A security key is bound to the RP ID it was enrolled under. `origins` must list every browser-facing origin the load balancer serves ([WEBAUTHN.md](WEBAUTHN.md)).
 - **`[cluster] secret_key`** (or `CLUSTER_SECRET_KEY`), and a gossip port that every other node can reach over TCP and UDP.
 - **`[server.rate_limit]`.** Each node applies its own values to the shared counts ([RATELIMIT.md](RATELIMIT.md#cluster-synchronization)).
-- **The mail server settings** (`[provider]` and `[smtp]`), and the plugins with their servers (`[plugin.<name>]`), so that a session on any node reaches the same servers and offers the same features.
+- **The mail server settings** (`[provider]` and `[smtp]`), and the plugins with their servers (`[plugin.<name>]`), so that a session on any node reaches the same servers and offers the same features. `[server] dav_allow_private_servers` belongs here too: a node without it refuses the users' own DAV connections that need it ([CDAV.md](CDAV.md#personal-servers)).
 - **With Let's Encrypt**: `domains`, `directory_url`, and the same S3 bucket and prefix (see [Requirements](#requirements)).
 
 Must differ on every node:

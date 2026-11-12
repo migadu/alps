@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -82,6 +84,11 @@ func main() {
 	// Bridge standard-library log calls and structured subsystem logs to the
 	// configured destination, format and level.
 	slog.SetDefault(logger.Slog())
+	// Provider-specific TOML has now been decoded by ToOptions, so legitimate
+	// provider keys are no longer counted as unknown. Log key names, not values.
+	for _, key := range config.UnknownKeys() {
+		logger.Warnf("Unknown configuration key: %s (ignored)", key.String())
+	}
 
 	// Initialize cluster for leader election and gossip broadcasting (if enabled)
 	var clusterMgr *cluster.Cluster
@@ -169,6 +176,7 @@ func main() {
 
 	// Initialize TLS manager if configured
 	var tlsMgr *tlsmanager.Manager
+	var acmeHTTPServer *http.Server
 	if config.TLS.Enabled {
 		tlsCfg, err := buildTLSConfig(config.TLS)
 		if err != nil {
@@ -203,9 +211,10 @@ func main() {
 			if acmeHTTPAddr == "" {
 				acmeHTTPAddr = ":80"
 			}
+			acmeHTTPServer = newACMEHTTPServer(acmeHTTPAddr, tlsMgr.HTTPHandler(), &options, logger)
 			go func() {
 				logger.Infof("Starting ACME HTTP-01 challenge handler on %s", acmeHTTPAddr)
-				if err := http.ListenAndServe(acmeHTTPAddr, tlsMgr.HTTPHandler()); err != nil {
+				if err := acmeHTTPServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 					logger.Errorf("ACME HTTP-01 handler error: %v", err)
 				}
 			}()
@@ -281,7 +290,9 @@ func main() {
 
 	ctx, cancel := context.WithDeadline(context.Background(),
 		time.Now().Add(30*time.Second))
-	httpServer.Shutdown(ctx)
+	if err := shutdownHTTPServers(ctx, httpServer, acmeHTTPServer); err != nil {
+		logger.Errorf("HTTP server shutdown: %v", err)
+	}
 	cancel()
 
 	s.Close()
@@ -362,4 +373,43 @@ func (f *tlsErrorFilter) Write(p []byte) (n int, err error) {
 	}
 	f.logger.Error(strings.TrimSpace(msg))
 	return len(p), nil
+}
+
+// newACMEHTTPServer constructs the dedicated HTTP-01 listener.
+func newACMEHTTPServer(addr string, handler http.Handler, options *alps.Options, logger alps.Logger) *http.Server {
+	read, write, idle := options.ReadTimeout, options.WriteTimeout, options.IdleTimeout
+	if read == 0 {
+		read = 10 * time.Second
+	}
+	if write == 0 {
+		write = 60 * time.Second
+	}
+	if idle == 0 {
+		idle = 120 * time.Second
+	}
+	return &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: read, ReadTimeout: read, WriteTimeout: write, IdleTimeout: idle,
+		ErrorLog: log.New(&tlsErrorFilter{logger: logger, debug: options.Debug}, "", 0),
+	}
+}
+
+// shutdownHTTPServers drains both listeners within the same process budget.
+// Close connections still active at the deadline before releasing dependencies.
+func shutdownHTTPServers(ctx context.Context, servers ...*http.Server) error {
+	var wg sync.WaitGroup
+	errs := make([]error, len(servers))
+	for i, server := range servers {
+		if server == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(i int, server *http.Server) {
+			defer wg.Done()
+			if err := server.Shutdown(ctx); err != nil {
+				errs[i] = err
+				server.Close()
+			}
+		}(i, server)
+	}
+	wg.Wait()
+	return errors.Join(errs...)
 }

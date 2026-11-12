@@ -21,7 +21,7 @@ require (
 	github.com/go-webauthn/webauthn v0.17.2
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/memberlist v0.5.4
-	github.com/migadu/go-imap v1.2.0
+	github.com/migadu/go-imap v1.2.2
 	github.com/migadu/go-webdav v1.0.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.54.0

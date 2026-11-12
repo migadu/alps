@@ -3,6 +3,7 @@ package imap
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"strings"
@@ -100,6 +101,14 @@ type Options struct {
 	*Config
 	address string
 	tls     bool
+	logger  *slog.Logger
+}
+
+// SetLogger receives the server logger before connection factories are built.
+func (o *Options) SetLogger(logger *slog.Logger) {
+	if o != nil {
+		o.logger = logger
+	}
 }
 
 // resolve returns the dial parameters, deriving them from Config when the
@@ -142,11 +151,16 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		}
 
 		news := &mailboxNews{}
-		client, err := connect(address, tls, insecure, timeout, debugMode, guard, news.handler())
+		client, err := connect(address, tls, insecure, timeout, debugMode, guard, news.handler(), o.logger)
 		if err != nil {
 			return nil, err
 		}
 		news.client.Store(client)
+		if client.Caps().Has(imap.CapLoginDisabled) {
+			client.Logout()
+			client.Close()
+			return nil, fmt.Errorf("IMAP server disables password LOGIN (LOGINDISABLED); check the connection security settings")
+		}
 
 		if err := client.Login(username, password).Wait(); err != nil {
 			client.Logout()
@@ -172,7 +186,7 @@ func loginError(err error) error {
 	if errors.As(err, &imapErr) && imapErr.Type == imap.StatusResponseTypeNo {
 		code := imap.ResponseCode(strings.ToUpper(string(imapErr.Code)))
 		switch code {
-		case imap.ResponseCodeUnavailable, imap.ResponseCodeServerBug:
+		case imap.ResponseCodeUnavailable, imap.ResponseCodeServerBug, imap.ResponseCodePrivacyRequired:
 		case imap.ResponseCodeLimit:
 			return &provider.LimitError{RetryAfter: waitNamedIn(imapErr.Text), Cause: fmt.Errorf("LOGIN refused: %w", err)}
 		default:

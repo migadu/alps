@@ -8,39 +8,30 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
-	"regexp"
 	"strings"
 
-	"github.com/migadu/alps"
 	"github.com/migadu/go-webdav/carddav"
 )
 
 var errNoAddressBook = fmt.Errorf("carddav: no address book found")
 
 type authRoundTripper struct {
-	server  http.RoundTripper
-	session *alps.Session
-	debug   bool
+	server      http.RoundTripper
+	debug       bool
+	debugWriter io.Writer
 }
 
 func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	rt.session.SetHTTPBasicAuth(req)
-
-	if rt.debug {
+	if rt.debug && rt.debugWriter != nil {
 		b, _ := httputil.DumpRequestOut(req, true)
-		bStr := string(b)
-		bStr = regexp.MustCompile(`(?mi)^Authorization: .*`).ReplaceAllString(bStr, "Authorization: [REDACTED]\r")
-		os.Stdout.Write(append([]byte("C: \n"), []byte(bStr)...))
-		os.Stdout.Write([]byte("\n"))
+		rt.debugWriter.Write(append([]byte("C: \n"), b...))
 	}
 
 	resp, err := rt.server.RoundTrip(req)
 
-	if rt.debug && err == nil {
+	if rt.debug && rt.debugWriter != nil && err == nil {
 		b, _ := httputil.DumpResponse(resp, true)
-		os.Stdout.Write(append([]byte("S: \n"), b...))
-		os.Stdout.Write([]byte("\n"))
+		rt.debugWriter.Write(append([]byte("S: \n"), b...))
 	}
 
 	if err == nil {
@@ -70,11 +61,6 @@ func keepListEscapesIn(resp *http.Response) error {
 	return nil
 }
 
-func newClient(u *url.URL, session *alps.Session, debug bool) (*carddav.Client, error) {
-	rt := authRoundTripper{
-		server:  http.DefaultTransport,
-		session: session,
-		debug:   debug,
-	}
-	return carddav.NewClient(&http.Client{Transport: &rt}, u.String())
+func newClient(u *url.URL, client *http.Client) (*carddav.Client, error) {
+	return carddav.NewClient(client, u.String())
 }

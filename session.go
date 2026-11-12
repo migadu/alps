@@ -158,6 +158,10 @@ type Session struct {
 	storeEntriesLocker sync.RWMutex
 	storeEntries       map[string]json.RawMessage // protected by storeEntriesLocker
 
+	// The account's saved DAV connections as last read: see davConnection.
+	davRecordsLocker sync.Mutex
+	davRecords       map[string]davCachedRecord // protected by davRecordsLocker
+
 	attachmentsLocker sync.Mutex
 	attachments       map[string]*Attachment // protected by attachmentsLocker
 	attachmentsGone   bool                   // set by teardown; protected by attachmentsLocker
@@ -1249,12 +1253,18 @@ type (
 // SessionManager keeps track of active sessions. It connects and re-connects
 // to the mail provider as necessary. It prunes expired sessions.
 type SessionManager struct {
-	connectProviderFunc      provider.AuthenticatedProviderFactory
-	dialSMTP                 DialSMTPFunc
-	logger                   Logger
-	cacheTTL                 time.Duration
-	cacheEnabled             bool
-	loginKey                 *fernet.Key // for encrypting linked account passwords
+	connectProviderFunc provider.AuthenticatedProviderFactory
+	dialSMTP            DialSMTPFunc
+	logger              Logger
+	cacheTTL            time.Duration
+	cacheEnabled        bool
+	loginKey            *fernet.Key // for encrypting linked account passwords
+	// davAllowPrivate lets personal DAV servers use plain HTTP and loopback
+	// or private addresses: see Options.DAVAllowPrivateServers.
+	davAllowPrivate bool
+	// davFreshFor is how long a session answers from the saved DAV
+	// connection it last read: see Options.DAVConnectionFreshFor.
+	davFreshFor              time.Duration
 	sessionDuration          time.Duration
 	maxSessionDuration       time.Duration
 	absoluteSessionDuration  time.Duration
@@ -1345,6 +1355,7 @@ func newSessionManager(connectProviderFunc provider.AuthenticatedProviderFactory
 		cacheTTL:                 cacheTTL,
 		cacheEnabled:             cacheEnabled,
 		loginKey:                 loginKey,
+		davFreshFor:              defaultDAVConnectionFreshFor,
 		sessionDuration:          sessionDuration,
 		maxSessionDuration:       maxSessionDuration,
 		absoluteSessionDuration:  defaultAbsoluteSessionDuration,

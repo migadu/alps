@@ -95,7 +95,7 @@ func TestLogoPackageServed(t *testing.T) {
 	assert.Equal(t, "image/svg+xml", get(router, "/favicon.svg").Header().Get("Content-Type"))
 
 	body := get(router, "/").Body.String()
-	assert.Contains(t, body, `<meta name="alps-logo" content="/favicon.svg" />`)
+	assert.Regexp(t, `<meta name="alps-logo" content="/favicon.svg\?v=[0-9a-f]{16}" />`, body)
 	assert.NotContains(t, body, `name="alps-logo-builtin"`)
 	assert.NotContains(t, body, `name="alps-default-theme"`)
 }

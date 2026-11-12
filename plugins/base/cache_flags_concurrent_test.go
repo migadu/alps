@@ -1,6 +1,7 @@
 package alpsbase
 
 import (
+	"github.com/migadu/alps/provider/providertest"
 	"runtime"
 	"slices"
 	"sync"
@@ -26,7 +27,7 @@ func TestConcurrentMarksOfOneMessageMoveTheCountOnce(t *testing.T) {
 	} {
 		t.Run(mark.name, func(t *testing.T) {
 			for attempt := 0; attempt < 100; attempt++ {
-				uid := provider.MockMessageID{ID: "7"}
+				uid := providertest.MockMessageID{ID: "7"}
 				cache := flagCache(t, 100, nil)
 				cache.Set("message:INBOX:7:[]", CachedMessagePart{Mailbox: "INBOX", Message: &provider.Message{ID: uid, Flags: slices.Clone(mark.initial)}})
 				start := make(chan struct{})

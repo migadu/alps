@@ -1,6 +1,7 @@
 package alps
 
 import (
+	"github.com/migadu/alps/provider/providertest"
 	"testing"
 	"time"
 
@@ -28,8 +29,8 @@ func (r *domainResolver) AddressOf(username string) string {
 // address is the address, whatever the provider would say; a bare login is
 // completed by the provider when it can be, and is the login otherwise.
 func TestSessionManager_AddressOfTheLogin(t *testing.T) {
-	mockProvider := &provider.MockProvider{}
-	mockStore := &provider.MockStore{}
+	mockProvider := &providertest.MockProvider{}
+	mockStore := &providertest.MockStore{}
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(mockStore, nil)
 	mockStore.On("Get", mock.Anything, mock.Anything).Return(provider.ErrNoStoreEntry)

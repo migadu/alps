@@ -92,7 +92,7 @@ func handleSaveData(c *alps.Context) error {
 }
 ```
 
-`GoPlugin` has `GET`, `POST`, `PUT`, `PATCH` and `DELETE`, and `AddRoute(method, path, handler)` for any other method. The loaders run once, when ALPS starts. At shutdown, ALPS calls `Close` once on each plugin that loaded; a `GoPlugin`'s `Close` does nothing.
+`GoPlugin` has `GET`, `POST`, `PUT`, `PATCH` and `DELETE`, and `AddRoute(method, path, handler)` for any other method. The loaders run once, when ALPS starts. At shutdown, ALPS calls `Close` once on each plugin that loaded; a `GoPlugin`'s `Close` does nothing. A plugin that a loader returned but the `[plugin.*]` rules drop is closed at once, at startup (an error from its `Close` is logged as `Closing disabled plugin ...`, and startup goes on). If loading fails, because a loader returns an error or the `[branding]` frontend cannot be built, every plugin returned so far, the failing loader's own included, is closed once before ALPS exits.
 
 Give a plugin's routes a top-level prefix named after the plugin, such as `/myplugin/data`, the way `password` uses `/password/change` and `managesieve` uses `/managesieve/script`. The Vite dev server (`npm run dev`) proxies only the prefixes listed in the regular expression in `frontend/vite.config.ts` to the backend at `http://localhost:1323`, so add the plugin's prefix to that list for development. A built binary serves any path.
 
@@ -122,9 +122,9 @@ A panic in a handler is recovered, logged, and answered with a plain-text 500.
 
 ### Configuration and Per-User Data
 
-A plugin reads its config section as `s.Options.Plugins["myplugin"]` in its loader, or `ctx.Server.Options.Plugins["myplugin"]` in a handler. It is an `alps.PluginConfig{Enabled, Server, Options}`; see [Registering the Plugin](#registering-the-plugin) for the keys.
+A plugin reads its config section as `s.Options.Plugins["myplugin"]` in its loader, or `ctx.Server.Options.Plugins["myplugin"]` in a handler. It is an `alps.PluginConfig{Enabled, Server, Options}`; see [Registering the Plugin](#registering-the-plugin) for the keys. `Enabled` is true for a section that sets `enabled = true` or leaves `enabled` out, and false for one that says `enabled = false` and for a plugin without a section. The `password` section is the exception: its `Enabled` is true only with `enabled = true`.
 
-A loader can decide to stay off by returning no plugins, and can refuse a bad configuration by returning an error. An error from a loader makes `alps.New` fail, and ALPS exits at startup. `caldav` and `carddav` return no plugins when they have no `server`, `enabled` is not `true` and the provider routes no endpoint for the service; `managesieve` does when it has no `server` and the provider routes no endpoint for it, whatever `enabled` says; `password` does when `enabled` is not `true`, or when neither its options nor a provider backend name an endpoint or a command:
+A loader can decide to stay off by returning no plugins, and can refuse a bad configuration by returning an error. An error from a loader makes `alps.New` fail, and ALPS exits at startup. `caldav` and `carddav` return no plugins when they have no `server`, `Enabled` is false and the provider routes no endpoint for the service; `managesieve` does when it has no `server` and the provider routes no endpoint for it, whatever `enabled` says; `password` does when `Enabled` is false, or when neither its options nor a provider backend name an endpoint or a command:
 
 ```go
 func init() {
@@ -168,13 +168,15 @@ import (
 The `[plugin.<name>]` sections of `config.toml` then decide which of the compiled-in plugins load:
 
 - `base`, which serves `/session` and the mail API, always loads.
-- A plugin whose section does not set `enabled = true`, because it says `enabled = false` or leaves `enabled` out, is skipped and logged as `Plugin "<name>" is disabled`.
-- If at least one section has `enabled = true`, the sections with `enabled = true` form an allow-list, and a plugin without a section is skipped and logged the same way.
-- If no section has `enabled = true`, which includes having no sections at all, there is no allow-list, and every plugin the loaders return loads unless its own section keeps it out.
+- A plugin whose section says `enabled = false` is skipped and logged as `Plugin "<name>" is disabled`.
+- If at least one section has `enabled = true`, the sections with `enabled = true` form an allow-list, and every other plugin, with a section that leaves `enabled` out or with no section, is skipped and logged the same way.
+- If no section has `enabled = true`, which includes having no sections at all, there is no allow-list, and every plugin the loaders return loads unless its own section says `enabled = false`.
 
-Every compiled-in plugin's loader runs in all cases, and these rules are applied to what the loaders return. A loader that returns no plugins, as `caldav`, `carddav`, `managesieve` and `password` can (see [Configuration and Per-User Data](#configuration-and-per-user-data)), stays off either way, and is not logged as disabled. A loader's error stops ALPS even for a plugin the rules would have dropped, so a loader should check `enabled` before it refuses its options, as `password` does.
+A section that leaves `enabled` out still configures its plugin: its loader gets the section's `server` and `options`, and sees the plugin as enabled, except `password`, which needs `enabled = true` (see [Configuration and Per-User Data](#configuration-and-per-user-data)).
 
-A config that adds `[plugin.myplugin]` must therefore set `enabled = true` in it, and then also keep `enabled = true` for every other plugin it wants, as `config.example.toml` does:
+Every compiled-in plugin's loader runs in all cases, and these rules are applied to what the loaders return. A loader that returns no plugins, as `caldav`, `carddav`, `managesieve` and `password` can (see [Configuration and Per-User Data](#configuration-and-per-user-data)), stays off either way, and is not logged as disabled. A loader's error stops ALPS even for a plugin the rules would have dropped, so a loader should check `enabled` before it refuses its options, as `password` does. A plugin the rules drop is closed at once.
+
+Under an allow-list, which `config.example.toml` has, a config that adds `[plugin.myplugin]` must set `enabled = true` in it, as for every other plugin it wants:
 
 ```toml
 [plugin.base]
@@ -188,7 +190,7 @@ enabled = true
 # example_key = "example_value"
 ```
 
-A section's keys are `enabled` (bool), `server` (string) and `options` (a free-form table). See [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname) for the in-tree plugins' sections.
+A section's keys are `enabled` (bool), `server` (string) and `options` (a free-form table). ALPS warns at startup about any other key in the section (`Unknown configuration key: plugin.myplugin.<key> (ignored)`), but never about the keys inside `options`. See [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname) for the in-tree plugins' sections.
 
 ---
 
@@ -222,11 +224,11 @@ registry.registerSettingsTab({
 });
 ```
 
-Disabling a plugin reaches the frontend through `GET /session`. Its `EnabledPlugins` field lists the names of the Go plugins the server loaded, and the registry filters against that list:
+Disabling a plugin reaches the frontend through `GET /session`. Its `EnabledPlugins` field lists the names of the Go plugins the server loaded, and its `ActivePlugins` field those of them the account can use: all of them, except `caldav` and `carddav` for an account that has no server for them (see [CDAV.md](CDAV.md#which-tabs-appear)). The registry filters settings tabs against `EnabledPlugins`, so that such an account can still set up a connection, and nav tabs, routes and hooks against `ActivePlugins`:
 
 - Nav tabs and settings tabs are matched by `pluginId || id`, routes and hooks by `pluginId`. Every name must therefore equal the Go plugin's `Name`. Set `pluginId` whenever a tab's id differs from it, as the `managesieve` plugin's `autoreply` tab, the `caldav` plugin's `calendar` and `tasks` tabs and the `carddav` plugin's `contacts` tab do.
 - A route or hook registered without a `pluginId` is treated as the app's own and always resolves or runs.
-- A frontend with no loaded Go plugin of that name disappears once `/session` answers. Before the answer arrives, or after sign-out, nothing is filtered.
+- A frontend with no loaded Go plugin of that name disappears once `/session` answers. Before the answer arrives, or after sign-out, nothing is filtered, except that the `caldav` and `carddav` nav tabs, routes and hooks wait for it, unless the account had a server for them when `/session` last answered in this browser.
 - Registering a second tab with an id already used, or a second route with a path already used, is silently ignored.
 
 An `icon` is the id of a `<symbol>` in `frontend/public/assets/icons/sprite.svg`, which the build copies to `frontend/dist/assets/icons/sprite.svg`. It is drawn by `renderIcon()` from `frontend/src/utils/ui.ts`. These are not Material Symbols: an id the sprite does not have draws nothing. The in-tree plugins' tabs use `key`, `password`, `sieve`, `arrowBendUpLeft`, `users`, `calendar` and `checkCircle`. A plugin that needs a new icon adds a `<symbol>` to that sprite, and draws icons through `renderIcon()` rather than writing the sprite address itself (`frontend/test/sprite-address.test.ts` enforces this).
@@ -467,6 +469,6 @@ Jobs are registered by the function `Loader()` returns, when it runs and before 
 
 - **Go tests** go beside the plugin's sources (`plugins/<name>/*_test.go`) and run with `make test` (`go test -v ./...`).
 - **Frontend unit tests** do not go beside the plugin's frontend code: Vitest only collects `frontend/test/**/*.test.ts`. Put them in `frontend/test/<name>.test.ts` and import from `../../plugins/<name>/frontend/...`, as `frontend/test/sieve-compiler.test.ts` does. They run with `npm test` in `frontend/`.
-- **Browser specs** go in `frontend/e2e/*.spec.ts` and run with `make test-e2e` (see [E2E.md](E2E.md)). `scripts/e2e.sh` writes an `alps.toml` whose `[plugin.*]` sections set `enabled = true`, which is an allow-list, so a new plugin is loaded in the browser suite only once it has a `[plugin.<name>]` block there.
+- **Browser specs** go in `frontend/e2e/*.spec.ts` and run with `make test-e2e` (see [E2E.md](E2E.md)). `scripts/e2e.sh` writes an `alps.toml` whose `[plugin.*]` sections set `enabled = true`, which is an allow-list, so a new plugin is loaded in the browser suite only once it has a `[plugin.<name>]` block with `enabled = true` there.
 
 `npm run build` type-checks `../plugins/*/frontend/**/*.ts` through `tsc`.

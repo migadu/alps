@@ -3,6 +3,7 @@ package alpscarddav
 import (
 	"context"
 	"fmt"
+	"github.com/migadu/alps/internal/debuglog"
 	"github.com/migadu/alps/provider"
 	"net/http"
 	"net/url"
@@ -42,8 +43,8 @@ type plugin struct {
 	alps.GoPlugin
 	url          *url.URL
 	srv          *alps.Server
-	urlCache     sync.Map // raw endpoint -> *url.URL
-	homeSetCache map[string]string
+	urlCache     sync.Map          // raw endpoint -> *url.URL
+	homeSetCache map[string]string // resolved connection identity -> home set
 	cacheMutex   sync.RWMutex
 	debug        bool
 }
@@ -74,28 +75,79 @@ func (p *plugin) urlFor(username string) *url.URL {
 	return u
 }
 
-func (p *plugin) client(ctx context.Context, session *alps.Session) (*carddav.Client, error) {
-	u := p.urlFor(usernameOf(session))
-	if u == nil {
-		return nil, fmt.Errorf("CardDAV server is not configured")
-	}
-	return newClient(u, session, p.debug)
+// connectionKey keeps every operation in one HTTP request on the same DAV
+// account, even if another request changes its saved connection concurrently.
+type connectionKey struct{}
+
+type requestConnection struct {
+	url      *url.URL
+	client   *http.Client
+	cacheKey string
 }
 
-// httpClient authenticates as the session, for the requests go-webdav's client
-// has no method for.
-func (p *plugin) httpClient(session *alps.Session) *http.Client {
-	return &http.Client{Transport: &authRoundTripper{server: http.DefaultTransport, session: session, debug: p.debug}}
+func (p *plugin) connection(ctx context.Context, session *alps.Session) (*requestConnection, error) {
+	if conn, ok := ctx.Value(connectionKey{}).(*requestConnection); ok {
+		return conn, nil
+	}
+	fallback := ""
+	if u := p.urlFor(usernameOf(session)); u != nil {
+		fallback = u.String()
+	}
+	resolved := alps.ResolvedDAVConnection{Server: fallback}
+	if session != nil {
+		var err error
+		resolved, err = session.ResolveDAVConnection(provider.ServiceCardDAV, fallback)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if resolved.Server == "" {
+		return nil, fmt.Errorf("CardDAV server is not configured")
+	}
+	u, err := parseCardDAVURL(resolved.Server)
+	if err != nil {
+		return nil, err
+	}
+	hc, err := alps.DAVHTTPClient(resolved)
+	if err != nil {
+		return nil, err
+	}
+	hc.Transport = &authRoundTripper{server: hc.Transport, debug: p.debug, debugWriter: debuglog.NewHTTPWriter(p.srv.Logger().Slog(), "carddav")}
+	return &requestConnection{url: u, client: hc, cacheKey: resolved.CacheKey}, nil
+}
+
+func (p *plugin) addRoute(method, path string, handler alps.HandlerFunc) {
+	p.GoPlugin.AddRoute(method, path, func(ctx *alps.Context) error {
+		conn, err := p.connection(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+		ctx.Request = ctx.Request.WithContext(context.WithValue(ctx.Request.Context(), connectionKey{}, conn))
+		return handler(ctx)
+	})
+}
+
+func (p *plugin) requestConnection(ctx *alps.Context) *requestConnection {
+	return ctx.Request.Context().Value(connectionKey{}).(*requestConnection)
+}
+
+// httpClient shares the request's resolved credentials with go-webdav's client.
+func (p *plugin) httpClient(ctx *alps.Context) *http.Client {
+	return p.requestConnection(ctx).client
 }
 
 func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Session) (*carddav.Client, *carddav.AddressBook, error) {
-	c, err := p.client(ctx, session)
+	conn, err := p.connection(ctx, session)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
+	}
+	c, err := newClient(conn.url, conn.client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
 	}
 
 	p.cacheMutex.RLock()
-	homeSet, ok := p.homeSetCache[session.Username()]
+	homeSet, ok := p.homeSetCache[conn.cacheKey]
 	p.cacheMutex.RUnlock()
 
 	if !ok {
@@ -114,13 +166,13 @@ func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Sessio
 			// Clear cache to prevent unbounded growth
 			p.homeSetCache = make(map[string]string)
 		}
-		p.homeSetCache[session.Username()] = homeSet
+		p.homeSetCache[conn.cacheKey] = homeSet
 		p.cacheMutex.Unlock()
 	}
 
 	addressBooks, err := c.FindAddressBooks(ctx, homeSet)
 	if err != nil {
-		p.forgetHomeSet(session.Username(), homeSet)
+		p.forgetHomeSet(conn.cacheKey, homeSet)
 		return nil, nil, fmt.Errorf("failed to query CardDAV address books: %v", err)
 	}
 	if len(addressBooks) == 0 {
@@ -129,16 +181,16 @@ func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Sessio
 	return c, &addressBooks[0], nil
 }
 
-// forgetHomeSet drops a login's cached home set after listing from it failed,
+// forgetHomeSet drops a connection's cached home set after listing from it failed,
 // so the next request looks it up again. The server may have moved it, when
 // the account was provisioned again or another server took over the URL;
 // kept, it would fail every request until alps restarted. It is dropped only if
 // it is still the one that failed: another request may have looked up the new
 // one meanwhile.
-func (p *plugin) forgetHomeSet(username, homeSet string) {
+func (p *plugin) forgetHomeSet(cacheKey, homeSet string) {
 	p.cacheMutex.Lock()
-	if cached, ok := p.homeSetCache[username]; ok && cached == homeSet {
-		delete(p.homeSetCache, username)
+	if cached, ok := p.homeSetCache[cacheKey]; ok && cached == homeSet {
+		delete(p.homeSetCache, cacheKey)
 	}
 	p.cacheMutex.Unlock()
 }
@@ -150,14 +202,21 @@ func parseCardDAVURL(raw string) (*url.URL, error) {
 		return nil, fmt.Errorf("failed to parse CardDAV server: %v", err)
 	}
 
+	// A value such as host:port parses with the host as its scheme. Any
+	// scheme but these stops here instead of failing every request.
 	switch u.Scheme {
+	case "https", "http":
 	case "carddavs":
 		u.Scheme = "https"
 	case "carddav+insecure", "http+insecure":
 		u.Scheme = "http"
-	}
-	if u.Scheme == "" {
+	case "":
 		return nil, fmt.Errorf("CardDAV server requires a scheme (https://, http+insecure://), got: %v", u.String())
+	default:
+		return nil, fmt.Errorf("unknown scheme for CardDAV server: %q (use https://, carddavs://, http+insecure:// or carddav+insecure://)", u.Scheme)
+	}
+	if u.Hostname() == "" || u.Opaque != "" {
+		return nil, fmt.Errorf("CardDAV server requires a host in an HTTP(S) URL (https://, carddavs://, http+insecure:// or carddav+insecure://), got: %v", u)
 	}
 	return u, nil
 }
@@ -193,7 +252,21 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 
 	registerRoutes(p)
 
-	return p.Plugin(), nil
+	return &davPlugin{Plugin: p.Plugin(), plugin: p}, nil
+}
+
+// davPlugin exposes the same normalized administrator endpoint the request
+// handlers use, so settings do not mistake failed discovery for a connection.
+type davPlugin struct {
+	alps.Plugin
+	plugin *plugin
+}
+
+func (p *davPlugin) DAVDefaultServer(username string) string {
+	if u := p.plugin.urlFor(username); u != nil {
+		return u.String()
+	}
+	return ""
 }
 
 func init() {

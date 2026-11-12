@@ -86,6 +86,7 @@ The same limiter, counts and lockouts guard these requests as well as the sign-i
 | `POST /webauthn/verify/recovery`: an accepted recovery code is a success, a refused one a failure (see [WEBAUTHN.md](WEBAUTHN.md)) | the account signing in | `{"error": "rate_limited", "retry_after": n}` |
 | The current-password confirmation asked when removing a security key (`POST /settings/2fa/credential/{id}/delete`), when turning on trust for linked accounts (`POST /settings/2fa/trust-linked-accounts`) and when generating recovery codes (`POST /settings/2fa/recovery-codes`) | the session's account | `{"error": "rate_limited", "retry_after": n}` |
 | The password plugin's current-password check (`POST /password/change`, see [PASSWORD_CHANGE.md](PASSWORD_CHANGE.md)) | the session's account | `{"error": <reason>, "code": "rate_limited", "retry_after": n}` |
+| The mail-password confirmation asked before a CalDAV or CardDAV connection sends the mail password to a server the user entered (`PUT /settings/dav/caldav` or `/settings/dav/carddav` with `mail_password`, see [CDAV.md](CDAV.md#connections-in-settings)) | the session's account | `{"error": "rate_limited", "reason": <reason>, "retry_after": n}` |
 
 When linking, an account that is already linked counts as a success. A link refused before the password is tried, such as linking the signed-in account to itself, records nothing.
 
@@ -183,3 +184,5 @@ Each sign-in the limiter refuses is logged at warn level as `sign-in failed` wit
 - `WebAuthn: password confirmation rate limited for <user>`
 - `WebAuthn: recovery code rate limited for <user>`
 - `Password change: current password check rate limited for <user>`
+
+The mail-password confirmation of a CalDAV or CardDAV connection logs no refusal of its own.

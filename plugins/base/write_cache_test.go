@@ -278,7 +278,7 @@ func TestHTTP_AFolderReadAndLeftShowsItsCountInTheSidebar(t *testing.T) {
 // folder list as the session holds it. A folder read there kept its old unread
 // count in the sidebar through every write elsewhere, until the list expired.
 func TestHTTP_ASearchAcrossEveryFolderShowsAReadFoldersCount(t *testing.T) {
-	s := newTestServer(t)
+	s := newAllFolderSearchTestServer(t)
 	msg := "From: Charles <charles@remote.test>\r\nTo: " + testUser + "\r\nSubject: Filed\r\n" +
 		"Date: Tue, 03 Jan 2006 15:04:05 +0000\r\nMessage-ID: <filed@remote.test>\r\n\r\nJust in.\r\n"
 	if _, _, _, err := s.store.AppendMessage("Archive", rawMessage(msg), 0); err != nil {
@@ -378,7 +378,7 @@ func countedAfterAWriteElsewhere(t *testing.T, s *testServer, engines string) ma
 // folder showed the message unread through every write elsewhere until the
 // list expired.
 func TestHTTP_AMessageMarkedReadFromASearchAcrossEveryFolderIsCountedRead(t *testing.T) {
-	s := newTestServer(t)
+	s := newAllFolderSearchTestServer(t)
 	filed := foundAcrossEveryFolder(t, s)
 	engines := uidOfSubject(t, s, "Engines")
 
@@ -396,7 +396,7 @@ func TestHTTP_AMessageMarkedReadFromASearchAcrossEveryFolderIsCountedRead(t *tes
 // Opening a search result peeks at its body, then the reader explicitly
 // marks it read. The sidebar keeps that count through later writes elsewhere.
 func TestHTTP_AMessageOpenedFromASearchAcrossEveryFolderIsCountedRead(t *testing.T) {
-	s := newTestServer(t)
+	s := newAllFolderSearchTestServer(t)
 	filed := foundAcrossEveryFolder(t, s)
 	engines := uidOfSubject(t, s, "Engines")
 	s.expect(s.do("GET", "/mailboxes/Archive/messages/"+filed, nil), http.StatusOK)
