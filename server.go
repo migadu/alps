@@ -232,7 +232,7 @@ func (s *Server) parseSMTPServer() error {
 // PluginEnabled applies explicit per-plugin switches and the optional allow-list.
 // The base plugin provides the core routes and is always required.
 func (s *Server) PluginEnabled(name string) bool {
-	if name == "base" {
+	if name == "base" || s.Options == nil {
 		return true
 	}
 	if cfg, exists := s.Options.Plugins[name]; exists && !cfg.Enabled {
