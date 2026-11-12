@@ -310,6 +310,22 @@ func (s *Server) loadPlugins() error {
 		}
 	}
 
+	// An allow-list typo otherwise turns off the intended plugins silently.
+	// Do not claim a name is unknown: an external loader can also return no
+	// plugin when its backend is unavailable or intentionally unconfigured.
+	if s.Options != nil {
+		loaded := make(map[string]bool, len(plugins))
+		for _, p := range plugins {
+			loaded[p.Name()] = true
+		}
+		for _, name := range s.Options.EnabledPlugins {
+			if !loaded[name] {
+				s.logger.Warnf("Enabled plugin %q did not load; check its name and backend configuration", name)
+				loaded[name] = true // Report duplicate allow-list entries once.
+			}
+		}
+	}
+
 	// Create a new router for the plugins
 	router := NewRouter(s)
 
