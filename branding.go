@@ -2,10 +2,12 @@ package alps
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"html"
 	"io/fs"
 	"path"
+	"sort"
 	"time"
 )
 
@@ -60,7 +62,21 @@ func brandedShell(index []byte, b BrandingOptions) ([]byte, error) {
 		fmt.Fprintf(&meta, "\n  <meta name=\"alps-logo-builtin\" content=\"%s\" />", html.EscapeString(b.LogoBuiltin))
 	}
 	if b.LogoPackage != nil {
-		meta.WriteString("\n  <meta name=\"alps-logo\" content=\"/favicon.svg\" />")
+		// Package bytes, rather than its directory name, decide whether open
+		// tabs need a reload. Sort and length-frame each file so map order
+		// and ambiguous filename/content boundaries cannot change the hash.
+		names := make([]string, 0, len(b.LogoPackage))
+		for name := range b.LogoPackage {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		digest := sha256.New()
+		for _, name := range names {
+			data := b.LogoPackage[name]
+			fmt.Fprintf(digest, "%d:%s:%d:", len(name), name, len(data))
+			digest.Write(data)
+		}
+		fmt.Fprintf(&meta, "\n  <meta name=\"alps-logo\" content=\"/favicon.svg?v=%x\" />", digest.Sum(nil)[:8])
 	}
 	if meta.Len() == 0 {
 		return nil, nil
