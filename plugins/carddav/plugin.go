@@ -202,14 +202,21 @@ func parseCardDAVURL(raw string) (*url.URL, error) {
 		return nil, fmt.Errorf("failed to parse CardDAV server: %v", err)
 	}
 
+	// A value such as host:port parses with the host as its scheme. Any
+	// scheme but these stops here instead of failing every request.
 	switch u.Scheme {
+	case "https", "http":
 	case "carddavs":
 		u.Scheme = "https"
 	case "carddav+insecure", "http+insecure":
 		u.Scheme = "http"
-	}
-	if u.Scheme == "" {
+	case "":
 		return nil, fmt.Errorf("CardDAV server requires a scheme (https://, http+insecure://), got: %v", u.String())
+	default:
+		return nil, fmt.Errorf("unknown scheme for CardDAV server: %q (use https://, carddavs://, http+insecure:// or carddav+insecure://)", u.Scheme)
+	}
+	if u.Hostname() == "" || u.Opaque != "" {
+		return nil, fmt.Errorf("CardDAV server requires a host in an HTTP(S) URL (https://, carddavs://, http+insecure:// or carddav+insecure://), got: %v", u)
 	}
 	return u, nil
 }
