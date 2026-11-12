@@ -68,3 +68,18 @@ func TestAMovedAddressBookHomeIsLookedUpAgain(t *testing.T) {
 		t.Fatalf("listed %+v, want the one card at %s", list.Contacts, want)
 	}
 }
+
+// A request whose listing failed drops the home set it listed from, and only
+// that one: another request may already have looked up the new one, and that
+// one stays.
+func TestOnlyTheAddressBookHomeThatFailedIsForgotten(t *testing.T) {
+	p := &plugin{homeSetCache: map[string]string{testUser: movedHome}}
+	p.forgetHomeSet(testUser, testHome)
+	if got, ok := p.homeSetCache[testUser]; !ok || got != movedHome {
+		t.Errorf("the new home set was dropped for a failure of the old one: cached %q, %v", got, ok)
+	}
+	p.forgetHomeSet(testUser, movedHome)
+	if got, ok := p.homeSetCache[testUser]; ok {
+		t.Errorf("the home set that failed is still cached: %q", got)
+	}
+}
