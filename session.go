@@ -508,7 +508,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 		}
 		s.forgetStoreEntries()
 		if err != nil {
-			s.CloseWithReason("mail-server-unavailable")
+			s.closeForMailConnectError(err)
 			// Wrap with %w so errors.As can still recover an AuthError (bad
 			// credentials), and join the sentinel so handleError tells the
 			// page the mail server is unavailable rather than answering 500.
@@ -555,7 +555,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 		}
 		s.forgetStoreEntries()
 		if reErr != nil {
-			s.CloseWithReason("mail-server-unavailable")
+			s.closeForMailConnectError(reErr)
 			return fmt.Errorf("failed to re-connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, reErr))
 		}
 		s.noteThreadCapability(s.provider)
@@ -564,6 +564,16 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 	}
 
 	return err
+}
+
+// closeForMailConnectError records the reason when credentials are refused.
+func (s *Session) closeForMailConnectError(err error) {
+	var authErr provider.AuthError
+	if errors.As(err, &authErr) {
+		s.CloseWithReason("auth-error")
+	} else {
+		s.CloseWithReason("mail-server-unavailable")
+	}
 }
 
 // doneWithProvider releases the connection lock after an operation. A request
