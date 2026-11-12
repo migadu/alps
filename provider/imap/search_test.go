@@ -135,3 +135,12 @@ func TestSearchFindsAWordInTheBody(t *testing.T) {
 		t.Errorf(`"punched cards" found %q`, got)
 	}
 }
+
+func TestUnclosedPrefixedQuotes(t *testing.T) {
+	for _, query := range []string{`subject:"weekly report`, `header:Subject:"weekly report`} {
+		c := prepareIMAPSearch(query)
+		if len(c.Header) != 1 || c.Header[0].Key != "Subject" || c.Header[0].Value != "weekly report" {
+			t.Errorf("%q: Header = %+v", query, c.Header)
+		}
+	}
+}
