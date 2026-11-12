@@ -2,9 +2,11 @@ package alpscarddav
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,12 +30,18 @@ func TestDAVWireLogsUseConfiguredLoggerAndRotation(t *testing.T) {
 		w.Write([]byte("wire-response"))
 	}))
 	defer endpoint.Close()
-	p := &plugin{srv: srv, debug: true}
-	client := p.httpClient(&alps.Session{})
+	endpointURL, _ := url.Parse(endpoint.URL)
+	p := &plugin{srv: srv, debug: true, url: endpointURL}
+	connection, err := p.connection(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := connection.client
 	send := func(marker string) {
 		t.Helper()
 		req, _ := http.NewRequest("GET", endpoint.URL+"/"+marker, nil)
 		req.Header.Set("Cookie", "request-secret")
+		req.SetBasicAuth("wire-user", "wire-password")
 		resp, err := client.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -49,7 +57,7 @@ func TestDAVWireLogsUseConfiguredLoggerAndRotation(t *testing.T) {
 		if !strings.Contains(string(data), marker) || !strings.Contains(string(data), "wire-response") {
 			t.Errorf("missing request/response traces in configured log: %s", data)
 		}
-		if strings.Contains(string(data), "request-secret") || strings.Contains(string(data), "response-secret") || strings.Contains(string(data), "Basic Og==") {
+		if strings.Contains(string(data), "request-secret") || strings.Contains(string(data), "response-secret") || strings.Contains(string(data), "Basic ") {
 			t.Errorf("credentials leaked: %s", data)
 		}
 		scanner := bufio.NewScanner(strings.NewReader(string(data)))
