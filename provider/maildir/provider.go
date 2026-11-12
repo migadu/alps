@@ -90,7 +90,7 @@ func (p *Provider) openBox(name string) (box, error) {
 // names joined by the delimiter, none of them empty, and no path separator
 // or NUL. With that, "." and its name stay one entry of the maildir.
 func folderName(name string) bool {
-	if name == "" || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") || strings.Contains(name, "..") {
+	if name == "" || name == "*" || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") || strings.Contains(name, "..") {
 		return false
 	}
 	return !strings.ContainsAny(name, "/\\\x00")
