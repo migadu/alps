@@ -314,6 +314,10 @@ func (s *Session) RefreshLinkedCredentials(newPassword string) (failed int) {
 		return 0
 	}
 
+	if len(accounts.Accounts) == 0 {
+		return 0
+	}
+
 	newEncrypted, err := s.EncryptPassword(newPassword)
 	if err != nil {
 		s.manager.logger.Printf("linked accounts: cannot encrypt the new password: %v", err)
