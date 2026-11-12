@@ -69,6 +69,14 @@ describe('the calendar page', () => {
 
     const shown = (el: El) => el.events.filter((event: any) => el.isShown(event)).map((event: any) => event.summary);
 
+    it('warns when some event calendars could not be read', async () => {
+        const { el, events } = await calendarPage();
+        events.mockResolvedValueOnce({ events: [], failedCalendars: 1 });
+        const toasts = record<CustomEvent>(window, 'show-toast');
+        await el.fetchData();
+        expect(toasts.map(t => t.detail.message)).toContain('calendar.someCalendarsFailed');
+    });
+
     it('draws the open tasks, and asks only for open ones', async () => {
         const { el, fetchTasks } = await calendarPage();
         expect(fetchTasks).toHaveBeenCalledWith('active');
