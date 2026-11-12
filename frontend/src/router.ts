@@ -94,7 +94,9 @@ export class Router implements ReactiveController {
   matchKey(path: string): string | null {
     if (this.routes[path]) return path;
     for (const route in this.routes) {
-      if (route.endsWith('/*') && path.startsWith(route.replace('/*', ''))) return route;
+      if (!route.endsWith('/*')) continue;
+      const prefix = route.slice(0, -2);
+      if (path === prefix || path.startsWith(`${prefix}/`)) return route;
     }
     return null;
   }

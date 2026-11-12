@@ -41,6 +41,15 @@ describe('Router', () => {
     expect(router().render()).toBe('settings-section');
   });
 
+  it('matches wildcard routes only at segment boundaries', () => {
+    const r = router();
+    expect(r.render('/mailboxes')).toBe('not-found');
+    expect(r.render('/settingsx')).toBe('not-found');
+    expect(r.render('/mailbox')).toBe('mailbox');
+    const plugins = new Router({ '/cal/*': () => 'cal', '/calendar/*': () => 'calendar' }, () => 'missing', () => {});
+    expect(plugins.render('/calendar/month')).toBe('calendar');
+  });
+
   it('ignores the query string', () => {
     window.location.hash = '#/mailbox/INBOX?q=quarterly';
     const r = router();

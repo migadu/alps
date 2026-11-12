@@ -52,6 +52,17 @@ const headerTab = (el: El, id: string) =>
 const menuEntry = (el: El, id: string) =>
   Array.from(el.shadowRoot!.querySelectorAll<HTMLElement>('.dropdown-item')).find(item => item.textContent?.includes(`navigation.${id}`));
 
+describe('header route boundaries', () => {
+  it('does not select a tab for a longer path segment', async () => {
+    const el = await on('#/contactsx', 'app-header');
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(el.currentTab).toBe('messages');
+    history.replaceState(null, '', '#/calendarx');
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(el.currentTab).toBe('messages');
+  });
+});
+
 describe('matchesTabRoute', () => {
   it('matches a tab route on a segment boundary, not a bare prefix', () => {
     expect(matchesTabRoute('#/tasks', 'tasks')).toBe(true);
