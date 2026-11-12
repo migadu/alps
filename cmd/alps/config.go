@@ -110,8 +110,8 @@ type ServerConfig struct {
 	SessionMinutes          int             `toml:"session_minutes"`            // Session timeout in minutes (default: 30)
 	MaxSessionMinutes       int             `toml:"max_session_minutes"`        // Maximum session duration users can set (0 = no limit)
 	AbsoluteSessionHours    int             `toml:"absolute_session_hours"`     // Hard ceiling on a session's total life regardless of activity (default: 168 = 7 days; -1 disables)
-	MaxSessions             int             `toml:"max_sessions"`               // Maximum total concurrent sessions (0 = unlimited, default: 10000)
-	MaxSessionsPerUser      int             `toml:"max_sessions_per_user"`      // Maximum sessions per username (0 = unlimited, default: 10)
+	MaxSessions             int             `toml:"max_sessions"`               // Maximum total concurrent sessions (default: 10000, also for 0; a negative value, such as -1, disables the cap)
+	MaxSessionsPerUser      int             `toml:"max_sessions_per_user"`      // Maximum sessions per username (default: 10, also for 0; a negative value, such as -1, disables the cap)
 	MaxAttachmentMiB        int             `toml:"max_attachment_mib"`         // Max attachment size per composer in MiB (default: 32)
 	MaxSessionAttachmentMiB int             `toml:"max_session_attachment_mib"` // Max attachment size per session in MiB (default: 128)
 	MaxGlobalAttachmentMiB  int             `toml:"max_global_attachment_mib"`  // Max global attachment size in MiB (default: 1024)
@@ -467,11 +467,18 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		options.AbsoluteSessionDuration = time.Duration(c.Server.AbsoluteSessionHours) * time.Hour
 	}
 
-	// Set session limit config
-	if c.Server.MaxSessions > 0 {
+	// Set session limit config. 0 keeps the default, as it does for the
+	// settings around it. A negative value turns that cap off, as it does for
+	// absolute_session_hours, and reaches the session manager as 0, its "no
+	// cap".
+	if c.Server.MaxSessions < 0 {
+		options.MaxSessions = 0
+	} else if c.Server.MaxSessions > 0 {
 		options.MaxSessions = c.Server.MaxSessions
 	}
-	if c.Server.MaxSessionsPerUser > 0 {
+	if c.Server.MaxSessionsPerUser < 0 {
+		options.MaxSessionsPerUser = 0
+	} else if c.Server.MaxSessionsPerUser > 0 {
 		options.MaxSessionsPerUser = c.Server.MaxSessionsPerUser
 	}
 

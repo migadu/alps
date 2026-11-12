@@ -377,8 +377,8 @@ type Options struct {
 	// the default (7 days); negative disables the cap entirely, which leaves
 	// sessions sliding forever — see defaultAbsoluteSessionDuration.
 	AbsoluteSessionDuration time.Duration
-	MaxSessions             int                     // Maximum total concurrent sessions, 0 means unlimited (default: 10000)
-	MaxSessionsPerUser      int                     // Maximum sessions per username, 0 means unlimited (default: 10)
+	MaxSessions             int                     // Maximum total concurrent sessions, 0 means unlimited; the config gives 10000 unless max_sessions is set, and 0 for a negative one
+	MaxSessionsPerUser      int                     // Maximum sessions per username, 0 means unlimited; the config gives 10 unless max_sessions_per_user is set, and 0 for a negative one
 	MaxAttachmentMiB        int                     // Max attachment size per composer in MiB
 	MaxSessionAttachmentMiB int                     // Max attachment size per session in MiB
 	MaxGlobalAttachmentMiB  int                     // Max global attachment size in MiB

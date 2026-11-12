@@ -1239,8 +1239,8 @@ type SessionManager struct {
 	sessionDuration          time.Duration
 	maxSessionDuration       time.Duration
 	absoluteSessionDuration  time.Duration
-	maxSessions              int   // Maximum total sessions (0 = unlimited)
-	maxSessionsPerUser       int   // Maximum sessions per username (0 = unlimited)
+	maxSessions              int   // Maximum total sessions (0 = unlimited, which a negative max_sessions in the config gives)
+	maxSessionsPerUser       int   // Maximum sessions per username (0 = unlimited, which a negative max_sessions_per_user in the config gives)
 	maxAttachmentSize        int64 // Max attachment size per composer in bytes
 	maxSessionAttachmentSize int64 // Max attachment size per session in bytes
 	maxGlobalAttachmentSize  int64 // Max global attachment size in bytes
