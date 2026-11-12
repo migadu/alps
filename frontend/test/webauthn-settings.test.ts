@@ -88,6 +88,14 @@ async function submit(el: Pane, password: string): Promise<void> {
 }
 
 describe('removing a security key asks for the password', () => {
+
+  it('explains a temporary key-store outage when adding a credential', async () => {
+    const el = await pane();
+    removals.push(json(503, { error: 'keys_unavailable' }));
+    await (el as unknown as { addCredential(): Promise<void> }).addCredential();
+    await el.updateComplete;
+    expect((el as unknown as { error: string }).error).toBe('webauthn.errors.load_failed');
+  });
   it('opens a destructive prompt with a password field, not a bare confirm', async () => {
     const el = await pane();
     const host = await openRemove(el);
