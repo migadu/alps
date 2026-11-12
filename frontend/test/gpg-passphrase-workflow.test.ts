@@ -557,3 +557,23 @@ describe('generated key identities without a resolved email address', () => {
     expect(pgp.generateKey).toHaveBeenCalledWith(expect.objectContaining({ userIDs: [userID] }));
   });
 });
+
+describe('the reader passphrase dialog heading', () => {
+  it('uses the translated visible heading instead of an HTML tooltip', async () => {
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"encrypted_private_key":"protected-key"}')));
+    pgp.readPrivateKey.mockResolvedValueOnce({ isDecrypted: () => false });
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage('de');
+    const pending = handleReaderContent({ content: '-----BEGIN PGP MESSAGE-----\nx\n-----END PGP MESSAGE-----', banners: [], i18nStore });
+    await waitFor(() => !!document.querySelector('ui-prompt'), 'the reader passphrase prompt');
+    const prompt = document.querySelector('ui-prompt') as El;
+    await prompt.updateComplete;
+    const modal = shadow<El>(prompt, 'ui-modal');
+    expect(modal.heading).toBe(i18nStore.t('gpg.passphraseRequired'));
+    expect(prompt.title).toBe('');
+    prompt.dispatchEvent(new CustomEvent('cancel'));
+    await pending;
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+  });
+});
