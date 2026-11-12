@@ -7,7 +7,9 @@ import (
 	"crypto/sha512"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -50,6 +52,10 @@ func authenticate(passwdFile, username, password string) (string, error) {
 		}
 
 		if err := verifyHash(password, hash); err != nil {
+			var format *unsupportedPasswordFormat
+			if errors.As(err, &format) {
+				log.Printf("alps/provider/maildir: warning: user %q has unsupported password scheme %s", username, format.scheme)
+			}
 			return "", ErrInvalidCredentials
 		}
 
@@ -61,6 +67,12 @@ func authenticate(passwdFile, username, password string) (string, error) {
 	}
 
 	return "", ErrInvalidCredentials
+}
+
+type unsupportedPasswordFormat struct{ scheme string }
+
+func (e *unsupportedPasswordFormat) Error() string {
+	return "unsupported password scheme or digest format: " + e.scheme
 }
 
 func verifyHash(password, hash string) error {
@@ -84,8 +96,11 @@ func verifyHash(password, hash string) error {
 		if strings.HasPrefix(hash, "$2a$") || strings.HasPrefix(hash, "$2b$") || strings.HasPrefix(hash, "$2y$") || strings.HasPrefix(hash, "$2x$") {
 			return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 		}
-		return fmt.Errorf("unsupported crypt scheme: %s", hash)
+		return &unsupportedPasswordFormat{scheme: scheme}
 	case "{MD5}":
+		if digest, err := hex.DecodeString(hash); err != nil || len(digest) != 16 {
+			return &unsupportedPasswordFormat{scheme: scheme}
+		}
 		sum := md5.Sum([]byte(password))
 		got := hex.EncodeToString(sum[:])
 		if subtle.ConstantTimeCompare([]byte(got), []byte(strings.ToLower(hash))) != 1 {
@@ -93,6 +108,9 @@ func verifyHash(password, hash string) error {
 		}
 		return nil
 	case "{SHA256}":
+		if digest, err := hex.DecodeString(hash); err != nil || len(digest) != 32 {
+			return &unsupportedPasswordFormat{scheme: scheme}
+		}
 		sum := sha256.Sum256([]byte(password))
 		got := hex.EncodeToString(sum[:])
 		if subtle.ConstantTimeCompare([]byte(got), []byte(strings.ToLower(hash))) != 1 {
@@ -100,6 +118,9 @@ func verifyHash(password, hash string) error {
 		}
 		return nil
 	case "{SHA512}":
+		if digest, err := hex.DecodeString(hash); err != nil || len(digest) != 64 {
+			return &unsupportedPasswordFormat{scheme: scheme}
+		}
 		sum := sha512.Sum512([]byte(password))
 		got := hex.EncodeToString(sum[:])
 		if subtle.ConstantTimeCompare([]byte(got), []byte(strings.ToLower(hash))) != 1 {
@@ -107,6 +128,6 @@ func verifyHash(password, hash string) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("unsupported hash scheme: %s", scheme)
+		return &unsupportedPasswordFormat{scheme: scheme}
 	}
 }
