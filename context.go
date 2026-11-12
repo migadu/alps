@@ -332,9 +332,6 @@ func (c *Context) SetLoginToken(username, password string, verified2FA bool, per
 		return
 	}
 
-	frontendCookie.Value = "1"
-	c.SetCookie(&frontendCookie)
-
 	loginToken := loginToken{
 		Version:     loginTokenVersion,
 		Username:    username,
@@ -348,17 +345,21 @@ func (c *Context) SetLoginToken(username, password string, verified2FA bool, per
 	}
 	fkey := c.Server.Options.LoginKey
 	if fkey == nil {
+		c.SetLoginToken("", "", false, false)
 		return
 	}
 
 	bytes, err := fernet.EncryptAndSign(payload, fkey)
 	if err != nil {
 		log.Printf("Warning: login token encryption failed: %v", err)
+		c.SetLoginToken("", "", false, false)
 		return
 	}
 
 	cookie.Value = string(bytes)
 	c.SetCookie(&cookie)
+	frontendCookie.Value = "1"
+	c.SetCookie(&frontendCookie)
 }
 
 func (c *Context) GetLoginToken() (string, string, bool, bool) {
