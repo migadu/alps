@@ -73,16 +73,17 @@ const certificateHandshakeTimeout = 2 * time.Minute
 
 // Manager orchestrates TLS certificate management using Let's Encrypt.
 type Manager struct {
-	config          *Config
-	autocertManager *autocert.Manager
-	logger          *slog.Logger
-	domains         []string
-	defaultDomain   string                  // Default domain for SNI-less connections
-	syncWorker      *storage.CertSyncWorker // Periodic S3 sync worker (nil if not using S3)
-	tlsConfig       *tls.Config             // Cached TLS config
-	fallbackCache   *storage.FallbackCache  // Retained for follower refresh / warmer S3-health checks (nil unless S3 storage)
-	isLeader        func() bool             // Cluster leadership; nil in single-instance mode
-	warmer          *certWarmer             // Proactive issuance/renewal loop (nil unless Let's Encrypt)
+	config           *Config
+	autocertManager  *autocert.Manager
+	logger           *slog.Logger
+	domains          []string
+	defaultDomain    string                  // Default domain for SNI-less connections
+	syncWorker       *storage.CertSyncWorker // Periodic S3 sync worker (nil if not using S3)
+	tlsConfig        *tls.Config             // Cached TLS config
+	fallbackCache    *storage.FallbackCache  // Retained for follower refresh / warmer S3-health checks (nil unless S3 storage)
+	isLeader         func() bool             // Cluster leadership; nil in single-instance mode
+	warmer           *certWarmer             // Proactive issuance/renewal loop (nil unless Let's Encrypt)
+	certificateClock func() time.Time        // Optional clock for deterministic certificate-status checks
 }
 
 // NewManager creates a new TLS manager.
@@ -297,6 +298,10 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 		cert, err := originalGetCert(&modifiedHello)
 		if err != nil {
 			m.logger.Error("TLS: failed to get certificate", "server_name", serverName, "error", err)
+			return nil, fmt.Errorf("%w for %s: %v", ErrCertificateUnavailable, serverName, err)
+		}
+		if err := m.validateCertificate(cert); err != nil {
+			m.logger.Error("TLS: cached certificate is not valid", "server_name", serverName, "error", err)
 			return nil, fmt.Errorf("%w for %s: %v", ErrCertificateUnavailable, serverName, err)
 		}
 		return cert, nil
