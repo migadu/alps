@@ -3,7 +3,6 @@ package cluster
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // lockedBuffer collects a node's log; memberlist logs from its own goroutines.
@@ -60,32 +60,16 @@ func joinedPair(t *testing.T) (a, b *Cluster, log *lockedBuffer) {
 	return a, b, log
 }
 
-// fakeHosts answers lookups from a fixed table, so no test depends on DNS.
-func fakeHosts(table map[string][]net.IP) func(context.Context, string) ([]net.IP, error) {
-	return func(_ context.Context, host string) ([]net.IP, error) {
-		if ips, ok := table[host]; ok {
-			return ips, nil
-		}
-		return nil, errors.New("no such host")
-	}
-}
-
-func TestMissingPeersReadsPeersAsMemberlistJoinDoes(t *testing.T) {
+func TestMissingPeersSkipsOnlyLiteralMemberAddresses(t *testing.T) {
 	a, b, _ := joinedPair(t)
 	portB := strconv.Itoa(int(b.ml.LocalNode().Port))
-	a.lookupIP = fakeHosts(map[string][]net.IP{
-		"node-b.test":    {net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
-		"elsewhere.test": {net.ParseIP("127.0.0.9")},
-	})
 	// In production every node uses the same gossip port, which is what a peer
 	// without a port gets. Give a's default b's port to stand for that.
 	a.peerPort = int(b.ml.LocalNode().Port)
 
 	present := []string{
 		"127.0.0.1:" + portB,          // the form memberlist reports
-		"node-b.test:" + portB,        // a host name; one of its addresses is b
 		"127.0.0.1",                   // no port: the bind port is used
-		"node-b.test",                 // a host name without a port
 		"forms-b/127.0.0.1:" + portB,  // memberlist's optional node name prefix
 		"127.0.0.1:0" + portB,         // a port with a leading zero
 		"[::ffff:127.0.0.1]:" + portB, // the same IPv4 address, IPv6-mapped
@@ -97,14 +81,16 @@ func TestMissingPeersReadsPeersAsMemberlistJoinDoes(t *testing.T) {
 	}
 
 	absent := []string{
-		"127.0.0.1:1",             // nobody's port
-		"elsewhere.test:" + portB, // resolves, but to no member
-		"unknown.test:" + portB,   // does not resolve: left for Join to report
-		"127.0.0.1:99999",         // not a port
+		"127.0.0.1:1",                // nobody's port
+		"127.0.0.9:" + portB,         // a literal address belonging to no member
+		"127.0.0.1:99999",            // not a port
+		"localhost:" + portB,         // even a known hostname can discover new nodes
+		"localhost",                  // a hostname without a port
+		"forms-b/localhost:" + portB, // a hostname with memberlist's node name prefix
 	}
 	for _, peer := range absent {
 		if missing := a.missingPeers([]string{peer}); len(missing) != 1 || missing[0] != peer {
-			t.Errorf("peer %q is no member, missingPeers = %q", peer, missing)
+			t.Errorf("peer %q needs a join attempt, missingPeers = %q", peer, missing)
 		}
 	}
 
@@ -113,18 +99,86 @@ func TestMissingPeersReadsPeersAsMemberlistJoinDoes(t *testing.T) {
 	}
 }
 
-// A healthy cluster whose peers are written as host names must not be joined
-// again, nor log that it rejoined, every time the rejoin loop runs.
-func TestTryRejoinLeavesMembersWrittenAsHostNamesAlone(t *testing.T) {
+// localhost is a real DNS seed for two distinct nodes on hosts that provide
+// both loopbacks. Capability checks may skip the test; once they pass, every
+// failure to start or discover a node is a test failure.
+func TestTryRejoinDiscoversEveryNodeBehindDNSSeed(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", "localhost")
+	if err != nil {
+		t.Skipf("localhost lookup unavailable: %v", err)
+	}
+	var ipv4, ipv6 bool
+	for _, ip := range ips {
+		ipv4 = ipv4 || ip.Equal(net.ParseIP("127.0.0.1"))
+		ipv6 = ipv6 || ip.Equal(net.ParseIP("::1"))
+	}
+	if !ipv4 || !ipv6 {
+		t.Skipf("localhost must resolve to both loopbacks, got %v", ips)
+	}
+	tcp, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 TCP loopback unavailable: %v", err)
+	}
+	tcp.Close()
+	udp, err := net.ListenPacket("udp6", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 UDP loopback unavailable: %v", err)
+	}
+	udp.Close()
+
+	a, err := NewCluster(Config{NodeName: "dns-a", BindAddr: "127.0.0.1", BindPort: 0, AllowInsecure: true, Logger: testLogger()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { a.Shutdown() })
+	b, err := NewCluster(Config{NodeName: "dns-b", BindAddr: "::1", BindPort: int(a.ml.LocalNode().Port), AllowInsecure: true, Logger: testLogger()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { b.Shutdown() })
+	peer := net.JoinHostPort("localhost", strconv.Itoa(int(a.ml.LocalNode().Port)))
+	a.tryRejoin([]string{peer})
+	if a.NumMembers() != 2 {
+		t.Errorf("rejoin left %d members, want 2", a.NumMembers())
+	}
+	// Prove that memberlist can resolve the same seed and reach both nodes.
+	if _, err := a.ml.Join([]string{peer}); err != nil {
+		t.Fatal(err)
+	}
+	if a.NumMembers() != 2 {
+		t.Fatalf("direct Join left %d members, want 2", a.NumMembers())
+	}
+}
+
+// A hostname remains a discovery seed even when it reaches a known member.
+// A join that adds no members is routine and must not produce an info log.
+func TestTryRejoinChecksHostNamesWithoutLoggingMembershipGrowth(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", "localhost")
+	if err != nil {
+		t.Skipf("localhost lookup unavailable: %v", err)
+	}
+	var ipv4 bool
+	for _, ip := range ips {
+		ipv4 = ipv4 || ip.Equal(net.ParseIP("127.0.0.1"))
+	}
+	if !ipv4 {
+		t.Skipf("localhost must resolve to the IPv4 loopback, got %v", ips)
+	}
 	a, b, log := joinedPair(t)
 	portB := strconv.Itoa(int(b.ml.LocalNode().Port))
-	a.lookupIP = fakeHosts(map[string][]net.IP{"node-b.test": {net.ParseIP("127.0.0.1")}})
 
 	for i := 0; i < 3; i++ {
-		a.tryRejoin([]string{"node-b.test:" + portB})
+		a.tryRejoin([]string{"localhost:" + portB})
 	}
-	if strings.Contains(log.String(), "cluster rejoin") {
-		t.Errorf("tried to rejoin a member written as a host name:\n%s", log.String())
+	if strings.Contains(log.String(), "cluster rejoined peers") {
+		t.Errorf("a join that added no members was logged as a rejoin:\n%s", log.String())
+	}
+	if !strings.Contains(log.String(), "cluster rejoin found no new members") {
+		t.Errorf("a known hostname was not checked for new members:\n%s", log.String())
 	}
 	if a.NumMembers() != 2 {
 		t.Errorf("a sees %d members, want 2", a.NumMembers())
