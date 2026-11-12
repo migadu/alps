@@ -1627,7 +1627,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 			return nil
 		})
 		var limited *provider.LimitError
-		if errors.As(err, &limited) {
+		if !errors.Is(err, alps.ErrMailProviderUnavailable) && errors.As(err, &limited) {
 			return searchRateLimited(ctx, limited)
 		}
 		if err != nil {
