@@ -4,7 +4,17 @@ import (
 	"errors"
 	"github.com/migadu/alps/provider"
 	"testing"
+	"time"
 )
+
+type filteredResourceProviderOptions struct{}
+
+func (filteredResourceProviderOptions) Type() string { return "filter-test" }
+func (filteredResourceProviderOptions) CreateFactory(time.Duration, bool) provider.AuthenticatedProviderFactory {
+	return func(string, string) (provider.MailProvider, error) {
+		return nil, errors.New("unexpected authentication during startup")
+	}
+}
 
 type filteredResourcePlugin struct {
 	name   string
@@ -22,7 +32,7 @@ func TestFilteredPluginIsReleasedBeforeStartupCompletes(t *testing.T) {
 	base := &filteredResourcePlugin{name: "base"}
 	dropped := &filteredResourcePlugin{name: "dropped", err: errors.New("cleanup failed")}
 	pluginLoaders = []PluginLoaderFunc{func(*Server) ([]Plugin, error) { return []Plugin{base, dropped}, nil }}
-	s, err := New(&NilLogger{}, &Options{Provider: &provider.MockOptions{}, SMTP: SMTPOptions{Server: "smtps://example.com"}, EnabledPlugins: []string{"base"}})
+	s, err := New(&NilLogger{}, &Options{Provider: filteredResourceProviderOptions{}, SMTP: SMTPOptions{Server: "smtps://example.com"}, EnabledPlugins: []string{"base"}})
 	if err != nil {
 		t.Fatal(err)
 	}
