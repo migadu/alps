@@ -3,6 +3,7 @@ package managesieve
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -31,11 +32,20 @@ type ScriptPayload struct {
 // UI — the shape 6cdf808 corrected for the mailbox verbs.
 //
 // The script VALIDATION errors are deliberately left as they are: those are
-// produced locally by go-sieve against content the user just typed, and they
+// returned by the server against content the user just typed, and they
 // are the whole point of the editor.
 func sieveError(ctx *alps.Context, op string, err error) error {
 	ctx.Server.Logger().Printf("managesieve: failed to %s: %v", op, err)
 	return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "sieve_unavailable"})
+}
+
+// Script refusals are diagnostics for the editor; transport errors remain opaque.
+func scriptValidationError(ctx *alps.Context, op string, err error) error {
+	var refused *serverRefusal
+	if errors.As(err, &refused) {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Sieve script: " + refused.response})
+	}
+	return sieveError(ctx, op, err)
 }
 
 func activeScript(scripts []Script) string {
@@ -161,10 +171,6 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 	}
 	defer c.Close()
 
-	// Extract allowed extensions from capabilities
-	sieveCaps := c.capabilities["SIEVE"]
-	allowedExts := strings.Fields(sieveCaps)
-
 	if strings.TrimSpace(payload.Content) == "" {
 		scripts, err := c.ListScripts()
 		if err != nil {
@@ -189,11 +195,7 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusOK, map[string]string{"message": "Script deactivated successfully"})
 	}
 
-	// Validate the script
-	if err := ValidateScript(payload.Content, allowedExts); err != nil {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Sieve script: " + err.Error()})
-	}
-
+	// PUTSCRIPT validates with the server's complete grammar and extensions.
 	// Edit the currently active script in place rather than creating a
 	// separate one. Only fall back to a name of alps's own when the account
 	// has no active script.
@@ -210,7 +212,7 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 
 	// Upload the script
 	if err := c.PutScript(name, payload.Content); err != nil {
-		return sieveError(ctx, "upload script", err)
+		return scriptValidationError(ctx, "upload script", err)
 	}
 
 	// Activate it
@@ -268,11 +270,8 @@ func (p *plugin) handleValidate(ctx *alps.Context) error {
 	}
 	defer c.Close()
 
-	sieveCaps := c.capabilities["SIEVE"]
-	allowedExts := strings.Fields(sieveCaps)
-
-	if err := ValidateScript(payload.Content, allowedExts); err != nil {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Sieve script: " + err.Error()})
+	if err := c.CheckScript(payload.Content); err != nil {
+		return scriptValidationError(ctx, "validate script", err)
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"message": "Script is valid"})

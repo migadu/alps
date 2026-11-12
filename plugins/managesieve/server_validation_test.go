@@ -3,6 +3,7 @@ package managesieve
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -45,4 +46,40 @@ func TestServerScriptRefusalIsAValidationDiagnostic(t *testing.T) {
 	account := &sieveAccount{validationErr: "line 2: unknown action"}
 	client, base := signedIn(t, account.listen(t))
 	checkScriptHTTP(t, client, base, "require [\"include\"];\nbad;", http.StatusBadRequest, "line 2: unknown action")
+}
+
+func TestCheckScriptSendsTheFullLiteral(t *testing.T) {
+	content := "require [\"include\"];\ninclude \"common\";\n"
+	got := commandSent(t, func(c *MSClient) {
+		if err := c.CheckScript(content); err != nil {
+			t.Error(err)
+		}
+	})
+	want := fmt.Sprintf("CHECKSCRIPT {%d+}\r\n%s\r\n", len(content), content)
+	if got != want {
+		t.Fatalf("sent %q, want %q", got, want)
+	}
+}
+func TestUploadRefusalKeepsThePreviousScriptActive(t *testing.T) {
+	account := &sieveAccount{validationErr: "line 2: rejected action"}
+	account.store("active", "keep;")
+	account.active = "active"
+	client, base := signedIn(t, account.listen(t))
+	data, _ := json.Marshal(ScriptPayload{Content: "require [\"include\"];\nbad;"})
+	req, _ := http.NewRequest("PUT", base+"/managesieve/script", bytes.NewReader(data))
+	req.Header.Set("Origin", base)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), "line 2: rejected action") {
+		t.Fatalf("status %d: %s", res.StatusCode, body)
+	}
+	scripts, active := account.held()
+	if active != "active" || scripts[active] != "keep;" {
+		t.Fatal("rejected upload changed active script")
+	}
 }

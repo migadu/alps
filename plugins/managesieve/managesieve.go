@@ -212,6 +212,19 @@ func (c *MSClient) PutScript(name, content string) error {
 	return c.readResponse()
 }
 
+// CheckScript asks the server to validate without storing or activating a script.
+func (c *MSClient) CheckScript(content string) error {
+	if err := c.sendCommand(fmt.Sprintf("CHECKSCRIPT {%d+}\r\n%s", len(content), content)); err != nil {
+		return err
+	}
+	return c.readResponse()
+}
+
+// serverRefusal distinguishes a protocol NO from a failed connection.
+type serverRefusal struct{ response string }
+
+func (e *serverRefusal) Error() string { return e.response }
+
 func (c *MSClient) SetActive(name string) error {
 	// An empty name switches every script off.
 	if err := c.sendCommand("SETACTIVE " + sieveString(name)); err != nil {
@@ -301,7 +314,10 @@ func (c *MSClient) readResponse() error {
 		if strings.HasPrefix(line, "OK") {
 			return nil
 		}
-		if strings.HasPrefix(line, "NO") || strings.HasPrefix(line, "BYE") {
+		if strings.HasPrefix(line, "NO") {
+			return &serverRefusal{response: line}
+		}
+		if strings.HasPrefix(line, "BYE") {
 			return fmt.Errorf("server error: %s", line)
 		}
 

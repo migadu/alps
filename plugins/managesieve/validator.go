@@ -6,8 +6,8 @@ import (
 	"github.com/migadu/go-sieve"
 )
 
-// ValidateScript uses the internal go-sieve library to parse the script and
-// check for syntax and extension support errors.
+// ValidateScript provides optional local parsing for consumers. HTTP saves and
+// validation use the ManageSieve server, whose extension support is authoritative.
 func ValidateScript(scriptContent string, allowedExtensions []string) error {
 	opts := sieve.DefaultOptions()
 
