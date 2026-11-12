@@ -245,7 +245,7 @@ func newHarnessWrapping(t *testing.T, wrap func(http.Handler) http.Handler) *har
 		Provider: popt,
 		SMTP:     alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
 		LoginKey: &key,
-		Plugins:  map[string]alps.PluginConfig{"carddav": {Server: davServer.URL}},
+		Plugins:  map[string]alps.PluginConfig{"carddav": {Enabled: true, Server: davServer.URL}},
 	}
 	srv, err := alps.New(alps.NewLogger(), opts)
 	if err != nil {

@@ -248,6 +248,26 @@ func (s *Server) parseSMTPServer() error {
 	return nil
 }
 
+// PluginEnabled applies explicit per-plugin switches and the optional allow-list.
+// The base plugin provides the core routes and is always required.
+func (s *Server) PluginEnabled(name string) bool {
+	if name == "base" || s.Options == nil {
+		return true
+	}
+	if cfg, exists := s.Options.Plugins[name]; exists && !cfg.Enabled {
+		return false
+	}
+	if len(s.Options.EnabledPlugins) == 0 {
+		return true
+	}
+	for _, enabled := range s.Options.EnabledPlugins {
+		if enabled == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) loadPlugins() error {
 	var plugins []Plugin
 	for _, load := range pluginLoaders {
@@ -256,19 +276,9 @@ func (s *Server) loadPlugins() error {
 			return fmt.Errorf("failed to load plugins: %v", err)
 		}
 		for _, p := range l {
-			// Filter plugins based on EnabledPlugins list
-			if len(s.Options.EnabledPlugins) > 0 {
-				enabled := false
-				for _, name := range s.Options.EnabledPlugins {
-					if p.Name() == name {
-						enabled = true
-						break
-					}
-				}
-				if !enabled {
-					s.logger.Printf("Plugin %q is disabled (not in enabled list)", p.Name())
-					continue
-				}
+			if !s.PluginEnabled(p.Name()) {
+				s.logger.Printf("Plugin %q is disabled", p.Name())
+				continue
 			}
 			s.logger.Printf("Loaded plugin %q", p.Name())
 			plugins = append(plugins, p)
