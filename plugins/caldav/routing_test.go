@@ -103,7 +103,7 @@ func TestNewPluginWithoutGlobalServer(t *testing.T) {
 	srv := stubServer(routerStub{
 		service: provider.ServiceCalDAV, user: "routed@example.com", url: "https://cal.routed.example",
 	})
-	srv.Options.Plugins = map[string]alps.PluginConfig{"caldav": {}}
+	srv.Options.Plugins = map[string]alps.PluginConfig{"caldav": {Enabled: true}}
 	pl, err := newPlugin(srv)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
