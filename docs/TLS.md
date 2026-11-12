@@ -117,7 +117,7 @@ A warm pass makes sure every listed domain has a certificate and requests one wh
 - A single node runs the passes itself. In a cluster only the leader runs them. A node checks every 15 seconds whether it has become leader, and runs a pass when it has.
 - With S3 storage, a pass is put off while the node is pausing S3 after an error (30 seconds, see [S3 Storage](#s3-storage-multi-node--cluster)), and retried after that pause.
 
-A handshake for a listed domain that has no certificate yet also starts issuance on demand.
+A handshake for a listed domain that has no certificate yet also starts issuance on demand. Once its ClientHello names a listed domain, that handshake has two minutes, separate from `[server] read_timeout_sec`, for the certificate to be found or ordered and for the rest of the handshake, so the first visit can wait out a slow order. The ClientHello itself, and the HTTP request after the handshake, keep the server's usual timeouts.
 
 A node keeps a certificate in memory once it has loaded it, at the first handshake or warm pass that needs it. Its renewal comes due when the certificate has min(30 days, one third of its lifetime) left, or up to an hour after that. A renewal first reads the store again and takes a stored copy that is not yet due for renewal itself, instead of ordering a new one. A renewal that fails is tried again 30 to 60 minutes later, and the current certificate is served meanwhile.
 

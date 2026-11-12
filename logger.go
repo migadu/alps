@@ -65,6 +65,8 @@ func NewDevelopmentLogger() Logger {
 	})
 }
 
+var syslogWriterFactory = newSyslogWriter
+
 // NewLoggerWithOptions creates a logger with custom options.
 func NewLoggerWithOptions(opts LoggerOptions) Logger {
 	level := &slog.LevelVar{}
@@ -82,7 +84,7 @@ func NewLoggerWithOptions(opts LoggerOptions) Logger {
 		writer = os.Stderr
 	case "syslog":
 		// Use syslog for output
-		syslogWriter, err := newSyslogWriter()
+		syslogWriter, err := syslogWriterFactory()
 		if err != nil {
 			// Fallback to stderr if syslog fails
 			fmt.Fprintf(os.Stderr, "Failed to connect to syslog: %v, falling back to stderr\n", err)
@@ -104,6 +106,12 @@ func NewLoggerWithOptions(opts LoggerOptions) Logger {
 		}
 	}
 
+	var syslogState *syslogHandlerState
+	if sink, ok := writer.(syslogSeverityWriter); opts.Output == "syslog" && ok {
+		syslogState = &syslogHandlerState{sink: sink}
+		writer = syslogState
+	}
+
 	// Determine handler format
 	var handler slog.Handler
 	if opts.Format == "json" {
@@ -114,6 +122,10 @@ func NewLoggerWithOptions(opts LoggerOptions) Logger {
 		handler = slog.NewTextHandler(writer, &slog.HandlerOptions{
 			Level: level,
 		})
+	}
+
+	if syslogState != nil {
+		handler = &syslogHandler{Handler: handler, state: syslogState}
 	}
 
 	return &logger{

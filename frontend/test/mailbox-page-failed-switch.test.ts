@@ -116,6 +116,9 @@ async function failedSwitch(el: El, hash: string) {
 }
 
 beforeEach(() => {
+  // Each test represents a fresh signed-in session, with no retained edits or listings.
+  window.dispatchEvent(new Event('session-cleared'));
+  localStorage.clear();
   history.replaceState(null, '', '#/mailbox/INBOX');
   vi.spyOn(console, 'error').mockImplementation(() => {});
   onlyTheInboxAnswers();

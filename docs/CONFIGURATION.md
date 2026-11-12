@@ -50,7 +50,7 @@ Caps the number of concurrent sessions, which bounds the memory the sessions hol
 ### 1.3 Attachment Limits
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `max_attachment_mib` | Integer | `32` | Max attachment size per composer instance. |
+| `max_attachment_mib` | Integer | `32` | Upper bound on raw attachment size per composer; reduced for advertised upstream message limits and MIME overhead. |
 | `max_session_attachment_mib` | Integer | `128` | Max total attachment size uploaded across all composers in a single session. |
 | `max_global_attachment_mib` | Integer | `1024` | Max total attachment size stored on the server across all users. |
 

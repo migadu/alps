@@ -1356,3 +1356,27 @@ describe('a quote deleted from an HTML reply', () => {
     expect(sentForm(1).get('html')).not.toContain('cid:chart@remote.test');
   });
 });
+
+describe('a message refused for its size', () => {
+  it.each(['autosave', 'close', 'deferred close', 'send'])('keeps the draft and explains the refusal during %s', async action => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'message_too_large', code: 'message_too_large' }), { status: 413 })));
+    const { store, instance, id } = composerIn({ dirty: true, closing: action === 'deferred close', text: 'Keep this message.', attachments: [{ uuid: 'u1', filename: 'report.txt', size: 1024 }] });
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    if (action === 'autosave') expect(await el._saveDraft()).toBe(false);
+    else if (action === 'close') await el._handleCloseClick();
+    else if (action === 'deferred close') await el._finishDeferredClose();
+    else {
+      const sending = el._handleSend();
+      await waitFor(() => toasts.some(toast => toast.detail.dismissFn), 'the send countdown');
+      toasts.find(toast => toast.detail.dismissFn)!.detail.dismissFn();
+      await sending;
+    }
+    expect(store.getComposer(id)).toMatchObject({ dirty: true, text: 'Keep this message.', attachments: [expect.objectContaining({ uuid: 'u1' })] });
+    const errors = toasts.filter(toast => toast.detail.type === 'error');
+    expect(errors.map(toast => toast.detail.message)).toEqual(['composer.messageTooLarge']);
+    expect(store.getComposer(id)?.isSending).not.toBe(true);
+    expect(store.getComposer(id)?.isSaving).not.toBe(true);
+    expect(store.getComposer(id)?.closing).not.toBe(true);
+  });
+});

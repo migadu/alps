@@ -43,7 +43,7 @@ type Cluster struct {
 type Config struct {
 	NodeName      string   // This node's name (defaults to hostname, determines leader order)
 	BindAddr      string   // Address to bind to (e.g., "0.0.0.0")
-	BindPort      int      // Port to bind to for memberlist (default: 7946)
+	BindPort      int      // Port to bind to for memberlist (0 chooses an unused port; the CLI defaults to7946)
 	Peers         []string // Other cluster nodes to connect to (e.g., ["node1:7946", "node2:7946"])
 	SecretKey     []byte   // 32-byte encryption key for gossip protocol (AES-256)
 	AllowInsecure bool     // Permit running without a SecretKey (unencrypted, unauthenticated gossip)
@@ -52,6 +52,9 @@ type Config struct {
 
 // NewCluster creates a new cluster instance with memberlist and leader election.
 func NewCluster(cfg Config) (*Cluster, error) {
+	if cfg.BindAddr != "" && net.ParseIP(cfg.BindAddr) == nil {
+		return nil, fmt.Errorf("cluster bind address %q must be an IP address", cfg.BindAddr)
+	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
@@ -70,7 +73,7 @@ func NewCluster(cfg Config) (*Cluster, error) {
 	if cfg.BindAddr != "" {
 		mlConfig.BindAddr = cfg.BindAddr
 	}
-	if cfg.BindPort > 0 {
+	if cfg.BindPort >= 0 {
 		mlConfig.BindPort = cfg.BindPort
 	}
 
@@ -78,12 +81,12 @@ func NewCluster(cfg Config) (*Cluster, error) {
 	// Binding to 0.0.0.0 / :: (or empty) means "all interfaces"; advertising that
 	// literally makes peers try to reach us at an unspecified address and mark us
 	// suspect/dead, so membership never forms. Leaving AdvertiseAddr empty lets
-	// memberlist auto-detect a routable private IP. A hostname (ParseIP == nil)
-	// is likewise left to auto-detection since AdvertiseAddr expects an IP.
+	// memberlist auto-detect a routable private IP. Non-IP bind addresses are
+	// rejected before creating any listener.
 	if ip := net.ParseIP(cfg.BindAddr); ip != nil && !ip.IsUnspecified() {
 		mlConfig.AdvertiseAddr = cfg.BindAddr
 	}
-	if cfg.BindPort > 0 {
+	if cfg.BindPort >= 0 {
 		mlConfig.AdvertisePort = cfg.BindPort
 	}
 
@@ -130,8 +133,8 @@ func NewCluster(cfg Config) (*Cluster, error) {
 
 	// Join peers if provided. This is best-effort at startup (peers may not be up
 	// yet); rejoinLoop below periodically retries so a failed initial join or a
-	// healed network partition does not leave this node as a permanent singleton
-	// (which would make it its own leader and independently request LE certs).
+	// healed network partition does not leave independent groups
+	// (each of which would elect a leader and independently request LE certs).
 	if len(cfg.Peers) > 0 {
 		if _, err := ml.Join(cfg.Peers); err != nil {
 			cfg.Logger.Warn("failed to join some peers (may be first node)", "error", err)
@@ -195,8 +198,8 @@ func (c *Cluster) runSafely(fn func()) {
 	fn()
 }
 
-// rejoinLoop periodically re-attempts to join the configured peers whenever this
-// node appears isolated (only itself in the member list). memberlist never merges
+// rejoinLoop periodically contacts configured peers missing from membership.
+// Multiple live members can still be only one side of a partition. memberlist never merges
 // two disjoint clusters on its own — someone must call Join again — so without
 // this a failed startup join or a partition heals into permanent split-brain,
 // with every partition electing its own leader.
@@ -213,29 +216,31 @@ func (c *Cluster) rejoinLoop(peers []string) {
 	}
 }
 
-// tryRejoin is one rejoin attempt, with its own recover.
-//
-// The recover was a single defer on rejoinLoop itself, OUTSIDE the for, so a
-// panic inside memberlist's Join unwound the loop and the goroutine returned
-// for good. Nothing restarts it.
-//
-// That one is not merely a stalled retry. This loop is the ONLY way a node that
-// failed its initial join, or that got partitioned, ever gets back — the initial
-// Join is best-effort by design and this is the retry. And a node alone in the
-// cluster considers ITSELF leader, because leadership is the lexicographically
-// smallest member name and it is the only member it can see. So a node whose
-// rejoin loop has died is permanently isolated AND permanently convinced it is
-// the leader — which means it warms certificates on its own, against the real
-// leader doing the same, which is the duplicate ACME issuance the warmer's
-// leadership check exists to prevent.
+// tryRejoin contacts configured peers absent from the current membership,
+// including peers in another partition that still has multiple live nodes.
+// Recover each attempt separately so one failure cannot stop future retries.
 func (c *Cluster) tryRejoin(peers []string) {
 	defer func() {
 		if r := recover(); r != nil {
 			c.logger.Error("panic in cluster rejoin attempt - continuing", "panic", r)
 		}
 	}()
-	if c.ml != nil && c.ml.NumMembers() <= 1 {
-		if _, err := c.ml.Join(peers); err != nil {
+	if c.ml == nil {
+		return
+	}
+	known := make(map[string]bool)
+	for _, member := range c.ml.Members() {
+		known[member.Address()] = true
+	}
+	var missing []string
+	for _, peer := range peers {
+		if peer != "" && !known[peer] {
+			missing = append(missing, peer)
+			known[peer] = true
+		}
+	}
+	if len(missing) > 0 {
+		if _, err := c.ml.Join(missing); err != nil {
 			c.logger.Debug("cluster rejoin attempt failed", "error", err)
 		} else {
 			c.logger.Info("cluster rejoined peers", "members", c.ml.NumMembers())

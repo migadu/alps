@@ -67,18 +67,23 @@ type S3Config struct {
 	SecretKey string
 }
 
+// certificateHandshakeTimeout bounds certificate acquisition and the rest of
+// TLS after a valid ClientHello. HTTP request limits apply again after TLS.
+const certificateHandshakeTimeout = 2 * time.Minute
+
 // Manager orchestrates TLS certificate management using Let's Encrypt.
 type Manager struct {
-	config          *Config
-	autocertManager *autocert.Manager
-	logger          *slog.Logger
-	domains         []string
-	defaultDomain   string                  // Default domain for SNI-less connections
-	syncWorker      *storage.CertSyncWorker // Periodic S3 sync worker (nil if not using S3)
-	tlsConfig       *tls.Config             // Cached TLS config
-	fallbackCache   *storage.FallbackCache  // Retained for follower refresh / warmer S3-health checks (nil unless S3 storage)
-	isLeader        func() bool             // Cluster leadership; nil in single-instance mode
-	warmer          *certWarmer             // Proactive issuance/renewal loop (nil unless Let's Encrypt)
+	config           *Config
+	autocertManager  *autocert.Manager
+	logger           *slog.Logger
+	domains          []string
+	defaultDomain    string                  // Default domain for SNI-less connections
+	syncWorker       *storage.CertSyncWorker // Periodic S3 sync worker (nil if not using S3)
+	tlsConfig        *tls.Config             // Cached TLS config
+	fallbackCache    *storage.FallbackCache  // Retained for follower refresh / warmer S3-health checks (nil unless S3 storage)
+	isLeader         func() bool             // Cluster leadership; nil in single-instance mode
+	warmer           *certWarmer             // Proactive issuance/renewal loop (nil unless Let's Encrypt)
+	certificateClock func() time.Time        // Optional clock for deterministic certificate-status checks
 }
 
 // NewManager creates a new TLS manager.
@@ -280,9 +285,23 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 		modifiedHello := *hello
 		modifiedHello.ServerName = serverName
 
+		// net/http initially uses its short request timeout for TLS too. A new
+		// certificate can require a slow CA order. Once SNI has been checked,
+		// give this phase its own bounded budget; net/http clears these
+		// deadlines after the handshake and applies request timeouts anew.
+		if hello.Conn != nil {
+			if err := hello.Conn.SetDeadline(time.Now().Add(certificateHandshakeTimeout)); err != nil {
+				return nil, fmt.Errorf("set certificate handshake deadline: %w", err)
+			}
+		}
+
 		cert, err := originalGetCert(&modifiedHello)
 		if err != nil {
 			m.logger.Error("TLS: failed to get certificate", "server_name", serverName, "error", err)
+			return nil, fmt.Errorf("%w for %s: %v", ErrCertificateUnavailable, serverName, err)
+		}
+		if err := m.validateCertificate(cert); err != nil {
+			m.logger.Error("TLS: cached certificate is not valid", "server_name", serverName, "error", err)
 			return nil, fmt.Errorf("%w for %s: %v", ErrCertificateUnavailable, serverName, err)
 		}
 		return cert, nil
@@ -342,7 +361,8 @@ func (m *Manager) Close() error {
 }
 
 func createS3Cache(ctx context.Context, cfg LetsEncryptConfig, logger *slog.Logger) (*storage.S3Cache, error) {
-	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// Four backoffs total15s; leave time for all five requests as well.
+	initCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(initCtx,
@@ -398,7 +418,7 @@ func createS3Cache(ctx context.Context, cfg LetsEncryptConfig, logger *slog.Logg
 			select {
 			case <-time.After(backoff):
 			case <-initCtx.Done():
-				return nil, fmt.Errorf("S3 bucket validation cancelled: %w", initCtx.Err())
+				return nil, fmt.Errorf("S3 bucket validation cancelled after %d attempts: %w", attempt, errors.Join(initCtx.Err(), err))
 			}
 		}
 

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,42 +63,51 @@ type ClusterConfig struct {
 	Peers         []string `toml:"peers"`          // List of peer addresses
 }
 
-// GetBindAddr returns just the IP address part of Bind, or 0.0.0.0 if empty.
-func (c *ClusterConfig) GetBindAddr() string {
-	if c.Bind == "" {
-		return "0.0.0.0"
+// bindEndpoint accepts a bare IP or IP:port (bracketed for IPv6).
+func (c *ClusterConfig) bindEndpoint() (string, int, error) {
+	host, port := strings.TrimSpace(c.Bind), c.Port
+	if port == 0 {
+		port = 7946
 	}
-	// Check if bind contains a port (e.g. 127.0.0.1:7946)
-	for i := len(c.Bind) - 1; i >= 0; i-- {
-		if c.Bind[i] == ':' {
-			return c.Bind[:i]
+	if host == "" {
+		host = "0.0.0.0"
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		host = ip.String()
+	} else {
+		parsedHost, parsedPort, err := net.SplitHostPort(host)
+		if err != nil || net.ParseIP(parsedHost) == nil {
+			return "", 0, newConfigError("cluster.bind", "must be an IP address with an optional port, got %q", c.Bind)
 		}
+		value, err := strconv.Atoi(parsedPort)
+		if err != nil {
+			return "", 0, newConfigError("cluster.bind", "invalid port in %q", c.Bind)
+		}
+		host, port = net.ParseIP(parsedHost).String(), value
 	}
-	return c.Bind
+	if port < 1 || port > 65535 {
+		return "", 0, newConfigError("cluster.bind", "port must be between 1 and 65535, got %d", port)
+	}
+	return host, port, nil
 }
 
-// GetBindPort returns the port to bind to.
-// Order of precedence:
-// 1. Port specified in Bind string (e.g., "0.0.0.0:8000")
-// 2. Port field (e.g., port = 8000)
-// 3. Default: 7946
+// GetBindAddr returns the validated IP part, or the raw invalid value so a
+// direct Cluster caller still receives its bind-address validation error.
+func (c *ClusterConfig) GetBindAddr() string {
+	host, _, err := c.bindEndpoint()
+	if err != nil {
+		return c.Bind
+	}
+	return host
+}
+
+// GetBindPort prefers a port in Bind, then Port, then the default 7946.
 func (c *ClusterConfig) GetBindPort() int {
-	// Check if bind contains a port
-	for i := len(c.Bind) - 1; i >= 0; i-- {
-		if c.Bind[i] == ':' {
-			var p int
-			fmt.Sscanf(c.Bind[i+1:], "%d", &p)
-			if p > 0 {
-				return p
-			}
-		}
+	_, port, err := c.bindEndpoint()
+	if err != nil {
+		return 7946
 	}
-
-	if c.Port > 0 {
-		return c.Port
-	}
-
-	return 7946
+	return port
 }
 
 type ServerConfig struct {
@@ -374,6 +384,11 @@ func LoadConfigString(data string) (*Config, error) {
 
 // ToOptions converts the configuration file structure to alps.Options
 func (c *Config) ToOptions() (alps.Options, error) {
+	if c.Cluster.Enabled {
+		if _, _, err := c.Cluster.bindEndpoint(); err != nil {
+			return alps.Options{}, err
+		}
+	}
 	options := alps.Options{}
 
 	options.Debug = c.Server.Debug

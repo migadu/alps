@@ -411,6 +411,7 @@ export const id = {
     emptyMailboxSlow: 'Masih mengosongkan {folder}. Server sedang memprosesnya — periksa kembali folder tersebut dalam beberapa saat.'
   },
   composer: {
+    messageTooLarge: "Pesan ini melebihi batas ukuran server email. Hapus lampiran atau persingkat pesan lalu coba lagi.",
     sentNotFiled: "Pesan terkirim, tetapi salinan tidak dapat disimpan di Terkirim.",
     sentDraftNotRemoved: "Pesan terkirim, tetapi drafnya tidak dapat dihapus. Jangan kirim lagi.",
     sentNotFiledDraftKept: "Pesan terkirim, tetapi salinan tidak tersimpan dan draf masih ada. Jangan kirim lagi.",

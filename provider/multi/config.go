@@ -2,7 +2,9 @@ package multi
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/migadu/alps/internal/serviceurl"
 	"log/slog"
 	"net"
 	"net/url"
@@ -57,7 +59,7 @@ type serviceProbe struct {
 	Password    map[string]interface{} `toml:"password"`
 }
 
-func (p serviceProbe) toServices() services {
+func (p serviceProbe) toServices() (services, error) {
 	urls := make(map[string]string)
 	for name, raw := range map[string]string{
 		provider.ServiceSMTP:        p.SMTP,
@@ -66,10 +68,13 @@ func (p serviceProbe) toServices() services {
 		provider.ServiceManageSieve: p.ManageSieve,
 	} {
 		if v := strings.TrimSpace(raw); v != "" {
+			if err := serviceurl.Validate(name, v); err != nil {
+				return services{}, fmt.Errorf("%s: %w", name, err)
+			}
 			urls[name] = v
 		}
 	}
-	return services{urls: urls, password: p.Password}
+	return services{urls: urls, password: p.Password}, nil
 }
 
 // Options implements provider.Options for the multi-provider router.
@@ -81,9 +86,12 @@ type Options struct {
 	AutodiscoverDomains []string
 	TemplateDomains     []string
 	Autodiscoverer      Autodiscoverer
-	Default             provider.Options
-	Domains             map[string]provider.Options
-	Routes              []routeEntry
+	// Resolver overrides dynamic host validation and DNS autodiscovery. Nil uses
+	// the system resolver; tests can supply a resolver that never leaves the host.
+	Resolver *net.Resolver
+	Default  provider.Options
+	Domains  map[string]provider.Options
+	Routes   []routeEntry
 
 	// Endpoints named alongside each backend. Any of them is optional: a
 	// backend that omits one defers to the matching global configuration.
@@ -128,7 +136,11 @@ func (c *Config) ToOptions() (provider.Options, error) {
 			if subType == "" {
 				subType = "imap"
 			}
-			domainServices[domainClean] = probe.toServices()
+			svc, err := probe.toServices()
+			if err != nil {
+				return nil, fmt.Errorf("multi: invalid service for domain %q: %w", domain, err)
+			}
+			domainServices[domainClean] = svc
 
 			subCfg, err := provider.LoadConfig(subType, c.meta, &prim)
 			if err != nil {
@@ -184,10 +196,14 @@ func (c *Config) ToOptions() (provider.Options, error) {
 				}
 			}
 
+			svc, err := probe.toServices()
+			if err != nil {
+				return nil, fmt.Errorf("multi: invalid service for route [%d]: %w", i, err)
+			}
 			routes = append(routes, routeEntry{
 				domains:  cleanedDomains,
 				options:  subOpt,
-				services: probe.toServices(),
+				services: svc,
 			})
 		}
 	}
@@ -207,7 +223,11 @@ func (c *Config) ToOptions() (provider.Options, error) {
 		if subType == "" {
 			subType = "imap"
 		}
-		defaultServices = probe.toServices()
+		var err error
+		defaultServices, err = probe.toServices()
+		if err != nil {
+			return nil, fmt.Errorf("multi: invalid service for default provider: %w", err)
+		}
 
 		subCfg, err := provider.LoadConfig(subType, c.meta, c.Default)
 		if err != nil {
@@ -321,8 +341,11 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 			return nil, fmt.Errorf("failed to parse dynamic server URL: %w", err)
 		}
 		host := u.Hostname()
-		if err := checkRestrictedHost(ctx, nil, host); err != nil {
-			return nil, fmt.Errorf("access to restricted server address %q is forbidden: %w", host, err)
+		if err := checkRestrictedHost(ctx, o.Resolver, host); err != nil {
+			if errors.Is(err, netguard.ErrBlockedAddress) {
+				return nil, fmt.Errorf("access to restricted server address %q is forbidden: %w", host, err)
+			}
+			return nil, fmt.Errorf("cannot resolve server address %q: %w", host, err)
 		}
 
 		// checkRestrictedHost validates the name we resolved just now; the dial
@@ -361,7 +384,11 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 
 	autodiscoverer := o.Autodiscoverer
 	if autodiscoverer == nil && o.Autodiscover {
-		autodiscoverer = NewDNSAutodiscoverer(15 * time.Minute)
+		discovery := NewDNSAutodiscoverer(15 * time.Minute)
+		if o.Resolver != nil {
+			discovery.Resolver = o.Resolver
+		}
+		autodiscoverer = discovery
 	}
 
 	return func(username, password string) (provider.MailProvider, error) {

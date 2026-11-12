@@ -75,13 +75,13 @@ func TestAMovedAddressBookHomeIsLookedUpAgain(t *testing.T) {
 // one stays.
 func TestOnlyTheAddressBookHomeThatFailedIsForgotten(t *testing.T) {
 	const connectionKey = "resolved-connection-key"
-	p := &plugin{homeSetCache: map[string]string{connectionKey: movedHome, "another-connection": testHome}}
+	p := &plugin{homeSetCache: map[string]homeSetEntry{connectionKey: {path: movedHome}, "another-connection": {path: testHome}}}
 	p.forgetHomeSet(connectionKey, testHome)
-	if got, ok := p.homeSetCache[connectionKey]; !ok || got != movedHome {
-		t.Errorf("the new home set was dropped for a failure of the old one: cached %q, %v", got, ok)
+	if got, ok := p.homeSetCache[connectionKey]; !ok || got.path != movedHome {
+		t.Errorf("the new home set was dropped for a failure of the old one: cached %q, %v", got.path, ok)
 	}
 	p.forgetHomeSet(connectionKey, movedHome)
 	if got, ok := p.homeSetCache[connectionKey]; ok {
-		t.Errorf("the home set that failed is still cached: %q", got)
+		t.Errorf("the home set that failed is still cached: %q", got.path)
 	}
 }

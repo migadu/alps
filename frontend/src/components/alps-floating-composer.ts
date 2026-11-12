@@ -7,7 +7,7 @@ import {
 } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
-import { messageOperations, MissingUploadsError, SenderNotAllowedError } from '../services/message-operations';
+import { messageOperations, MessageTooLargeError, MissingUploadsError, SenderNotAllowedError } from '../services/message-operations';
 import { ownAddress, readUserSettings } from '../store/settings-store';
 import './alps-address-input.js';
 import type { AlpsAddressInput } from './alps-address-input.js';
@@ -235,9 +235,12 @@ export class AlpsFloatingComposer extends LitElement {
    * safe as `true`: a discard closes the window without waiting for the save,
    * and deletes that draft once it knows it (see `_performDiscard`).
    */
+  private draftSizeRefused = false;
+
   private _saveDraft(): Promise<boolean | StoredDraft> {
     // A save is already in flight; a second one now would race it.
     if (this.savingPromise) return Promise.resolve(false);
+    this.draftSizeRefused = false;
     const running = this._saveDraftWithoutGoneUploads().finally(() => {
       if (this.savingPromise === running) this.savingPromise = null;
     });
@@ -259,6 +262,11 @@ export class AlpsFloatingComposer extends LitElement {
       try {
         return await this._doSaveDraft();
       } catch (error) {
+        if (error instanceof MessageTooLargeError) {
+          this.draftSizeRefused = true;
+          this._toastMessageTooLarge();
+          return false;
+        }
         if (!(error instanceof MissingUploadsError)) throw error;
         this._markUploadsGone(id, error.uuids);
         if (attempt === 2 || !this.isConnected || !this.composeStore.getComposer(id)) return false;
@@ -284,6 +292,12 @@ export class AlpsFloatingComposer extends LitElement {
     if (count === 0) return;
     this.composeStore.updateComposer(id, { attachments });
     this._toastUploadsGone(count);
+  }
+
+  private _toastMessageTooLarge() {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: { message: this.i18nStore?.t('composer.messageTooLarge'), type: 'error', duration: 8000 }
+    }));
   }
 
   private _toastUploadsGone(count: number) {
@@ -570,6 +584,7 @@ export class AlpsFloatingComposer extends LitElement {
     // Take the window back out of its closing state, or it stays on screen
     // with no way to complete the gesture.
     this.composeStore.updateComposer(this.instance.id, { closing: false } as any);
+    if (this.draftSizeRefused) return;
     window.dispatchEvent(new CustomEvent('show-toast', {
       detail: {
         message: this.i18nStore?.t('composer.draftSaveFailedKeepOpen')
@@ -645,6 +660,7 @@ export class AlpsFloatingComposer extends LitElement {
     if (current.dirty) {
       const saved = await this._saveDraft();
       if (!saved) {
+        if (this.draftSizeRefused) return;
         window.dispatchEvent(new CustomEvent('show-toast', {
           detail: {
             message: this.i18nStore?.t('composer.draftSaveFailedKeepOpen')
@@ -1111,6 +1127,10 @@ export class AlpsFloatingComposer extends LitElement {
       // Bring back the composer window if it was minimized or hidden
       this.composeStore.updateComposer(id, { isSending: false, minimized: false, expanded: false });
       this._bringToFront();
+      if (err instanceof MessageTooLargeError) {
+        this._toastMessageTooLarge();
+        return;
+      }
       // A From the mail server will not take is the user's to change, in the
       // row that holds it: said as such, with the focus there.
       const senderRefused = err instanceof SenderNotAllowedError;
@@ -1207,7 +1227,7 @@ export class AlpsFloatingComposer extends LitElement {
 
   /** What the composer's files may take in all: the server's limit. */
   private _maxAttachmentBytes(): number {
-    return (this.settingsStore?.getState()?.maxAttachmentMiB || 32) * 1024 * 1024;
+    return (this.settingsStore?.getState()?.maxAttachmentMiB ?? 32) * 1024 * 1024;
   }
 
   private _handleAttachClick() {

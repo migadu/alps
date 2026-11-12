@@ -82,6 +82,11 @@ func (c *memCache) getKeys() []string {
 // private-key block first, then the certificate chain.
 func makeBundle(t *testing.T, domain string, useRSA bool) []byte {
 	t.Helper()
+	return makeBundleWithValidity(t, domain, useRSA, time.Now().Add(-time.Hour), time.Now().Add(90*24*time.Hour))
+}
+
+func makeBundleWithValidity(t *testing.T, domain string, useRSA bool, notBefore, notAfter time.Time) []byte {
+	t.Helper()
 
 	var priv crypto.Signer
 	var keyBlock *pem.Block
@@ -109,8 +114,8 @@ func makeBundle(t *testing.T, domain string, useRSA bool) []byte {
 		SerialNumber: big.NewInt(1),
 		Subject:      pkix.Name{CommonName: domain},
 		DNSNames:     []string{domain},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(90 * 24 * time.Hour),
+		NotBefore:    notBefore,
+		NotAfter:     notAfter,
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}

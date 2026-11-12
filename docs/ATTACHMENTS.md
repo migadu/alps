@@ -62,6 +62,12 @@ Each stored upload counts against all three budgets. A request whose files toget
 - **Scope**: The uploads one session holds for one composer (`composer_id`).
 - **Description**: The server refuses (400) an upload that would take the uploads this session holds for that composer over this limit. It counts pending uploads only: parts already written into a saved draft, and parts carried from another message, are not counted. The web composer checks the whole message: before uploading, it adds up all of its attachments, uploads and carried parts alike, and compares the total with the `MaxAttachmentMiB` value the server reports.
 
+The effective limit reported by `/session` and `/settings` is the smaller of this setting and the attachment space available under the account's advertised IMAP `APPENDLIMIT` and SMTP `SIZE`. ALPS reads a global IMAP limit or the `STATUS` limits of existing Drafts and Sent mailboxes. ALPS reserves 64 KiB for body/headers and accounts for base64 line wrapping. For example, a 25 MiB message limit permits about 18 MiB of attachments. The reported MiB value can be fractional.
+
+SMTP capabilities are probed without authentication through the account's configured submission route, using short timeouts, and cached per session for ten minutes. An unavailable server or an unadvertised limit does not prevent reading mail; the configured and other known limits still apply. A message submission uses the live SMTP capability and supplies its encoded `SIZE` with `MAIL`.
+
+ALPS also checks the complete encoded message before submission when a limit is known, including whether its Sent copy can fit. An IMAP `TOOBIG` refusal or SMTP 552 returns HTTP 413 with `message_too_large`; the composer keeps its contents and asks the user to shorten the message or remove attachments. Mailbox limits that could not be discovered are handled by this refusal path. An explicit `APPENDLIMIT=0` forbids storage: ALPS reports a zero attachment budget and refuses submission before SMTP so the Sent copy cannot be lost.
+
 ### 2. Per-Session Limit (`max_session_attachment_mib`)
 - **Default**: 128 MiB
 - **Scope**: All the uploads one session holds, across all its open composer windows. Every session has its own budget, including each of several sessions of one user.

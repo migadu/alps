@@ -22,7 +22,7 @@ func TestNewCluster_RejectsKeylessWithoutOptIn(t *testing.T) {
 	_, err := NewCluster(Config{
 		NodeName: "insecure-default",
 		BindAddr: "127.0.0.1",
-		BindPort: 17960,
+		BindPort: 0,
 		Logger:   testLogger(),
 	})
 	if err == nil {
@@ -32,7 +32,7 @@ func TestNewCluster_RejectsKeylessWithoutOptIn(t *testing.T) {
 	c, err := NewCluster(Config{
 		NodeName:      "insecure-optin",
 		BindAddr:      "127.0.0.1",
-		BindPort:      17961,
+		BindPort:      0,
 		AllowInsecure: true,
 		Logger:        testLogger(),
 	})
@@ -46,7 +46,7 @@ func TestLeaderElection_SingleNode(t *testing.T) {
 	c, err := NewCluster(Config{
 		NodeName:      "alpha",
 		BindAddr:      "127.0.0.1",
-		BindPort:      17946,
+		BindPort:      0,
 		AllowInsecure: true,
 		Logger:        testLogger(),
 	})
@@ -72,7 +72,7 @@ func TestLeaderElection_TwoNodes(t *testing.T) {
 	c1, err := NewCluster(Config{
 		NodeName:      "alpha",
 		BindAddr:      "127.0.0.1",
-		BindPort:      17947,
+		BindPort:      0,
 		AllowInsecure: true,
 		Logger:        testLogger(),
 	})
@@ -84,8 +84,8 @@ func TestLeaderElection_TwoNodes(t *testing.T) {
 	c2, err := NewCluster(Config{
 		NodeName:      "beta",
 		BindAddr:      "127.0.0.1",
-		BindPort:      17948,
-		Peers:         []string{"127.0.0.1:17947"},
+		BindPort:      0,
+		Peers:         []string{c1.ml.LocalNode().Address()},
 		AllowInsecure: true,
 		Logger:        testLogger(),
 	})
@@ -123,7 +123,7 @@ func TestLeaderElection_Failover(t *testing.T) {
 	c1, err := NewCluster(Config{
 		NodeName:      "alpha",
 		BindAddr:      "127.0.0.1",
-		BindPort:      17949,
+		BindPort:      0,
 		AllowInsecure: true,
 		Logger:        testLogger(),
 	})
@@ -134,8 +134,8 @@ func TestLeaderElection_Failover(t *testing.T) {
 	c2, err := NewCluster(Config{
 		NodeName:      "beta",
 		BindAddr:      "127.0.0.1",
-		BindPort:      17950,
-		Peers:         []string{"127.0.0.1:17949"},
+		BindPort:      0,
+		Peers:         []string{c1.ml.LocalNode().Address()},
 		AllowInsecure: true,
 		Logger:        testLogger(),
 	})
@@ -167,7 +167,7 @@ func TestHealthStatus(t *testing.T) {
 	c, err := NewCluster(Config{
 		NodeName:      "health-test",
 		BindAddr:      "127.0.0.1",
-		BindPort:      17951,
+		BindPort:      0,
 		AllowInsecure: true,
 		Logger:        testLogger(),
 	})
@@ -265,7 +265,6 @@ func TestNotifyMsg_DoesNotBlockAndCopies(t *testing.T) {
 // own attempt already, and would count it twice.
 func TestBroadcast_ReachesEveryOtherMember(t *testing.T) {
 	const n = 5
-	const port = 17980
 	setupStarted := time.Now()
 	var mu sync.Mutex
 	got := make([]map[string]int, n)
@@ -274,7 +273,7 @@ func TestBroadcast_ReachesEveryOtherMember(t *testing.T) {
 		c, err := NewCluster(Config{
 			NodeName:      fmt.Sprintf("node%d", i),
 			BindAddr:      "127.0.0.1",
-			BindPort:      port + i,
+			BindPort:      0,
 			AllowInsecure: true,
 			Logger:        testLogger(),
 		})
@@ -372,5 +371,27 @@ func TestBroadcast_ReachesEveryOtherMember(t *testing.T) {
 	defer mu.Unlock()
 	if len(got[0]) != 0 {
 		t.Errorf("the sender heard its own broadcasts: %v", got[0])
+	}
+}
+
+func TestExplicitZeroPortCreatesIndependentClusters(t *testing.T) {
+	first, err := NewCluster(Config{NodeName: "ephemeral-a", BindAddr: "127.0.0.1", BindPort: 0, AllowInsecure: true, Logger: testLogger()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Shutdown()
+	second, err := NewCluster(Config{NodeName: "ephemeral-b", BindAddr: "127.0.0.1", BindPort: 0, AllowInsecure: true, Logger: testLogger()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Shutdown()
+	if first.ml.LocalNode().Port == 0 || second.ml.LocalNode().Port == 0 || first.ml.LocalNode().Port == second.ml.LocalNode().Port {
+		t.Fatalf("ports must be distinct actual ports: %d %d", first.ml.LocalNode().Port, second.ml.LocalNode().Port)
+	}
+	if _, err := second.ml.Join([]string{first.ml.LocalNode().Address()}); err != nil {
+		t.Fatal(err)
+	}
+	if second.NumMembers() != 2 {
+		t.Errorf("joining actual seed port found%d members", second.NumMembers())
 	}
 }

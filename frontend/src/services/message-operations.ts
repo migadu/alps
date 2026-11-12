@@ -40,6 +40,18 @@ async function readErrorBody(res: Response): Promise<Record<string, any>> {
   }
 }
 
+/** A complete message refused by the server's delivery or draft size limit. */
+export class MessageTooLargeError extends Error {
+  constructor() {
+    super('message_too_large');
+    this.name = 'MessageTooLargeError';
+  }
+}
+
+function messageSizeRefused(response: Response, body: Record<string, any>): boolean {
+  return response.status === 413 || body.code === 'message_too_large' || body.error === 'message_too_large';
+}
+
 /**
  * A draft save or a send the server refused because it no longer holds some
  * of the uploads the request named: the session they were uploaded in has
@@ -420,12 +432,13 @@ export class MessageOperationsService {
         };
       }
       const body = await readErrorBody(res);
+      if (messageSizeRefused(res, body)) throw new MessageTooLargeError();
       const missing = missingUploads(res, body);
       if (missing) throw missing;
       Logger.error('Failed to save draft:', res.status, body);
       return null;
     } catch (err) {
-      if (err instanceof MissingUploadsError) throw err;
+      if (err instanceof MissingUploadsError || err instanceof MessageTooLargeError) throw err;
       Logger.error('Failed to save draft:', err);
       return null;
     }
@@ -463,6 +476,7 @@ export class MessageOperationsService {
       // that the catch below rethrew, so the user was shown "Unexpected token
       // '<'" in place of whatever actually went wrong.
       const body = await readErrorBody(res);
+      if (messageSizeRefused(res, body)) throw new MessageTooLargeError();
       if (res.status === 403 && body.code === 'sender_not_allowed') throw new SenderNotAllowedError(body.error || 'sender not allowed');
       throw missingUploads(res, body) || new Error(body.error || `Failed to send message (${res.status})`);
     } catch (err: any) {

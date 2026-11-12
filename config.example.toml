@@ -269,7 +269,10 @@ max_sessions_per_user = 10
 # nothing is left to drop.
 
 # Max attachment size per composer in MiB (default: 32)
-# Limits the attachments of a single email being composed
+# Limits the attachments of a single email being composed. It is an upper
+# bound: a mail server that advertises IMAP APPENDLIMIT or SMTP SIZE can lower
+# the effective limit, leaving room for base64 encoding, headers and the
+# message body.
 # max_attachment_mib = 32
 
 # Max attachment size per session in MiB (default: 128)

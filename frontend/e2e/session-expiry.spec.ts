@@ -29,11 +29,14 @@ const EXPECTED_REFUSALS = [/status of 401/];
 
 const EXPIRED_NOTICE = "Your session has expired. Please sign in again.";
 
-/** Swaps the tab's session token for one the server has never issued. */
+/** Removes credentials that could restore the session, then gives the tab a
+ * session token the server has never issued. The shared DAV fixture enables
+ * login_key, so a valid login token would otherwise silently sign it back in. */
 async function expireSession(page: Page): Promise<void> {
   const context = page.context();
   const session = (await context.cookies()).find((c) => c.name === "alps_session");
   expect(session, "signed in without a session cookie").toBeDefined();
+  await context.clearCookies({ name: /^alps_(login_token|has_login_token)$/ });
   await context.addCookies([{ ...session!, value: `expired-${session!.value}` }]);
 }
 

@@ -239,6 +239,12 @@ func (c *MSClient) readStatusMessage(line, status string) (string, string, error
 		return "", "", err
 	}
 	if len(parts) != 1 {
+		// Some deployed servers append bare prose to a quoted OK greeting.
+		// Success text was historically ignored; keep accepting it after
+		// consuming any complete, bounded literal strings above.
+		if status == "OK" && len(parts) > 0 {
+			return code, strings.Join(parts, " "), nil
+		}
 		return "", "", fmt.Errorf("malformed ManageSieve response message")
 	}
 	return code, parts[0], nil
