@@ -106,6 +106,12 @@ func NewLoggerWithOptions(opts LoggerOptions) Logger {
 		}
 	}
 
+	var syslogState *syslogHandlerState
+	if sink, ok := writer.(syslogSeverityWriter); opts.Output == "syslog" && ok {
+		syslogState = &syslogHandlerState{sink: sink}
+		writer = syslogState
+	}
+
 	// Determine handler format
 	var handler slog.Handler
 	if opts.Format == "json" {
@@ -116,6 +122,10 @@ func NewLoggerWithOptions(opts LoggerOptions) Logger {
 		handler = slog.NewTextHandler(writer, &slog.HandlerOptions{
 			Level: level,
 		})
+	}
+
+	if syslogState != nil {
+		handler = &syslogHandler{Handler: handler, state: syslogState}
 	}
 
 	return &logger{

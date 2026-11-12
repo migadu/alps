@@ -60,6 +60,19 @@ func TestSyslogPreservesRecordSeverityFormatAndAttributes(t *testing.T) {
 			if len(sink.entries) != len(expected) {
 				t.Fatal("syslog bypasses configured log level")
 			}
+			logger.SetLevel(slog.LevelDebug)
+			var writers sync.WaitGroup
+			for range 20 {
+				writers.Add(2)
+				go func() { defer writers.Done(); logger.Slog().With("worker", 1).Warn("concurrent warning") }()
+				go func() { defer writers.Done(); logger.Slog().WithGroup("request").Error("concurrent error") }()
+			}
+			writers.Wait()
+			for _, entry := range sink.entries[len(expected):] {
+				if strings.Contains(entry.message, "concurrent warning") && entry.priority != "warning" || strings.Contains(entry.message, "concurrent error") && entry.priority != "error" {
+					t.Errorf("concurrent priority changed: %+v", entry)
+				}
+			}
 		})
 	}
 }
