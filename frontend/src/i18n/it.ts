@@ -312,7 +312,7 @@ export const it = {
     emptyMailboxSlow: 'Svuotamento di {folder} ancora in corso. Il server ci sta lavorando: ricontrolla tra un momento.'
   },
   composer: {
-    sentNotFiled: "Messaggio inviato, ma non è stato possibile salvarne una copia in Posta inviata.",
+    sentNotFiled: "Messaggio inviato, ma non è stato possibile salvarne una copia in posta inviata.",
     sentDraftNotRemoved: "Messaggio inviato, ma non è stato possibile eliminare la bozza. Non inviarlo di nuovo.",
     sentNotFiledDraftKept: "Messaggio inviato, ma la copia non è stata salvata e la bozza rimane. Non inviarlo di nuovo.",
     windowLoadFailed: 'Impossibile caricare la finestra del messaggio.',
