@@ -20,7 +20,12 @@
 #
 # Environment:
 #   SORA_DIR          sora checkout                       (../sora)
-#   E2E_PORT          alps's port; the other servers take the next eight (8900)
+#   E2E_PORT          alps's port (8900); reserves offsets +1 through +8,
+#                     and +9 through +11 with E2E_CLUSTER=1
+#   E2E_STATE         state directory (temporary directory, keyed by port)
+#   E2E_LOGS          retained log directory (temporary directory, keyed by port)
+#   E2E_RESULTS       Playwright output directory ($E2E_LOGS/test-results)
+#   E2E_CLUSTER=1    start a second alps node for cluster tests
 #   E2E_PG_HOST, E2E_PG_PORT, E2E_PG_USER, E2E_PG_PASSWORD
 #                     a PostgreSQL server that may create databases
 #                     (localhost, 5432, postgres, empty)
@@ -34,8 +39,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SORA_DIR="${SORA_DIR:-$ROOT/../sora}"
 
-# One port decides every other, so two runs on different E2E_PORTs share
-# nothing: not a server, not a database, not a log.
+# The base port keys each run's server ports, database, state, logs and results.
+# Choose non-overlapping port ranges for parallel runs. PostgreSQL and its
+# connection ceiling remain shared; explicit directory overrides must differ too.
 ALPS_PORT="${E2E_PORT:-8900}"
 IMAP_PORT=$((ALPS_PORT + 1))
 SIEVE_PORT=$((ALPS_PORT + 2))
@@ -70,6 +76,7 @@ fi
 STATE="${E2E_STATE:-${TMPDIR:-/tmp}/alps-e2e-$ALPS_PORT}"
 # Logs outlive the state, so a failed run can be read afterwards.
 LOGS="${E2E_LOGS:-${TMPDIR:-/tmp}/alps-e2e-logs-$ALPS_PORT}"
+export E2E_RESULTS="${E2E_RESULTS:-$LOGS/test-results}"
 
 # Not secrets anywhere this script runs; they only have to agree between the
 # servers started below.
