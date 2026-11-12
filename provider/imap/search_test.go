@@ -168,6 +168,7 @@ func TestPrepareIMAPSearchKeepsEveryTerm(t *testing.T) {
 		{`is:answered invoice`, &imap.SearchCriteria{Text: []string{"is:answered", "invoice"}}},
 		{`is:`, &imap.SearchCriteria{Text: []string{"is:"}}},
 		{`header:X-Spam`, &imap.SearchCriteria{Text: []string{"header:X-Spam"}}},
+		{`header::foo`, &imap.SearchCriteria{Text: []string{"header::foo"}}},
 		{`header:`, &imap.SearchCriteria{Text: []string{"header:"}}},
 		{`invoice header:X-Spam`, &imap.SearchCriteria{Text: []string{"invoice", "header:X-Spam"}}},
 	}
