@@ -93,3 +93,11 @@ describe('tag names and colours', () => {
     expect(getTagColor('$label1')).toBe('#ef4444');
   });
 });
+
+describe('server attachment keywords', () => {
+  it.each(['$HasAttachment', '$HasNoAttachment', '$hasattachment', '$HAsNOattachment'])('hides %s while retaining it during tag cleanup', keyword => {
+    const flags = [keyword, '$label1', 'Receipts'];
+    expect(getMessageTags(flags).map(tag => tag.id)).toEqual(['$label1', 'Receipts']);
+    expect(getRemovableTags(flags)).toEqual(['$label1', 'Receipts']);
+  });
+});
