@@ -31,7 +31,8 @@
 #   E2E_LOGS          the build and server logs, kept until the next run starts
 #                     (${TMPDIR:-/tmp}/alps-e2e-logs-<port>)
 #   E2E_RESULTS       Playwright's traces and screenshots, emptied when a run
-#                     starts; a relative path is read from frontend/
+#                     starts except its last-failed record; relative paths
+#                     are read from frontend/
 #                     ($E2E_LOGS/test-results)
 #   E2E_KEEP_STATE=1  keep the database and state directory after the run
 #   E2E_SKIP_BUILD=1  test the frontend/dist already on disk
@@ -131,7 +132,11 @@ set -m
 pids=()
 BUILD_LOCK="${TMPDIR:-/tmp}/alps-e2e-build.lock"
 BUILD_LOCK_HELD=""
+LAST_RUN_BACKUP=""
 cleanup() {
+  if [ -n "$LAST_RUN_BACKUP" ]; then
+    rm -f "$LAST_RUN_BACKUP"
+  fi
   for pid in "${pids[@]:-}"; do
     [ -n "$pid" ] || continue
     kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
@@ -152,8 +157,39 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Playwright reads .last-run.json before emptying its output directory. Keep it
+# through our earlier cleanup too. Explicit relative results paths are relative
+# to frontend/, while a relative LOGS path is relative to the calling directory.
+LAST_RUN_RESULTS="${E2E_RESULTS:-$LOGS/test-results}"
+case "$LAST_RUN_RESULTS" in
+  /*) ;;
+  *)
+    if [ -n "${E2E_RESULTS:-}" ]; then
+      LAST_RUN_RESULTS="$ROOT/frontend/$LAST_RUN_RESULTS"
+    else
+      LAST_RUN_RESULTS="$PWD/$LAST_RUN_RESULTS"
+    fi
+    ;;
+esac
+if [ -f "$LAST_RUN_RESULTS/.last-run.json" ]; then
+  LAST_RUN_BACKUP="$(mktemp "${TMPDIR:-/tmp}/alps-e2e-last-run-$ALPS_PORT.XXXXXX")"
+  cp "$LAST_RUN_RESULTS/.last-run.json" "$LAST_RUN_BACKUP"
+else
+  for argument in "$@"; do
+    if [ "$argument" = --last-failed ]; then
+      echo "e2e: --last-failed needs a previous run record at $LAST_RUN_RESULTS/.last-run.json; run the suite once first." >&2
+      exit 1
+    fi
+  done
+fi
+
 rm -rf "$STATE" "$LOGS"
 mkdir -p "$STATE/bin" "$LOGS" "$STATE/sora/cache" "$STATE/sora/uploads" "$STATE/sora/relay" "$STATE/alps-tmp"
+if [ -n "$LAST_RUN_BACKUP" ]; then
+  mkdir -p "$LAST_RUN_RESULTS"
+  mv "$LAST_RUN_BACKUP" "$LAST_RUN_RESULTS/.last-run.json"
+  LAST_RUN_BACKUP=""
+fi
 
 # The build is the one step two runs cannot share: frontend/dist is a single
 # directory, and a binary embedding it while another run rewrites it gets a
