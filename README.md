@@ -140,3 +140,5 @@ In compliance with NLnet's policies and our own project standards, the use of Ge
 Send patches and/or GitHub Pull Requests, report bugs on the issue tracker.
 
 Before sending a change, run the Go tests and the frontend unit tests, and for changes to UI flows also the browser suite (see [Running the tests](#running-the-tests)). Changes to the frontend should include the rebuilt `frontend/dist`.
+
+[AGENTS.md](AGENTS.md) lists the commands, rules and conventions a change has to follow, for people and coding agents alike.
