@@ -265,8 +265,8 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		defaultFactory = o.Default.CreateFactory(timeout, debug)
 	}
 
-	// One bound for every network step a login may take: the SRV lookup, the
-	// restricted-host lookup and the dial.
+	// Bound the SRV and restricted-host lookups. The subsequent dial uses
+	// the provider timeout (timeout_sec), as do statically configured backends.
 	netTimeout := 5 * time.Second
 	if timeout > 0 && timeout < netTimeout {
 		netTimeout = timeout
