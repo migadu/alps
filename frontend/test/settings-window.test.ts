@@ -387,3 +387,15 @@ describe('staying in step with the store', () => {
     expect(store.updates).toEqual([{ autoLogout: 15 }]);
   });
 });
+
+describe('an administrator idle default outside the presets', () => {
+  it('shows the current value as a selectable option', async () => {
+    const store = settingsStore();
+    store.getState().autoLogout = 37;
+    const el = await page({ settingsStore: store });
+    const selects = shadowAll<El>(el, 'alps-select');
+    const idle = selects.find(select => select.value === '37');
+    expect(idle).toBeDefined();
+    expect(idle!.options.some((option: { value: string; label: string }) => option.value === '37' && option.label.includes('37'))).toBe(true);
+  });
+});
