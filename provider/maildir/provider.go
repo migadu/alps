@@ -258,6 +258,26 @@ func (p *Provider) FindMailboxByType(mboxType provider.MailboxType) (*provider.M
 		}
 	}
 
+	// The same exact aliases recognized by IMAP and the webmail page.
+	var aliases []string
+	switch mboxType {
+	case provider.MailboxTypeDrafts:
+		aliases = []string{"Draft"}
+	case provider.MailboxTypeTrash:
+		aliases = []string{"Deleted", "Deleted Items"}
+	case provider.MailboxTypeJunk:
+		aliases = []string{"Spam"}
+	case provider.MailboxTypeArchive:
+		aliases = []string{"Archives"}
+	}
+	for _, alias := range aliases {
+		for _, m := range mailboxes {
+			if strings.EqualFold(m.Name, alias) {
+				return &m, nil
+			}
+		}
+	}
+
 	// No such folder is answered as none, not as a failure, as the IMAP
 	// provider answers it. A conversation read in an account without Sent has
 	// no replies to look for there, and was taken for one whose look in Sent
