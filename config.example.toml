@@ -317,8 +317,8 @@ enabled = true
 [logging]
 # Log output destination
 # Options:
-#   "stdout"  - Write logs to standard output
-#   "stderr"  - Write logs to standard error (default)
+#   "stdout"  - Write logs to standard output (default)
+#   "stderr"  - Write logs to standard error
 #   "syslog"  - Send logs to system syslog daemon
 #   "/path/to/file.log" - Write logs to a file (path can be absolute or relative).
 #                         alps reopens the file on SIGHUP, for newsyslog/logrotate.
