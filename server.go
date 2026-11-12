@@ -447,7 +447,7 @@ type PluginConfig struct {
 }
 
 // setupMiddleware registers middleware on the router.
-// This is called both during initial setup and during reload.
+// This is called once during initial setup.
 func (s *Server) setupMiddleware(router *Router) {
 	// Baseline security headers (CSP, nosniff, DNS-prefetch) are applied to every
 	// response in Router.ServeHTTP so they also cover static assets (the SPA shell
