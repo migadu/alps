@@ -189,7 +189,7 @@ The session password stays unchanged in every case below.
 ### Before Any Backend Is Involved
 
 Some answers come from ALPS before any backend is involved:
-- 500 `password_service_unavailable`: the option block in use fails its checks at request time. The block is the global one or one routed per domain. The log says "Password change is misconfigured: <reason>". This also covers a global command whose program was removed or lost its execute bits after ALPS started.
+- 500 `password_service_unavailable`: the option block in use fails its checks at request time. The block is the global one or one routed per domain. The log says `"Password change is misconfigured: <reason>"`. This also covers a global command whose program was removed or lost its execute bits after ALPS started.
 - 400 `{"error":"invalid_json"}`: a malformed JSON body.
 - 400 `password_required`: either password is empty.
 - 429 `rate_limited`, with `Retry-After`: the login limits are reached.
@@ -197,12 +197,12 @@ Some answers come from ALPS before any backend is involved:
 
 ### HTTP Endpoint
 
-- If the endpoint's final status is 400 or above, ALPS reports a refused change or an unavailable service to the user. The upstream's status goes to the ALPS log, as "Password change failed, status <code>: <body>" with the upstream's whole response body; the browser gets ALPS's own status. A 401 or 403 means ALPS's `username`, `password` or `token` were not accepted, so it is reported as an unavailable service (`502 password_service_unavailable`), as is a 5xx. Any other 4xx is a refused change (`400 password_change_rejected`).
-- If the request fails, ALPS logs "Password change HTTP request failed: <error>" and answers 502 `password_service_unavailable`. A request fails when the endpoint cannot be reached, a connection or TLS error occurs, there are more than 10 redirects, or no answer arrives within 15 seconds.
+- If the endpoint's final status is 400 or above, ALPS reports a refused change or an unavailable service to the user. The upstream's status goes to the ALPS log, as `"Password change failed, status <code>: <body>"` with the upstream's whole response body; the browser gets ALPS's own status. A 401 or 403 means ALPS's `username`, `password` or `token` were not accepted, so it is reported as an unavailable service (`502 password_service_unavailable`), as is a 5xx. Any other 4xx is a refused change (`400 password_change_rejected`).
+- If the request fails, ALPS logs `"Password change HTTP request failed: <error>"` and answers 502 `password_service_unavailable`. A request fails when the endpoint cannot be reached, a connection or TLS error occurs, there are more than 10 redirects, or no answer arrives within 15 seconds.
 
 ### Command
 
-ALPS logs "Password change command failed for <login>: <error>", with the masked standard error when the program ran, and answers as follows:
+ALPS logs `"Password change command failed for <login>: <error>"`, with the masked standard error when the program ran, and answers as follows:
 - Exit status 1 or above: 400 `password_change_rejected`.
 - The program could not be started, or was ended by a signal: 502 `password_service_unavailable`.
 - Still running after 15 seconds: its process group is killed, and the answer is 504 `password_service_unavailable`.

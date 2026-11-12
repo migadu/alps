@@ -82,7 +82,7 @@ Requirements:
   at the first one missing. `psql` is only the client; with Postgres.app, add its `bin` directory
   to `PATH`.
 - Go 1.25.0 or later (`go.mod`, which also names `toolchain go1.26.5`; see the
-  [README](../README.md#requirements)). Node.js 20 (20.19 or later), 22 (22.12 or later), or 24
+  [README](https://github.com/migadu/alps/blob/main/README.md#requirements)). Node.js 20 (20.19 or later), 22 (22.12 or later), or 24
   and later: the locked Vite 8.0.10 and rolldown declare `^20.19.0 || >=22.12.0`, and the locked
   Vitest 4.1.10 declares `^20.0.0 || ^22.0.0 || >=24.0.0`, so on Node.js 23 npm prints an engine
   warning.
@@ -388,10 +388,10 @@ role the page does not render — only running the suite does.
 
 ## When a run fails
 
-- **"<tool> is required and was not found on PATH"** — put `go`, `npm`, `psql`, `curl` and `lsof`
+- **`"<tool> is required and was not found on PATH"`** — put `go`, `npm`, `psql`, `curl` and `lsof`
   on `PATH`.
-- **"no sora checkout at <dir>; set SORA_DIR"** — the directory must contain `cmd/sora/main.go`.
-- **"cannot reach PostgreSQL as <user>@<host>:<port>"** — set `E2E_PG_*`. The user needs
+- **`"no sora checkout at <dir>; set SORA_DIR"`** — the directory must contain `cmd/sora/main.go`.
+- **`"cannot reach PostgreSQL as <user>@<host>:<port>"`** — set `E2E_PG_*`. The user needs
   permission to create and drop databases.
 - **"port … is in use"** — an earlier run is still up, or something else holds the port. Stop it,
   or pick another `E2E_PORT`. The check only sees servers that are already listening, so a second
@@ -400,10 +400,10 @@ role the page does not render — only running the suite does.
 - **"gave up waiting for the build lock at …"** — another run held the build lock for about ten
   minutes.
 - **A frontend build failure** — the script prints the last 30 lines of `frontend-build.log`.
-- **"<server> exited during startup"** or **"<server> did not become ready"** (after about 60 s) —
+- **`"<server> exited during startup"`** or **`"<server> did not become ready"`** (after about 60 s) —
   the server is `the test stack`, `sora`, `alps` or `secondary alps`, and the last 20 lines of its
   log follow.
-- **"a server died during the run: <names>"** — the names are among `e2estack`, `sora`, `alps`
+- **`"a server died during the run: <names>"`** — the names are among `e2estack`, `sora`, `alps`
   and `alps-secondary`; read `<name>.log` in the logs directory the message prints. Every test
   after that point failed for that reason alone, so read the log before reading anything into the
   failures. The run then exits 1 whatever Playwright reported.

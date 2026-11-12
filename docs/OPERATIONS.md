@@ -1,6 +1,6 @@
 # Operating ALPS
 
-ALPS runs as a single process with no database. Sessions live in its memory, each account's state lives on the mail server, and only a few files are written to local disk. This document is the operator's runbook: the signals ALPS handles and how it shuts down, what a restart loses and how to upgrade, what ALPS writes to disk and where, the service files shipped in `dist/`, how to check the version, the startup order and exit status, and the outbound connections the host must allow. Building ALPS is covered in the [README](../README.md#building), and every configuration key is listed in [CONFIGURATION.md](CONFIGURATION.md).
+ALPS runs as a single process with no database. Sessions live in its memory, each account's state lives on the mail server, and only a few files are written to local disk. This document is the operator's runbook: the signals ALPS handles and how it shuts down, what a restart loses and how to upgrade, what ALPS writes to disk and where, the service files shipped in `dist/`, how to check the version, the startup order and exit status, and the outbound connections the host must allow. Building ALPS is covered in the [README](https://github.com/migadu/alps/blob/main/README.md#building), and every configuration key is listed in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Table of Contents
 1. [Signals and Graceful Shutdown](#1-signals-and-graceful-shutdown)
@@ -141,7 +141,7 @@ The cluster's and the certificate manager's lines ([CLUSTER.md](CLUSTER.md#7-che
 
 ## 4. Service Files
 
-`dist/` holds a systemd unit and a FreeBSD rc.d script. Both run `/usr/local/bin/alps` as user `alps`, which must exist. Build the binary as the [README](../README.md#building) describes (`make build` writes `build/alps`, `make build-linux` and `make build-freebsd` write `build/alps-linux-amd64` and `build/alps-freebsd-amd64`) and install it as `/usr/local/bin/alps`. The configuration file holds secrets such as `login_key`, so make it readable by the `alps` user and not by other users.
+`dist/` holds a systemd unit and a FreeBSD rc.d script. Both run `/usr/local/bin/alps` as user `alps`, which must exist. Build the binary as the [README](https://github.com/migadu/alps/blob/main/README.md#building) describes (`make build` writes `build/alps`, `make build-linux` and `make build-freebsd` write `build/alps-linux-amd64` and `build/alps-freebsd-amd64`) and install it as `/usr/local/bin/alps`. The configuration file holds secrets such as `login_key`, so make it readable by the `alps` user and not by other users.
 
 ### systemd (`dist/alps.service`)
 
