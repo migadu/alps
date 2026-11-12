@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../../plugins/carddav/frontend/contacts-page';
 import '../../plugins/carddav/frontend/contact-view';
 import { contactsService } from '../../plugins/carddav/frontend/contacts-service';
+import { HttpStatusError } from '../src/utils/fetch-utils';
 import { CATEGORY_ALL_CONTACTS } from '../../plugins/carddav/frontend/constants';
 import { cleanup, flush, mount } from './helpers/dom';
 
@@ -374,5 +375,14 @@ describe('a category renamed or removed during a search', () => {
     expect(page.addedCategories).toEqual([]);
     expect(ownCategories()).toEqual([]);
     expect(toasts).toEqual([]);
+  });
+});
+
+describe('an unconfigured contacts account', () => {
+  it('shows its state instead of an unexplained empty address book', async () => {
+    vi.mocked(contactsService.fetchContacts).mockRejectedValueOnce(new HttpStatusError(409, 'carddav_not_configured'));
+    const page = await mount<Page>('contacts-page', { i18nStore });
+    await settle(page);
+    expect(page.shadowRoot!.textContent).toContain('contacts.notConfigured');
   });
 });

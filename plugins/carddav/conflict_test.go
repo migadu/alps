@@ -43,6 +43,7 @@ const (
 // new ETag, and a PUT carrying If-Match is refused with 412 unless it names
 // the stored version.
 type memBooks struct {
+	empty   bool
 	mu      sync.Mutex
 	version int
 	objects map[string]carddav.AddressObject
@@ -60,6 +61,9 @@ func (b *memBooks) CurrentUserPrincipal(context.Context) (string, error)   { ret
 func (b *memBooks) AddressBookHomeSetPath(context.Context) (string, error) { return testHome, nil }
 
 func (b *memBooks) ListAddressBooks(context.Context) ([]carddav.AddressBook, error) {
+	if b.empty {
+		return []carddav.AddressBook{}, nil
+	}
 	return []carddav.AddressBook{{
 		Path:                 testBook,
 		Name:                 "Contacts",
