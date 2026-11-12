@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fernet/fernet-go"
@@ -34,8 +35,9 @@ type Server struct {
 	Scheduler   *Scheduler
 	Options     *Options
 
-	router  *Router
-	plugins []Plugin
+	router       *Router
+	plugins      []Plugin
+	closePlugins sync.Once
 
 	WebAuthn *webauthn.WebAuthn // Global WebAuthn instance
 
@@ -149,6 +151,16 @@ func (s *Server) Close() {
 	if s.Scheduler != nil {
 		s.Scheduler.Stop()
 	}
+	// Plugins load once, at start-up, and shutdown is the only time they are
+	// let go. Only the first call closes them: the steps above are safe to
+	// repeat, and a plugin's Close need not be.
+	s.closePlugins.Do(func() {
+		for _, p := range s.plugins {
+			if err := p.Close(); err != nil {
+				s.Logger().Errorf("Closing plugin %q: %v", p.Name(), err)
+			}
+		}
+	})
 }
 
 // LoadedPluginNames returns a list of plugin names that are currently loaded
@@ -435,7 +447,7 @@ type PluginConfig struct {
 }
 
 // setupMiddleware registers middleware on the router.
-// This is called both during initial setup and during reload.
+// loadPlugins calls it once, at start-up.
 func (s *Server) setupMiddleware(router *Router) {
 	// Baseline security headers (CSP, nosniff, DNS-prefetch) are applied to every
 	// response in Router.ServeHTTP so they also cover static assets (the SPA shell
