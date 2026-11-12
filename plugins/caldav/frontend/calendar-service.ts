@@ -1,3 +1,4 @@
+import { davReadError } from './dav-state';
 import { encodePathParam, fetchWithTimeout, HttpStatusError } from '../../../frontend/src/utils/fetch-utils';
 import { parseWrittenAddress } from '../../../frontend/src/utils/address-display';
 import { dueOf, isClosed, type TaskData } from './tasks-service';
@@ -156,7 +157,7 @@ class CalendarService {
     async fetchCalendars(): Promise<CalendarListing> {
         const response = await fetchWithTimeout('/calendar/calendars');
         if (!response.ok) {
-            throw new Error('Failed to fetch calendars');
+            throw await davReadError(response, 'calendars_unavailable');
         }
         return response.json();
     }
@@ -170,7 +171,7 @@ class CalendarService {
         }
         const response = await fetchWithTimeout(`/calendar/events?${params.toString()}`);
         if (!response.ok) {
-            throw new Error('Failed to fetch events');
+            throw await davReadError(response, 'events_unavailable');
         }
         return response.json();
     }

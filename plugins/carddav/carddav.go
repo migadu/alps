@@ -2,7 +2,6 @@ package alpscarddav
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -10,10 +9,11 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/migadu/alps"
 	"github.com/migadu/go-webdav/carddav"
 )
 
-var errNoAddressBook = fmt.Errorf("carddav: no address book found")
+var errNoAddressBook = alps.NewHTTPError(http.StatusConflict, "no_address_book")
 
 type authRoundTripper struct {
 	server      http.RoundTripper

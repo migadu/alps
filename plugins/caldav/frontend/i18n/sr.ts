@@ -1,6 +1,7 @@
 export default {
     calendar: {
       someCalendarsFailed: "Neke kalendare nije moguće pročitati. Njihovi događaji nisu prikazani.",
+      notConfigured: "Kalendari i zadaci nisu podešeni za ovaj nalog.",
       deleteCalendarFailed: 'Kalendar nije mogao biti obrisan.',
       deleteEventFailed: 'Događaj nije mogao biti obrisan.',
       saveCalendarFailed: 'Kalendar nije mogao biti sačuvan.',

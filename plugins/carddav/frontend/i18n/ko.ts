@@ -1,5 +1,7 @@
 export default {
   contacts: {
+      listLoadFailed: "연락처를 불러올 수 없습니다. 연결을 확인하고 다시 시도하세요.",
+      notConfigured: "이 계정의 연락처가 설정되지 않았습니다.",
     deleteFailed: {
       other: '연락처 {total}개 중 {count}개를 삭제하지 못했습니다.'
     },

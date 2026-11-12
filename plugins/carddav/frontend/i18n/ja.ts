@@ -1,5 +1,7 @@
 export default {
   contacts: {
+      listLoadFailed: "連絡先を読み込めませんでした。接続を確認して再試行してください。",
+      notConfigured: "このアカウントでは連絡先が設定されていません。",
     deleteFailed: {
       other: '{total}件中{count}件の連絡先を削除できませんでした。'
     },

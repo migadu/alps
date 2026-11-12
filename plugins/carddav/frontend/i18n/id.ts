@@ -1,5 +1,7 @@
 export default {
   contacts: {
+      listLoadFailed: "Kontak tidak dapat dimuat. Periksa koneksi Anda dan coba lagi.",
+      notConfigured: "Kontak belum dikonfigurasi untuk akun ini.",
     deleteFailed: {
       other: '{count} dari {total} kontak tidak dapat dihapus.'
     },

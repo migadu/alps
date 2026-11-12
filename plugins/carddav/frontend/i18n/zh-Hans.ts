@@ -1,5 +1,7 @@
 export default {
   contacts: {
+      listLoadFailed: "无法加载联系人。请检查连接后重试。",
+      notConfigured: "此账户尚未配置联系人。",
     deleteFailed: {
       other: '{total} 个联系人中有 {count} 个无法删除。'
     },

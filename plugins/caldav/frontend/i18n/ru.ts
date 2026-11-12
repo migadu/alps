@@ -1,6 +1,7 @@
 export default {
   calendar: {
       someCalendarsFailed: "Не удалось прочитать некоторые календари. Их события не показаны.",
+      notConfigured: "Календари и задачи не настроены для этой учётной записи.",
     deleteCalendarFailed: 'Не удалось удалить календарь.',
     deleteEventFailed: 'Не удалось удалить событие.',
     saveCalendarFailed: 'Не удалось сохранить календарь.',

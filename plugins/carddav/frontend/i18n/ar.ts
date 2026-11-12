@@ -1,5 +1,7 @@
 export default {
   contacts: {
+      listLoadFailed: "تعذر تحميل جهات الاتصال. تحقق من اتصالك وحاول مرة أخرى.",
+      notConfigured: "لم يتم إعداد جهات الاتصال لهذا الحساب.",
     deleteFailed: {
       zero: 'تعذر حذف {count} من أصل {total} من جهات الاتصال.',
       one: 'تعذر حذف جهة اتصال واحدة من أصل {total}.',

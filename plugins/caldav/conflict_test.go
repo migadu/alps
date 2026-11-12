@@ -213,6 +213,7 @@ type harnessOptions struct {
 	noDefault         bool
 	defaultServer     string
 	explicitlyEnabled bool
+	logger            alps.Logger
 	// smtp is the submission server; none reachable when empty.
 	smtp string
 	// wrap stands in front of the CalDAV server, to say or record what
@@ -292,7 +293,10 @@ func startHarness(t *testing.T, o harnessOptions) *harness {
 	} else if o.defaultServer != "" {
 		opts.Plugins["caldav"] = alps.PluginConfig{Server: o.defaultServer, Enabled: o.explicitlyEnabled}
 	}
-	srv, err := alps.New(alps.NewLogger(), opts)
+	if o.logger == nil {
+		o.logger = alps.NewLogger()
+	}
+	srv, err := alps.New(o.logger, opts)
 	if err != nil {
 		t.Fatal(err)
 	}

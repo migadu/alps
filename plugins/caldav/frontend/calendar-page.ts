@@ -1,3 +1,5 @@
+import { isCalDAVNotConfigured } from './dav-state';
+import '../../../frontend/src/components/alps-banner';
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
@@ -591,6 +593,8 @@ export class CalendarPage extends LitElement {
         this.isMobile = window.innerWidth <= 768;
     };
 
+    @state() private notConfigured = false;
+
     private async fetchData() {
         // A page not on screen reads nothing. A save or delete that finishes
         // after the user has left still asks for a read, and that read's
@@ -598,6 +602,7 @@ export class CalendarPage extends LitElement {
         // (connectedCallback).
         if (!this.isConnected) return;
         const seq = ++this.fetchSeq;
+        this.notConfigured = false;
         this.loading = true;
         this.isSpinning = true;
         // Alongside the events, and apart from them: tasks that fail to load
@@ -605,6 +610,10 @@ export class CalendarPage extends LitElement {
         // Not during a search, whose results are events.
         const tasksLoad = this.showTasks && !this.searchQuery
             ? tasksService.fetchTasks('active').catch(err => {
+                if (isCalDAVNotConfigured(err)) {
+                    if (seq === this.fetchSeq) this.notConfigured = true;
+                    return null;
+                }
                 console.error('Failed to load tasks for the calendar', err);
                 if (seq === this.fetchSeq) this.reportFailure('tasks.loadFailed');
                 return null;
@@ -702,6 +711,14 @@ export class CalendarPage extends LitElement {
             ]);
             this.knownCalendarPaths = listed;
         } catch (e) {
+            if (isCalDAVNotConfigured(e)) {
+                if (seq === this.fetchSeq) {
+                    this.notConfigured = true;
+                    this.events = [];
+                    this.calendars = [];
+                }
+                return;
+            }
             console.error(e);
             // Said, not stored: `error` was written here and rendered nowhere, so a
             // calendar that failed to load simply showed no events.
@@ -1154,6 +1171,7 @@ export class CalendarPage extends LitElement {
                 </alps-sidebar>
 
                 <div class="main-content">
+                    ${this.notConfigured ? html`<alps-banner role="status">${this.i18nStore?.t('calendar.notConfigured')}</alps-banner>` : ''}
                     <div class="toolbar">
                         <div class="toolbar-left">
                             <h2>${title} <span class="sub-title">${this.viewMode !== 'year' ? year : ''}</span></h2>

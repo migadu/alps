@@ -1,6 +1,6 @@
 import { registry } from '../../../frontend/src/plugin-registry';
 import { parseWrittenAddress } from '../../../frontend/src/utils/address-display';
-import { contactsService } from './contacts-service';
+import { contactsService, isAddressBookUnavailable } from './contacts-service';
 
 registry.registerSettingsTab({
     id: 'carddav',
@@ -42,6 +42,7 @@ registry.registerHook('composer:send', async ({ recipients }: { recipients: stri
                 email: email
             });
         } catch (e) {
+            if (isAddressBookUnavailable(e)) return;
             console.error('Failed to auto-save contact', e);
         }
     }
@@ -73,7 +74,7 @@ registry.registerHook('composer:suggest', async ({ query }: { query: string }) =
         }
         return suggestions;
     } catch (e) {
-        console.error('Failed to fetch contact suggestions', e);
+        if (!isAddressBookUnavailable(e)) console.error('Failed to fetch contact suggestions', e);
         return [];
     }
 }, 'carddav');

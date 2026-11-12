@@ -43,6 +43,7 @@ const (
 // new ETag, and a PUT carrying If-Match is refused with 412 unless it names
 // the stored version.
 type memBooks struct {
+	empty   bool
 	mu      sync.Mutex
 	version int
 	objects map[string]carddav.AddressObject
@@ -60,6 +61,9 @@ func (b *memBooks) CurrentUserPrincipal(context.Context) (string, error)   { ret
 func (b *memBooks) AddressBookHomeSetPath(context.Context) (string, error) { return testHome, nil }
 
 func (b *memBooks) ListAddressBooks(context.Context) ([]carddav.AddressBook, error) {
+	if b.empty {
+		return []carddav.AddressBook{}, nil
+	}
 	return []carddav.AddressBook{{
 		Path:                 testBook,
 		Name:                 "Contacts",
@@ -219,6 +223,14 @@ func newHarnessWrapping(t *testing.T, wrap func(http.Handler) http.Handler) *har
 }
 
 func startConnectionHarness(t *testing.T, wrap func(http.Handler) http.Handler, noDefault bool) *harness {
+	return startConfiguredConnectionHarness(t, wrap, noDefault, alps.NewLogger(), nil)
+}
+
+func newHarnessConfigured(t *testing.T, wrap func(http.Handler) http.Handler, logger alps.Logger, configure func(*alps.Options)) *harness {
+	return startConfiguredConnectionHarness(t, wrap, false, logger, configure)
+}
+
+func startConfiguredConnectionHarness(t *testing.T, wrap func(http.Handler) http.Handler, noDefault bool, logger alps.Logger, configure func(*alps.Options)) *harness {
 	t.Helper()
 	dav := &memBooks{objects: map[string]carddav.AddressObject{}}
 	var handler http.Handler = &carddav.Handler{Backend: dav}
@@ -261,7 +273,10 @@ func startConnectionHarness(t *testing.T, wrap func(http.Handler) http.Handler, 
 	if noDefault {
 		opts.Plugins["carddav"] = alps.PluginConfig{Enabled: true}
 	}
-	srv, err := alps.New(alps.NewLogger(), opts)
+	if configure != nil {
+		configure(opts)
+	}
+	srv, err := alps.New(logger, opts)
 	if err != nil {
 		t.Fatal(err)
 	}

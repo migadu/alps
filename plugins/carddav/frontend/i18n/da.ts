@@ -1,5 +1,7 @@
 export default {
   contacts: {
+      listLoadFailed: "Kontakterne kunne ikke indlæses. Kontrollér forbindelsen, og prøv igen.",
+      notConfigured: "Kontakter er ikke konfigureret for denne konto.",
     deleteFailed: {
       one: '{count} af {total} kontakter kunne ikke slettes.',
       other: '{count} af {total} kontakter kunne ikke slettes.'

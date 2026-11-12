@@ -687,6 +687,9 @@ func registerRoutes(p *plugin) {
 
 		c, addressBook, err := p.clientWithAddressBook(ctx.Request.Context(), ctx.Session)
 		if err != nil {
+			if errors.Is(err, errNoAddressBook) {
+				return ctx.JSON(http.StatusOK, map[string]interface{}{"contacts": []ContactData{}, "query": queryText})
+			}
 			return err
 		}
 

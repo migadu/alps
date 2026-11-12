@@ -1,6 +1,7 @@
 export default {
   calendar: {
       someCalendarsFailed: "Beberapa kalender tidak dapat dibaca. Acaranya tidak ditampilkan.",
+      notConfigured: "Kalender dan tugas belum dikonfigurasi untuk akun ini.",
     deleteCalendarFailed: 'Kalender tidak dapat dihapus.',
     deleteEventFailed: 'Acara tidak dapat dihapus.',
     saveCalendarFailed: 'Kalender tidak dapat disimpan.',

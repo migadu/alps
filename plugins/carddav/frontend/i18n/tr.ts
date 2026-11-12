@@ -1,5 +1,7 @@
 export default {
   contacts: {
+      listLoadFailed: "Kişiler yüklenemedi. Bağlantınızı kontrol edip yeniden deneyin.",
+      notConfigured: "Bu hesap için kişiler yapılandırılmamış.",
     deleteFailed: {
       one: '{total} kişiden {count} tanesi silinemedi.',
       other: '{total} kişiden {count} tanesi silinemedi.'

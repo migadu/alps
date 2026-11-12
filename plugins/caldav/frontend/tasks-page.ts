@@ -1,3 +1,5 @@
+import { isCalDAVNotConfigured } from './dav-state';
+import '../../../frontend/src/components/alps-banner';
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
@@ -317,8 +319,11 @@ export class TasksPage extends LitElement {
         if (window.location.hash !== hash) window.location.hash = hash;
     }
 
+    @state() private notConfigured = false;
+
     async fetchTasks() {
         const epoch = ++this.readEpoch;
+        this.notConfigured = false;
         const mutations = this.mutationEpoch;
         const scope = this.wantedScope;
         this.loading = true;
@@ -341,6 +346,12 @@ export class TasksPage extends LitElement {
             if (listing.failedCalendars > 0) this.toast('tasks.someListsFailed', undefined, 'error');
         } catch (e) {
             if (epoch !== this.readEpoch) return;
+            if (isCalDAVNotConfigured(e)) {
+                this.notConfigured = true;
+                this.tasks = [];
+                this.lists = [];
+                return;
+            }
             console.error('Failed to load tasks', e);
             this.failed('tasks.loadFailed', e);
         } finally {
@@ -619,6 +630,7 @@ export class TasksPage extends LitElement {
                     </alps-sidebar>
 
                     <div class="main-content">
+                        ${this.notConfigured ? html`<alps-banner role="status">${t('calendar.notConfigured')}</alps-banner>` : ''}
                         <div class="toolbar">
                             <h2>
                                 ${this.searchQuery ? t('tasks.searchResults') : t(current.label)}

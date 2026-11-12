@@ -2,6 +2,7 @@ package alpscarddav
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/migadu/alps/internal/debuglog"
 	"github.com/migadu/alps/internal/serviceurl"
@@ -103,7 +104,7 @@ func (p *plugin) connection(ctx context.Context, session *alps.Session) (*reques
 		}
 	}
 	if resolved.Server == "" {
-		return nil, fmt.Errorf("CardDAV server is not configured")
+		return nil, alps.NewHTTPError(http.StatusConflict, "carddav_not_configured")
 	}
 	u, err := parseCardDAVURL(resolved.Server)
 	if err != nil {
@@ -117,14 +118,20 @@ func (p *plugin) connection(ctx context.Context, session *alps.Session) (*reques
 	return &requestConnection{url: u, client: hc, cacheKey: resolved.CacheKey}, nil
 }
 
+// addRoute keeps each request on its resolved account and returns expected
+// configuration states directly, without request-error logging.
 func (p *plugin) addRoute(method, path string, handler alps.HandlerFunc) {
 	p.GoPlugin.AddRoute(method, path, func(ctx *alps.Context) error {
 		conn, err := p.connection(ctx.Request.Context(), ctx.Session)
-		if err != nil {
-			return err
+		if err == nil {
+			ctx.Request = ctx.Request.WithContext(context.WithValue(ctx.Request.Context(), connectionKey{}, conn))
+			err = handler(ctx)
 		}
-		ctx.Request = ctx.Request.WithContext(context.WithValue(ctx.Request.Context(), connectionKey{}, conn))
-		return handler(ctx)
+		var state *alps.HTTPError
+		if errors.As(err, &state) && state.Code == http.StatusConflict && (state.Message == "carddav_not_configured" || state.Message == "no_address_book") {
+			return ctx.JSON(http.StatusConflict, map[string]interface{}{"error": state.Message})
+		}
+		return err
 	})
 }
 
@@ -140,11 +147,11 @@ func (p *plugin) httpClient(ctx *alps.Context) *http.Client {
 func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Session) (*carddav.Client, *carddav.AddressBook, error) {
 	conn, err := p.connection(ctx, session)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
+		return nil, nil, fmt.Errorf("failed to create CardDAV client: %w", err)
 	}
 	c, err := newClient(conn.url, conn.client)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
+		return nil, nil, fmt.Errorf("failed to create CardDAV client: %w", err)
 	}
 
 	p.cacheMutex.RLock()

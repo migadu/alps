@@ -1,3 +1,4 @@
+import { davReadError } from './dav-state';
 import { resolveHourFormat } from '../../../frontend/src/utils/ui';
 /**
  * Tasks: the VTODOs in the user's calendars, through the caldav plugin's
@@ -227,7 +228,7 @@ class TasksService {
     async fetchTasks(scope?: TaskScope): Promise<TaskListing> {
         const response = await fetchWithTimeout(scope ? `/calendar/tasks?scope=${scope}` : '/calendar/tasks');
         if (!response.ok) {
-            throw new HttpStatusError(response.status, 'Failed to fetch tasks');
+            throw await davReadError(response, 'tasks_unavailable');
         }
         const body = await response.json();
         return {

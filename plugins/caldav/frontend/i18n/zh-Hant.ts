@@ -1,6 +1,7 @@
 export default {
   calendar: {
       someCalendarsFailed: "無法讀取部分行事曆，這些行事曆的活動未顯示。",
+      notConfigured: "此帳戶尚未設定行事曆和工作。",
     deleteCalendarFailed: '無法刪除行事曆。',
     deleteEventFailed: '無法刪除行程。',
     saveCalendarFailed: '無法儲存行事曆。',
