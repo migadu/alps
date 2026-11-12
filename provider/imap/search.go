@@ -4,6 +4,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/migadu/alps/provider"
 	"github.com/migadu/go-imap"
 )
 
@@ -171,4 +172,25 @@ func prepareIMAPSearch(terms string) *imap.SearchCriteria {
 	}
 
 	return criteria
+}
+
+// ValidateSearch rejects value-less prefix terms before either provider lists
+// messages or resolves the operand of a bulk action. Searching such terms as
+// TEXT is unsafe too: TEXT "from:" matches the From header of ordinary mail.
+func ValidateSearch(query string) error {
+	for _, term := range searchTokens(query) {
+		if term.prefix == "" {
+			continue
+		}
+		empty := strings.Trim(term.value, `"`) == ""
+		if term.prefix == "header" {
+			if _, value, ok := strings.Cut(term.value, ":"); ok && strings.Trim(value, `"`) == "" {
+				empty = true
+			}
+		}
+		if empty {
+			return &provider.InvalidSearchError{Prefix: term.prefix}
+		}
+	}
+	return nil
 }

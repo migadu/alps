@@ -42,6 +42,11 @@ func TestHTTP_EmptySearchValuesCannotExpandBulkActions(t *testing.T) {
 			if got := len(s.mailbox("INBOX").Messages); got != 1 {
 				t.Errorf("invalid query changed the mailbox: %d messages", got)
 			}
+			for _, message := range s.mailbox("INBOX").Messages {
+				if contains(message.Flags, `\Flagged`) {
+					t.Error("invalid query changed message flags")
+				}
+			}
 			if got := len(s.mailbox("Archive").Messages); got != 0 {
 				t.Errorf("invalid query filed %d messages", got)
 			}

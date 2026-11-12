@@ -1,6 +1,8 @@
 package imap
 
 import (
+	"errors"
+	"github.com/migadu/alps/provider"
 	"testing"
 )
 
@@ -18,11 +20,12 @@ func TestEmptySearchValuesCannotSelectMessages(t *testing.T) {
 	for _, query := range queries {
 		t.Run(query, func(t *testing.T) {
 			ids, err := p.SearchMessageIDs("INBOX", query)
-			if err == nil || len(ids) != 0 {
+			var invalid *provider.InvalidSearchError
+			if !errors.As(err, &invalid) || len(ids) != 0 {
 				t.Errorf("bulk search %q returned %d IDs, error %v; want refusal", query, len(ids), err)
 			}
 			messages, _, err := p.SearchMessages("INBOX", query, "desc", 0, 50)
-			if err == nil || len(messages) != 0 {
+			if !errors.As(err, &invalid) || len(messages) != 0 {
 				t.Errorf("listing %q returned %d messages, error %v; want refusal", query, len(messages), err)
 			}
 		})
