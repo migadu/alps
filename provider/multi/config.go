@@ -605,3 +605,30 @@ func (o *Options) ServiceOptions(service, username string) map[string]interface{
 	svc, _ := o.resolveServices(username)
 	return svc.password
 }
+
+// RoutesService reports whether any configured backend names this service.
+func (o *Options) RoutesService(service string) bool {
+	if o == nil {
+		return false
+	}
+	names := func(s services) bool {
+		if service == provider.ServicePassword {
+			return len(s.password) > 0
+		}
+		return strings.TrimSpace(s.urls[service]) != ""
+	}
+	if names(o.DefaultServices) {
+		return true
+	}
+	for _, svc := range o.DomainServices {
+		if names(svc) {
+			return true
+		}
+	}
+	for _, route := range o.Routes {
+		if names(route.services) {
+			return true
+		}
+	}
+	return false
+}

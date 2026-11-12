@@ -502,6 +502,13 @@ type ServiceRouter interface {
 	ServiceOptions(service, username string) map[string]interface{}
 }
 
+// ServiceRoutingReporter optionally describes which services any configured
+// backend can route. Keeping this separate preserves ServiceRouter providers
+// that implement the original per-login resolution methods alone.
+type ServiceRoutingReporter interface {
+	RoutesService(service string) bool
+}
+
 // AddressResolver is implemented by provider Options that know the email
 // address of a login that is not one. The multi provider takes a bare user
 // name under its default_domain, and the address is the two together.

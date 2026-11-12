@@ -734,6 +734,14 @@ func (s *Server) HasServiceRouting(service string) bool {
 	if s == nil || s.Options == nil {
 		return false
 	}
-	_, ok := s.Options.Provider.(provider.ServiceRouter)
-	return ok
+	router, ok := s.Options.Provider.(provider.ServiceRouter)
+	if !ok {
+		return false
+	}
+	if reporter, ok := router.(provider.ServiceRoutingReporter); ok {
+		return reporter.RoutesService(service)
+	}
+	// Legacy external routers cannot enumerate services. Keep their routing
+	// available until they opt into reporting instead of silently disabling it.
+	return true
 }
