@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/emersion/go-webdav/caldav"
+	"github.com/migadu/go-webdav/caldav"
 )
 
 // renamesRecorded stands in front of the CalDAV server, records the path of

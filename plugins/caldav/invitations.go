@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/emersion/go-ical"
-	"github.com/emersion/go-webdav/caldav"
 	"github.com/google/uuid"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/internal/davsave"
@@ -19,6 +18,7 @@ import (
 	"github.com/migadu/alps/provider"
 	imapprovider "github.com/migadu/alps/provider/imap"
 	"github.com/migadu/go-imap"
+	"github.com/migadu/go-webdav/caldav"
 )
 
 // An invitation arrives as a calendar part of an email (RFC 6047). These

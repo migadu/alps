@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/emersion/go-webdav/caldav"
 	"github.com/migadu/alps"
+	"github.com/migadu/go-webdav/caldav"
 )
 
 func cals() []caldav.Calendar {

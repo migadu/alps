@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/emersion/go-vcard"
-	"github.com/emersion/go-webdav"
-	"github.com/emersion/go-webdav/carddav"
 	"github.com/google/uuid"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/internal/davsave"
+	"github.com/migadu/go-webdav"
+	"github.com/migadu/go-webdav/carddav"
 )
 
 type ContactProperty struct {
