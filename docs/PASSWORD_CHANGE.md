@@ -67,7 +67,7 @@ payload = "json"
 # custom_new_pass_key = "new_password"
 ```
 
-- `[plugin.password] enabled = true` is required for a change to go through. Whether the Settings > Password tab appears depends on which plugins load (see [The Change Endpoint](#the-change-endpoint)).
+- `[plugin.password] enabled = true` is required. Without it the plugin does not load, and Settings has no Password tab (see [The Change Endpoint](#the-change-endpoint)).
 - Values put into `endpoint` are escaped for a URL path segment. "/", "?", ";", "," and spaces are escaped, but "@", "+", "&" and "=" are left as they are. Put the placeholders in the path, not in the query string. A login with no "@" gives the whole login as `{local}` and an empty `{domain}`.
 - `method` is sent in upper case.
 - `auth_type = "basic"` sends HTTP Basic authentication with `username` and `password`. `auth_type = "bearer"` sends `Authorization: Bearer <token>`. Any other value, `"none"` included, sends no Authorization header.
@@ -180,7 +180,7 @@ The Settings page calls `POST /password/change`, which needs a signed-in session
 
 Errors are `{"error": ..., "code": ...}` with the codes listed under [Error Handling](#error-handling); a 429 also carries `retry_after`. Malformed JSON is 400 `{"error":"invalid_json"}`, and a JSON body over the size limit is 413 `{"error":"payload_too_large"}`.
 
-The route and the Settings > Password tab exist only while the password plugin is loaded. Once any `[plugin.*]` section sets `enabled = true`, only the enabled plugins load, so this plugin needs `enabled = true` too. When no `[plugin.*]` section enables anything, ALPS loads every plugin: the tab then appears, but every change is answered 403 `password_change_disabled`.
+The route and the Settings > Password tab exist only while the password plugin is loaded, and it loads only with `[plugin.password] enabled = true`. Without it, `GET /session` does not list `password` in `EnabledPlugins` and answers `PasswordChangeEnabled` false, Settings offers no Password tab, and there is no `/password/change` route. Because a `[plugin.*]` section with `enabled = true` means only the enabled plugins load, `base` and every other plugin wanted need `enabled = true` as well (see [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname)).
 
 ## Error Handling
 
@@ -189,7 +189,6 @@ The session password stays unchanged in every case below.
 ### Before Any Backend Is Involved
 
 Some answers come from ALPS before any backend is involved:
-- 403 `password_change_disabled`: `[plugin.password]` is missing or not `enabled = true`.
 - 500 `password_service_unavailable`: the option block in use fails its checks at request time. The block is the global one or one routed per domain. The log says "Password change is misconfigured: <reason>". This also covers a global command whose program was removed or lost its execute bits after ALPS started.
 - 400 `{"error":"invalid_json"}`: a malformed JSON body.
 - 400 `password_required`: either password is empty.
@@ -213,7 +212,7 @@ A program that is missing or has no execute bit at request time is caught earlie
 
 ### What Settings Shows
 
-Settings shows "Password changes are temporarily unavailable. Please try again later." for `password_change_disabled` and for every 5xx answer, "Too many attempts. Please try again later." for a 429, "That password is not right." for a wrong current password, and "Could not change your password. Please try again." for a refused change.
+Settings shows "Password changes are temporarily unavailable. Please try again later." for every 5xx answer, "Too many attempts. Please try again later." for a 429, "That password is not right." for a wrong current password, and "Could not change your password. Please try again." for a refused change.
 
 ### When the New Password Does Not Work
 

@@ -96,6 +96,8 @@ If the server refuses a search for its own rate limit (`NO [LIMIT]`, RFC 5530), 
 
 A listing without a query does not get this answer when the server refuses its `SORT` or `SEARCH`: ALPS lists the folder by message number instead.
 
+Nor does a listing whose session has to sign in to the mail server again and is refused because the account holds as many connections as the server allows, with no background connection to carry on with. The session then ends, and the listing, with a query or without, gets 503 `{"error":"mail_server_unavailable"}`, as every request does then (see [MAIL_SERVER.md](MAIL_SERVER.md#5-when-the-server-says-limit)).
+
 This limit is the mail server's. ALPS's own rate limits are described in [Rate Limiting](RATELIMIT.md).
 
 ## The Query in the URL

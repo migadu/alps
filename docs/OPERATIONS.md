@@ -35,7 +35,7 @@ Either signal starts a graceful shutdown, which takes these steps in order:
 
 1. **HTTP.** The listener on `[server] addr` closes, so new connections are refused, and idle keep-alive connections are closed. Open `/events` streams are ended. Requests in progress get up to 30 seconds to finish. A request still running after that is cut off when the process exits.
 2. **Sessions.** Every session is told to close. Each one releases its mail connections and its uploaded attachment files in the background. ALPS does not wait for that, so some upload files can be left in the temp directory (see [Attachment Uploads](#attachment-uploads)). No `session ended` line is logged for these sessions.
-3. **Background jobs.** The rate limiter's cleanup and the hourly job scheduler stop.
+3. **Background jobs and plugins.** The rate limiter's cleanup and the hourly job scheduler stop. Then each loaded plugin is closed, once; the shipped plugins have nothing to release.
 4. **Let's Encrypt.** With `[tls] provider = "letsencrypt"`, the certificate warm loop stops, waiting up to 5 seconds for it. With S3 storage, the certificate sync worker also stops, waiting up to 10 seconds.
 5. **Cluster.** With `[cluster] enabled = true`, the node announces that it is leaving, waits up to 5 seconds for that to go out (not at all when no other node is up), and stops gossip ([CLUSTER.md](CLUSTER.md#3-startup-membership-and-shutdown)).
 6. ALPS exits with status 0.
@@ -80,7 +80,7 @@ A new ALPS binary is not rolled out one node at a time. Every ALPS instance that
 
 | What | Where | Mode | Removed |
 | :--- | :--- | :--- | :--- |
-| Attachment upload files, `multipart-<random>` | The temp directory | 0600 | When the upload request is refused, or once the attachments stored from the file are sent, saved in a draft, removed, evicted, or dropped when their session ends. Not after a crash or a kill. |
+| Attachment upload files, `multipart-<random>` | The temp directory | 0600 | When the upload request is refused, or once the attachments stored from the file are sent, saved in a draft, removed, evicted, or dropped when their session ends. A file left behind by a crash or a kill, once it is more than 7 days old, by an hourly job. |
 | BIMI logo cache | `<temp directory>/alps-avatars/` | Directory 0755, files 0644 | Entries older than 7 days, by an hourly job |
 | Let's Encrypt certificate cache | `[tls.letsencrypt] cache_dir` (default `cert-cache`) | Directory 0700, files 0600 | Challenge tokens once used. Certificates and the account key never. |
 | Log file | `[logging] output`, when it is a file path | 0644 | Never by ALPS |
@@ -111,7 +111,7 @@ An upload request (`POST /attachments`) keeps its file parts in memory while the
 
 The file is removed once every attachment stored from it is gone: sent, saved in a draft, removed by the user, evicted to make room under the budgets, or dropped when its session ends ([ATTACHMENTS.md](ATTACHMENTS.md#the-temporary-directory)).
 
-ALPS does not remove `multipart-*` files left behind by a crash, a kill, or a shutdown that ended before every session's cleanup had run ([ATTACHMENTS.md](ATTACHMENTS.md#4-the-temp-file-sweeper)). No upload survives a restart, so while ALPS is stopped every `multipart-*` file in its own temp directory is a leftover and can be deleted. With `PrivateTmp=true`, systemd removes them when the service stops.
+`multipart-*` files left behind by a crash, a kill, or a shutdown that ended before every session's cleanup had run are removed by an hourly job once they are more than 7 days old. The job keeps the files of the uploads ALPS still holds ([ATTACHMENTS.md](ATTACHMENTS.md#4-the-temp-file-sweeper)). No upload survives a restart, so while ALPS is stopped every `multipart-*` file in its own temp directory is a leftover and can be deleted. With `PrivateTmp=true`, systemd removes them when the service stops.
 
 ### The BIMI Logo Cache
 
@@ -172,7 +172,7 @@ The unit runs `/usr/local/bin/alps -config /etc/alps/config.toml` as user and gr
 
 #### Caveats (systemd)
 
-- **Reload is not a configuration reload.** `systemctl reload alps` sends SIGHUP, which only reopens a log file, whatever the unit's comment says. Use `systemctl restart alps` to apply a configuration change or a renewed certificate.
+- **Reload is not a configuration reload.** `systemctl reload alps` sends SIGHUP, which only reopens a log file, as the unit's comment says. Use `systemctl restart alps` to apply a configuration change or a renewed certificate.
 - **Writable paths.** Under `ProtectSystem=strict`, only the private `/tmp` and `/var/tmp` can be written. The unit sets no `WorkingDirectory`, so the default `cache_dir` resolves to `/cert-cache`, which cannot be written. Set an absolute `cache_dir` and list a directory that holds it in `ReadWritePaths`. List there as well the directory of a log file, a `temp_dir` outside `/tmp` and `/var/tmp`, and, with the maildir provider, the maildirs. Each path in `ReadWritePaths` must exist before the service starts.
 - **Home directories.** `ProtectHome=true` hides `/home`, so the maildir provider cannot reach maildirs there, such as the `<home>/Maildir` default for passwd entries whose home is under `/home`. Set `ProtectHome=false` in a drop-in for such a setup.
 - **Private temp directory.** With `PrivateTmp=true`, ALPS's `/tmp` is its own, and systemd deletes it when the service stops, so the BIMI logo cache and any leftover upload files go with every restart. A directory under the host's `/tmp` or `/var/tmp` is not visible to ALPS, so a `temp_dir` there does not exist for it. With this unit, leave `temp_dir` unset, or point it outside `/tmp` and `/var/tmp` and list it in `ReadWritePaths`.
@@ -231,7 +231,7 @@ daemon(8) appends ALPS's standard output and standard error to `alps.log` and wr
 
 #### Caveats (FreeBSD)
 
-- **Reload is not a configuration reload.** `service alps reload` sends SIGHUP to ALPS, whatever the script's comment says. ALPS then reopens only a log file it opened itself through `[logging] output`. It does not reopen daemon(8)'s `alps.log`, and it does not reload the configuration. Use `service alps restart` to apply a configuration change.
+- **Reload is not a configuration reload.** `service alps reload` sends SIGHUP to ALPS, as the script's comments say. ALPS then reopens only a log file it opened itself through `[logging] output`. It does not reopen daemon(8)'s `alps.log`, and it does not reload the configuration. Use `service alps restart` to apply a configuration change.
 - **Log rotation.** Because SIGHUP to ALPS does not reopen `alps.log`, set `[logging] output` to a file path when the log is to be rotated with a signal, and have newsyslog send SIGHUP to the pid in `/var/run/alps.pid` after moving that file. `alps.log` then holds only the lines that bypass `[logging]` (see [The Log File](#the-log-file)).
 - **Working directory.** `daemon -c` runs ALPS in `/`, so a relative `cache_dir` resolves under `/`. Set an absolute `cache_dir` in a directory the `alps` user can write.
 - **Temp directory.** Unless `TMPDIR` or `temp_dir` says otherwise, ALPS uses the shared `/tmp`. Set `temp_dir` to a directory of ALPS's own (see [The Temp Directory](#the-temp-directory)).

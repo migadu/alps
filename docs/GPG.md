@@ -63,7 +63,7 @@ The other records kept the same way are listed in [ARCHITECTURE.md](ARCHITECTURE
 | Method | Path | What it does |
 | --- | --- | --- |
 | `GET` | `/gpg/keys` | Returns the keyring, read from the server rather than from a cached copy. Both fields are empty strings when nothing is stored. |
-| `POST` | `/gpg/keys` | Replaces the whole keyring with the JSON body. |
+| `POST` | `/gpg/keys` | Saves the JSON body as the whole keyring. While a keypair is stored, only a request with `?replace=1` replaces it; any other answers `409` and keeps the stored keypair. Without `?replace=1`, a stored keyring that cannot be read gives `500`, and nothing is saved. |
 | `DELETE` | `/gpg/keys` | Overwrites the keyring with an empty one. |
 
 Each route answers `401` without a session.
@@ -73,6 +73,10 @@ Each route answers `401` without a session.
 ## 3. Managing Your Key (Settings > GPG Keys)
 
 The plugin adds a **GPG Keys** tab to Settings. With no keypair stored, the tab offers **Generate New Keypair** and **Import Existing GPG Keypair**. With one stored, it shows the public key block and **Purge Keypair**. To replace a keypair, purge it first.
+
+If the keyring cannot be read (an error answer, or none in time), the tab says *Could not load the GPG keys.* and offers only **Try again**, never Generate or Import.
+
+A tab that shows no keypair saves without `replace=1`. If a keypair was stored meanwhile, from another tab or browser, the server keeps it and answers `409`: the generate or import fails (*Failed to generate keys: 409 Conflict*, or *Import failed: 409 Conflict*), and the tab reads the keyring again and shows the stored keypair.
 
 ### Generating a Keypair
 

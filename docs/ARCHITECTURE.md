@@ -134,7 +134,7 @@ Plugins are Go packages compiled into the binary through blank imports in `cmd/a
 Which plugins load:
 - If any `[plugin.<name>]` section sets `enabled = true`, only the plugins so enabled load. ALPS does not add `base` by itself, and without it there is no sign-in and no mail, so list it too.
 - Otherwise no list is applied. `caldav`, `carddav` and `managesieve` then load only when their section names a `server` or the provider is `multi`.
-- `password` loads, but refuses changes unless `[plugin.password] enabled = true`.
+- `password` loads only when `[plugin.password] enabled = true`, which also applies the list above, so `base` must be enabled beside it.
 
 A plugin's optional frontend is `plugins/<name>/frontend/index.ts`. It registers nav tabs, settings tabs, routes and hooks with `frontend/src/plugin-registry.ts`, which shows the tabs and routes, and runs the hooks, only of the plugins that `GET /session` lists in `EnabledPlugins`. `base` has no plugin frontend: its UI is `frontend/src`. See [PLUGINS.md](PLUGINS.md), and for the individual plugins [CDAV.md](CDAV.md), [FILTERS.md](FILTERS.md), [GPG.md](GPG.md) and [PASSWORD_CHANGE.md](PASSWORD_CHANGE.md).
 

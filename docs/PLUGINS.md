@@ -92,7 +92,7 @@ func handleSaveData(c *alps.Context) error {
 }
 ```
 
-`GoPlugin` has `GET`, `POST`, `PUT`, `PATCH` and `DELETE`, and `AddRoute(method, path, handler)` for any other method. The loaders run once, when ALPS starts.
+`GoPlugin` has `GET`, `POST`, `PUT`, `PATCH` and `DELETE`, and `AddRoute(method, path, handler)` for any other method. The loaders run once, when ALPS starts. At shutdown, ALPS calls `Close` once on each plugin that loaded; a `GoPlugin`'s `Close` does nothing.
 
 Give a plugin's routes a top-level prefix named after the plugin, such as `/myplugin/data`, the way `password` uses `/password/change` and `managesieve` uses `/managesieve/script`. The Vite dev server (`npm run dev`) proxies only the prefixes listed in the regular expression in `frontend/vite.config.ts` to the backend at `http://localhost:1323`, so add the plugin's prefix to that list for development. A built binary serves any path.
 

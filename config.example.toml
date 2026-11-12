@@ -170,15 +170,15 @@ smtp_timeout_sec = 30
 # mail connections they hold.
 
 # Maximum total concurrent sessions globally (default: 10000)
-# 0 or a negative value keeps the default: the global limit cannot be turned
-# off. When it is reached, the session used least recently is ended to make
-# room.
+# 0 keeps the default, and a negative value, such as -1, turns the global
+# limit off. When it is reached, the session used least recently is ended to
+# make room.
 max_sessions = 10000
 
 # Maximum concurrent sessions per user (default: 10)
-# 0 or a negative value keeps the default: the per-user limit cannot be turned
-# off. It keeps one account from holding more sessions than this. When it is
-# reached, that user's session used least recently is ended.
+# 0 keeps the default, and a negative value, such as -1, turns the per-user
+# limit off. It keeps one account from holding more sessions than this. When
+# it is reached, that user's session used least recently is ended.
 max_sessions_per_user = 10
 
 # Example configurations for different deployment sizes:
@@ -378,9 +378,8 @@ enabled = true
 #                         ALPS reopens the file on SIGHUP, for newsyslog/logrotate.
 # If syslog or the file cannot be opened, logs go to stderr.
 #
-# Default: "stderr" when [logging] sets output, format or level. When it sets
-# none of them, ALPS logs to stdout: JSON at info level, or console at debug
-# level with server.debug = true.
+# Default: "stdout", whether or not format or level is set. This example sets
+# "stderr".
 #
 # Examples:
 #   output = "stdout"
@@ -786,9 +785,9 @@ server = "smtps://smtp.migadu.com:465"
 # If no section has enabled = true, which includes having no [plugin.*]
 # sections at all, all plugins load and enabled = false holds none of them
 # back. caldav, carddav and managesieve then load only with a server or
-# [provider] type = "multi". The password plugin then loads but answers 403,
-# since password change needs [plugin.password] enabled = true (and with it,
-# the rule above applies).
+# [provider] type = "multi". The password plugin loads only with
+# [plugin.password] enabled = true, so the rule above applies whenever it
+# loads.
 # A caldav, carddav or managesieve section with enabled = true and no server,
 # as below, loads without an endpoint: its requests fail, logged as "...
 # server is not configured", unless type = "multi" and the user's backend

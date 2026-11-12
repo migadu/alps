@@ -161,7 +161,7 @@ Finding a user's collections takes three `PROPFIND` requests:
 
 On a login's first CalDAV or CardDAV request, ALPS runs steps 1 and 2 and caches the home-set path in memory in that ALPS process, keyed by login name. Every later request still runs step 3 (one `PROPFIND`) before it queries the collections.
 
-The cache has no expiry and is not cleared at sign-out. It is emptied only when it grows past 1000 logins or the process restarts. Each cluster node keeps its own (see [CLUSTER.md](CLUSTER.md)), and a home set moved on the server is not noticed until then. CalDAV also caches each login's scheduling capability and addresses for 10 minutes (see [section 5](#5-scheduling-invitations-and-tasks)).
+The cache has no expiry and is not cleared at sign-out. When step 3 fails, the request fails and the login's cached home set is dropped, so the next request runs steps 1 and 2 again and finds a home set that has moved on the server. Otherwise the cache is emptied only when it grows past 1000 logins or the process restarts. Each cluster node keeps its own (see [CLUSTER.md](CLUSTER.md)). CalDAV also caches each login's scheduling capability and addresses for 10 minutes (see [section 5](#5-scheduling-invitations-and-tasks)).
 
 ### Address Books and Calendars
 CardDAV uses only the first address book the server lists in the user's home set. Other address books are never shown or written to. If there are none, every contacts request fails with `carddav: no address book found`. ALPS never creates an address book, so the server must provision one per account.

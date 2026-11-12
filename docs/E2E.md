@@ -23,8 +23,8 @@ The repository has no CI configuration, so these tests run only when someone run
 
 ## Go tests
 
-Go tests sit beside the sources, in every package except `plugins/gpg`, which has none. They need
-neither sora nor PostgreSQL nor any other setup: the servers they talk to run in-process on
+Go tests sit beside the sources, in every package. They need neither sora nor PostgreSQL nor any
+other setup: the servers they talk to run in-process on
 loopback (in-memory IMAP servers, go-smtp SMTP servers, HTTP servers from `net/http/httptest`, and
 the cluster tests' gossip members on fixed 127.0.0.1 ports).
 
@@ -112,7 +112,7 @@ regular expression over the spec's full path, so a bare `reading.spec.ts` also r
 | `E2E_CLUSTER` | unset | Exactly `1` also starts a second ALPS on `E2E_PORT`+9, made from the same config. Both ALPS processes get a `[cluster]` section and gossip with each other (the first on `E2E_PORT`+10, the second on +11), against the one sora. Specs get `ALPS_SECONDARY_URL`; `e2e/cluster-recovery.spec.ts` needs it and skips itself otherwise |
 | `E2E_STATE` | `${TMPDIR:-/tmp}/alps-e2e-<port>` | The run's state directory: `bin/` (the alps, e2estack and sora binaries), `alps.toml`, `sora.toml` (and `alps-secondary.toml`), sora's cache, uploads and relay directories, and ALPS's `temp_dir` |
 | `E2E_LOGS` | `${TMPDIR:-/tmp}/alps-e2e-logs-<port>` | The server and build logs |
-| `E2E_RESULTS` | `test-results` (relative to `frontend/`) | Playwright's output directory for traces and screenshots |
+| `E2E_RESULTS` | `$E2E_LOGS/test-results` | Playwright's output directory for traces and screenshots, emptied when a run starts. The default is made absolute, so with a relative `E2E_LOGS` it is under the directory the script was started in; a relative `E2E_RESULTS` that you set is read from `frontend/` |
 | `E2E_PREVIEW` | unset | Exactly `1` turns on FETCH PREVIEW in the generated sora config and runs the positive preview test; it needs a `SORA_DIR` checkout that supports PREVIEW |
 | `PW_CHROMIUM_PATH` | unset | Use an already installed Chromium binary |
 
@@ -160,12 +160,12 @@ a listener.
 
 ### Runs side by side
 
-The ports, the database `alps_e2e_<port>` and the default state and log directories are all keyed
-by `E2E_PORT`. Two runs can therefore go side by side when:
+The ports, the database `alps_e2e_<port>` and the default state, log and results directories are
+all keyed by `E2E_PORT`. Two runs can therefore go side by side when:
 
 - their `E2E_PORT`s are at least 9 apart, or 12 apart when either uses `E2E_CLUSTER=1`;
-- each has its own `E2E_RESULTS`. Playwright clears its output directory (`frontend/test-results`
-  by default) when a run starts, and would delete the other run's traces and screenshots.
+- they do not set the same `E2E_STATE`, `E2E_LOGS` or `E2E_RESULTS`. Playwright clears its output
+  directory when a run starts, and would delete the other run's traces and screenshots.
 
 They still share two things. The build step is serialized, because `frontend/dist` is a single
 directory that each ALPS binary embeds. And the PostgreSQL server's connection limit is shared,
@@ -241,14 +241,16 @@ e2estack ───┼─► sora (IMAP, ManageSieve, admin API) ─┐
 
   With `E2E_CLUSTER=1`, the second ALPS runs from a copy of this config with its own address, and
   each gets its own `[cluster]` section (see [CLUSTER.md](CLUSTER.md) for what the cluster
-  carries).
+  carries). Neither has a `login_key`, so a session is known only to the node that opened it.
 
 One account, `alice@example.test`, is created for the run. The tests run serially against it.
 
 Logs go to `E2E_LOGS`, by default `${TMPDIR:-/tmp}/alps-e2e-logs-<port>/`: `e2estack.log`,
 `sora.log` and `alps.log`, plus `frontend-build.log` when the frontend was built and
-`alps-secondary.log` with `E2E_CLUSTER=1`. They are kept after the run and deleted when the next
-run on the same port starts.
+`alps-secondary.log` with `E2E_CLUSTER=1`, and Playwright's `test-results/` unless `E2E_RESULTS`
+says otherwise. They are kept after the run and deleted when the next run on the same port starts.
+When Playwright reports a failure, the script prints both directories, as `==> server logs:` and
+`==> traces and screenshots:`.
 
 ### The control API
 
@@ -384,5 +386,5 @@ role the page does not render — only running the suite does.
 - **"sign-in did not reach the mailbox"** — a sign-in through the form did not reach the mailbox
   within 15 s. When the form showed an error, the message goes on with `— the login form says:`
   and that error.
-- **Traces and screenshots** of failed tests are in `E2E_RESULTS` when it is set, otherwise in
-  `frontend/test-results/` (`npx playwright show-trace <trace.zip>`).
+- **Traces and screenshots** of failed tests are in `E2E_RESULTS`, by default `test-results/` in
+  the logs directory (`npx playwright show-trace <trace.zip>`).
