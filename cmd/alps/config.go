@@ -260,16 +260,25 @@ func (b BrandingConfig) toOptions() (alps.BrandingOptions, error) {
 }
 
 type PluginConfig struct {
-	Enabled bool                   `toml:"enabled"`
+	Enabled *bool                  `toml:"enabled"`
 	Server  string                 `toml:"server"`
 	Options map[string]interface{} `toml:"options"`
+}
+
+// effectiveEnabled preserves loader defaults when the flag is omitted. The
+// password-changing feature remains an explicit opt-in even with options set.
+func (c PluginConfig) effectiveEnabled(name string) bool {
+	if c.Enabled != nil {
+		return *c.Enabled
+	}
+	return name != "password"
 }
 
 // GetEnabledPlugins returns a list of plugin names that are enabled
 func (c *Config) GetEnabledPlugins() []string {
 	var enabled []string
 	for name, cfg := range c.Plugin {
-		if cfg.Enabled {
+		if cfg.Enabled != nil && *cfg.Enabled {
 			enabled = append(enabled, name)
 		}
 	}
@@ -279,8 +288,8 @@ func (c *Config) GetEnabledPlugins() []string {
 // GetPluginServers returns additional servers from plugin configs
 func (c *Config) GetPluginServers() []string {
 	var servers []string
-	for _, cfg := range c.Plugin {
-		if cfg.Enabled && cfg.Server != "" {
+	for name, cfg := range c.Plugin {
+		if cfg.effectiveEnabled(name) && cfg.Server != "" {
 			servers = append(servers, cfg.Server)
 		}
 	}
@@ -549,7 +558,7 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		options.Plugins = make(map[string]alps.PluginConfig)
 		for name, cfg := range c.Plugin {
 			options.Plugins[name] = alps.PluginConfig{
-				Enabled: cfg.Enabled,
+				Enabled: cfg.effectiveEnabled(name),
 				Server:  cfg.Server,
 				Options: cfg.Options,
 			}
