@@ -3,6 +3,7 @@ package multi
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"strings"
@@ -72,6 +73,7 @@ func (p serviceProbe) toServices() services {
 
 // Options implements provider.Options for the multi-provider router.
 type Options struct {
+	logger              *slog.Logger
 	DefaultDomain       string
 	Template            string
 	Autodiscover        bool
@@ -86,6 +88,13 @@ type Options struct {
 	// backend that omits one defers to the matching global configuration.
 	DomainServices  map[string]services
 	DefaultServices services
+}
+
+// SetLogger forwards the configured server logger to every routed backend.
+func (o *Options) SetLogger(logger *slog.Logger) {
+	if o != nil {
+		o.logger = logger
+	}
 }
 
 func (o *Options) Type() string {
@@ -239,10 +248,19 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		}
 	}
 
+	createFactory := func(options provider.Options) provider.AuthenticatedProviderFactory {
+		if o.logger != nil {
+			if aware, ok := options.(provider.LoggerAware); ok {
+				aware.SetLogger(o.logger)
+			}
+		}
+		return options.CreateFactory(timeout, debug)
+	}
+
 	domainFactories := make(map[string]provider.AuthenticatedProviderFactory)
 	for d, opt := range o.Domains {
 		if opt != nil {
-			domainFactories[d] = opt.CreateFactory(timeout, debug)
+			domainFactories[d] = createFactory(opt)
 		}
 	}
 
@@ -255,14 +273,14 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		if r.options != nil {
 			routeFactories = append(routeFactories, routeFactory{
 				domains: r.domains,
-				factory: r.options.CreateFactory(timeout, debug),
+				factory: createFactory(r.options),
 			})
 		}
 	}
 
 	var defaultFactory provider.AuthenticatedProviderFactory
 	if o.Default != nil {
-		defaultFactory = o.Default.CreateFactory(timeout, debug)
+		defaultFactory = createFactory(o.Default)
 	}
 
 	// Bound the SRV and restricted-host lookups. The subsequent dial uses
@@ -313,7 +331,7 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		if err != nil {
 			return nil, err
 		}
-		f := imapOpts.CreateFactory(timeout, debug)
+		f := createFactory(imapOpts)
 
 		dynMu.Lock()
 		defer dynMu.Unlock()

@@ -3,6 +3,7 @@ package alpscarddav
 import (
 	"context"
 	"fmt"
+	"github.com/migadu/alps/internal/debuglog"
 	"github.com/migadu/alps/provider"
 	"net/http"
 	"net/url"
@@ -111,7 +112,7 @@ func (p *plugin) connection(ctx context.Context, session *alps.Session) (*reques
 	if err != nil {
 		return nil, err
 	}
-	hc.Transport = &authRoundTripper{server: hc.Transport, debug: p.debug}
+	hc.Transport = &authRoundTripper{server: hc.Transport, debug: p.debug, debugWriter: debuglog.NewHTTPWriter(p.srv.Logger().Slog(), "carddav")}
 	return &requestConnection{url: u, client: hc, cacheKey: resolved.CacheKey}, nil
 }
 
