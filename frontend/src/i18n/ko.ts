@@ -178,6 +178,9 @@ export const ko = {
     }
   },
   linkedAccounts: {
+    relinkRequired: "설정에서 현재 비밀번호로 이 계정을 다시 연결하세요.",
+    accountNotFound: "이 계정은 더 이상 연결되어 있지 않습니다. 계정 목록을 새로고침하세요.",
+    switchUnavailable: "다른 계정을 일시적으로 사용할 수 없습니다. 나중에 다시 시도하세요.",
     description: '다른 계정을 연결하면 로그아웃하지 않고 계정 간에 빠르게 전환할 수 있습니다.',
     noAccounts: '연결된 계정이 없습니다.',
     remove: '삭제',

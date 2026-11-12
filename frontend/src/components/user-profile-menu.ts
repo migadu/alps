@@ -307,7 +307,9 @@ export class UserProfileMenu extends LitElement {
       
       window.dispatchEvent(new CustomEvent('show-toast', {
         detail: {
-          message: e.message || this.i18nStore?.t('linkedAccounts.switchError'),
+          message: this.i18nStore?.t(e.code === 'relink_required' ? 'linkedAccounts.relinkRequired'
+            : e.code === 'account_not_found' ? 'linkedAccounts.accountNotFound'
+            : e.code === 'service_unavailable' ? 'linkedAccounts.switchUnavailable' : 'linkedAccounts.switchError'),
           type: 'error',
           duration: 5000
         }

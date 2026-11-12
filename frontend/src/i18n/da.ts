@@ -181,6 +181,9 @@ export const da: TranslationDictionary = {
     }
   },
   linkedAccounts: {
+    relinkRequired: "Tilknyt denne konto igen med dens nuværende adgangskode i Indstillinger.",
+    accountNotFound: "Denne konto er ikke længere tilknyttet. Opdater kontolisten.",
+    switchUnavailable: "Den anden konto er midlertidigt utilgængelig. Prøv igen senere.",
     description: 'Tilknyt en anden konto for hurtigt at skifte mellem dem uden at logge ud.',
     noAccounts: 'Ingen tilknyttede konti.',
     remove: 'Fjern',

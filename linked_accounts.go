@@ -18,6 +18,7 @@ var (
 	ErrAccountNotFound      = errors.New("linked account not found")
 	ErrLoginKeyRequired     = errors.New("login key required for account encryption")
 	ErrCannotLinkSelf       = errors.New("cannot link your own account")
+	ErrRelinkRequired       = errors.New("linked account credentials must be re-entered")
 	// ErrLinkedCredentialsRefused identifies a refusal while signing in to the
 	// account being added, rather than an error in either account's metadata.
 	ErrLinkedCredentialsRefused = errors.New("linked account credentials refused")
@@ -384,7 +385,7 @@ func (s *Session) GetLinkedAccountCredentials(username string) (password string,
 		if acc.Username == username {
 			password, err := s.DecryptPassword(acc.PasswordEnc)
 			if err != nil {
-				return "", fmt.Errorf("failed to decrypt password for %s: %w", username, err)
+				return "", fmt.Errorf("%w: failed to decrypt password for %s: %v", ErrRelinkRequired, username, err)
 			}
 			return password, nil
 		}

@@ -173,6 +173,9 @@ export const fr = {
     },
   },
   linkedAccounts: {
+    relinkRequired: "Associez à nouveau ce compte avec son mot de passe actuel dans les paramètres.",
+    accountNotFound: "Ce compte n’est plus associé. Actualisez la liste des comptes.",
+    switchUnavailable: "L’autre compte est temporairement indisponible. Réessayez plus tard.",
     description: 'Connectez un autre compte pour basculer rapidement entre eux sans vous déconnecter.',
     noAccounts: 'Aucun compte lié.',
     remove: 'Supprimer',

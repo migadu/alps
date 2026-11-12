@@ -12,6 +12,11 @@ export interface LinkedAccountsData {
     accounts: LinkedAccount[];
 }
 
+export class AccountSwitchError extends Error {
+    readonly code: string;
+    constructor(code: string) { super(code); this.code = code; }
+}
+
 export class LinkedAccountsStore extends EventTarget {
     private accounts: LinkedAccount[] = [];
     private loading = false;
@@ -119,7 +124,7 @@ export class LinkedAccountsStore extends EventTarget {
 
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
-            throw new Error(data.error || 'Failed to switch account');
+            throw new AccountSwitchError(typeof data.error === 'string' ? data.error : 'switch_failed');
         }
         
         return await response.json();

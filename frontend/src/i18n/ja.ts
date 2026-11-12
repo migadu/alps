@@ -178,6 +178,9 @@ export const ja = {
     }
   },
   linkedAccounts: {
+    relinkRequired: "設定で現在のパスワードを使ってこのアカウントを再度リンクしてください。",
+    accountNotFound: "このアカウントはリンクされていません。アカウント一覧を更新してください。",
+    switchUnavailable: "別のアカウントは一時的に利用できません。後でもう一度お試しください。",
     description: '別のアカウントを連携すると、ログアウトせずにすばやく切り替えられます。',
     noAccounts: '連携しているアカウントはありません。',
     remove: '削除',

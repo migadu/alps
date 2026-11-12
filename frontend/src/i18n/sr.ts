@@ -174,6 +174,9 @@ export const sr = {
     },
   },
   linkedAccounts: {
+    relinkRequired: "Поново повежите овај налог са тренутном лозинком у подешавањима.",
+    accountNotFound: "Овај налог више није повезан. Освежите листу налога.",
+    switchUnavailable: "Други налог је привремено недоступан. Покушајте касније.",
     description: 'Povežite drugi nalog da biste brzo prelazili između njih bez odjavljivanja.',
     noAccounts: 'Nema povezanih naloga.',
     remove: 'Ukloni',

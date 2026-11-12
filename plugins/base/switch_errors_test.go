@@ -1,10 +1,12 @@
 package alpsbase
 
 import (
+	"github.com/migadu/alps"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 )
 
@@ -41,4 +43,45 @@ func TestHTTP_SwitchRefusalsKeepTheCurrentAccount(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHTTP_SwitchWithUnreadablePasswordRequiresRelinking(t *testing.T) {
+	s := newTestServer(t)
+	s.addBob()
+	s.login()
+	s.expect(s.do("POST", "/accounts", url.Values{"username": {bobUser}, "password": {bobPassword}}), http.StatusOK)
+	store, err := s.store.GetStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data map[string]interface{}
+	if err := store.Get("linked_accounts", &data); err != nil {
+		t.Fatal(err)
+	}
+	data["accounts"].([]interface{})[0].(map[string]interface{})["password_enc"] = "invalid"
+	if err := store.Put("linked_accounts", data); err != nil {
+		t.Fatal(err)
+	}
+	r := s.do("POST", "/accounts/switch", url.Values{"username": {bobUser}})
+	s.expect(r, http.StatusConflict)
+	if refusal(t, r) != "relink_required" {
+		t.Fatal(string(r.body))
+	}
+	s.mailbox("INBOX")
+}
+
+func TestHTTP_SwitchDuringOutageKeepsCurrentSession(t *testing.T) {
+	down := &atomic.Bool{}
+	s := newTestServerWithOptions(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(o *alps.Options) { o.Provider = outageOptions{o.Provider, down} })
+	s.addBob()
+	s.login()
+	s.expect(s.do("POST", "/accounts", url.Values{"username": {bobUser}, "password": {bobPassword}}), http.StatusOK)
+	down.Store(true)
+	r := s.do("POST", "/accounts/switch", url.Values{"username": {bobUser}})
+	s.expect(r, http.StatusServiceUnavailable)
+	if refusal(t, r) != "service_unavailable" {
+		t.Fatal(string(r.body))
+	}
+	down.Store(false)
+	s.mailbox("INBOX")
 }

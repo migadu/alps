@@ -178,6 +178,9 @@ export const zhHant = {
     }
   },
   linkedAccounts: {
+    relinkRequired: "請在設定中使用目前的密碼重新連結此帳戶。",
+    accountNotFound: "此帳戶已解除連結。請重新整理帳戶清單。",
+    switchUnavailable: "另一個帳戶暫時無法使用。請稍後再試。",
     description: '連結其他帳號，即可在帳號之間快速切換，無須登出。',
     noAccounts: '沒有已連結的帳號。',
     remove: '移除',

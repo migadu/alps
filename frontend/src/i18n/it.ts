@@ -173,6 +173,9 @@ export const it = {
     },
   },
   linkedAccounts: {
+    relinkRequired: "Collega di nuovo questo account con la password attuale nelle Impostazioni.",
+    accountNotFound: "Questo account non è più collegato. Aggiorna l’elenco degli account.",
+    switchUnavailable: "L’altro account è temporaneamente indisponibile. Riprova più tardi.",
     description: 'Collega un altro account per passare rapidamente da uno all\'altro senza disconnettersi.',
     noAccounts: 'Nessun account collegato.',
     remove: 'Rimuovi',
