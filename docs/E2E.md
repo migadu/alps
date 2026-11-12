@@ -5,8 +5,8 @@ ALPS has three test tiers:
 | Tier | Where | What it catches |
 |---|---|---|
 | Go tests | `go test ./...` or `make test` | Handlers, providers, sessions, protocol handling |
-| Frontend unit tests | `cd frontend && npm test` (typecheck, then Vitest + jsdom) | Component logic and render decisions |
-| **Browser tests** | `scripts/e2e.sh` (Playwright + Chromium) | The application actually running against real servers |
+| Frontend unit tests | `cd frontend && npm test` or `make test-frontend` (typecheck, then Vitest + jsdom) | Component logic and render decisions |
+| **Browser tests** | `scripts/e2e.sh` or `make test-e2e` (Playwright + Chromium) | The application actually running against real servers |
 
 The browser tier exists for what the other two cannot see: a component reading a field the backend
 does not send, a page that logs an error and renders nothing, a flow that only breaks once a real
@@ -14,7 +14,10 @@ IMAP server, a real SMTP submission and a real browser are all involved. Every t
 console error or uncaught exception on its page, not only on its own assertions.
 
 The repository has no CI configuration, so these tests run only when someone runs them locally.
-`make test` runs the Go tests only; no Makefile target runs Vitest. Two further checks:
+`make test-all` runs the three tiers in turn: `make test`, `make test-frontend` and `make test-e2e`.
+`make test-frontend` and `make test-e2e` first run `npm ci` in `frontend` when `frontend/node_modules`
+is missing, and `make test-e2e E2E_ARGS=e2e/reading.spec.ts` passes its arguments to `scripts/e2e.sh`.
+Two further checks:
 `cd frontend && npm run typecheck:e2e` typechecks the browser specs, and
 `python3 scripts/model-recovery-versions.py` checks the credential update protocol (see
 [WEBAUTHN_COORDINATION.md](WEBAUTHN_COORDINATION.md#verification)).

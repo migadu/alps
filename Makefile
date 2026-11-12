@@ -1,4 +1,4 @@
-.PHONY: all clean build build-frontend install build-freebsd build-linux help test test-coverage test-e2e
+.PHONY: all clean build build-frontend install build-freebsd build-linux help test test-coverage test-frontend test-e2e test-all
 
 # Binary names
 ALPS_BINARY ?= build/alps
@@ -45,9 +45,21 @@ clean:
 test:
 	go test -v ./...
 
-# Run the browser tests against a local mail stack (see docs/E2E.md)
-test-e2e:
-	scripts/e2e.sh
+# Install the frontend's dependencies from the lockfile, when they are missing
+frontend/node_modules:
+	cd frontend && npm ci
+
+# Run the frontend unit tests: typecheck the tests, then Vitest (see docs/E2E.md)
+test-frontend: frontend/node_modules
+	cd frontend && npm test
+
+# Run the browser tests against a local mail stack (see docs/E2E.md).
+# E2E_ARGS goes to Playwright, e.g. make test-e2e E2E_ARGS=e2e/reading.spec.ts
+test-e2e: frontend/node_modules
+	scripts/e2e.sh $(E2E_ARGS)
+
+# Run all three suites: Go, frontend unit and browser tests
+test-all: test test-frontend test-e2e
 
 # Help
 help:
@@ -59,8 +71,10 @@ help:
 	@echo "  build-freebsd  - Cross-compile for FreeBSD amd64"
 	@echo "  build-linux    - Cross-compile for Linux amd64"
 	@echo "  clean          - Remove build artifacts"
-	@echo "  test           - Run tests"
+	@echo "  test           - Run the Go tests"
+	@echo "  test-frontend  - Run the frontend unit tests (typecheck, then Vitest)"
 	@echo "  test-e2e       - Run the browser tests (needs a sora checkout and PostgreSQL)"
+	@echo "  test-all       - Run the Go, frontend unit and browser tests"
 	@echo "  test-coverage  - Run tests and show coverage in HTML"
 
 # Run tests and show coverage
