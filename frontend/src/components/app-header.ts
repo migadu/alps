@@ -57,10 +57,10 @@ export class AppHeader extends LitElement {
     // mailbox, and so the tab stays what it was.
     const hash = pageHash();
     if (hash === null) return;
-    if (hash.startsWith('#/contacts')) {
+    if (matchesTabRoute(hash, 'contacts')) {
       this.currentTab = 'contacts';
     } else {
-      const pluginTab = registry.getNavTabs().find(tab => hash.startsWith(`#/${tab.id}`));
+      const pluginTab = registry.getNavTabs().find(tab => matchesTabRoute(hash, tab.id));
       if (pluginTab) {
         this.currentTab = pluginTab.id;
       } else {
