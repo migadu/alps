@@ -12,7 +12,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '^/(mailboxes|messages|quota|bimi|attachments|session|proxy|settings|accounts|password|webauthn|contacts|managesieve|gpg|calendar)': {
+      '^/(mailboxes|messages|quota|bimi|attachments|session|events|proxy|settings|accounts|password|webauthn|contacts|managesieve|gpg|calendar)': {
         target: 'http://localhost:1323',
         changeOrigin: true,
         secure: false,
