@@ -27,20 +27,20 @@ SIGHUP does nothing else:
 
 - It does not reload the configuration. Restart ALPS to apply a change to `config.toml`.
 - It does not reload TLS certificates. With `[tls] provider = "file"`, ALPS reads `cert_file` and `key_file` once, at startup, so a renewed certificate takes a restart ([TLS.md](TLS.md#2-file-provider-manual-certificates)).
-- With `output` set to `stdout`, `stderr` or `syslog`, or when the log file could not be opened at startup and ALPS fell back to stderr, there is no file to reopen. ALPS still logs `SIGHUP: log file reopened`.
+- With `output` set to `stdout`, `stderr` or `syslog`, or when the log file could not be opened at startup and ALPS fell back to stderr, there is no file to reopen. ALPS logs `SIGHUP: no log file to reopen`.
 
 ### SIGINT and SIGTERM
 
 Either signal starts a graceful shutdown, which takes these steps in order:
 
 1. **HTTP.** The listener on `[server] addr` closes, so new connections are refused, and idle keep-alive connections are closed. Open `/events` streams are ended. Requests in progress get up to 30 seconds to finish. A request still running after that is cut off when the process exits.
-2. **Sessions.** Every session is told to close. Each one releases its mail connections and its uploaded attachment files in the background. ALPS does not wait for that, so some upload files can be left in the temp directory (see [Attachment Uploads](#attachment-uploads)). No `session ended` line is logged for these sessions.
+2. **Sessions.** Every session is told to close. Each one releases its mail connections and its uploaded attachment files in the background, and ALPS waits up to 5 seconds in all for that to finish, for sessions evicted just before the shutdown as well. If the cleanup takes longer, ALPS logs `Session shutdown timed out waiting for cleanup` and goes on, so some upload files can be left in the temp directory (see [Attachment Uploads](#attachment-uploads)). No `session ended` line is logged for these sessions.
 3. **Background jobs and plugins.** The rate limiter's cleanup and the hourly job scheduler stop. Then each loaded plugin is closed, once; the shipped plugins have nothing to release.
 4. **Let's Encrypt.** With `[tls] provider = "letsencrypt"`, the certificate warm loop stops, waiting up to 5 seconds for it. With S3 storage, the certificate sync worker also stops, waiting up to 10 seconds.
 5. **Cluster.** With `[cluster] enabled = true`, the node announces that it is leaving, waits up to 5 seconds for that to go out (not at all when no other node is up), and stops gossip ([CLUSTER.md](CLUSTER.md#3-startup-membership-and-shutdown)).
 6. ALPS exits with status 0.
 
-A shutdown therefore takes up to 30 seconds without Let's Encrypt and `[cluster]`. Let's Encrypt adds up to 5 seconds, or up to 15 with S3 storage, and `[cluster]` up to 5 more. With both, which means S3 storage, a shutdown takes up to 50 seconds. The ACME HTTP-01 listener on `acme_http_addr` is not drained: it closes when the process exits. ALPS logs no line of its own for the start or the end of a shutdown. With S3 storage, the certificate manager logs `stopping certificate sync worker` and then `certificate sync worker stopped gracefully` (or `certificate sync worker stop timed out`) on standard error.
+A shutdown therefore takes up to 35 seconds without Let's Encrypt and `[cluster]`. Let's Encrypt adds up to 5 seconds, or up to 15 with S3 storage, and `[cluster]` up to 5 more. With both, which means S3 storage, a shutdown takes up to 55 seconds. The ACME HTTP-01 listener on `acme_http_addr` is not drained: it closes when the process exits. ALPS logs no line of its own for the start or the end of a shutdown. With S3 storage, the certificate manager logs `stopping certificate sync worker` and then `certificate sync worker stopped gracefully` (or `certificate sync worker stop timed out`).
 
 Once a shutdown has begun, further SIGINT, SIGTERM and SIGHUP signals are ignored, so a second SIGTERM does not make it end sooner. Only SIGKILL, or SIGQUIT (which prints a stack trace and exits with status 2), ends it sooner.
 
@@ -135,7 +135,7 @@ With `[tls] provider = "letsencrypt"`, certificates are kept in `[tls.letsencryp
 
 A `[logging] output` path is opened for appending, and created with mode 0644 when it is missing. Its directory must already exist. If the file cannot be opened, ALPS writes `Failed to open log file ...` to standard error and logs there instead. ALPS never rotates or truncates the file: rotate it with newsyslog or logrotate, and have the tool send SIGHUP after moving it. The log holds user names and client addresses, so keep it in a directory that only the ALPS user and administrators can read.
 
-Some lines bypass `[logging]`. The cluster's and the certificate manager's lines ([CLUSTER.md](CLUSTER.md#7-checking-the-cluster)), and some warnings of the IMAP provider, such as the one for a server without METADATA, always go to standard error in Go's standard log format. The raw protocol traces that `[server] debug` turns on go straight to standard error (IMAP) or standard output (CalDAV, CardDAV and ManageSieve), and with debug on the IMAP provider also prints some notes to standard output ([CONFIGURATION.md](CONFIGURATION.md#1-server-configuration-server)).
+The cluster's and the certificate manager's lines ([CLUSTER.md](CLUSTER.md#7-checking-the-cluster)), and the warnings of the IMAP provider, such as the one for a server without METADATA, go through `[logging]` like every other line. The raw protocol traces that `[server] debug` turns on bypass it: they go straight to standard error (IMAP) or standard output (CalDAV, CardDAV and ManageSieve) ([CONFIGURATION.md](CONFIGURATION.md#1-server-configuration-server)).
 
 ---
 
@@ -160,7 +160,7 @@ The unit runs `/usr/local/bin/alps -config /etc/alps/config.toml` as user and gr
 | :--- | :--- | :--- |
 | `ExecReload` | `/bin/kill -HUP $MAINPID` | `systemctl reload alps` sends SIGHUP. |
 | `KillSignal`, `KillMode` | `SIGTERM`, `mixed` | `systemctl stop alps` sends SIGTERM to ALPS, and SIGKILL to whatever is left once `TimeoutStopSec` has passed. |
-| `TimeoutStopSec` | `30` | How long systemd waits for ALPS to stop. |
+| `TimeoutStopSec` | `60` | How long systemd waits for ALPS to stop: longer than the longest shutdown, 55 seconds with Let's Encrypt on S3 and `[cluster]`. |
 | `Restart`, `RestartSec` | `on-failure`, `5` | ALPS is started again 5 seconds after it exits with a non-zero status or is killed by a signal such as SIGKILL. |
 | `LimitNOFILE` | `65536` | Open file limit. Each session usually holds one or two mail connections. |
 | `AmbientCapabilities`, `CapabilityBoundingSet` | `CAP_NET_BIND_SERVICE` | Lets ALPS listen on ports below 1024, such as 443 and 80. |
@@ -176,7 +176,6 @@ The unit runs `/usr/local/bin/alps -config /etc/alps/config.toml` as user and gr
 - **Writable paths.** Under `ProtectSystem=strict`, only the private `/tmp` and `/var/tmp` can be written. The unit sets no `WorkingDirectory`, so the default `cache_dir` resolves to `/cert-cache`, which cannot be written. Set an absolute `cache_dir` and list a directory that holds it in `ReadWritePaths`. List there as well the directory of a log file, a `temp_dir` outside `/tmp` and `/var/tmp`, and, with the maildir provider, the maildirs. Each path in `ReadWritePaths` must exist before the service starts.
 - **Home directories.** `ProtectHome=true` hides `/home`, so the maildir provider cannot reach maildirs there, such as the `<home>/Maildir` default for passwd entries whose home is under `/home`. Set `ProtectHome=false` in a drop-in for such a setup.
 - **Private temp directory.** With `PrivateTmp=true`, ALPS's `/tmp` is its own, and systemd deletes it when the service stops, so the BIMI logo cache and any leftover upload files go with every restart. A directory under the host's `/tmp` or `/var/tmp` is not visible to ALPS, so a `temp_dir` there does not exist for it. With this unit, leave `temp_dir` unset, or point it outside `/tmp` and `/var/tmp` and list it in `ReadWritePaths`.
-- **Stop timeout.** `TimeoutStopSec=30` covers only the 30-second HTTP drain. With Let's Encrypt or `[cluster]`, raise it to 60, so that systemd does not kill ALPS before it has stopped the certificate workers and left the cluster.
 - **Restart loop.** A configuration error makes ALPS exit with status 1, and `Restart=on-failure` starts it again 5 seconds later, each time. A broken configuration shows in `journalctl -u alps` as the same startup error, repeated.
 
 A drop-in for a single node with Let's Encrypt certificates on local disk:
@@ -189,7 +188,6 @@ systemctl edit alps
 ```ini
 [Service]
 ReadWritePaths=/var/lib/alps
-TimeoutStopSec=60
 ```
 
 ```toml
@@ -217,22 +215,28 @@ The script reads these `rc.conf` variables:
 | :--- | :--- | :--- |
 | `alps_enable` | `NO` | Starts ALPS at boot. |
 | `alps_user` | `alps` | The user ALPS runs as. |
-| `alps_group` | `alps` | The group that owns the log directory. |
+| `alps_group` | `alps` | The group that owns the log directory and `/var/run/alps`. |
 | `alps_config` | `/usr/local/etc/alps/config.toml` | Passed to ALPS as `-config`. |
 | `alps_logdir` | `/var/log/alps` | The directory of `alps.log`. |
 
-It runs ALPS under daemon(8):
+rc.subr starts daemon(8) as `alps_user`, and daemon(8) runs ALPS:
 
 ```sh
-daemon -c -f -o ${alps_logdir}/alps.log -p /var/run/alps.pid -u ${alps_user} /usr/local/bin/alps -config ${alps_config}
+daemon -c -f -H -P /var/run/alps/daemon.pid -o ${alps_logdir}/alps.log -p /var/run/alps/alps.pid /usr/local/bin/alps -config ${alps_config}
 ```
 
-daemon(8) appends ALPS's standard output and standard error to `alps.log` and writes ALPS's pid to `/var/run/alps.pid`. Before each start, the script creates `alps_logdir` with mode 750, owned by `alps_user:alps_group`. With the default `[logging]` output, every log line goes to `alps.log`: `tail -f /var/log/alps/alps.log`.
+daemon(8) appends ALPS's standard output and standard error to `alps.log`, writes ALPS's pid to `/var/run/alps/alps.pid` and its own to `/var/run/alps/daemon.pid`, and reopens `alps.log` when it receives SIGHUP (`-H`). `service alps stop` and `status` use `alps.pid`, checked against `/usr/local/bin/alps`. Before each start, the script creates `alps_logdir` and `/var/run/alps` with mode 750, owned by `alps_user:alps_group`. With the default `[logging]` output, every log line goes to `alps.log`: `tail -f /var/log/alps/alps.log`.
 
 #### Caveats (FreeBSD)
 
 - **Reload is not a configuration reload.** `service alps reload` sends SIGHUP to ALPS, as the script's comments say. ALPS then reopens only a log file it opened itself through `[logging] output`. It does not reopen daemon(8)'s `alps.log`, and it does not reload the configuration. Use `service alps restart` to apply a configuration change.
-- **Log rotation.** Because SIGHUP to ALPS does not reopen `alps.log`, set `[logging] output` to a file path when the log is to be rotated with a signal, and have newsyslog send SIGHUP to the pid in `/var/run/alps.pid` after moving that file. `alps.log` then holds only the lines that bypass `[logging]` (see [The Log File](#the-log-file)).
+- **Log rotation.** daemon(8), not ALPS, holds `alps.log` open, so newsyslog must send SIGHUP to the pid in `/var/run/alps/daemon.pid` after moving it. The script's comments give an entry for `/etc/newsyslog.conf.d/alps.conf`:
+
+  ```
+  /var/log/alps/alps.log alps:alps 640 7 * @T00 JC /var/run/alps/daemon.pid 1
+  ```
+
+  A log file set in `[logging] output` is rotated the other way: newsyslog sends SIGHUP to ALPS itself, at `/var/run/alps/alps.pid`.
 - **Working directory.** `daemon -c` runs ALPS in `/`, so a relative `cache_dir` resolves under `/`. Set an absolute `cache_dir` in a directory the `alps` user can write.
 - **Temp directory.** Unless `TMPDIR` or `temp_dir` says otherwise, ALPS uses the shared `/tmp`. Set `temp_dir` to a directory of ALPS's own (see [The Temp Directory](#the-temp-directory)).
 
@@ -349,5 +353,5 @@ The other HTTP clients (CalDAV, CardDAV, the startup `OPTIONS` checks, the passw
 Besides resolving host names, ALPS makes these lookups itself:
 
 - For BIMI logos: TXT `_dmarc.<domain>` and `<selector>._bimi.<domain>`.
-- At startup, for a `[plugin.caldav] server` given without a scheme: SRV `_caldavs._tcp.<domain>`, and the TXT record of the same name for the path ([CDAV.md](CDAV.md#caldav-auto-discovery)). If discovery fails, ALPS runs without the CalDAV plugin.
+- At startup, for a `[plugin.caldav] server` given without a scheme: SRV `_caldavs._tcp.<domain>`, and the TXT record of the same name for the path ([CDAV.md](CDAV.md#caldav-auto-discovery)). If discovery fails, ALPS runs without the CalDAV plugin, unless a `[provider.multi]` backend names a `caldav` endpoint.
 - At sign-in, with `[provider.multi] autodiscover = true` and a domain listed in `autodiscover_domains`: SRV `_imaps._tcp.<domain>`, then `_imap._tcp.<domain>`. An answer is kept for 15 minutes, and a lookup that fails or finds no usable record for 30 seconds ([CONFIGURATION.md](CONFIGURATION.md)).

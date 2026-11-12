@@ -180,7 +180,7 @@ The Settings page calls `POST /password/change`, which needs a signed-in session
 
 Errors are `{"error": ..., "code": ...}` with the codes listed under [Error Handling](#error-handling); a 429 also carries `retry_after`. Malformed JSON is 400 `{"error":"invalid_json"}`, and a JSON body over the size limit is 413 `{"error":"payload_too_large"}`.
 
-The route and the Settings > Password tab exist only while the password plugin is loaded, and it loads only with `[plugin.password] enabled = true`. Without it, `GET /session` does not list `password` in `EnabledPlugins` and answers `PasswordChangeEnabled` false, Settings offers no Password tab, and there is no `/password/change` route. Because a `[plugin.*]` section with `enabled = true` means only the enabled plugins load, `base` and every other plugin wanted need `enabled = true` as well (see [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname)).
+The route and the Settings > Password tab exist only while the password plugin is loaded, and it loads only with `[plugin.password] enabled = true`. Without it, `GET /session` does not list `password` in `EnabledPlugins` and answers `PasswordChangeEnabled` false, Settings offers no Password tab, and there is no `/password/change` route. Because a `[plugin.*]` section with `enabled = true` means only `base` and the enabled plugins load, every other plugin wanted needs `enabled = true` as well (see [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname)).
 
 ## Error Handling
 

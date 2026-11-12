@@ -60,7 +60,7 @@ The per-minute and per-15-minute limits lock nothing. They refuse with a fixed w
 
 ## Responses
 
-When the limiter refuses `POST /session`, ALPS answers HTTP 429 with a `Retry-After` header in whole seconds and the JSON body `{"error": "<English reason>", "retry_after": <seconds>}`. The global limit adds `"code": "server_busy"`. The wait depends on what refused the request:
+When the limiter refuses `POST /session`, ALPS answers HTTP 429 with a `Retry-After` header in whole seconds, rounded up, and the JSON body `{"error": "<English reason>", "retry_after": <seconds>}`. The global limit adds `"code": "server_busy"`. The wait depends on what refused the request:
 
 | Refused by | Wait |
 |---|---|
@@ -77,7 +77,7 @@ The other protected endpoints answer with bodies of their own (see the table bel
 
 ## Protected Endpoints
 
-The same limiter, counts and lockouts guard these requests as well as the sign-in form. A correct answer counts as a success and a wrong one as a failure. A lockout of the account or of the address blocks all of them. Each refusal is HTTP 429 with `Retry-After`.
+The same limiter, counts and lockouts guard these requests as well as the sign-in form. A correct answer counts as a success and a wrong one as a failure. A lockout of the account or of the address blocks all of them. Each refusal is HTTP 429 with `Retry-After`, in whole seconds rounded up, so a lockout with less than a second left still says 1.
 
 | Request | Counted against | 429 body |
 |---|---|---|

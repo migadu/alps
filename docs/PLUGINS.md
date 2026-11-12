@@ -114,6 +114,9 @@ An error the handler returns becomes a JSON answer `{"error": ..., "code": ..., 
 - A `provider.AuthError` ends the session and answers 401.
 - An unavailable mail server answers `503 {"error":"mail_server_unavailable"}`.
 - `provider.ErrMessageNotFound` answers 404 `"Message not found"`.
+- A `*provider.InvalidSearchError`, a search prefix without a value, answers 400 `"Search terms require a value."`.
+
+These are recognised in an error that wraps them, so wrap with `%w`, not `%v`, as `gpg` does for its store errors: an error wrapped with `%v` is a 500.
 
 A panic in a handler is recovered, logged, and answered with a plain-text 500.
 
@@ -121,7 +124,7 @@ A panic in a handler is recovered, logged, and answered with a plain-text 500.
 
 A plugin reads its config section as `s.Options.Plugins["myplugin"]` in its loader, or `ctx.Server.Options.Plugins["myplugin"]` in a handler. It is an `alps.PluginConfig{Enabled, Server, Options}`; see [Registering the Plugin](#registering-the-plugin) for the keys.
 
-A loader can decide to stay off by returning no plugins, and can refuse a bad configuration by returning an error. An error from a loader makes `alps.New` fail, and ALPS exits at startup. `caldav`, `carddav` and `managesieve` return no plugins when they have no `server`, `enabled` is not `true` and the provider does not route the service:
+A loader can decide to stay off by returning no plugins, and can refuse a bad configuration by returning an error. An error from a loader makes `alps.New` fail, and ALPS exits at startup. `caldav` and `carddav` return no plugins when they have no `server`, `enabled` is not `true` and the provider routes no endpoint for the service; `managesieve` does when it has no `server` and the provider routes no endpoint for it, whatever `enabled` says:
 
 ```go
 func init() {
@@ -141,7 +144,7 @@ For a service whose endpoint differs per login under a routing provider (see `[p
 
 - `ctx.Server.ServiceURLFor(service, username)` returns the endpoint for this login, or `""` when the global configuration applies.
 - `ctx.Server.ServiceOptionsFor(service, username)` does the same for a service configured by an option block, and returns `nil` when the global block applies.
-- `ctx.Server.HasServiceRouting(service)` reports whether the provider routes services at all.
+- `ctx.Server.HasServiceRouting(service)` reports whether the provider may route this service per login. Under `multi` that is whether any backend names an endpoint for it. A provider whose options implement `provider.ServiceRouter` but not the optional `provider.ServiceRoutingReporter` counts as routing every service.
 
 Per-user data that must outlive the session goes in `ctx.Session.Store()`, a `provider.Store` with `Get(key, &out)` and `Put(key, v)` of JSON values. A missing key is `provider.ErrNoStoreEntry`. Use `provider.GetFresh(store, key, &out)` to read past cached copies when another session may have written the entry, as `gpg` does for its keyring. With the IMAP provider the entries are kept in the user's mailbox as IMAP METADATA under `/private/vendor/alps/<key>`; the maildir provider keeps them in `alps_store.json` at the root of the user's maildir ([MAILDIR.md](MAILDIR.md)). A server without METADATA gets a transient store that does not persist (see [ARCHITECTURE.md](ARCHITECTURE.md) and [MAIL_SERVER.md](MAIL_SERVER.md)).
 
@@ -164,12 +167,14 @@ import (
 
 The `[plugin.<name>]` sections of `config.toml` then decide which of the compiled-in plugins load:
 
-- If at least one section has `enabled = true`, the sections with `enabled = true` form an allow-list. Every other plugin a loader returns is skipped and logged as `Plugin "<name>" is disabled (not in enabled list)`, whether it has no section or `enabled = false`.
-- If no section has `enabled = true`, which includes having no sections at all, there is no allow-list and every plugin the loaders return loads.
+- `base`, which serves `/session` and the mail API, always loads.
+- A plugin whose section does not set `enabled = true`, because it says `enabled = false` or leaves `enabled` out, is skipped and logged as `Plugin "<name>" is disabled`.
+- If at least one section has `enabled = true`, the sections with `enabled = true` form an allow-list, and a plugin without a section is skipped and logged the same way.
+- If no section has `enabled = true`, which includes having no sections at all, there is no allow-list, and every plugin the loaders return loads unless its own section keeps it out.
 
-Every compiled-in plugin's loader runs in both cases, and the allow-list is applied to what the loaders return. A loader that returns no plugins, as `caldav`, `carddav` and `managesieve` can (see [Configuration and Per-User Data](#configuration-and-per-user-data)), stays off either way, and is not logged as disabled. A loader's error stops ALPS even for a plugin the allow-list would have dropped, so a loader should check `enabled` before it refuses its options, as `password` does.
+Every compiled-in plugin's loader runs in all cases, and these rules are applied to what the loaders return. A loader that returns no plugins, as `caldav`, `carddav` and `managesieve` can (see [Configuration and Per-User Data](#configuration-and-per-user-data)), stays off either way, and is not logged as disabled. A loader's error stops ALPS even for a plugin the rules would have dropped, so a loader should check `enabled` before it refuses its options, as `password` does.
 
-A config that adds `[plugin.myplugin]` with `enabled = true` must therefore also keep `enabled = true` for `base`, which serves `/session` and the mail API, and for every other plugin it wants, as `config.example.toml` does:
+A config that adds `[plugin.myplugin]` must therefore set `enabled = true` in it, and then also keep `enabled = true` for every other plugin it wants, as `config.example.toml` does:
 
 ```toml
 [plugin.base]
@@ -183,7 +188,7 @@ enabled = true
 # example_key = "example_value"
 ```
 
-A section's keys are `enabled` (bool), `server` (string) and `options` (a free-form table). `base` always loads. A section with `enabled = false` keeps its plugin out, even when no other section enables anything. When one or more sections set `enabled = true`, only those plugins and `base` load; otherwise each plugin's loader decides whether it is set up. See [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname) for the in-tree plugins' sections.
+A section's keys are `enabled` (bool), `server` (string) and `options` (a free-form table). See [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname) for the in-tree plugins' sections.
 
 ---
 
@@ -454,7 +459,7 @@ func init() {
 
 Jobs run on a scheduler that ticks once an hour. The interval is fixed in code and cannot be configured, and the first run comes one hour after startup, not at startup. On every tick all registered jobs run one after another in a single goroutine, in no fixed order. A `GoPlugin`'s job is registered under the name `<plugin name>:<job name>`, for example `base:cleanup_bimi_avatars`, which deletes cached BIMI avatars older than 7 days. A job that returns an error or panics is logged at error level and runs again on the next tick.
 
-Jobs are registered by the function `Loader()` returns, when it runs and before the allow-list is applied (see [Registering the Plugin](#registering-the-plugin)). A plugin the allow-list drops therefore still has its jobs run. A loader that returns `p.Plugin()` without calling `Loader()`, as `caldav`, `carddav` and `managesieve` do, registers no jobs.
+Jobs are registered by the function `Loader()` returns, when it runs and before the `enabled` rules are applied (see [Registering the Plugin](#registering-the-plugin)). A plugin those rules drop therefore still has its jobs run. A loader that returns `p.Plugin()` without calling `Loader()`, as `caldav`, `carddav` and `managesieve` do, registers no jobs.
 
 ---
 

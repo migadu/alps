@@ -25,11 +25,11 @@ The full key reference is in [CONFIGURATION.md](CONFIGURATION.md#9-plugins-plugi
 
 ### Loading the Plugin
 
-The plugin loads when `[plugin.managesieve]` sets `server`, sets `enabled = true`, or the provider is `multi` (which can name a ManageSieve server per domain).
+The plugin loads only when `[plugin.managesieve]` sets `server`, or a `[provider.multi]` backend names a `managesieve` endpoint. `enabled = true` without either leaves it out, and startup logs `ManageSieve enabled without a server or routed endpoint; plugin disabled`.
 
-If any `[plugin.*]` section sets `enabled = true`, ALPS loads only the plugins whose own sections set it, and drops the others at startup with `Plugin "managesieve" is disabled (not in enabled list)`. So in a configuration that enables plugins by name, as `config.example.toml` does, set `enabled = true` here too. To switch filters off, set `enabled = false` and keep `enabled = true` on the plugins you use.
+A `[plugin.managesieve]` section that does not set `enabled = true`, because it says `enabled = false` or leaves `enabled` out, keeps the plugin out, and once any `[plugin.*]` section sets `enabled = true`, so does having no section. ALPS then logs `Plugin "managesieve" is disabled` at startup. So set `enabled = true` here, as `config.example.toml` does. To switch filters off, set `enabled = false`.
 
-A loaded plugin's tabs show for every user. A user with neither a global nor a per-domain server sees **Could not load the filters.** on the Filters tab and **Could not load the auto-reply.** on the Auto-reply tab, and each request is logged as `managesieve: failed to connect to the sieve server: ManageSieve server is not configured`.
+A loaded plugin's tabs show for every user. When the plugin loaded for the endpoints that some backends name, a user with neither a global nor a per-domain server sees **Could not load the filters.** on the Filters tab and **Could not load the auto-reply.** on the Auto-reply tab, and each request is logged as `managesieve: failed to connect to the sieve server: ManageSieve server is not configured`.
 
 ### Connection Schemes
 
@@ -68,7 +68,7 @@ For a login, ALPS takes the domain (the `default_domain` for a bare user name) a
 2. a `[[provider.multi.routes]]` entry listing the domain,
 3. `[provider.multi.default]`, for a domain no entry or route lists (domains reached by `template` or `autodiscover` included).
 
-When the matching backend has no `managesieve` key, the global `[plugin.managesieve] server` applies. A per-domain URL takes the same schemes as the global one, and whether it may skip TLS comes only from its own scheme, never from the global server's. A per-domain URL ALPS cannot parse is logged (`managesieve: provider named an unusable server ...`), and the global server is used instead.
+When the matching backend has no `managesieve` key, the global `[plugin.managesieve] server` applies. A per-domain URL takes the same schemes as the global one, and whether it may skip TLS comes only from its own scheme, never from the global server's. A per-domain URL ALPS cannot parse is logged, once for each such value (`managesieve: provider named an unusable server ...`), and the global server is used instead.
 
 ---
 

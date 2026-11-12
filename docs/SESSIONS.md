@@ -20,7 +20,7 @@ When a user signs in, ALPS creates a **Session** object in memory.
 | `alps_session` | The token that names the in-memory session | No (HttpOnly) | 30 days when the user ticked "Stay signed in after closing the browser", otherwise until the browser closes |
 | `alps_logged_in` | `1`, telling the page a session was issued | Yes | Same as `alps_session` |
 | `alps_login_token` | The encrypted login token (only with `login_key`) | No (HttpOnly) | 30 days when the user ticked "Stay signed in after closing the browser", otherwise until the browser closes |
-| `alps_has_login_token` | `1`, telling the page a login token was issued (it is also set at sign-in without `login_key`) | Yes | Same as `alps_login_token` |
+| `alps_has_login_token` | `1`, telling the page a login token was issued. It is set only once the token itself is written: without `login_key`, or when the token cannot be encrypted, a sign-in clears both cookies instead | Yes | Same as `alps_login_token` |
 | `alps_2fa_pending` | The token of a session waiting for its second factor | No (HttpOnly) | 5 minutes |
 
 Every one of them has `Path=/` and `SameSite=Strict`. They carry `Secure` when the browser's connection is HTTPS: ALPS terminates TLS itself, or the immediate peer is listed in `[server] trusted_proxies` and sends `X-Forwarded-Proto: https`. Behind a TLS-terminating proxy that is not listed in `trusted_proxies`, all of these cookies are sent without `Secure`; see [Reverse Proxies in TLS.md](TLS.md#5-reverse-proxies).

@@ -36,11 +36,11 @@ These searches are evaluated by the mail server, as the plain words are. The ser
 `from:alice subject:meeting`
 _Matches emails whose From header contains "alice" and whose subject contains "meeting"._
 
-Write the value directly after the colon, with no space: `from:alice`, not `from: alice`. A query is split into terms at spaces outside double quotes. So `from: alice` is a `from:` term with an empty value plus the plain word `alice`. That does not restrict the sender, because an empty value is contained in every From field, and it finds `alice` anywhere in the message.
+Write the value directly after the colon, with no space: `from:alice`, not `from: alice`. A query is split into terms at spaces outside double quotes. So `from: alice` is a `from:` term with an empty value plus the plain word `alice`, and is refused as described below.
 
 A word with a colon that is not one of these prefixes, such as `10:30` or a link, is searched for as it is written.
 
-Every prefix requires a non-empty value. Queries such as `from:`, `body:""` and `header:X-Custom:` are refused with HTTP 400, including when selecting all search results for a bulk action. An empty query still means the whole folder.
+Every prefix requires a non-empty value. Queries such as `from:`, `from: alice`, `body:""` and `header:X-Custom:` are refused with HTTP 400 (`Search terms require a value.`), and the list reads **Could not load this folder.** A bulk action on all the results of such a query is refused the same way, before anything is changed. An empty query still means the whole folder.
 
 ### Starred and Unread Buttons
 
@@ -54,7 +54,7 @@ Plain words typed next to each other are already sent as one search string, quot
 - A quoted phrase becomes its own term, separate from the plain words around it: `hello "big deal" world` gives three terms, combined with AND.
 - Quoting text that looks like a prefix searches it as plain text: `"from:bob"`.
 
-The surrounding quotes are not part of the search. A phrase whose closing quote is missing runs to the end of the query. So does a prefixed value whose closing quote is missing, but its opening quote is then searched for as part of the value.
+The surrounding quotes are not part of the search. A phrase whose closing quote is missing runs to the end of the query. So does a prefixed value whose closing quote is missing, such as `subject:"weekly report` or `header:Subject:"weekly report`, and its opening quote is dropped in the same way.
 
 **Example:**
 `subject:"urgent meeting notes" body:"hello world"`
@@ -80,7 +80,7 @@ A search covers only the folder on screen. When the mail server supports `MULTIS
 
 The results appear under "All Folders" as one flat list, not grouped into conversations, and each row shows the name of the folder it is in. They are ordered by message date (the Date header, or the arrival time when that is missing) following the list's sort order, newest first by default. The offer to select every match ("Select all … in …") is not made there, and **Clear search** returns to the Inbox.
 
-On a server without `MULTISEARCH` there is no Search All button. The all-folders view (`#/mailbox/*`), opened from its URL on such a server, searches only the Inbox.
+On a server without `MULTISEARCH` there is no Search All button. The all-folders view (`#/mailbox/*`), opened from its URL on such a server, is refused with HTTP 400 `{"error":"cannot"}`, and the list reads **Could not load this folder.**
 
 ## How Results Are Listed
 
@@ -110,4 +110,4 @@ The query is carried in the page URL as `q` (`#/mailbox/<folder>?q=...`), so rel
 
 With the Maildir provider (see [Local Maildir Provider](MAILDIR.md)), the whole query, prefixes and quote characters included, is matched as one case-insensitive substring of each stored message file, headers and body as stored. Encoded headers and bodies (RFC 2047 words, base64, quoted-printable) are not decoded first.
 
-Prefixes, quotes and AND are therefore not interpreted. The Starred and Unread toolbar filters (`is:starred`, `is:unread`) find nothing in practice, and Search All is not offered.
+Prefixes, quotes and AND are therefore not interpreted. The Starred and Unread toolbar filters (`is:starred`, `is:unread`) find nothing in practice, and Search All is not offered. A prefix with an empty value, such as `from:`, is still refused with HTTP 400, as on an IMAP account.

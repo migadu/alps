@@ -148,7 +148,7 @@ A new file in `frontend/src/i18n/` is a language `auto` can choose as soon as it
 2. **A dictionary in each plugin** that has one: `plugins/caldav`, `carddav`, `gpg`, `managesieve` and `password`, each at `frontend/i18n/<code>.ts` with that plugin's `en` keys.
 3. **An option in the language picker.** The list in `renderLocalization()` in `frontend/src/components/settings-window.ts` is written out by hand. Add an option like the others, with `value` set to the code, `lang` set to `intlTag("<code>")`, and its label from `settings.localization.<name>`. Without it the language is reachable only through `auto`.
 4. **Its name in its own words**, as `settings.localization.<name>`, in every core dictionary. The name is the same in all of them, written in the new language's own script, such as "Deutsch" or "Српски (ћирилица)".
-5. **The tests.** In `frontend/test/i18n-dictionaries.test.ts`, import the dictionary and add it to `CORE`, add the code to the list each plugin must have, and add the name to `ENDONYMS`. In `frontend/test/settings-language-picker.test.ts`, add the option to the expected picker list.
+5. **The tests.** `frontend/test/i18n-dictionaries.test.ts` finds the core dictionaries by their files, and checks each plugin against `SUPPORTED_LANGUAGES`, so the new language is checked as soon as its files exist. Add its name to `ENDONYMS` there. In `frontend/test/settings-language-picker.test.ts`, add the option to the expected picker list.
 6. **Optionally, calendar email text**: an entry in `mailDictionaries` in `plugins/caldav/mailtext.go`, keyed by the code in lower case. Without one, scheduling emails are written in English, or in the dictionary of the code's primary subtag where one exists.
 
 Right-to-left layout needs no extra step when the language's script is one of those listed under [Right-to-Left Layout](#right-to-left-layout).
@@ -162,7 +162,7 @@ Run the frontend unit tests with `cd frontend && npm test` (see [E2E.md](E2E.md#
 These frontend unit tests cover localization:
 
 - `frontend/test/i18n-dictionaries.test.ts` checks the dictionaries and how the source uses them:
-  - Every core dictionary has exactly the keys of core `en`, and every plugin dictionary exactly the keys of that plugin's `en`. Each plugin must have all 19 codes.
+  - Every core dictionary has exactly the keys of core `en`, and every plugin dictionary exactly the keys of that plugin's `en`. Each plugin must have a dictionary for every code in `SUPPORTED_LANGUAGES`, and for no other.
   - A plural entry has the forms the language's plural rules use and no others. `many` may be left out, since `other` answers for it. A `one` form keeps `{count}` in a language whose `one` also covers 21, such as Serbian.
   - Every string is non-empty and keeps the placeholders of English.
   - Every key used in the source resolves in the merged English, no plural key is asked for without a count, and no `t()` result has `.replace()` chained onto it. A number that counts something in English is a plural key, apart from a short list of exemptions.

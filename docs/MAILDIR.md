@@ -119,15 +119,17 @@ John's and Alice's password is `secret`, and Bob's is `supersecret`. John's `{CR
 
 INBOX is the maildir itself. Other folders are Maildir++ dot-directories with `.` as the hierarchy delimiter: `Archive.2024` is the directory `.Archive.2024`. Names are shown exactly as stored on disk, with no modified UTF-7 decoding, and folders ALPS creates are named in UTF-8. A name that is empty, starts or ends with `.`, or contains `..`, `/`, `\` or NUL is refused.
 
-Maildir has no special-use attributes, so special folders are recognised by name: the web app treats `Drafts`, `Sent`, `Archive`/`Archives`, `Junk`/`Spam` and `Trash`/`Deleted Items` (any case) as special. When filing a sent copy or a draft, ALPS uses the folder named `Sent` or `Drafts` (any case), otherwise the first folder whose name contains that word, and creates `Sent` or `Drafts` on the first save when none exists. A folder such as `Presentations` can therefore receive sent copies in an account without `Sent`, so create `Sent` and `Drafts` with the account. Sent copies are stored as read, and drafts as read and `\Draft`.
+Maildir has no special-use attributes, so special folders are recognised by name: the web app treats `Drafts`, `Sent`, `Archive`/`Archives`, `Junk`/`Spam` and `Trash`/`Deleted Items` (any case) as special. When filing a sent copy, ALPS uses the folder named exactly `Sent`, and for a draft the folder named `Drafts`, or `Draft` when there is no `Drafts` (any case). A folder whose name only contains the word, such as `Presentations` or `Contract drafts`, is never used. When there is none, ALPS creates `Sent` or `Drafts` on the first save. Sent copies are stored as read, and drafts as read and `\Draft`.
+
+Renaming a folder renames its subfolders with it: renaming `Archive` to `Old` moves `Archive.2024` to `Old.2024`. If any of the new names is taken, nothing is renamed.
 
 ### Flags
 
-Flags are the info letters after `:2,` in the message file name: `S` = `\Seen`, `R` = `\Answered`, `F` = `\Flagged`, `T` = `\Deleted`, `D` = `\Draft`. Other letters on disk, such as `P` (passed) or keyword letters written by another program, are not shown. Adding or removing a flag keeps them, but the flags API's `set` action (its default when no action is given) replaces them. Tags (`$label1` to `$label5`) and other keywords cannot be stored with the Maildir provider: a tag change is accepted without error but nothing is saved.
+Flags are the info letters after `:2,` in the message file name: `S` = `\Seen`, `R` = `\Answered`, `F` = `\Flagged`, `T` = `\Deleted`, `D` = `\Draft`. Other letters on disk, such as `P` (passed) or keyword letters written by another program, are not shown. Adding or removing a flag keeps them, but the flags API's `set` action (its default when no action is given) replaces them. Tags (`$label1` to `$label5`) and other keywords cannot be stored with the Maildir provider: a flag change that names one is refused with HTTP 400 `{"error":"cannot"}`, and no message is changed.
 
 ### New Mail
 
-ALPS writes to the maildir as well as reading it. Whenever it reads a folder, and loading the folder list reads every folder, it moves newly delivered files from `new/` into `cur/` as `<key>:2,`, dropping any info set at delivery. A message counts as unread while its file name lacks `S`. Messages ALPS stores (sent copies, drafts) are written in `tmp/` and moved into `cur/` once complete.
+ALPS writes to the maildir as well as reading it. Whenever it reads a folder, and loading the folder list reads every folder, it moves newly delivered files from `new/` into `cur/` as `<key>:2,`, dropping any info set at delivery. A message counts as unread while its file name lacks `S`. Messages ALPS stores (sent copies, drafts) are written in `tmp/` and moved into `cur/` once complete. A file in `cur/` whose name is not a message's, such as one without the `:2,` part, is skipped and logged as `skipping malformed message name`. It is not listed or counted, and the folder's other messages are listed as usual.
 
 Changes made by other programs show up when ALPS next reads the folder from disk. A page of the message list that the session has cached is shown again while the folder's message and unread counts stay the same, so a change that leaves both as they were, such as a star set by another program, can take until that page leaves the cache to appear (`[cache] ttl_minutes`, 10 by default; see [CONFIGURATION.md](CONFIGURATION.md#3-caching-cache)).
 
@@ -146,7 +148,7 @@ Every file and folder below the user's maildir, `alps_store.json` included, is o
 
 Back it up with the maildir, and keep it valid JSON if you edit it: while it does not parse, the account cannot sign in (a service error) and its settings cannot be read or saved. It holds no CardDAV or CalDAV configuration: those endpoints come from `[plugin.carddav]` / `[plugin.caldav]`, or from a domain's entry under `[provider.multi]` (see [CDAV.md](CDAV.md)).
 
-ALPS writes the file only into a maildir that exists. Until the maildir is there (the first delivery makes it, as does ALPS when it first stores a message or creates a folder), the user's settings cannot be saved, so create the maildir with the account.
+When the user's maildir does not exist yet, the first write of the file creates it, with its parents, mode `0700`, so settings can be saved before the first delivery.
 
 Each change rewrites the whole `alps_store.json` through `alps_store.json.tmp` (mode `0600`) and a rename, so a reader never sees a half-written file. Changes are serialised only within one ALPS process, so serve each maildir from a single ALPS instance.
 
@@ -154,7 +156,7 @@ With clustering enabled (`[cluster] enabled = true`, see [CLUSTER.md](CLUSTER.md
 
 ## Search
 
-Search opens every message file in the current folder. It matches the whole query, as typed, as one case-insensitive substring of the stored message: headers and body as they are on disk, with no decoding of base64, quoted-printable or RFC 2047 encoded headers. The prefixes (`from:`, `to:`, `cc:`, `subject:`, `body:`, `header:`, `is:`), quoting and the AND of several terms described in [SEARCH.md](SEARCH.md) do not apply to the Maildir provider. The toolbar's Starred and Unread filters are sent as the queries `is:starred` and `is:unread`, so they are matched as text too and find nothing in practice. Searching all folders at once is not offered.
+Search opens every message file in the current folder. It matches the whole query, as typed, as one case-insensitive substring of the stored message: headers and body as they are on disk, with no decoding of base64, quoted-printable or RFC 2047 encoded headers. The prefixes (`from:`, `to:`, `cc:`, `subject:`, `body:`, `header:`, `is:`), quoting and the AND of several terms described in [SEARCH.md](SEARCH.md) do not apply to the Maildir provider. The toolbar's Starred and Unread filters are sent as the queries `is:starred` and `is:unread`, so they are matched as text too and find nothing in practice. A query with a prefix and no value, such as `from:` or `body:""`, is refused with HTTP 400, as on an IMAP account. Searching all folders at once is not offered.
 
 ## Limitations
 
@@ -167,4 +169,4 @@ Not available with the Maildir provider:
 - sender authentication badges and BIMI logos: the Maildir provider does not read the messages' `Authentication-Results` fields, and has no counterpart of the IMAP provider's `authserv_ids`;
 - folder subscriptions: every folder is listed as subscribed, and subscribing or unsubscribing has no effect.
 
-Messages are ordered by their file name, which normally starts with the delivery time, not by the `Date` header. The newest-first or oldest-first setting applies, but sorting by date does not.
+With Settings > Reading & Composing > Message Sort Criteria at **Received Date** (the default), the message list and search results are ordered by each message's `Date` header. A message without a valid `Date` is placed by the delivery time at the start of its file name, and messages with the same date are ordered by file name. With **Folder Filing Date**, they are ordered by file name, which normally starts with the delivery time. The newest-first or oldest-first setting applies either way.

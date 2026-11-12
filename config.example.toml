@@ -364,10 +364,10 @@ enabled = true
 # max_part_kib = 1024
 
 [logging]
-# Not everything follows [logging]. Messages from TLS certificate management
-# (Let's Encrypt), from the cluster and a few others go to stderr as plain text
-# at info level, whatever output, format and level say. The server.debug
-# protocol traces do not go through it either (see debug above).
+# Messages from TLS certificate management (Let's Encrypt), from the cluster
+# and from the IMAP provider follow output, format and level like every other
+# line. The server.debug protocol traces do not go through [logging] (see
+# debug above), nor do the errors printed before the log is opened.
 
 # Log output destination
 # Options:
@@ -781,18 +781,20 @@ server = "smtps://smtp.migadu.com:465"
 
 # Plugin Configuration
 # Each plugin can have its own section with enabled flag and settings.
-# base always loads. A section with enabled = false keeps its plugin out.
+# base always loads. A section without enabled = true (one that says
+# enabled = false, or leaves enabled out) keeps its plugin out.
 # If any [plugin.*] section has enabled = true, only base and the plugins
 # with enabled = true load. If none has, which includes having no [plugin.*]
-# sections at all, every other plugin loads unless its section says
-# enabled = false, and caldav, carddav and managesieve load only with a
-# server or [provider] type = "multi". The password plugin loads only with
-# [plugin.password] enabled = true, so the allow-list applies whenever it
-# loads.
-# A caldav, carddav or managesieve section with enabled = true and no server,
-# as below, loads without an endpoint: its requests fail, logged as "...
-# server is not configured", unless type = "multi" and the user's backend
-# names one.
+# sections at all, the plugins without a section load too: gpg, and caldav,
+# carddav and managesieve when a [provider.multi] backend names their
+# endpoint. The password plugin loads only with [plugin.password]
+# enabled = true, so the allow-list applies whenever it loads.
+# A caldav or carddav section with enabled = true and no server, as below,
+# loads without an endpoint: its requests fail, logged as "... server is not
+# configured", unless the user's multi backend names one. A managesieve
+# section with enabled = true and no server, as below, loads only when a
+# multi backend names a managesieve endpoint; otherwise startup logs
+# "ManageSieve enabled without a server or routed endpoint; plugin disabled".
 # A server value that cannot be used (an unknown ManageSieve scheme, a CardDAV
 # server without a scheme) stops startup, even in a section with
 # enabled = false. See docs/PLUGINS.md and docs/CONFIGURATION.md (section 9).
@@ -810,8 +812,8 @@ enabled = true
 # http+insecure:// or http:// for plain HTTP), or a bare host name with no
 # scheme or port. A bare host makes ALPS look up the CalDAV server in DNS
 # (SRV _caldavs._tcp) once, at startup; if that fails, the plugin is not
-# loaded. Without server, only users whose multi backend names caldav get
-# calendars.
+# loaded, unless a multi backend names caldav. Without server, only users
+# whose multi backend names caldav get calendars.
 # server = "https://caldav.example.com"
 
 # Plugin-specific options (optional map)
@@ -837,9 +839,10 @@ enabled = true
 [plugin.managesieve]
 # ManageSieve plugin for email filtering. See docs/FILTERS.md.
 enabled = true
-# ManageSieve server. There is no discovery: without it, filters are
-# unavailable (logged as "ManageSieve server is not configured") unless a
-# multi backend names managesieve.
+# ManageSieve server. There is no discovery: without it, the plugin does not
+# load unless a multi backend names managesieve, and then users whose backend
+# names none find filters unavailable (logged as "ManageSieve server is not
+# configured").
 # Supported forms: managesieves://, managesieve://, sieve:// and a bare host
 # name, all on port 4190 by default, plus managesieve+insecure:// and
 # sieve+insecure://. None of them is implicit TLS.

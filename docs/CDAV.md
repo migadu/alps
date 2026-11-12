@@ -42,9 +42,9 @@ server = "https://dav.example.com/"
 ```
 
 ### Loading the Plugins
-A DAV plugin loads when its section sets `server`, sets `enabled = true`, or the provider is `multi` (which can route endpoints per domain).
+A DAV plugin whose section sets `enabled = true` loads, with or without a `server`. Without a section, it loads when a `[provider.multi]` backend names its endpoint (see [Per-Domain Endpoints](#per-domain-endpoints-multi-provider)), as long as no `[plugin.*]` section sets `enabled = true`.
 
-If any `[plugin.*]` section sets `enabled = true`, ALPS loads only the plugins whose own sections set it. Every other plugin that would have loaded is dropped at startup and logged as `Plugin "caldav" is disabled (not in enabled list)`. So set `enabled = true` in `[plugin.caldav]` and `[plugin.carddav]` as `config.example.toml` does (and in `[plugin.base]` and every other plugin you use), and give each DAV plugin either a `server` or per-domain endpoints in the multi provider.
+A section that does not set `enabled = true`, because it says `enabled = false` or leaves `enabled` out, keeps its plugin out even when it sets `server`, and once any `[plugin.*]` section sets `enabled = true`, so does having no section. Such a plugin is dropped at startup and logged as `Plugin "caldav" is disabled`. So set `enabled = true` in `[plugin.caldav]` and `[plugin.carddav]` as `config.example.toml` does (and in every other plugin you use), and give each DAV plugin either a `server` or per-domain endpoints in the multi provider.
 
 A loaded plugin's tabs show for every user. A user with neither a global nor a per-domain endpoint gets an error on every request (`CalDAV server is not configured`, `CardDAV server is not configured`).
 
@@ -73,10 +73,10 @@ carddav = "https://dav.sharedmail.com"
 - That endpoint serves every login the table matches.
 - A login whose domain matches no `domains` or `routes` entry uses the `default` table's.
 - A table that names no endpoint uses the global `[plugin.caldav]` / `[plugin.carddav]` `server`, never another table's.
-- These values must be full URLs with a scheme. A value without a scheme, or one that does not parse, is logged (`caldav: provider named an unusable server ... (using the configured one)`, carddav likewise) and the global server is used.
+- These values must be full URLs with a scheme. A value without a scheme, or one that does not parse, is logged once for each such value (`caldav: provider named an unusable server ... (using the configured one)`, carddav likewise) and the global server is used.
 - Per-domain endpoints are neither discovered nor probed at startup.
 
-Under `multi`, both plugins load even without a global `server`, as long as the enabled list does not drop them.
+Under `multi`, a plugin without a global `server` loads when its section sets `enabled = true`, or, with no section, when some backend names its endpoint (see [Loading the Plugins](#loading-the-plugins)).
 
 ### CalDAV Auto-Discovery
 When `[plugin.caldav]` `server` is a bare domain (for example `example.com`), ALPS runs DNS discovery once at startup (RFC 6764):
@@ -84,7 +84,7 @@ When `[plugin.caldav]` `server` is a bare domain (for example `example.com`), AL
 1. It looks up the SRV record `_caldavs._tcp.example.com` and connects over `https` to the first record's target and port.
 2. The path is the `path=` value of the TXT record at `_caldavs._tcp.example.com`, or `/.well-known/caldav` when there is none.
 
-Without that SRV record discovery fails: ALPS logs `caldav: failed to discover CalDAV server: ...` and does not load the CalDAV plugin, so Calendar, Tasks and the invitation banner are all missing. There is no plain-HTTP discovery and no direct `/.well-known/caldav` probe of the domain. Per-domain `caldav` endpoints never use discovery and must be full URLs.
+Without that SRV record discovery fails: ALPS logs `caldav: failed to discover CalDAV server: ...` and does not load the CalDAV plugin, so Calendar, Tasks and the invitation banner are all missing. When a `[provider.multi]` backend names a `caldav` endpoint, the plugin loads all the same, without a global server: users whose backend names one keep their calendars, and the others get `CalDAV server is not configured`. There is no plain-HTTP discovery and no direct `/.well-known/caldav` probe of the domain. Per-domain `caldav` endpoints never use discovery and must be full URLs.
 
 ### CardDAV Has No Auto-Discovery
 `[plugin.carddav]` `server` must be a full URL with a scheme. A bare host name such as `carddav.example.com` stops ALPS at startup with:

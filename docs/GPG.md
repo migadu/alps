@@ -27,7 +27,7 @@ enabled = true
 server = "https://dav.example.com/"
 ```
 
-If any `[plugin.*]` section sets `enabled = true`, ALPS loads only the plugins whose own sections set it. In that case set it in `[plugin.gpg]`, and also in `[plugin.base]`, which provides sign-in and all mail, as the example above and `config.example.toml` do. When the plugin is not loaded, the frontend drops its Settings tab and its hooks. The full key reference is in [CONFIGURATION.md](CONFIGURATION.md).
+A `[plugin.gpg]` section that does not set `enabled = true` keeps the plugin out, and if any `[plugin.*]` section sets `enabled = true`, ALPS loads only `base` and the plugins whose own sections set it. So set it in `[plugin.gpg]`, as the example above and `config.example.toml` do. When the plugin is not loaded, the frontend drops its Settings tab and its hooks. The full key reference is in [CONFIGURATION.md](CONFIGURATION.md).
 
 ### The carddav Dependency
 
@@ -66,7 +66,7 @@ The other records kept the same way are listed in [ARCHITECTURE.md](ARCHITECTURE
 | `POST` | `/gpg/keys` | Saves the JSON body as the whole keyring. While a keypair is stored, only a request with `?replace=1` replaces it; any other answers `409` and keeps the stored keypair. Without `?replace=1`, a stored keyring that cannot be read gives `500`, and nothing is saved. |
 | `DELETE` | `/gpg/keys` | Overwrites the keyring with an empty one. |
 
-Each route answers `401` without a session.
+Each route answers `401` without a session. When the mail server cannot be reached while a route reads or writes the keyring, the answer is `503 {"error":"mail_server_unavailable"}`, and the login token is kept, so the browser's next request can restore the session; when the mail server refuses the session's credentials, the answer is `401` and the user is signed out.
 
 ---
 

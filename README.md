@@ -6,7 +6,7 @@ A simple and extensible webmail.
 
 - **Go**: the module needs Go 1.25.0 or later (`go 1.25.0` in `go.mod`) and names `toolchain go1.26.5`. With the default `GOTOOLCHAIN=auto`, an older `go` command (Go 1.21 or later) downloads go1.26.5 and builds with it. go1.26.5 carries the standard-library security fixes for the mail-parsing, TLS and HTTP paths, so build releases with go1.26.5 or later. With `GOTOOLCHAIN=local`, the local toolchain builds ALPS whenever it is Go 1.25.0 or later, whether or not its standard library has those fixes.
 - **Node.js and npm**: needed only to rebuild `frontend/dist`, to run the Vite dev server, and to run the frontend unit and browser tests. Building or running ALPS itself does not need them. Use Node.js 20 (20.19 or later), 22 (22.12 or later), or 24 and later: Vite 8 and rolldown, as locked in `frontend/package-lock.json`, declare `^20.19.0 || >=22.12.0`, and Vitest 4 declares `^20.0.0 || ^22.0.0 || >=24.0.0`.
-- **Platform**: ALPS builds on Linux, macOS and the BSDs. It does not build on Windows, because the logger uses `log/syslog`.
+- **Platform**: ALPS builds on Linux, macOS, the BSDs and Windows. On Windows, `[logging] output = "syslog"` falls back to stderr, and the password plugin's `command` backend is refused, since it needs a Unix host.
 - **Mail store**: chosen with `[provider] type`.
   - `"imap"` (the default) uses an existing IMAP server.
   - `"maildir"` reads a local Maildir and needs no IMAP server (see [Local Maildir Provider](docs/MAILDIR.md)).
@@ -24,7 +24,7 @@ A simple and extensible webmail.
   - A ManageSieve server (filters and auto-reply), set with `[plugin.managesieve]` `server` or per backend. Its connection must be upgraded with STARTTLS unless the URL is `managesieve+insecure://` or `sieve+insecure://` (see [Mail Filters and Auto-Reply](docs/FILTERS.md)).
   - For password change, an HTTP endpoint or a local command, with `[plugin.password]` `enabled = true` (see [Password Change](docs/PASSWORD_CHANGE.md)).
 
-  Once any `[plugin.*]` section sets `enabled = true`, only the plugins whose sections set `enabled = true` load, so `[plugin.base]` needs it too. A CardDAV, CalDAV or ManageSieve plugin with no `server` and no `enabled = true` does not load, unless the provider is multi. One that loads with no server, and no per-backend server for the login, fails its requests as not configured. The [Configuration Guide](docs/CONFIGURATION.md) has the full rules.
+  `base` always loads. A plugin whose `[plugin.<name>]` section does not set `enabled = true` does not load, and once any section sets `enabled = true`, neither does a plugin without a section. CardDAV and CalDAV load with `enabled = true` even without a server, and then fail their requests as not configured for a login whose multi backend names no server of its own. ManageSieve loads only with a `server`, or when a multi backend names one. The [Configuration Guide](docs/CONFIGURATION.md#9-plugins-pluginname) has the full rules.
 
 ## Usage
 
@@ -33,7 +33,7 @@ All configuration is provided via a TOML configuration file, named by the requir
 - Keep `[server] debug` off (the default) in production. With it on, ALPS writes the IMAP exchange to stderr and the CardDAV, CalDAV and ManageSieve exchanges to stdout, message, contact and calendar content included.
 - Point `[provider.imap] server` and `[smtp] server` at your own mail servers, since the example uses Migadu's.
 - Set `[webauthn] rpid` to the public hostname and `origins` to its origin (for example `https://webmail.example.com`). Unset, they default to localhost, and security keys work only from localhost.
-- The example ships `enabled = true` for CardDAV, CalDAV and ManageSieve with no server. Set a server for each one you run, or set `enabled = false` for the others.
+- The example ships `enabled = true` for CardDAV, CalDAV and ManageSieve with no server: CardDAV and CalDAV then load and fail every request, and ManageSieve stays off. Set a server for each one you run, or set `enabled = false` for the others.
 
 Run the alps backend server:
 
@@ -57,7 +57,7 @@ ALPS listens on `[server] addr`, default `:1323`. `alps -version` prints the ver
 
 ### Running as a service
 
-`dist/alps.service` (systemd, config at `/etc/alps/config.toml`) and `dist/alps` (FreeBSD rc.d, config at `/usr/local/etc/alps/config.toml`) run `/usr/local/bin/alps -config <path>` as user `alps`. Their reload (`systemctl reload alps`, `service alps reload`) sends SIGHUP. SIGHUP reopens the log file when `[logging] output` is a file path, and does not reload the configuration; restart ALPS to apply configuration changes. SIGINT or SIGTERM ends open event streams and shuts down gracefully. Requests in progress get up to 30 seconds to finish. With Let's Encrypt on S3 storage and `[cluster]`, stopping the certificate workers and leaving the cluster can add up to 20 seconds after that, so a shutdown takes up to 50 seconds. The shipped systemd unit's `TimeoutStopSec=30` covers only the first 30 seconds. [Operating ALPS](docs/OPERATIONS.md) covers each [shutdown step](docs/OPERATIONS.md#1-signals-and-graceful-shutdown), the service files and their stop timeout, restarts, and what ALPS writes to disk.
+`dist/alps.service` (systemd, config at `/etc/alps/config.toml`) and `dist/alps` (FreeBSD rc.d, config at `/usr/local/etc/alps/config.toml`) run `/usr/local/bin/alps -config <path>` as user `alps`. Their reload (`systemctl reload alps`, `service alps reload`) sends SIGHUP. SIGHUP reopens the log file when `[logging] output` is a file path, and does not reload the configuration; restart ALPS to apply configuration changes. SIGINT or SIGTERM ends open event streams and shuts down gracefully. Requests in progress get up to 30 seconds to finish, and the sessions' cleanup up to 5 more. With Let's Encrypt on S3 storage and `[cluster]`, stopping the certificate workers and leaving the cluster can add up to 20 seconds after that, so a shutdown takes up to 55 seconds. The shipped systemd unit's `TimeoutStopSec=60` covers it. [Operating ALPS](docs/OPERATIONS.md) covers each [shutdown step](docs/OPERATIONS.md#1-signals-and-graceful-shutdown), the service files and their stop timeout, restarts, and what ALPS writes to disk.
 
 ### Frontend Interface
 
@@ -79,14 +79,14 @@ For frontend development, run the backend (`go run ./cmd/alps -config config.tom
     npm install
     npm run dev
 
-Open http://localhost:5173. The Vite dev server forwards the API paths to http://localhost:1323, and the default WebAuthn origins already include http://localhost:5173, so no extra configuration is needed. Through the dev server there is no new-mail push (`/events` is not forwarded), and configured branding does not appear, because Vite serves its own `index.html`.
+Open http://localhost:5173. The Vite dev server forwards the API paths to http://localhost:1323, and the default WebAuthn origins already include http://localhost:5173, so no extra configuration is needed. Through the dev server, configured branding does not appear, because Vite serves its own `index.html`.
 
 ## Running the tests
 
 ALPS has three test tiers:
 
 - Go tests: `go test ./...` (or `make test`).
-- Frontend unit tests (Vitest): `cd frontend && npm install && npm test`.
+- Frontend unit tests (Vitest): `cd frontend && npm install && npm test`, which typechecks the tests first.
 - Browser tests: `scripts/e2e.sh` (or `make test-e2e`), which needs PostgreSQL with the `pg_trgm` and `btree_gin` extensions, a sora checkout (default `../sora`) and Playwright's Chromium (see [Testing](docs/E2E.md)). It rebuilds `frontend/dist` first, unless `E2E_SKIP_BUILD=1` is set.
 
 The repository has no CI, so run these yourself before opening a pull request.

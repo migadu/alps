@@ -46,8 +46,9 @@ the cluster tests' gossip members on fixed 127.0.0.1 ports).
 
 ## Frontend unit tests
 
-`npm test` in `frontend/` runs `vitest run` under jsdom. Only `frontend/test/**/*.test.ts` is
-collected, so a `*.test.ts` placed beside a source in `src/` or `plugins/*/frontend/` never runs.
+`npm test` in `frontend/` first runs `npm run typecheck:test` (see below), then `vitest run`
+under jsdom. Only `frontend/test/**/*.test.ts` is collected, so a `*.test.ts` placed beside a
+source in `src/` or `plugins/*/frontend/` never runs.
 
 - Plugin frontend tests live in `frontend/test` too and import `../../plugins/<name>/frontend/…`.
   `frontend/vitest.config.ts` allows that (`server.fs.allow: ['..']`) and pins `lit`, `@lit`,
@@ -59,8 +60,12 @@ collected, so a `*.test.ts` placed beside a source in `src/` or `plugins/*/front
   `record`, `flush`, `click`, `waitFor`), `sidebar.ts` (`settleSidebar`, `inSidebar`,
   `setSidebar`), `sources.ts` (`readSources`) and `styles.ts` (`rulesOf`, `ruleMatches`,
   `backgroundOf`, `backgroundsOf`).
-- Neither `npm run build` nor `npm run typecheck:e2e` typechecks `frontend/test`. Vitest compiles
-  it without checking its types, so a type error there fails nothing.
+- `npm run typecheck:test` checks the frontend unit tests and their fakes against the production
+  interfaces without running Vitest, so a type error there fails `npm test` before any test runs.
+  Its separate TypeScript config, `tsconfig.test.json`, includes Node globals for test helpers
+  without adding them to the browser build. Neither `npm run build` nor `npm run typecheck:e2e`
+  typechecks `frontend/test`, and Vitest compiles it without checking its types, so running
+  `npx vitest run` on its own does not catch a type error.
 
 ---
 
@@ -388,5 +393,3 @@ role the page does not render — only running the suite does.
   and that error.
 - **Traces and screenshots** of failed tests are in `E2E_RESULTS`, by default `test-results/` in
   the logs directory (`npx playwright show-trace <trace.zip>`).
-
-`npm run typecheck:test` checks the frontend unit tests and their fakes against the production interfaces without running Vitest. `npm test` runs this check first. Its separate TypeScript config includes Node globals for test helpers without adding them to the browser build.
