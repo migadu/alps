@@ -61,13 +61,18 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Each test represents a fresh signed-in session, with no retained edits or listings.
+  window.dispatchEvent(new Event('session-cleared'));
+  localStorage.clear();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(messageSync, 'sync').mockImplementation(() => {});
   requests = [];
   refuse = false;
   wrote = 5;
   history.replaceState(null, '', '/#/mailbox/INBOX');
+  // Drain navigation events queued by the previous test before mounting a page.
+  await flush();
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
     const u = String(url);
     const method = init.method || 'GET';
