@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/migadu/alps/provider"
+	"github.com/migadu/alps/provider/providertest"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -29,7 +30,7 @@ func TestServerPluginConfig(t *testing.T) {
 
 	// Test 1: Only domain name with scheme
 	opts := &Options{
-		Provider: &provider.MockOptions{},
+		Provider: &providertest.MockOptions{},
 		SMTP:     SMTPOptions{Server: "smtps://example.com"},
 	}
 	s, err := newServer(logger, opts)
@@ -38,7 +39,7 @@ func TestServerPluginConfig(t *testing.T) {
 
 	// Test 2: Specific schemes
 	opts = &Options{
-		Provider: &provider.MockOptions{},
+		Provider: &providertest.MockOptions{},
 		SMTP:     SMTPOptions{Server: "smtps://smtp.example.com:465"},
 	}
 	s, err = newServer(logger, opts)

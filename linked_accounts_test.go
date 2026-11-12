@@ -2,6 +2,7 @@ package alps
 
 import (
 	"encoding/json"
+	"github.com/migadu/alps/provider/providertest"
 	"testing"
 	"time"
 
@@ -138,7 +139,7 @@ func TestLinkedAccounts_ALinkMadeFromAnotherSessionIsKept(t *testing.T) {
 				accounts["bob@example.com"].entries[linkedAccountsStoreKey] = c.links
 			}
 			sm := newSessionManager(func(username, _ string) (provider.MailProvider, error) {
-				p := &provider.MockProvider{}
+				p := &providertest.MockProvider{}
 				p.On("Close").Return(nil)
 				p.On("GetStore").Return(&connectionStore{account: accounts[username], copies: map[string]*string{}}, nil)
 				return p, nil

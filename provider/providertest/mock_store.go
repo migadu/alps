@@ -1,4 +1,4 @@
-package provider
+package providertest
 
 import (
 	"github.com/stretchr/testify/mock"

@@ -3,6 +3,7 @@ package alps
 import (
 	"context"
 	"errors"
+	"github.com/migadu/alps/provider/providertest"
 	"io"
 	"reflect"
 	"runtime"
@@ -93,7 +94,7 @@ func (srv *idlingServer) idling() *idlingConnection {
 
 // idlingConnection is one connection of an idlingServer.
 type idlingConnection struct {
-	provider.MockProvider
+	providertest.MockProvider
 	server *idlingServer
 	dial   int // which dial opened it, from 1
 
@@ -1094,7 +1095,7 @@ func TestWatchInbox_NotToldOfAnIdleWhoseConnectionIsGone(t *testing.T) {
 func TestWatchInbox_ConnectionDroppedWhileANewWatchBegins(t *testing.T) {
 	previous := runtime.GOMAXPROCS(1)
 	defer runtime.GOMAXPROCS(previous)
-	p := new(provider.MockProvider)
+	p := new(providertest.MockProvider)
 	s := &Session{manager: &SessionManager{pushNewMail: true}}
 	s.background.p = p
 	s.push.running = true // This test controls the transition without an IDLE worker.
@@ -1137,7 +1138,7 @@ func TestWatchInbox_ConnectionDroppedWhileANewWatchBegins(t *testing.T) {
 }
 
 func TestWatchInbox_InitialAnnouncementRequiresTheSameBackgroundConnection(t *testing.T) {
-	p, replacement := new(provider.MockProvider), new(provider.MockProvider)
+	p, replacement := new(providertest.MockProvider), new(providertest.MockProvider)
 	for _, tc := range []struct {
 		name        string
 		background  provider.MailProvider

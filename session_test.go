@@ -3,6 +3,7 @@ package alps
 import (
 	"context"
 	"errors"
+	"github.com/migadu/alps/provider/providertest"
 	"mime/multipart"
 	"sync"
 	"testing"
@@ -70,8 +71,8 @@ func TestSession_CloseIsIdempotent(t *testing.T) {
 // bytes to the global budget — previously only the logout/eviction path did
 // this, so idle-expired sessions permanently inflated the global budget.
 func TestSession_ExpiryReleasesAttachments(t *testing.T) {
-	mockProvider := &provider.MockProvider{}
-	mockStore := &provider.MockStore{}
+	mockProvider := &providertest.MockProvider{}
+	mockStore := &providertest.MockStore{}
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(mockStore, nil)
 	mockStore.On("Get", mock.Anything, mock.Anything).Return(provider.ErrNoStoreEntry)
@@ -131,8 +132,8 @@ func TestSession_ExpiryReleasesAttachments(t *testing.T) {
 }
 
 func TestSessionManager_PutAndGet(t *testing.T) {
-	mockProvider := &provider.MockProvider{}
-	mockStore := &provider.MockStore{}
+	mockProvider := &providertest.MockProvider{}
+	mockStore := &providertest.MockStore{}
 
 	// Expectations
 	mockProvider.On("Close").Return(nil)
@@ -188,8 +189,8 @@ func TestSessionManager_PutAndGet(t *testing.T) {
 }
 
 func TestSessionManager_Eviction(t *testing.T) {
-	mockProvider := &provider.MockProvider{}
-	mockStore := &provider.MockStore{}
+	mockProvider := &providertest.MockProvider{}
+	mockStore := &providertest.MockStore{}
 
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(mockStore, nil)
@@ -322,8 +323,8 @@ func TestSession_NextTimeout_DisabledIdleTimeout(t *testing.T) {
 }
 
 func TestSession_UpdateDurationZeroDoesNotTerminateSession(t *testing.T) {
-	mockProvider := &provider.MockProvider{}
-	mockStore := &provider.MockStore{}
+	mockProvider := &providertest.MockProvider{}
+	mockStore := &providertest.MockStore{}
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(mockStore, nil)
 	mockStore.On("Get", mock.Anything, mock.Anything).Return(provider.ErrNoStoreEntry)

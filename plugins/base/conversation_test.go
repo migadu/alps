@@ -1,6 +1,7 @@
 package alpsbase
 
 import (
+	"github.com/migadu/alps/provider/providertest"
 	"net/http"
 	"net/url"
 	"slices"
@@ -104,7 +105,7 @@ func TestMergeConversation(t *testing.T) {
 
 // A provider that names no message's folder, as a provider need not.
 type namelessProvider struct {
-	*provider.MockProvider
+	*providertest.MockProvider
 	thread, sent []provider.Message
 }
 
@@ -127,7 +128,7 @@ func TestAConversationNamesEveryMembersFolder(t *testing.T) {
 		return provider.Message{ID: testUID(uid), Envelope: &provider.Envelope{MessageID: id}}
 	}
 	p := namelessProvider{
-		MockProvider: &provider.MockProvider{},
+		MockProvider: &providertest.MockProvider{},
 		thread:       []provider.Message{msg("9", "root@x"), msg("7", "answer@x")},
 		sent:         []provider.Message{msg("7", "reply@x")},
 	}

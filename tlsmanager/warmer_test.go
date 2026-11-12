@@ -12,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"github.com/migadu/alps/tlsmanager/storage/storagetest"
 	"io"
 	"log/slog"
 	"math/big"
@@ -270,7 +271,7 @@ func TestWarmer_DeferredPassDoesNotBurnBudget(t *testing.T) {
 	cache := newMemCache()
 	cache.m["example.com"] = makeBundle(t, "example.com", false)
 
-	mock := storage.NewMockS3Client()
+	mock := storagetest.NewMockS3Client()
 	s3 := &storage.S3Cache{S3Client: mock, Bucket: "b", Prefix: "p/", Logger: discardLogger()}
 	fc := storage.NewFallbackCache(t.TempDir(), s3, discardLogger())
 

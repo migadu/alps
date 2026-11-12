@@ -3,6 +3,8 @@ package storage
 import (
 	"context"
 	"testing"
+
+	"github.com/migadu/alps/tlsmanager/storage/storagetest"
 )
 
 func TestS3CacheUsesPrefixDirectoryForEveryOperation(t *testing.T) {
@@ -12,7 +14,7 @@ func TestS3CacheUsesPrefixDirectoryForEveryOperation(t *testing.T) {
 		for _, key := range []string{"mail.example.com", "mail.example.com+token"} {
 			t.Run(tc.prefix+"/"+key, func(t *testing.T) {
 				ctx := context.Background()
-				client := NewMockS3Client()
+				client := storagetest.NewMockS3Client()
 				cache := &S3Cache{S3Client: client, Bucket: "certs", Prefix: tc.prefix, Logger: discardLogger()}
 				fullKey := tc.directory + key
 				client.Storage[fullKey] = []byte("existing certificate")
