@@ -52,6 +52,9 @@ type Config struct {
 
 // NewCluster creates a new cluster instance with memberlist and leader election.
 func NewCluster(cfg Config) (*Cluster, error) {
+	if cfg.BindAddr != "" && net.ParseIP(cfg.BindAddr) == nil {
+		return nil, fmt.Errorf("cluster bind address %q must be an IP address", cfg.BindAddr)
+	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
@@ -78,8 +81,8 @@ func NewCluster(cfg Config) (*Cluster, error) {
 	// Binding to 0.0.0.0 / :: (or empty) means "all interfaces"; advertising that
 	// literally makes peers try to reach us at an unspecified address and mark us
 	// suspect/dead, so membership never forms. Leaving AdvertiseAddr empty lets
-	// memberlist auto-detect a routable private IP. A hostname (ParseIP == nil)
-	// is likewise left to auto-detection since AdvertiseAddr expects an IP.
+	// memberlist auto-detect a routable private IP. Non-IP bind addresses are
+	// rejected before creating any listener.
 	if ip := net.ParseIP(cfg.BindAddr); ip != nil && !ip.IsUnspecified() {
 		mlConfig.AdvertiseAddr = cfg.BindAddr
 	}
