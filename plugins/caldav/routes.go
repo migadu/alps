@@ -628,6 +628,7 @@ func registerRoutes(p *plugin) {
 		}
 
 		var events []EventData
+		failedCalendars := 0
 		acct := p.scheduling(ctx, c)
 		listedAt := clock()
 		qLower := strings.ToLower(queryStr)
@@ -637,7 +638,9 @@ func registerRoutes(p *plugin) {
 			}
 			calendarObjects, err := c.QueryCalendar(ctx.Request.Context(), calendar.Path, &query)
 			if err != nil {
-				continue // Skip if this specific calendar fails to query
+				failedCalendars++
+				ctx.Logger().Printf("caldav: failed to query calendar %q: %v", calendar.Path, err)
+				continue
 			}
 
 			for _, co := range calendarObjects {
@@ -661,7 +664,8 @@ func registerRoutes(p *plugin) {
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]interface{}{
-			"events": events,
+			"events":          events,
+			"failedCalendars": failedCalendars,
 		})
 	})
 

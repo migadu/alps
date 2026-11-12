@@ -1,5 +1,6 @@
 export default {
   calendar: {
+      someCalendarsFailed: "Não foi possível ler alguns calendários. Os eventos deles não são exibidos.",
     deleteCalendarFailed: 'Não foi possível excluir o calendário.',
     deleteEventFailed: 'Não foi possível excluir o evento.',
     saveCalendarFailed: 'Não foi possível salvar o calendário.',
