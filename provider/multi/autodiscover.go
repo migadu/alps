@@ -198,7 +198,7 @@ func checkRestrictedHost(ctx context.Context, resolver *net.Resolver, host strin
 	host = strings.TrimSpace(host)
 	if ip := net.ParseIP(host); ip != nil {
 		if isRestrictedIP(ip) {
-			return fmt.Errorf("target address %s is restricted", host)
+			return fmt.Errorf("target address %s is restricted: %w", host, netguard.ErrBlockedAddress)
 		}
 		return nil
 	}
@@ -212,7 +212,7 @@ func checkRestrictedHost(ctx context.Context, resolver *net.Resolver, host strin
 	}
 	for _, addr := range addrs {
 		if isRestrictedIP(addr.IP) {
-			return fmt.Errorf("target host %s resolves to restricted address %s", host, addr.IP.String())
+			return fmt.Errorf("target host %s resolves to restricted address %s: %w", host, addr.IP.String(), netguard.ErrBlockedAddress)
 		}
 	}
 	return nil
