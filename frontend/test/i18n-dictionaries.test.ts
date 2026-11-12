@@ -259,6 +259,11 @@ describe('Serbian scripts', () => {
   const CYRILLIC = /[\u0400-\u04FF]/;
   const LATIN = /[A-Za-zČčĆćŠšŽžĐđ]/;
 
+  it('detects Cyrillic letters outside the basic block', () => {
+    expect(CYRILLIC.test('ԁ')).toBe(true);
+  });
+
+
   it('rs is the Cyrillic dictionary', () => {
     const values = leaves(rs).map(([, v]) => v as string);
     const cyrillic = values.filter((v) => CYRILLIC.test(v)).length;
