@@ -171,6 +171,7 @@ func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 	var options *imap.ListOptions
 	if (caps.Has(imap.CapListExtended) || caps.Has(imap.CapListStatus)) && !p.refusedListReturn() {
 		options = &imap.ListOptions{ReturnSubscribed: true}
+		options.ReturnSpecialUse = caps.Has(imap.CapSpecialUse)
 		if caps.Has(imap.CapListStatus) {
 			// The same items GetMailboxStatus asks for, so that the counts a
 			// listing reads and the ones a check for new mail reads compare.
