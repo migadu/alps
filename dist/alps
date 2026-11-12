@@ -4,7 +4,8 @@
 # Install: cp dist/alps /usr/local/etc/rc.d/alps && chmod +x /usr/local/etc/rc.d/alps
 # Enable:  sysrc alps_enable=YES
 # Start:   service alps start
-# Reload:  service alps reload  (sends SIGHUP for config reload)
+# Reload:  service alps reload  (reopens a log file opened by alps)
+# Restart after changing configuration or a file-based TLS certificate.
 # Logs:    tail -f /var/log/alps/alps.log
 
 # PROVIDE: alps
@@ -28,7 +29,7 @@ pidfile="/var/run/${name}.pid"
 command="/usr/sbin/daemon"
 command_args="-c -f -o ${alps_logdir}/alps.log -p ${pidfile} -u ${alps_user} /usr/local/bin/alps -config ${alps_config}"
 
-# SIGHUP triggers config reload
+# SIGHUP reopens an alps-managed log file; it does not reload configuration.
 sig_reload="HUP"
 
 start_precmd="alps_precmd"
