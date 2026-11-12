@@ -12,7 +12,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../plugins/caldav/frontend/calendar-page';
-import { calendarService } from '../../plugins/caldav/frontend/calendar-service';
+import { calendarService, type CalendarData } from '../../plugins/caldav/frontend/calendar-service';
 import { tasksService } from '../../plugins/caldav/frontend/tasks-service';
 import { cleanup, click, mount, shadow, shadowAll, waitFor } from './helpers/dom';
 
@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 /** The page, with the server listing whatever `listed` holds at each read. */
-async function calendarPage(listed: object[]): Promise<{ el: El; reads: () => number }> {
+async function calendarPage(listed: CalendarData[]): Promise<{ el: El; reads: () => number }> {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   const fetchCalendars = vi.spyOn(calendarService, 'fetchCalendars')
     .mockImplementation(async () => ({ calendars: [...listed] }));
@@ -61,9 +61,10 @@ function boxes(el: El): Record<string, boolean> {
 }
 
 /** Deleting a calendar takes it out of what the server lists. */
-function deletesFrom(listed: object[]): void {
+function deletesFrom(listed: CalendarData[]): void {
   vi.spyOn(calendarService, 'deleteCalendar').mockImplementation(async (path: string) => {
-    listed.splice(listed.findIndex((calendar: any) => calendar.path === path), 1);
+    listed.splice(listed.findIndex(calendar => calendar.path === path), 1);
+    return { ok: 'ok' };
   });
 }
 
@@ -74,7 +75,7 @@ async function uncheckAll(el: El): Promise<void> {
 
 describe('the calendars checked in the sidebar', () => {
   it('checks every calendar on the first read that lists any', async () => {
-    const listed: object[] = [];
+    const listed: CalendarData[] = [];
     const { el, reads } = await calendarPage(listed);
     expect(boxes(el)).toEqual({});
 
@@ -110,7 +111,7 @@ describe('the calendars checked in the sidebar', () => {
   });
 
   it('keeps every calendar unchecked when one of them is deleted', async () => {
-    const listed: object[] = [work, trips];
+    const listed: CalendarData[] = [work, trips];
     const { el, reads } = await calendarPage(listed);
     deletesFrom(listed);
     await uncheckAll(el);
@@ -124,7 +125,7 @@ describe('the calendars checked in the sidebar', () => {
   });
 
   it('checks a calendar another client adds, and keeps the boxes of the others', async () => {
-    const listed: object[] = [work, trips];
+    const listed: CalendarData[] = [work, trips];
     const { el, reads } = await calendarPage(listed);
     const refresh = async () => {
       const asked = reads();
@@ -143,7 +144,7 @@ describe('the calendars checked in the sidebar', () => {
   });
 
   it('checks only the new calendar when every other was unchecked', async () => {
-    const listed: object[] = [work, trips];
+    const listed: CalendarData[] = [work, trips];
     const { el, reads } = await calendarPage(listed);
     await uncheckAll(el);
 
@@ -156,7 +157,7 @@ describe('the calendars checked in the sidebar', () => {
   });
 
   it('checks a calendar that comes back once it was no longer listed', async () => {
-    const listed: object[] = [work, trips];
+    const listed: CalendarData[] = [work, trips];
     const { el, reads } = await calendarPage(listed);
     const refresh = async () => {
       const asked = reads();
@@ -176,7 +177,7 @@ describe('the calendars checked in the sidebar', () => {
   });
 
   it('checks every calendar listed after every calendar was deleted', async () => {
-    const listed: object[] = [work];
+    const listed: CalendarData[] = [work];
     const { el, reads } = await calendarPage(listed);
     deletesFrom(listed);
     el.handleDeleteCalendar(work);

@@ -6,7 +6,7 @@
  * has the same UID is opening a different message, and the body shown has to
  * be the new one's.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 import '../src/components/message-reader';
 import {
   cleanup, installMatchMedia, installResizeObserver, installScrollIntoView, mount, update, waitFor,

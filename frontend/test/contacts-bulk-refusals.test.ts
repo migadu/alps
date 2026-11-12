@@ -30,7 +30,7 @@ describe('starring contacts', () => {
     const el = page([card('a'), card('b')], ['a', 'b']);
     el.selectedContact = null;
     const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
-    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 2, done: 0, failed: 2 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 2, done: 0, failed: 2, uncertain: 0 });
 
     await el.handleToggleStarEvent();
 
@@ -42,7 +42,7 @@ describe('starring contacts', () => {
     const open = card('a');
     const el = page([open], [], open);
     vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
-    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, uncertain: 0 });
 
     await el.handleToggleStarEvent();
 
@@ -53,7 +53,7 @@ describe('starring contacts', () => {
   it('re-reads when some cards took the star, rather than un-starring them', async () => {
     const el = page([card('a'), card('b')], ['a', 'b']);
     const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
-    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 2, done: 1, failed: 1 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 2, done: 1, failed: 1, uncertain: 0 });
 
     await el.handleToggleStarEvent();
 
@@ -64,7 +64,7 @@ describe('starring contacts', () => {
   it('keeps the star when every card took it', async () => {
     const el = page([card('a')], ['a']);
     const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
-    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0, uncertain: 0 });
 
     await el.handleToggleStarEvent();
 
@@ -77,7 +77,7 @@ describe('deleting contacts', () => {
   it('keeps the selection and the list when nothing was deleted', async () => {
     const el = page([card('a'), card('b')], ['a', 'b']);
     const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
-    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 2, done: 0, failed: 2 });
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 2, done: 0, failed: 2, uncertain: 0 });
 
     await el.confirmDelete();
 
@@ -96,7 +96,7 @@ describe('deleting contacts', () => {
 
     const deleting = el.confirmDelete();
     el.selectedContacts = new Set(['b']);
-    answer({ total: 1, done: 1, failed: 0, deletedPaths: ['a'] });
+    answer({ total: 1, done: 1, failed: 0, uncertain: 0, deletedPaths: ['a'] });
     await deleting;
 
     expect(el.selectedContact).toBeNull();
@@ -106,7 +106,7 @@ describe('deleting contacts', () => {
   it('clears the selection and re-reads when any card went', async () => {
     const el = page([card('a'), card('b')], ['a', 'b']);
     const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
-    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 2, done: 1, failed: 1 });
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 2, done: 1, failed: 1, uncertain: 0 });
 
     await el.confirmDelete();
 
@@ -134,7 +134,7 @@ describe('a search that narrowed the list', () => {
 
   it('files the open card into a category', async () => {
     const el = searched([], { ...ada });
-    const write = vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0 });
+    const write = vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0, uncertain: 0 });
 
     await el.handleUpdateCategories(new CustomEvent('update-categories', { detail: { category: 'Work' } }));
 
@@ -144,7 +144,7 @@ describe('a search that narrowed the list', () => {
 
   it('stars the open card, and the sidebar counts it', async () => {
     const el = searched([], { ...ada });
-    const write = vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0 });
+    const write = vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0, uncertain: 0 });
 
     await el.handleToggleStarEvent();
 
@@ -157,7 +157,7 @@ describe('a search that narrowed the list', () => {
     const el = searched([], { ...ada });
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(contactsService, 'bulkUpdateCategories')
-      .mockImplementation(async cards => ({ total: cards.length, done: 0, failed: cards.length }));
+      .mockImplementation(async cards => ({ total: cards.length, done: 0, failed: cards.length, uncertain: 0 }));
     const toasts: CustomEvent[] = [];
     const onToast = (e: Event) => toasts.push(e as CustomEvent);
     window.addEventListener('show-toast', onToast);
@@ -317,20 +317,20 @@ describe('the refusal toast', () => {
   const five = () => ['a', 'b', 'c', 'd', 'e'].map((path) => card(path, ['Work']));
 
   it('counts a partial delete', async () => {
-    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 2, done: 1, failed: 1 });
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 2, done: 1, failed: 1, uncertain: 0 });
     expect(await toastFrom('en', (el) => el.confirmDelete())).toEqual(['1 of 2 contacts could not be deleted.']);
   });
 
   it('agrees with the number that failed, not with the total', async () => {
-    const delete1of5 = vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 5, done: 4, failed: 1 });
+    const delete1of5 = vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 5, done: 4, failed: 1, uncertain: 0 });
     expect(await toastFrom('de', (el) => el.confirmDelete(), five())).toEqual(['1 von 5 Kontakten konnte nicht gelöscht werden.']);
     expect(await toastFrom('es', (el) => el.confirmDelete(), five())).toEqual(['No se pudo eliminar 1 de 5 contactos.']);
-    delete1of5.mockResolvedValue({ total: 5, done: 3, failed: 2 });
+    delete1of5.mockResolvedValue({ total: 5, done: 3, failed: 2, uncertain: 0 });
     expect(await toastFrom('de', (el) => el.confirmDelete(), five())).toEqual(['2 von 5 Kontakten konnten nicht gelöscht werden.']);
   });
 
   it('agrees with the number that failed on a category rename, removal or update too', async () => {
-    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 4, failed: 1 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 4, failed: 1, uncertain: 0 });
     const shown = [
       ...await toastFrom('de', (el) => {
         el.categoryToRename = 'Work';
@@ -353,7 +353,7 @@ describe('the refusal toast', () => {
     const outcome = vi.spyOn(contactsService, 'bulkDeleteContacts');
     const shown: string[] = [];
     for (const failed of [1, 2, 5]) {
-      outcome.mockResolvedValue({ total: 5, done: 5 - failed, failed });
+      outcome.mockResolvedValue({ total: 5, done: 5 - failed, failed, uncertain: 0 });
       shown.push(...await toastFrom('sr', (el) => el.confirmDelete(), five()));
     }
     expect(shown).toEqual([
@@ -364,8 +364,8 @@ describe('the refusal toast', () => {
   });
 
   it('says a failure on the one card a write was aimed at without "1 of 1"', async () => {
-    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 1, done: 0, failed: 1 });
-    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1 });
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 1, done: 0, failed: 1, uncertain: 0 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, uncertain: 0 });
     const one = () => [card('a', ['Work'])];
     const shown = [
       ...await toastFrom('en', (el) => el.confirmDelete(), one()),
@@ -403,17 +403,17 @@ describe('the refusal toast', () => {
   it('counts the contacts a star across a selection could not update', async () => {
     // The page passed the numbers, but the message was the one-contact
     // sentence in every language.
-    const outcome = vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 3, failed: 2 });
+    const outcome = vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 3, failed: 2, uncertain: 0 });
     expect(await toastFrom('en', (el) => el.handleToggleStarEvent(), five())).toEqual(['2 of 5 contacts could not be updated.']);
-    outcome.mockResolvedValue({ total: 5, done: 4, failed: 1 });
+    outcome.mockResolvedValue({ total: 5, done: 4, failed: 1, uncertain: 0 });
     expect(await toastFrom('de', (el) => el.handleToggleStarEvent(), five())).toEqual(['1 von 5 Kontakten konnte nicht aktualisiert werden.']);
-    outcome.mockResolvedValue({ total: 5, done: 3, failed: 2 });
+    outcome.mockResolvedValue({ total: 5, done: 3, failed: 2, uncertain: 0 });
     expect(await toastFrom('sr', (el) => el.handleToggleStarEvent(), five())).toEqual(['Nije bilo moguće ažurirati 2 kontakta od ukupno 5.']);
   });
 
   it('says a star the one card it was aimed at refused without "1 of 1"', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1, uncertain: 0 });
     vi.spyOn(contactsService, 'updateCategories').mockRejectedValue(new HttpStatusError(412, 'changed elsewhere'));
     const shown = [
       ...await toastFrom('en', (el) => el.handleToggleStarEvent(), [card('a')]),

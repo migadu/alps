@@ -162,7 +162,7 @@ describe('the store under auto', () => {
     expect(store.getLanguage()).toBe('de');
     expect(store.getIntlLanguage()).toBe('de');
     expect(document.documentElement.lang).toBe('de');
-    expect(store.t('general.cancel')).toBe(de.general.cancel);
+    expect(store.t('general.cancel')).toBe(de.general!.cancel);
   });
 
   it('never reports auto, even when the browser\'s language is English', async () => {
@@ -198,7 +198,7 @@ describe('the store under auto', () => {
     withLanguages(['zh-CN']);
     await store.setLanguage('auto');
     expect([store.getLanguage(), document.documentElement.lang]).toEqual(['zh-Hans', 'zh-Hans']);
-    expect(store.t('general.save')).toBe(zhHans.general.save);
+    expect(store.t('general.save')).toBe(zhHans.general!.save);
     withLanguages(['zh-TW']);
     await store.setLanguage('auto');
     expect([store.getLanguage(), document.documentElement.lang]).toEqual(['zh-Hant', 'zh-Hant']);

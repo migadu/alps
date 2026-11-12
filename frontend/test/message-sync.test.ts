@@ -12,7 +12,7 @@ import { messageKey } from '../src/utils/message-key';
 const listing = (mailbox: string) =>
   new Response(JSON.stringify({ Messages: [{ Mailbox: mailbox }], Total: 1 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
-let fetchMock: ReturnType<typeof vi.fn>;
+let fetchMock: ReturnType<typeof vi.fn<(url: string, init?: RequestInit) => Promise<Response>>>;
 
 function events(svc: MessageSyncService) {
   const seen: { type: string; detail: any }[] = [];

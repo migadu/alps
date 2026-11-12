@@ -12,6 +12,7 @@
  *
  * So these assert on the WORDS, and on the control refusing the second press.
  */
+import type { AlpsButton } from '../src/components/alps-button';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, click, flush, mount, record, shadow, shadowAll } from './helpers/dom';
 import { mailboxOperations } from '../src/services/mailbox-operations';
@@ -46,13 +47,13 @@ async function trash(): Promise<El> {
 }
 
 /** The banner's control, by its label — never by position among the actions. */
-const deleteAll = (el: El) =>
-  shadowAll(el, 'alps-banner alps-button').find(b => b.textContent?.includes('Delete All Now'))!;
+const deleteAll = (el: El): AlpsButton =>
+  shadowAll(el, 'alps-banner alps-button').find(b => b.textContent?.includes('Delete All Now'))! as AlpsButton;
 
 /** The confirmation's control, which shares that label and lives in its own dialog. */
 const confirmDelete = (el: El) => {
   const dialog = shadow(el, 'ui-confirm');
-  return shadowAll(dialog as HTMLElement, 'alps-button').find(b => b.textContent?.includes('Delete All Now'))!;
+  return shadowAll(dialog as HTMLElement, 'alps-button').find(b => b.textContent?.includes('Delete All Now'))! as AlpsButton;
 };
 
 /** Checks a row, as a user does: by its checkbox column. */
