@@ -60,6 +60,9 @@ let putStatus: number;
 let puts: string[];
 
 beforeEach(() => {
+  // Each test represents a fresh signed-in session, with no retained edits or listings.
+  window.dispatchEvent(new Event('session-cleared'));
+  localStorage.clear();
   stored = '';
   extensions = ALL;
   getStatus = 200;

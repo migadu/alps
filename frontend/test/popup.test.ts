@@ -155,7 +155,12 @@ describe('opening and closing', () => {
     // are slotted: closing from one left the focus nowhere.
     const el = await popup();
     byId('one').addEventListener('click', () => el.close());
-    byId('trigger').focus();
+    const trigger = byId('trigger');
+    // This case starts from keyboard focus. jsdom otherwise inherits the
+    // :focus-visible heuristic from a preceding pointer-interaction test.
+    const matches = trigger.matches.bind(trigger);
+    vi.spyOn(trigger, 'matches').mockImplementation(selector => selector === ':focus-visible' ? true : matches(selector));
+    trigger.focus();
     await clickTrigger(el);
     byId('one').focus();
     byId('one').click();
