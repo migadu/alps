@@ -3684,7 +3684,7 @@ func (scope messageScope) resolve(p provider.MailProvider, mboxName string) ([]p
 
 	found, err := p.SearchMessageIDs(mboxName, scope.Query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find the messages to act on: %v", err)
+		return nil, fmt.Errorf("failed to find the messages to act on: %w", err)
 	}
 	if len(scope.Except) == 0 {
 		return found, nil

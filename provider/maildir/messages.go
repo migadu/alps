@@ -339,6 +339,10 @@ func messageContains(m *mailFile, query string) bool {
 // newest first, and nothing about them: what an action on a whole folder is
 // applied to. An empty query is the whole mailbox.
 func (p *Provider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID, error) {
+	if err := imapprovider.ValidateSearch(query); err != nil {
+		return nil, err
+	}
+
 	b, err := p.openBox(mailbox)
 	if err != nil {
 		return nil, err
@@ -369,6 +373,10 @@ func (p *Provider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID
 }
 
 func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
+	if err := imapprovider.ValidateSearch(query); err != nil {
+		return nil, provider.PageInfo{}, err
+	}
+
 	b, err := p.openBox(mailbox)
 	if err != nil {
 		return nil, provider.PageInfo{}, err

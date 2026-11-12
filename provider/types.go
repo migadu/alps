@@ -41,6 +41,14 @@ func (err *LimitError) Unwrap() error {
 	return err.Cause
 }
 
+// InvalidSearchError is a query that cannot safely be interpreted as a search.
+// Prefix names the value-less prefix; the web API answers it as a client error.
+type InvalidSearchError struct{ Prefix string }
+
+func (err *InvalidSearchError) Error() string {
+	return fmt.Sprintf("search prefix %q requires a value", err.Prefix)
+}
+
 // AuthenticatedProviderFactory creates an authenticated provider instance
 type AuthenticatedProviderFactory func(username, password string) (MailProvider, error)
 

@@ -682,6 +682,11 @@ func (s *Server) handleError(err error, ctx *Context) {
 		err = NewHTTPError(http.StatusNotFound, "Message not found")
 	}
 
+	var invalidSearch *provider.InvalidSearchError
+	if errors.As(err, &invalidSearch) {
+		err = NewHTTPError(http.StatusBadRequest, "Search terms require a value.")
+	}
+
 	code := http.StatusInternalServerError
 	var he *HTTPError
 	if errors.As(err, &he) {

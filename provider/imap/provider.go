@@ -1451,6 +1451,10 @@ func (p *IMAPProvider) listByNumber(mailbox string, sortOrder string, page, page
 // One SEARCH, so the answer is the mailbox as it stands, not the page of a
 // listing the client happens to hold.
 func (p *IMAPProvider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID, error) {
+	if err := ValidateSearch(query); err != nil {
+		return nil, err
+	}
+
 	if p.client == nil {
 		return nil, fmt.Errorf("IMAP client not initialized")
 	}
@@ -1479,6 +1483,10 @@ func (p *IMAPProvider) SearchMessageIDs(mailbox, query string) ([]provider.Messa
 
 // SearchMessages searches messages in a mailbox
 func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
+	if err := ValidateSearch(query); err != nil {
+		return nil, provider.PageInfo{}, err
+	}
+
 	if mailbox == "*" {
 		if p.HasESearchCapability() {
 			return p.searchESearchMessages(query, sortOrder, page, pageSize)
