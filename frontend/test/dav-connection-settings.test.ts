@@ -191,7 +191,7 @@ describe('DAV settings using the shared settings controls', () => {
 
     stored = { ...stored, personal_configured: true };
     const again = await open();
-    const updates = record(window, 'dav-connections-updated');
+    const updates = record<CustomEvent>(window, 'dav-connections-updated');
     await save(again);
     expect(updates.at(-1)?.detail).toMatchObject({ service: 'caldav', unchanged: true });
     await useMail(again); await input(again, 'username', 'radicale-ada'); await input(again, 'password', 'secret'); await save(again);
