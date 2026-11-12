@@ -25,6 +25,8 @@ export default {
     generating: '鍵ペアを生成しています…',
     enableEncryptionDesc: '対応している相手とのエンドツーエンド暗号化を有効にするには、GPG鍵ペアが必要です。',
     noKeyPresent: '鍵がありません',
+    loadError: 'GPG鍵を読み込めませんでした。',
+    loadErrorRetry: '再試行',
     passphraseRequiredLabel: 'パスフレーズ（必須）',
     generateKeysBtn: '鍵を生成',
     importExistingKeys: '既存のGPG鍵ペアをインポート',

@@ -19,6 +19,12 @@ export class AlpsGpgSettings extends LitElement {
     i18nStore?: I18nStore;
 
     @state() private loading = true;
+    /**
+     * The keypair could not be read. Generate and Import are not offered
+     * then: either one saves over the keypair stored, and a page that showed
+     * "No key present" after a failed read replaced the one the user had.
+     */
+    @state() private loadFailed = false;
     @state() private generating = false;
     @state() private importing = false;
     @state() private importError = '';
@@ -72,6 +78,14 @@ export class AlpsGpgSettings extends LitElement {
             white-space: pre-wrap;
             font-size: 12px;
         }
+        .load-error {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
         .empty-state {
             color: var(--text-muted);
             font-style: italic;
@@ -87,18 +101,19 @@ export class AlpsGpgSettings extends LitElement {
 
     async fetchKeys() {
         this.loading = true;
+        this.loadFailed = false;
         try {
             const res = await fetchWithTimeout('/gpg/keys');
-            if (res.ok) {
-                const data = await res.json();
-                if (data.public_key) {
-                    this.keyring = data;
-                } else {
-                    this.keyring = null;
-                }
+            if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
+            const data = await res.json();
+            if (data.public_key) {
+                this.keyring = data;
+            } else {
+                this.keyring = null;
             }
         } catch (e) {
             console.error(e);
+            this.loadFailed = true;
         } finally {
             this.loading = false;
         }
@@ -171,9 +186,13 @@ export class AlpsGpgSettings extends LitElement {
      * import cleared the pasted keys without a word and a refused generation
      * went back to the pane as though it had worked; and the old key, still
      * unlocked, went on reading and signing in place of the new one.
+     *
+     * It asks the server to replace a keypair only when the page shows one.
+     * The server keeps a keypair stored since the page read none, and the
+     * page reads again to show it.
      */
     private async saveKeyring(publicKey: string, encryptedPrivateKey: string) {
-        const res = await fetchWithTimeout('/gpg/keys', {
+        const res = await fetchWithTimeout(this.keyring ? '/gpg/keys?replace=1' : '/gpg/keys', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -181,6 +200,7 @@ export class AlpsGpgSettings extends LitElement {
                 encrypted_private_key: encryptedPrivateKey
             })
         });
+        if (res.status === 409) await this.fetchKeys();
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
         clearCachedPrivateKey();
     }
@@ -307,7 +327,14 @@ export class AlpsGpgSettings extends LitElement {
         }
 
         return html`
-            ${this.keyring ? html`
+            ${this.loadFailed ? html`
+                <alps-setting-group label="${this.i18nStore?.t('settings.gpg')}">
+                    <div class="load-error">
+                        <div role="alert">${this.i18nStore?.t('gpg.loadError')}</div>
+                        <alps-button variant="normal" @click=${() => this.fetchKeys()}>${this.i18nStore?.t('gpg.loadErrorRetry')}</alps-button>
+                    </div>
+                </alps-setting-group>
+            ` : this.keyring ? html`
                 <alps-setting-group label="${this.i18nStore?.t('settings.gpg')}" description="${this.i18nStore?.t('gpg.keyStoredSecurely')}">
                     <div class="key-info">${this.keyring.public_key}</div>
 

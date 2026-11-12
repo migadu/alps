@@ -25,6 +25,8 @@ export default {
     generating: 'Создание пары ключей…',
     enableEncryptionDesc: 'Для сквозного шифрования переписки с контактами, которые его поддерживают, нужна пара ключей GPG.',
     noKeyPresent: 'Ключа нет',
+    loadError: 'Не удалось загрузить ключи GPG.',
+    loadErrorRetry: 'Повторить',
     passphraseRequiredLabel: 'Парольная фраза (обязательно)',
     generateKeysBtn: 'Создать ключи',
     importExistingKeys: 'Импортировать существующую пару ключей GPG',
