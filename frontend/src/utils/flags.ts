@@ -15,6 +15,8 @@ export const FLAG_NOTJUNK_STD = '$NotJunk';
 export const FLAG_PHISHING = '$Phishing';
 export const FLAG_SUBMITPENDING = '$SubmitPending';
 export const FLAG_SUBMITTED = '$Submitted';
+export const FLAG_HASATTACHMENT = '$HasAttachment';
+export const FLAG_HASNOATTACHMENT = '$HasNoAttachment';
 
 // Mailbox Attributes
 export const ATTR_INBOX = '\\Inbox';
@@ -37,7 +39,7 @@ export function getMessageTags(flags: string[] | undefined, i18nStore?: any): Me
   const ignoredFlags = new Set([
     FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_DELETED, FLAG_DRAFT, 
     FLAG_FORWARDED, FLAG_MDNSENT, FLAG_JUNK, FLAG_NONJUNK, FLAG_NOTJUNK,
-    FLAG_JUNK_STD, FLAG_NOTJUNK_STD, FLAG_PHISHING, FLAG_SUBMITPENDING, FLAG_SUBMITTED
+    FLAG_JUNK_STD, FLAG_NOTJUNK_STD, FLAG_PHISHING, FLAG_SUBMITPENDING, FLAG_SUBMITTED, FLAG_HASATTACHMENT, FLAG_HASNOATTACHMENT
   ].map(f => f.toLowerCase()));
 
   const tags: MessageTag[] = [];
@@ -72,7 +74,7 @@ export function getMessageTags(flags: string[] | undefined, i18nStore?: any): Me
 // looks like tidying must not silently erase the one marker saying a message
 // is dangerous.
 const PROTECTED_KEYWORDS = new Set(
-  [FLAG_FORWARDED, FLAG_MDNSENT, FLAG_PHISHING, FLAG_SUBMITPENDING, FLAG_SUBMITTED].map(f => f.toLowerCase())
+  [FLAG_FORWARDED, FLAG_MDNSENT, FLAG_PHISHING, FLAG_SUBMITPENDING, FLAG_SUBMITTED, FLAG_HASATTACHMENT, FLAG_HASNOATTACHMENT].map(f => f.toLowerCase())
 );
 
 // Returns every keyword on a message that "remove all tags" should clear:
