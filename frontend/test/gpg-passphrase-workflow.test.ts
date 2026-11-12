@@ -34,6 +34,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  localStorage.clear();
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -94,6 +95,8 @@ async function dismissError(el: El) {
 
 describe('GPG passphrase steps', () => {
   it('confirms in a fresh empty form and generates/saves once, despite duplicate submits', async () => {
+    localStorage.setItem('alps_active_user', 'ada');
+    localStorage.setItem('alps_settings_ada', JSON.stringify({ loginUsername: 'ada', loginAddress: 'ada@example.com', name: 'Ada Lovelace' }));
     const el = await pane();
     const finished = el.generateKeys();
     const first = await prompt(el);
@@ -103,7 +106,7 @@ describe('GPG passphrase steps', () => {
     await submit(confirmation, 'new secret', true);
     await finished;
     expect(pgp.generateKey).toHaveBeenCalledTimes(1);
-    expect(pgp.generateKey).toHaveBeenCalledWith(expect.objectContaining({ passphrase: 'new secret' }));
+    expect(pgp.generateKey).toHaveBeenCalledWith(expect.objectContaining({ passphrase: 'new secret', userIDs: [{ name: 'Ada Lovelace', email: 'ada@example.com' }] }));
     expect(saves).toHaveLength(1);
     expect(JSON.parse(saves[0])).toEqual({ public_key: 'public armour', encrypted_private_key: 'encrypted armour' });
   });
@@ -534,5 +537,23 @@ describe('saving a keypair the page did not show', () => {
     await generate(el);
     expect(posted).toEqual(['/gpg/keys?replace=1']);
     expect(keyring).toEqual({ public_key: 'public armour', encrypted_private_key: 'encrypted armour' });
+  });
+});
+
+describe('generated key identities without a resolved email address', () => {
+  it.each([
+    [{ loginUsername: 'ada' }, { name: 'ada' }],
+    [{ loginUsername: 'ada', name: 'Ada Lovelace' }, { name: 'Ada Lovelace' }],
+    [{}, { name: 'ALPS User' }],
+  ])('creates a nonempty named user ID for %j', async (settings, userID) => {
+    localStorage.clear();
+    localStorage.setItem('alps_settings', JSON.stringify(settings));
+    const el = await pane();
+    const finished = el.generateKeys();
+    const first = await prompt(el);
+    await submit(first, 'new secret');
+    await submit(await prompt(el, first), 'new secret');
+    await finished;
+    expect(pgp.generateKey).toHaveBeenCalledWith(expect.objectContaining({ userIDs: [userID] }));
   });
 });

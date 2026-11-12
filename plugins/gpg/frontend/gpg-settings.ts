@@ -12,6 +12,7 @@ import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/ui-confirm';
 import '../../../frontend/src/components/ui-modal';
 import { clearCachedPrivateKey } from './gpg-crypto';
+import { ownAddress, readUserSettings } from '../../../frontend/src/store/settings-store';
 
 @customElement('alps-gpg-settings')
 export class AlpsGpgSettings extends LitElement {
@@ -213,10 +214,16 @@ export class AlpsGpgSettings extends LitElement {
         try {
             // @ts-ignore
             const openpgp = await import('openpgp');
+            const settings = readUserSettings();
+            const address = ownAddress(settings).trim();
+            // Match the OpenPGP user-ID email constraints; bare mail logins
+            // belong in the name field instead of an invented address.
+            const email = /^[^\p{C}\p{Z}@<>\\]+@[^\p{C}\p{Z}@<>\\]+[^\p{C}\p{Z}\p{P}]$/u.test(address) ? address : '';
+            const name = settings.name?.trim() || (email ? '' : address || 'ALPS User');
             const { privateKey, publicKey } = await openpgp.generateKey({
                 type: 'ecc',
                 curve: 'curve25519',
-                userIDs: [{ name: 'ALPS User', email: '' }],
+                userIDs: [{ name, ...(email ? { email } : {}) }],
                 passphrase: pass
             });
 
