@@ -311,7 +311,7 @@ func (p *Provider) CreateMailbox(name string) error {
 }
 
 // RenameMailbox renames a folder, which must be there, to a name no folder
-// has.
+// has, including its Maildir++ descendants.
 func (p *Provider) RenameMailbox(oldName, newName string) error {
 	oldBox, newBox, err := p.openBoxes(oldName, newName)
 	if err != nil {
@@ -328,7 +328,42 @@ func (p *Provider) RenameMailbox(oldName, newName string) error {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	return newBox.root.Rename(oldBox.dir, newBox.dir)
+	type rename struct{ old, new string }
+	moves := []rename{{oldBox.dir, newBox.dir}}
+	top, err := oldBox.root.Open(".")
+	if err != nil {
+		return err
+	}
+	entries, err := top.ReadDir(-1)
+	top.Close()
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), oldBox.dir+".") {
+			moves = append(moves, rename{entry.Name(), newBox.dir + strings.TrimPrefix(entry.Name(), oldBox.dir)})
+		}
+	}
+	// Check every target before moving any part of the subtree.
+	for _, move := range moves[1:] {
+		if _, err := oldBox.root.Lstat(move.new); err == nil {
+			return alreadyExists(strings.TrimPrefix(move.new, "."))
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	for i, move := range moves {
+		if err := oldBox.root.Rename(move.old, move.new); err != nil {
+			failures := []error{err}
+			for j := i - 1; j >= 0; j-- {
+				if undoErr := oldBox.root.Rename(moves[j].new, moves[j].old); undoErr != nil {
+					failures = append(failures, undoErr)
+				}
+			}
+			return errors.Join(failures...)
+		}
+	}
+	return nil
 }
 
 // DeleteMailbox removes a folder and everything in it. A folder that is not
