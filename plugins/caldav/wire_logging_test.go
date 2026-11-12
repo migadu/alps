@@ -11,15 +11,23 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
 )
 
+type wireLoggingOptions struct{}
+
+func (wireLoggingOptions) Type() string { return "wire-logging-test" }
+func (wireLoggingOptions) CreateFactory(time.Duration, bool) provider.AuthenticatedProviderFactory {
+	return nil
+}
+
 func TestDAVWireLogsUseConfiguredLoggerAndRotation(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "alps.log")
 	logger := alps.NewLoggerWithOptions(alps.LoggerOptions{Output: logPath, Format: "json", Level: "debug"})
-	srv, err := alps.New(logger, &alps.Options{Provider: &provider.MockOptions{}, SMTP: alps.SMTPOptions{Server: "smtps://smtp.example.test"}, EnabledPlugins: []string{"not-loaded"}})
+	srv, err := alps.New(logger, &alps.Options{Provider: wireLoggingOptions{}, SMTP: alps.SMTPOptions{Server: "smtps://smtp.example.test"}, EnabledPlugins: []string{"not-loaded"}})
 	if err != nil {
 		t.Fatal(err)
 	}
