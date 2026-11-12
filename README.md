@@ -50,7 +50,7 @@ ALPS listens on `[server] addr`, default `:1323`. `alps -version` prints the ver
 - `make build-linux` and `make build-freebsd` cross-compile static amd64 binaries (`CGO_ENABLED=0`) to `build/alps-linux-amd64` and `build/alps-freebsd-amd64`.
 - `make install` runs `go install`.
 - `make build-frontend` runs `npm install` and `npm run build` in `frontend`, which rebuilds `frontend/dist` (see below).
-- `make test`, `make test-coverage` and `make test-e2e` run the tests (see [Running the tests](#running-the-tests)).
+- `make test`, `make test-coverage`, `make test-frontend` and `make test-e2e` run the tests, and `make test-all` runs the Go, frontend unit and browser tests in turn (see [Running the tests](#running-the-tests)).
 - `make clean` removes `build/`, and `make help` lists the targets.
 
 `./run.sh` rebuilds `frontend/dist` and then runs `go run ./cmd/alps --config config.toml`. It does not run `npm install`, so run that in `frontend` once first.
@@ -86,10 +86,10 @@ Open http://localhost:5173. The Vite dev server forwards the API paths to http:/
 ALPS has three test tiers:
 
 - Go tests: `go test ./...` (or `make test`).
-- Frontend unit tests (Vitest): `cd frontend && npm install && npm test`, which typechecks the tests first.
+- Frontend unit tests (Vitest): `cd frontend && npm install && npm test` (or `make test-frontend`), which typechecks the tests first.
 - Browser tests: `scripts/e2e.sh` (or `make test-e2e`), which needs PostgreSQL with the `pg_trgm` and `btree_gin` extensions, a sora checkout (default `../sora`) and Playwright's Chromium (see [Testing](docs/E2E.md)). It rebuilds `frontend/dist` first, unless `E2E_SKIP_BUILD=1` is set.
 
-The repository has no CI, so run these yourself before opening a pull request.
+`make test-all` runs all three in turn. The repository has no CI, so run these yourself before opening a pull request.
 
 ## Documentation
 

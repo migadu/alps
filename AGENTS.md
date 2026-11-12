@@ -49,6 +49,7 @@ cd frontend && npx tsc                 # typechecks src and every plugin fronten
 cd frontend && npm test                # typechecks tests, then runs Vitest on frontend/test/**/*.test.ts
 cd frontend && npm run typecheck:e2e   # after changing browser specs
 scripts/e2e.sh e2e/reading.spec.ts     # browser tests: sora at ../sora and PostgreSQL
+make test-all                          # go test, frontend unit tests, then browser tests
 ```
 
 [docs/E2E.md](docs/E2E.md) covers the three tiers. The browser suite:
