@@ -163,7 +163,7 @@ func prepareIMAPSearch(terms string) *imap.SearchCriteria {
 				}
 			case "header":
 				hParts := strings.SplitN(value, ":", 2)
-				if len(hParts) == 2 {
+				if len(hParts) == 2 && hParts[0] != "" {
 					hVal := hParts[1]
 					if strings.HasPrefix(hVal, `"`) {
 						hVal = strings.TrimSuffix(hVal[1:], `"`)
