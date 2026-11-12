@@ -54,7 +54,7 @@ func authenticate(passwdFile, username, password string) (string, error) {
 		if err := verifyHash(password, hash); err != nil {
 			var format *unsupportedPasswordFormat
 			if errors.As(err, &format) {
-				log.Printf("alps/provider/maildir: warning: user %q has unsupported password scheme %s", username, format.scheme)
+				log.Printf("alps/provider/maildir: warning: user %q has unsupported password scheme %q", username, format.scheme)
 			}
 			return "", ErrInvalidCredentials
 		}
@@ -75,11 +75,20 @@ func (e *unsupportedPasswordFormat) Error() string {
 	return "unsupported password scheme or digest format: " + e.scheme
 }
 
+func validPasswordScheme(name string) bool {
+	for _, c := range name {
+		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_') {
+			return false
+		}
+	}
+	return name != "" && len(name) <= 32
+}
+
 func verifyHash(password, hash string) error {
 	scheme := "{PLAIN}"
 	if strings.HasPrefix(hash, "{") {
 		endIdx := strings.Index(hash, "}")
-		if endIdx > 0 {
+		if endIdx > 1 && endIdx <= 33 && validPasswordScheme(hash[1:endIdx]) {
 			scheme = strings.ToUpper(hash[:endIdx+1])
 			hash = hash[endIdx+1:]
 		}
