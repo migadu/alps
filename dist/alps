@@ -15,6 +15,7 @@
 
 name="alps"
 rcvar="alps_enable"
+extra_commands="reload"
 
 load_rc_config $name
 
