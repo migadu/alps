@@ -50,7 +50,7 @@ The version name is never reused for a different request. There is no mutable "c
 
 ### What a conflict answers
 
-A conflict ends the request without a change, and the client retries it. Recovery sign-ins, code rotation and key removal answer `503 {"error":"keys_unavailable"}`. Enrollment and trust changes answer `503` "security keys unavailable; retry the operation" (a conflict at the read, step 2, currently answers `500` there instead). After a key sign-in, a conflict while saving the key's signature count is only logged, and the sign-in succeeds. No endpoint answers `409` for a conflict: on these endpoints `409` only means `no_security_key`.
+A conflict ends the request without a change, and the client retries it. Recovery sign-ins, code rotation, key removal, enrollment and trust changes answer `503 {"error":"keys_unavailable"}`, at the read (step 2) and at the write. After a key sign-in, a conflict while saving the key's signature count is only logged, and the sign-in succeeds. No endpoint answers `409` for a conflict: on these endpoints `409` only means `no_security_key`.
 
 ## Why a spent code stays spent
 

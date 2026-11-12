@@ -83,7 +83,7 @@ A tab that shows no keypair saves without `replace=1`. If a keypair was stored m
 **Generate New Keypair** asks for a new passphrase, then asks for it again. If the two differ, ALPS says so and asks again; an empty passphrase cancels. OpenPGP.js then creates the keypair with `type: 'ecc'` and `curve: 'curve25519'`. That gives an OpenPGP v4 key with an Ed25519 primary key for signing and a Curve25519 subkey for encryption.
 
 - The key does not expire.
-- Its user ID is the name `ALPS User`, with no email address.
+- Its user ID is the account's display name (Settings > Identity) with the account's own address, or the address alone when no display name is set. A login that is not an email address, such as a bare user name, gives no address part, and stands as the name when no display name is set.
 - The revocation certificate OpenPGP.js returns is neither kept nor shown.
 
 The private key is encrypted with the passphrase before the keyring is saved.
@@ -131,7 +131,7 @@ With the button on, the plugin does the following when the message is sent, afte
 5. It signs the body with your private key and encrypts it to every recipient's key and to your own.
 6. The message is sent with the encrypted text in place of the original body.
 
-Any other error in these steps shows *GPG Encryption failed:* with the reason, and stops the send. That includes an account with no keyring (*No private key found on server. Please generate one in Settings.*) and a cancelled passphrase prompt. Whenever the send stops, the composer window comes back with the message as written.
+A cancelled passphrase prompt stops the send without a message. Any other error in these steps stops the send with an alert: *No private GPG key is stored. Import or generate one in Settings.* for an account with no private key, *Could not read your GPG keys. Please try again.* when the keyring cannot be read, and *Could not encrypt this message. Please try again.* for anything else. The underlying error is written to the browser console. Whenever the send stops, the composer window comes back with the message as written.
 
 ### Finding Recipient Keys
 
@@ -154,12 +154,12 @@ Your account's own address, the one you signed in as, is not looked up, because 
 
 ## 6. Reading Encrypted Mail
 
-Before the reader shows a message body, the plugin looks for `-----BEGIN PGP MESSAGE-----` in it. If it finds one, it takes the text from there to the first `-----END PGP MESSAGE-----`, unlocks your private key and decrypts that block. The decrypted text replaces the block, and the message is then shown as HTML. Text around the block is kept.
+Before the reader shows a message body, the plugin looks for `-----BEGIN PGP MESSAGE-----` in it. If it finds one, it takes the text from there to the first `-----END PGP MESSAGE-----` after it; without such a line, the body is shown as it is, with no banner. It reads that block as an OpenPGP message, and only a block that reads leads it to unlock your private key and decrypt the block. The decrypted text replaces the block, and the message is then shown as HTML. Text around the block is kept.
 
 - Decrypted text that contains `<html`, `<body`, `<p>`, `<div` or `<br` is shown as HTML. Any other text is HTML-escaped, with its line breaks kept.
 - Either way, the result then goes through the reader's HTML sanitizer, as any HTML message does.
 - An info banner says *The content of this message was end-to-end encrypted with GPG.*
-- If decryption fails, the encrypted text stays as it is, under an error banner that says *This message is encrypted but no matching private key is found on server to decrypt it.* The banner is the same whatever the cause: no keyring, a key that does not match, a cancelled prompt, or a block that cannot be read.
+- If decryption fails, the encrypted text stays as it is, under an error banner that names the cause: *This encrypted message could not be read. It may be damaged.* for a block that does not read, *No private GPG key is stored. Import or generate one in Settings.*, *Could not read your GPG keys. Please try again.*, *Decryption was cancelled.* for a cancelled prompt, *This message was not encrypted to your stored GPG key.* when none of the keys the message names is yours, and *Could not decrypt this message with your GPG key.* for any other failure.
 
 ALPS does not check the signature of a message it decrypts. The banner says only that the content was encrypted, not who sent it.
 
@@ -183,5 +183,5 @@ The plugin's backend is the `/gpg/keys` routes. Everything else is in its fronte
 | --- | --- |
 | Settings tab `gpg` | The **GPG Keys** tab, the `alps-gpg-settings` component, fetched the first time the tab is shown. |
 | `composer:toolbar` | Returns the lock button, which turns `encryptGpg` on or off for the composer window. |
-| `composer:presend` | Returns the `FormData` unchanged while `encryptGpg` is off; otherwise the `FormData` with the encrypted body, or `false` to cancel the send. It reports its own errors in an alert and returns `false`, rather than rejecting. |
+| `composer:presend` | Returns the `FormData` unchanged while `encryptGpg` is off; otherwise the `FormData` with the encrypted body, or `false` to cancel the send. It reports its own errors in an alert, a cancelled passphrase prompt aside, and returns `false`, rather than rejecting. |
 | `reader:content` | For a body with a PGP block: on success, returns the body with the first block decrypted, sets `payload.isHtml = true` and pushes the info banner onto `payload.banners`; on failure, returns the body unchanged and pushes the error banner. |

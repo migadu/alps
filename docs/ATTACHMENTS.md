@@ -26,7 +26,7 @@ If a send or draft save names an upload the session does not hold (it was evicte
 
 An upload is refused with:
 
-- **413** when the request body exceeds `max_attachment_mib` + 1 MiB.
+- **413** when the request body exceeds the per-composer limit in force + 1 MiB (see [Request Size Cap](#request-size-cap)).
 - **400** when the files do not fit a budget, or the body is malformed.
 - **408** with code `upload_timed_out` when the body does not arrive within the server's read timeout (`[server] read_timeout_sec`).
 - **500** with code `upload_storage_failed` when a file part cannot be written to the temp directory, for instance because it does not exist.
@@ -53,7 +53,7 @@ To keep uploads from exhausting memory and disk, ALPS enforces three layers of a
 Each stored upload counts against all three budgets. A request whose files together exceed any one of the three limits is refused (400) before anything is stored. Each file is then fitted against current usage. Over the composer budget it is refused. Over the session or global budget, older uploads are deleted to make room (see [Eviction and Cleanup](#eviction-and-cleanup)).
 
 ### Request Size Cap
-- **Value**: `max_attachment_mib` + 1 MiB, the extra MiB being slack for multipart framing.
+- **Value**: the per-composer limit in force + 1 MiB, the extra MiB being slack for multipart framing. That limit is `max_attachment_mib`, or less where the server advertises a message limit (see [Per-Composer Limit](#1-per-composer-limit-max_attachment_mib)), so the cap is at most `max_attachment_mib` + 1 MiB.
 - **Scope**: A single upload request.
 - **Description**: A larger body is refused with 413 while it is still being read.
 
@@ -62,7 +62,7 @@ Each stored upload counts against all three budgets. A request whose files toget
 - **Scope**: The uploads one session holds for one composer (`composer_id`).
 - **Description**: The server refuses (400) an upload that would take the uploads this session holds for that composer over this limit. It counts pending uploads only: parts already written into a saved draft, and parts carried from another message, are not counted. The web composer checks the whole message: before uploading, it adds up all of its attachments, uploads and carried parts alike, and compares the total with the `MaxAttachmentMiB` value the server reports.
 
-The effective limit reported by `/session` and `/settings` is the smaller of this setting and the attachment space available under the account's advertised IMAP `APPENDLIMIT` and SMTP `SIZE`. ALPS reads a global IMAP limit or the `STATUS` limits of existing Drafts and Sent mailboxes. ALPS reserves 64 KiB for body/headers and accounts for base64 line wrapping. For example, a 25 MiB message limit permits about 18 MiB of attachments. The reported MiB value can be fractional.
+The effective limit, the one the server enforces and `/session` and `/settings` report, is the smaller of this setting and the attachment space available under the account's advertised IMAP `APPENDLIMIT` and SMTP `SIZE`. ALPS reads a global IMAP limit or the `STATUS` limits of existing Drafts and Sent mailboxes. ALPS reserves 64 KiB for body/headers and accounts for base64 line wrapping. For example, a 25 MiB message limit permits about 18 MiB of attachments. The reported MiB value can be fractional.
 
 SMTP capabilities are probed without authentication through the account's configured submission route, using short timeouts, and cached per session for ten minutes. An unavailable server or an unadvertised limit does not prevent reading mail; the configured and other known limits still apply. A message submission uses the live SMTP capability and supplies its encoded `SIZE` with `MAIL`.
 
@@ -76,7 +76,7 @@ ALPS also checks the complete encoded message before submission when a limit is 
 ### 3. Global Server Limit (`max_global_attachment_mib`)
 - **Default**: 1024 MiB (1 GiB)
 - **Scope**: The pending uploads held by all the sessions of one ALPS process. In a cluster, each node has its own budget.
-- **Description**: An in-memory counter. When a new upload would take this process over the limit, ALPS deletes the oldest pending uploads on this node to make room (see [The Global Budget Evictor](#2-the-global-budget-evictor)). Some bytes are on disk outside this count. An upload body is written to the temp directory before the budgets are checked (each request is capped at `max_attachment_mib` + 1 MiB). Uploads being written into a message by a send or draft save in progress have left the count, while their files remain until the request ends.
+- **Description**: An in-memory counter. When a new upload would take this process over the limit, ALPS deletes the oldest pending uploads on this node to make room (see [The Global Budget Evictor](#2-the-global-budget-evictor)). Some bytes are on disk outside this count. An upload body is written to the temp directory before the budgets are checked (each request is capped at the per-composer limit in force + 1 MiB). Uploads being written into a message by a send or draft save in progress have left the count, while their files remain until the request ends.
 
 > [!WARNING]
 > If your server expects heavy concurrent attachment uploads, increase `max_global_attachment_mib` and make sure the temp directory has room to spare above that value.

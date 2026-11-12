@@ -124,11 +124,14 @@ A panic in a handler is recovered, logged, and answered with a plain-text 500.
 
 A plugin reads its config section as `s.Options.Plugins["myplugin"]` in its loader, or `ctx.Server.Options.Plugins["myplugin"]` in a handler. It is an `alps.PluginConfig{Enabled, Server, Options}`; see [Registering the Plugin](#registering-the-plugin) for the keys. `Enabled` is true for a section that sets `enabled = true` or leaves `enabled` out, and false for one that says `enabled = false` and for a plugin without a section. The `password` section is the exception: its `Enabled` is true only with `enabled = true`.
 
-A loader can decide to stay off by returning no plugins, and can refuse a bad configuration by returning an error. An error from a loader makes `alps.New` fail, and ALPS exits at startup. `caldav` and `carddav` return no plugins when they have no `server`, `Enabled` is false and the provider routes no endpoint for the service; `managesieve` does when it has no `server` and the provider routes no endpoint for it, whatever `enabled` says; `password` does when `Enabled` is false, or when neither its options nor a provider backend name an endpoint or a command:
+A loader can decide to stay off by returning no plugins, and can refuse a bad configuration by returning an error. An error from a loader makes `alps.New` fail, and ALPS exits at startup. Every in-tree loader, and the one `GoPlugin.Loader()` returns, first returns no plugins when `s.PluginEnabled(name)` is false, that is when the `enabled` rules keep the plugin out (see [Registering the Plugin](#registering-the-plugin)), before it reads its section. Beyond that, `caldav` and `carddav` return no plugins when they have no `server`, `Enabled` is false and the provider routes no endpoint for the service; `managesieve` does when it has no `server` and the provider routes no endpoint for it, whatever `enabled` says; `password` does when `Enabled` is false, or when neither its options nor a provider backend name an endpoint or a command:
 
 ```go
 func init() {
 	alps.RegisterPluginLoader(func(s *alps.Server) ([]alps.Plugin, error) {
+		if !s.PluginEnabled("myplugin") {
+			return nil, nil // kept out by enabled: read nothing
+		}
 		cfg := s.Options.Plugins["myplugin"]
 		if !cfg.Enabled && cfg.Server == "" {
 			return nil, nil // stay off
@@ -168,13 +171,15 @@ import (
 The `[plugin.<name>]` sections of `config.toml` then decide which of the compiled-in plugins load:
 
 - `base`, which serves `/session` and the mail API, always loads.
-- A plugin whose section says `enabled = false` is skipped and logged as `Plugin "<name>" is disabled`.
-- If at least one section has `enabled = true`, the sections with `enabled = true` form an allow-list, and every other plugin, with a section that leaves `enabled` out or with no section, is skipped and logged the same way.
+- A plugin whose section says `enabled = false` is skipped.
+- If at least one section has `enabled = true`, the sections with `enabled = true` form an allow-list, and every other plugin, with a section that leaves `enabled` out or with no section, is skipped.
 - If no section has `enabled = true`, which includes having no sections at all, there is no allow-list, and every plugin the loaders return loads unless its own section says `enabled = false`.
 
-A section that leaves `enabled` out still configures its plugin: its loader gets the section's `server` and `options`, and sees the plugin as enabled, except `password`, which needs `enabled = true` (see [Configuration and Per-User Data](#configuration-and-per-user-data)).
+`s.PluginEnabled(name)` applies these rules, and `base` always passes them. A section that leaves `enabled` out still configures its plugin: its loader gets the section's `server` and `options`, and sees the plugin as enabled, except `password`, which needs `enabled = true` (see [Configuration and Per-User Data](#configuration-and-per-user-data)).
 
-Every compiled-in plugin's loader runs in all cases, and these rules are applied to what the loaders return. A loader that returns no plugins, as `caldav`, `carddav`, `managesieve` and `password` can (see [Configuration and Per-User Data](#configuration-and-per-user-data)), stays off either way, and is not logged as disabled. A loader's error stops ALPS even for a plugin the rules would have dropped, so a loader should check `enabled` before it refuses its options, as `password` does. A plugin the rules drop is closed at once.
+Every compiled-in plugin's loader runs in all cases. The in-tree loaders and `GoPlugin.Loader()` check `s.PluginEnabled` first and return nothing for a plugin the rules skip, so such a plugin is not set up at all, and nothing is logged for it. A loader's error stops ALPS even for a plugin the rules would have skipped, so a loader that reads its section checks `s.PluginEnabled` before it refuses its options, as the example loader in [Configuration and Per-User Data](#configuration-and-per-user-data) does. The rules are applied again to what the loaders return: a plugin returned although the rules skip it is logged as `Plugin "<name>" is disabled` and closed at once.
+
+Once every loader has run, each allow-list name that no loaded plugin carries is logged as a warning, once: `Enabled plugin "<name>" did not load; check its name and backend configuration`. A misspelt section name gets it, and so does a plugin whose loader returned nothing, such as `managesieve` without a server.
 
 Under an allow-list, which `config.example.toml` has, a config that adds `[plugin.myplugin]` must set `enabled = true` in it, as for every other plugin it wants:
 
@@ -291,9 +296,9 @@ registry.registerNavTab({
 });
 ```
 
-A path ending in `/*` matches every hash path that starts with its prefix, `#/myplugin` itself included. An exact path such as `/myplugin` does not match `#/myplugin/x`, which shows the 404 page instead. Without `pluginId` the route keeps resolving when the plugin is disabled. Without `load` the page ships in every user's first download; if the module fails to load, an error notice replaces the page. The page element is created once and kept until sign-out, or until the route leaves the route table, so returning to the page reconnects the same element instead of building a new one.
+A path ending in `/*` matches its prefix and every hash path below it: `/myplugin/*` matches `#/myplugin` and `#/myplugin/x`, but not `#/mypluginx`, which shows the 404 page. An exact path such as `/myplugin` does not match `#/myplugin/x`, which shows the 404 page instead. Without `pluginId` the route keeps resolving when the plugin is disabled. Without `load` the page ships in every user's first download; if the module fails to load, an error notice replaces the page. The page element is created once and kept until sign-out, or until the route leaves the route table, so returning to the page reconnects the same element instead of building a new one.
 
-A nav tab is not a sidebar entry. On a desktop it is a header tab after the fixed Messages tab. On a phone it is an entry in the account menu, which is the only place the tab's `icon` is drawn (default `star`). Clicking it sets the URL to `#/<id>`, and the tab shows as active while the hash starts with `#/<id>`, so `id` must be the first path segment of the plugin's route. `order` sorts the tabs in ascending order, and an unset (or 0) order counts as 999. The in-tree tabs are Contacts (10), Calendar (20) and Tasks (30).
+A nav tab is not a sidebar entry. On a desktop it is a header tab after the fixed Messages tab. On a phone it is an entry in the account menu, which is the only place the tab's `icon` is drawn (default `star`). Clicking it sets the URL to `#/<id>`, and the tab shows as active while the hash is `#/<id>` or goes on from it with `/` or `?`, so `id` must be the first path segment of the plugin's route. `order` sorts the tabs in ascending order, and an unset (or 0) order counts as 999. The in-tree tabs are Contacts (10), Calendar (20) and Tasks (30).
 
 A page that reads or writes its own URL must leave the Settings window's alone. While Settings is open the page stays mounted beneath it, and the URL is `#/settings/<section>`: a page that reads that as its own resets itself, and one that writes its URL over it (after a save, a sync, a live update) closes the window. Ask first:
 
@@ -413,7 +418,7 @@ The app invokes five hooks:
 | Hook | Payload | When, and how invoked | What a handler returns |
 |---|---|---|---|
 | `composer:toolbar` | `{ composer, instance }` | Each time the composer's toolbar is drawn, through `invokeHook` | A Lit template to show in the composer toolbar. Falsy results are dropped. |
-| `composer:presend` | `{ composer, formData, instance }` | Before the send request, through `invokeHookSettled` | A `FormData` replaces the request body. `false` cancels the send. A handler that rejects also cancels it and shows the `composer.presendFailed` toast. |
+| `composer:presend` | `{ composer, formData, instance }` | Before the send request, through `invokeHookSettled` | A `FormData` replaces the request body. `false` cancels the send. A handler that rejects or throws also cancels it and shows the `composer.presendFailed` toast. |
 | `composer:send` | `{ recipients }`: the To, Cc and Bcc addresses as written | After the server accepted the send, through `invokeHook` | Ignored. |
 | `composer:suggest` | `{ query }` | While an address is typed (more than one character, after a 300 ms pause), through `invokeHookAsync` | An array of `{ name, address }`. All handlers' arrays are joined into one list. |
 | `reader:content` | `{ content, isHtml, message, mailbox, banners, i18nStore }` | Before a message body is shown, through `invokeHookAsync` | A string replaces the body; HTML is then sanitized. Each handler gets the original `content`, and of several strings the last one wins. Push Lit templates onto `payload.banners` to show banners above the message. For a plain-text body, set `payload.isHtml = true` to have the result treated and sanitized as HTML. |
@@ -421,10 +426,8 @@ The app invokes five hooks:
 The registry's three ways to invoke a hook differ in how they treat a failure. A plugin can also invoke hooks of its own with them:
 
 - `invokeHook(name, payload)` calls the handlers synchronously, returns their results, and logs and skips any that throw. A promise a handler returns is not awaited, so an async `composer:send` handler catches its own errors, and a `composer:toolbar` handler must be synchronous.
-- `invokeHookAsync(name, payload)` awaits all handlers and returns the results of those that resolved. Rejected ones are logged and dropped.
+- `invokeHookAsync(name, payload)` awaits all handlers and returns the results of those that resolved. Those that reject, or throw before they return, are logged and dropped, and the others still run.
 - `invokeHookSettled(name, payload)` does the same and returns `{ results, failed }`, with the number of handlers that failed.
-
-Write handlers for the awaited hooks as `async` functions, so that a failure counts as a rejection.
 
 ### Backend Background Jobs
 
@@ -461,7 +464,7 @@ func init() {
 
 Jobs run on a scheduler that ticks once an hour. The interval is fixed in code and cannot be configured, and the first run comes one hour after startup, not at startup. On every tick all registered jobs run one after another in a single goroutine, in no fixed order. A `GoPlugin`'s job is registered under the name `<plugin name>:<job name>`, for example `base:cleanup_bimi_avatars`, which deletes cached BIMI avatars older than 7 days. A job that returns an error or panics is logged at error level and runs again on the next tick.
 
-Jobs are registered by the function `Loader()` returns, when it runs and before the `enabled` rules are applied (see [Registering the Plugin](#registering-the-plugin)). A plugin those rules drop therefore still has its jobs run. A loader that returns `p.Plugin()` without calling `Loader()`, as `caldav`, `carddav` and `managesieve` do, registers no jobs.
+Jobs are registered when the server loads the plugin, after the `enabled` rules are applied (see [Registering the Plugin](#registering-the-plugin)), so only the loaded plugins' jobs run. They are registered for the value `p.Plugin()` returns, whether `Loader()` returns it or a loader of its own does. A loader that wraps that value in a type of its own, as `caldav` and `carddav` do, registers no jobs.
 
 ---
 

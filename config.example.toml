@@ -89,13 +89,12 @@ debug = false
 # temp_dir = "/var/lib/alps/tmp"
 
 # Session idle timeout in minutes (default: 30; 0 or a negative value keeps it)
-# How long the server keeps a session without requests, for an account whose
-# saved settings hold no auto-logout time. It does not change what the page
-# does: for such an account, Settings shows an auto-logout of 30 minutes, the
-# page signs the user out after 30 minutes without activity in the browser,
-# and saving any setting stores those 30 minutes as the account's own choice.
-# In practice it applies only to accounts that have never saved their
-# settings. See docs/SESSIONS.md.
+# The auto-logout of an account whose saved settings hold no auto-logout time
+# of its own: the server ends a session that gets no request for this long,
+# Settings shows this time, and the page signs the user out after it without
+# activity in the browser. Saving other settings does not store it, so such an
+# account follows this value until the user picks an auto-logout time. See
+# docs/SESSIONS.md.
 # session_minutes = 30
 
 # Cap on the auto-logout a user may choose, in minutes (default: 0, no cap;
@@ -392,7 +391,8 @@ enabled = true
 # Options:
 #   "stdout"  - Write logs to standard output (default)
 #   "stderr"  - Write logs to standard error
-#   "syslog"  - Send logs to system syslog daemon
+#   "syslog"  - Send logs to system syslog daemon (facility daemon, each line
+#               at the priority of its level)
 #   "/path/to/file.log" - Write logs to a file (path can be absolute or relative).
 #                         ALPS reopens the file on SIGHUP, for newsyslog/logrotate.
 # If syslog or the file cannot be opened, logs go to stderr.
@@ -446,7 +446,9 @@ level = "info"
 # Required for WebAuthn to work in production environments. Security keys work
 # only when rpid and origins match the hostname users reach ALPS at, so set
 # both to it. Each key falls back to its default on its own, and ALPS logs a
-# warning at startup when rpid is unset. See docs/WEBAUTHN.md.
+# warning at startup when rpid is unset, and one for each origin whose host is
+# not rpid or a name under it (such as the localhost defaults once rpid is
+# set). See docs/WEBAUTHN.md.
 
 # The Relying Party ID (usually your domain name) (default: "localhost")
 # rpid = "webmail.example.com"
@@ -601,7 +603,10 @@ enabled = false
 # node_id: unique within the cluster (default: the host name). The node with
 # the lexicographically smallest node_id is the leader.
 # node_id = "node-1"
-# bind = "0.0.0.0"                              # An IPv4 address, as "IP:port" or just "IP" (default: 0.0.0.0)
+# bind: this node's IPv4 or IPv6 address, as "IP", "IP:port" or "[IPv6]:port"
+# (default: 0.0.0.0). A host name, an interface name or anything else that is
+# not an address stops startup, and so does a port outside 1 to 65535.
+# bind = "0.0.0.0"
 # port = 7946                                    # Gossip port, used if not specified in bind (default: 7946)
 #
 # secret_key: required when the cluster is enabled. It encrypts and
@@ -616,11 +621,14 @@ enabled = false
 # secret_key = "base64-encoded-32-byte-key"    # Generate: openssl rand -base64 32
 # allow_insecure = false                        # Set true to permit keyless (unencrypted) gossip
 #
-# peers: the gossip addresses (host:port) of the other nodes. They are used to
-# join the cluster at startup and, every 30 seconds while this node sees no
-# other member, to join it again. Client-address detection behind proxies
-# depends only on [server] trusted_proxies.
-# peers = ["node2:7946", "node3:7946"]
+# peers: the gossip addresses of the other nodes, written as IP:port. They are
+# joined at startup and, every 30 seconds, each one that is not among this
+# node's members is joined again, so the nodes join up again after a network
+# split. A peer written as a host name, or without a port, never matches a
+# member's address, so it is joined again every 30 seconds even while it is a
+# member. Client-address detection behind proxies depends only on [server]
+# trusted_proxies.
+# peers = ["10.0.0.2:7946", "10.0.0.3:7946"]
 
 
 [provider]
@@ -714,21 +722,24 @@ server = "imaps://imap.migadu.com:993"
 # address messages are sent from and meetings are organized from.
 # default_domain = "example.com"
 #
-# Server URL template with %d (domain) and %u (local part).
-# %n (full username) is not supported in server URL templates.
-# placeholders for dynamic per-domain hostnames. The domain is validated per
-# RFC 1035. The local part is validated only when the template interpolates it,
-# and rejects what would re-point the URL -- ":/?#@[]\%", controls and spaces --
-# so a few RFC-legal addresses cannot be used with a %u template.
+# Server URL template with %d (domain) and %u (local part) placeholders for
+# dynamic per-domain hostnames. A template holding %n (the full login), or one
+# that does not form an imaps://, imap:// or imap+insecure:// URL with a host,
+# stops startup. The domain is validated per RFC 1035. The local part is
+# validated only when the template interpolates it, and rejects what would
+# re-point the URL -- ":/?#@[]\%", controls and spaces -- so a few RFC-legal
+# addresses cannot be used with a %u template.
 # template = "imaps://mail.%d:993"
 #
-# Domain allowlist for the template. Required when template is set: an unlisted
-# domain never matches and falls through to the next rule.
+# Domain allowlist for the template. Required when template is set (startup
+# stops without it): an unlisted domain never matches and falls through to the
+# next rule.
 # template_domains = ["example.com", "otherdomain.org"]
 #
 # Automatically discover the IMAP server using RFC 6186 DNS SRV records
-# (_imaps._tcp, then _imap._tcp). An explicit domain allowlist is required, so
-# that ALPS looks up and connects to the servers of the domains you list only.
+# (_imaps._tcp, then _imap._tcp). An explicit domain allowlist is required
+# (startup stops without it), so that ALPS looks up and connects to the servers
+# of the domains you list only.
 # Each node keeps the answers in memory: a server found is used for 15
 # minutes, and a lookup that found none is answered from the cache for 30
 # seconds, failing the sign-ins for that domain until it is tried again.
@@ -747,6 +758,8 @@ server = "imaps://imap.migadu.com:993"
 # and managesieve, plus a password sub-table that replaces the options in
 # plugin.password. Anything a backend does not name falls back to the matching
 # global setting, so a backend never inherits an endpoint from another one.
+# Each endpoint a backend names is checked at startup by the rules of its
+# global setting, and one that cannot be used stops startup.
 # Logins routed by template or autodiscover, and every domain that falls
 # through to the default, use the smtp, carddav, caldav, managesieve and
 # password settings of [provider.multi.default]. Where the default names none,
@@ -819,17 +832,21 @@ server = "smtps://smtp.migadu.com:465"
 # a section or a [provider.multi] backend gives them what they need (see
 # docs/CONFIGURATION.md, section 9). The password plugin loads only with
 # [plugin.password] enabled = true (and an endpoint or command, see below),
-# so the allow-list applies whenever it loads.
+# so the allow-list applies whenever it loads. A plugin that enabled keeps
+# out is not set up at all: its server and options are not read.
 # A caldav or carddav section with no server, as below, still loads: users
 # whose multi backend names no endpoint then set up their own server in
 # Settings, and see Calendar and Tasks, or Contacts, once they have one. A
 # managesieve section with no server, as below, loads only when a multi
 # backend names a managesieve endpoint; otherwise startup logs
 # "ManageSieve enabled without a server or routed endpoint; plugin disabled".
+# Each allow-list name that does not load, such as that one or a misspelt
+# section name, is also logged as a warning: "Enabled plugin "<name>" did not
+# load; check its name and backend configuration".
 # A server value that cannot be used (an unknown scheme, a host and port
-# without a scheme, a CardDAV server without a scheme) stops startup, even in
-# a section with enabled = false. See docs/PLUGINS.md and
-# docs/CONFIGURATION.md (section 9).
+# without a scheme, a CardDAV server without a scheme) stops startup when the
+# plugin is set up. See docs/PLUGINS.md and docs/CONFIGURATION.md
+# (section 9).
 # Only [plugin.caldav] and [plugin.password] read options.
 
 [plugin.base]

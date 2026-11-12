@@ -21,13 +21,13 @@ enabled = true
 server = "managesieve://mail.example.com:4190"
 ```
 
-The full key reference is in [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname). At startup ALPS logs `Configured ManageSieve server: <url>`. A `server` it cannot parse, or one with a scheme it does not accept, stops ALPS from starting.
+The full key reference is in [CONFIGURATION.md](CONFIGURATION.md#9-plugins-pluginname). At startup ALPS logs `Configured ManageSieve server: <url>`. A `server` it cannot parse, one with a scheme it does not accept, or one without a host, stops ALPS from starting, when the plugin may load (see [Loading the Plugin](#loading-the-plugin)).
 
 ### Loading the Plugin
 
-The plugin loads only when `[plugin.managesieve]` sets `server`, or a `[provider.multi]` backend names a `managesieve` endpoint. A section with neither leaves it out, and unless it says `enabled = false`, startup logs `ManageSieve enabled without a server or routed endpoint; plugin disabled`.
+A `[plugin.managesieve]` section that says `enabled = false` keeps the plugin out. Once any `[plugin.*]` section sets `enabled = true`, so does a section that leaves `enabled` out, or having no section. So with such sections set `enabled = true` here, as `config.example.toml` does. To switch filters off, set `enabled = false`. A plugin kept out this way is not set up at all: its `server` is not read, and nothing is logged for it.
 
-A `[plugin.managesieve]` section that says `enabled = false` keeps the plugin out. Once any `[plugin.*]` section sets `enabled = true`, so does a section that leaves `enabled` out, or having no section. ALPS then logs `Plugin "managesieve" is disabled` at startup. So with such sections set `enabled = true` here, as `config.example.toml` does. To switch filters off, set `enabled = false`.
+A plugin that `enabled` lets through loads only when `[plugin.managesieve]` sets `server`, or a `[provider.multi]` backend names a `managesieve` endpoint. A section with neither leaves it out, and startup logs `ManageSieve enabled without a server or routed endpoint; plugin disabled`. When the section sets `enabled = true`, as `config.example.toml` does, the warning `Enabled plugin "managesieve" did not load; check its name and backend configuration` follows.
 
 A loaded plugin's tabs show for every user. When the plugin loaded for the endpoints that some backends name, a user with neither a global nor a per-domain server sees **Could not load the filters.** on the Filters tab and **Could not load the auto-reply.** on the Auto-reply tab, and each request is logged as `managesieve: failed to connect to the sieve server: ManageSieve server is not configured`.
 
@@ -68,7 +68,7 @@ For a login, ALPS takes the domain (the `default_domain` for a bare user name) a
 2. a `[[provider.multi.routes]]` entry listing the domain,
 3. `[provider.multi.default]`, for a domain no entry or route lists (domains reached by `template` or `autodiscover` included).
 
-When the matching backend has no `managesieve` key, the global `[plugin.managesieve] server` applies. A per-domain URL takes the same schemes as the global one, and whether it may skip TLS comes only from its own scheme, never from the global server's. A per-domain URL ALPS cannot parse is logged, once for each such value (`managesieve: provider named an unusable server ...`), and the global server is used instead.
+When the matching backend has no `managesieve` key, the global `[plugin.managesieve] server` applies. A per-domain URL takes the same schemes as the global one, and whether it may skip TLS comes only from its own scheme, never from the global server's. A per-domain URL ALPS cannot use, by the same rules as the global one, stops startup, with an error naming the table and the service.
 
 ---
 
