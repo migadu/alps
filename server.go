@@ -268,16 +268,31 @@ func (s *Server) PluginEnabled(name string) bool {
 	return false
 }
 
-func (s *Server) loadPlugins() error {
+func (s *Server) loadPlugins() (err error) {
 	var plugins []Plugin
+	// Until setup succeeds, these resources belong to this invocation rather
+	// than s.plugins. Release all of them if a later loader or frontend fails.
+	defer func() {
+		if err != nil {
+			for i := len(plugins) - 1; i >= 0; i-- {
+				if closeErr := plugins[i].Close(); closeErr != nil {
+					s.Logger().Errorf("Closing plugin %q after failed startup: %v", plugins[i].Name(), closeErr)
+				}
+			}
+		}
+	}()
 	for _, load := range pluginLoaders {
 		l, err := load(s)
 		if err != nil {
-			return fmt.Errorf("failed to load plugins: %v", err)
+			plugins = append(plugins, l...)
+			return fmt.Errorf("failed to load plugins: %w", err)
 		}
 		for _, p := range l {
 			if !s.PluginEnabled(p.Name()) {
 				s.logger.Printf("Plugin %q is disabled", p.Name())
+				if closeErr := p.Close(); closeErr != nil {
+					s.Logger().Errorf("Closing disabled plugin %q: %v", p.Name(), closeErr)
+				}
 				continue
 			}
 			s.logger.Printf("Loaded plugin %q", p.Name())
@@ -585,6 +600,7 @@ func New(logger Logger, options *Options) (*Server, error) {
 
 	// Initial load: sets up router with middleware, static routes, and plugins
 	if err := s.initialLoad(); err != nil {
+		s.Close()
 		return nil, err
 	}
 
