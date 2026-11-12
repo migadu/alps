@@ -8,6 +8,10 @@
 #          file set in [logging] output; the config is not read again)
 # Restart: service alps restart  (applies a config or certificate change)
 # Logs:    tail -f /var/log/alps/alps.log
+# Log rotation: newsyslog must send SIGHUP to /var/run/alps/daemon.pid
+# (daemon owns this log); service reload signals alps itself.
+# Example /etc/newsyslog.conf.d/alps.conf entry:
+# /var/log/alps/alps.log alps:alps 640 7 * @T00 JC /var/run/alps/daemon.pid 1
 
 # PROVIDE: alps
 # REQUIRE: LOGIN networking
@@ -30,7 +34,8 @@ load_rc_config $name
 pidfile="/var/run/${name}/${name}.pid"
 procname="/usr/local/bin/alps"
 command="/usr/sbin/daemon"
-command_args="-c -f -o ${alps_logdir}/alps.log -p ${pidfile} ${procname} -config ${alps_config}"
+daemon_pidfile="/var/run/${name}/daemon.pid"
+command_args="-c -f -H -P ${daemon_pidfile} -o ${alps_logdir}/alps.log -p ${pidfile} ${procname} -config ${alps_config}"
 
 # reload sends SIGHUP to alps, which reopens only the log file set in
 # [logging] output. It does not reopen daemon(8)'s alps.log, and it does not
