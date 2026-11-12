@@ -26,6 +26,12 @@ To prevent abusive resource consumption or accidental denial-of-service (DoS) fr
 - **Scope**: A single email draft.
 - **Description**: The total combined size of all attachments for a single outgoing message cannot exceed this limit.
 
+The effective limit reported by `/session` and `/settings` is the smaller of this setting and the attachment space available under the account's advertised IMAP `APPENDLIMIT` and SMTP `SIZE`. Alps reads a global IMAP limit or the `STATUS` limits of existing Drafts and Sent mailboxes. Alps reserves 64 KiB for body/headers and accounts for base64 line wrapping. For example, a 25 MiB message limit permits about 18 MiB of attachments. The reported MiB value can be fractional.
+
+SMTP capabilities are probed without authentication through the account's configured submission route, using short timeouts, and cached per session for ten minutes. An unavailable server or an unadvertised limit does not prevent reading mail; the configured and other known limits still apply. A message submission uses the live SMTP capability and supplies its encoded `SIZE` with `MAIL`.
+
+Alps also checks the complete encoded message before submission when a limit is known, including whether its Sent copy can fit. An IMAP `TOOBIG` refusal or SMTP 552 returns HTTP 413 with `message_too_large`; the composer keeps its contents and asks the user to shorten the message or remove attachments. Mailbox limits that could not be discovered are handled by this refusal path. An explicit `APPENDLIMIT=0` forbids storage: Alps reports a zero attachment budget and refuses submission before SMTP so its Sent copy cannot be lost.
+
 ### 2. Per-Session Limit (`max_session_attachment_mib`)
 - **Default**: 128 MiB
 - **Scope**: A single user session (across all open composer windows).

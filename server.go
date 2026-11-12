@@ -70,6 +70,7 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	providerFactory := options.Provider.CreateFactory(options.ProviderTimeout, options.Debug)
 
 	s.Sessions = newSessionManager(providerFactory, s.dialSMTP, logger, options.CacheTTL, options.CacheEnabled, options.LoginKey, options.SessionDuration, options.MaxSessionDuration, options.MaxSessions, options.MaxSessionsPerUser, options.MaxAttachmentMiB, options.MaxSessionAttachmentMiB, options.MaxGlobalAttachmentMiB)
+	s.Sessions.smtpSizeLimit = s.smtpMessageSizeLimit
 	s.Sessions.davAllowPrivate = options.DAVAllowPrivateServers
 	if options.DAVConnectionFreshFor != 0 {
 		s.Sessions.davFreshFor = options.DAVConnectionFreshFor

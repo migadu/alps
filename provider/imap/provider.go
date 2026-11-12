@@ -3153,3 +3153,38 @@ func (p *IMAPProvider) fallBackToFlat(mailbox string, err error) bool {
 	}
 	return true
 }
+
+// MessageSizeLimit reads global or existing Drafts/Sent APPENDLIMIT values.
+// The boolean distinguishes unknown limits from zero, which forbids APPEND.
+func (p *IMAPProvider) MessageSizeLimit() (int64, bool) {
+	if p.client == nil {
+		return 0, false
+	}
+	caps := p.client.Caps()
+	for capability := range caps {
+		if digits, ok := strings.CutPrefix(strings.ToUpper(string(capability)), "APPENDLIMIT="); ok {
+			if size, err := strconv.ParseUint(digits, 10, 32); err == nil {
+				return int64(size), true
+			}
+		}
+	}
+	if !caps.Has(imap.CapAppendLimit) {
+		return 0, false
+	}
+	var limit int64
+	known := false
+	for _, kind := range []provider.MailboxType{provider.MailboxTypeDrafts, provider.MailboxTypeSent} {
+		box, err := p.FindMailboxByType(kind)
+		if err != nil || box == nil {
+			continue
+		}
+		status, err := p.client.Status(box.Name, &imap.StatusOptions{AppendLimit: true}).Wait()
+		if err == nil && status != nil && status.AppendLimit != nil {
+			size := int64(*status.AppendLimit)
+			if !known || size < limit {
+				limit, known = size, true
+			}
+		}
+	}
+	return limit, known
+}

@@ -11,6 +11,7 @@ package imap
 
 import (
 	"bufio"
+	"fmt"
 	"net"
 	"slices"
 	"strings"
@@ -23,7 +24,8 @@ import (
 // SUBSCRIBE, UNSUBSCRIBE and LOGOUT, and answers BAD to a LIST with more than
 // its two arguments, as some IMAP4rev1 servers do.
 type scriptedIMAP struct {
-	caps string // the capabilities it advertises, e.g. "IMAP4rev1"
+	appendLimits map[string]string
+	caps         string // the capabilities it advertises, e.g. "IMAP4rev1"
 	// takesReturn makes it answer the RETURN form instead, as a server with
 	// LIST-EXTENDED does: INBOX subscribed, Work not, and each folder's
 	// STATUS when that is asked for.
@@ -169,6 +171,12 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 				lines = []string{`* LIST (\HasNoChildren) "/" INBOX`, `* LIST (\HasNoChildren) "/" Work`}
 			}
 			reply(append(slices.Clone(lines), tag+" OK LIST completed")...)
+		case "STATUS":
+			mailbox := firstArg(args)
+			if value, ok := s.appendLimits[mailbox]; ok {
+				reply(fmt.Sprintf("* STATUS %q (APPENDLIMIT %s)", mailbox, value))
+			}
+			reply(tag + " OK STATUS completed")
 		case "LSUB":
 			s.mu.Lock()
 			s.lsubs = append(s.lsubs, args)

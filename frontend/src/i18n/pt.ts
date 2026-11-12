@@ -415,6 +415,7 @@ export const pt = {
     emptyMailboxSlow: 'A pasta {folder} ainda está a ser esvaziada. O servidor está a tratar disso — verifique novamente dentro de instantes.'
   },
   composer: {
+    messageTooLarge: "Esta mensagem excede o limite de tamanho do servidor de correio. Remova anexos ou encurte a mensagem e tente novamente.",
     sentNotFiled: "Mensagem enviada, mas não foi possível guardar uma cópia em enviadas.",
     sentDraftNotRemoved: "Mensagem enviada, mas não foi possível remover o rascunho. Não a envie novamente.",
     sentNotFiledDraftKept: "Mensagem enviada, mas a cópia não foi guardada e o rascunho permanece. Não a envie novamente.",

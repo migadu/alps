@@ -103,6 +103,9 @@ var (
 // session helpers to authenticate outgoing connections, for instance DoSMTP.
 type Session struct {
 	manager            *SessionManager
+	messageSizeLocker  sync.Mutex
+	smtpSizeChecked    time.Time
+	smtpMessageLimit   int64
 	username, password string
 	address            string // see Address
 	token              string
@@ -526,7 +529,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 			// page the mail server is unavailable rather than answering 500.
 			return fmt.Errorf("failed to connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, err))
 		}
-		s.noteThreadCapability(s.provider)
+		s.noteProviderCapabilities(s.provider)
 	}
 
 	// Given up on while the connection was opened for it, a request does no
@@ -570,7 +573,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 			s.closeForMailConnectError(reErr)
 			return fmt.Errorf("failed to re-connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, reErr))
 		}
-		s.noteThreadCapability(s.provider)
+		s.noteProviderCapabilities(s.provider)
 
 		err = s.runMail(ctx, f, "IMAP operation (retry)")
 	}
@@ -606,10 +609,17 @@ func (s *Session) doneWithProvider() {
 	}
 }
 
-// noteThreadCapability records whether p's server can thread. Without a saved
+// noteProviderCapabilities records advertised message limits and threading. Without a saved
 // threading preference that decides whether a listing is threaded, and the
 // listing's cached pages are named by it.
-func (s *Session) noteThreadCapability(p provider.MailProvider) {
+func (s *Session) noteProviderCapabilities(p provider.MailProvider) {
+	if limits, ok := p.(interface{ MessageSizeLimit() (int64, bool) }); ok {
+		size, known := limits.MessageSizeLimit()
+		s.SetData("appendMessageLimit", advertisedMessageLimit{size, known})
+	} else {
+		s.SetData("appendMessageLimit", advertisedMessageLimit{})
+	}
+
 	type threadCapable interface {
 		HasThreadCapability() bool
 	}
@@ -696,7 +706,7 @@ func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}
 	}
-	return fmt.Errorf("SMTP operation failed after %d attempts: %v", smtpMaxAttempts, err)
+	return fmt.Errorf("SMTP operation failed after %d attempts: %w", smtpMaxAttempts, err)
 }
 
 // smtpMayPass reports whether a failed SMTP attempt may pass when it is made
@@ -877,9 +887,10 @@ func (s *Session) putAttachments(composerID string, files []*multipart.FileHeade
 	// All files must fit together. Otherwise storing a later file can
 	// evict an earlier one from this request and answer an unusable UUID.
 	// Subtraction also avoids overflowing the total for an oversized batch.
+	perComposerLimit := s.KnownAttachmentSizeLimit()
 	var total int64
 	for _, fh := range files {
-		for _, limit := range []int64{s.manager.maxAttachmentSize, s.manager.maxSessionAttachmentSize, s.manager.maxGlobalAttachmentSize} {
+		for _, limit := range []int64{perComposerLimit, s.manager.maxSessionAttachmentSize, s.manager.maxGlobalAttachmentSize} {
 			if fh.Size > limit-total {
 				return nil, ErrAttachmentCacheSize
 			}
@@ -905,6 +916,8 @@ func (s *Session) putAttachments(composerID string, files []*multipart.FileHeade
 
 func (s *Session) putAttachment(composerID string, in *multipart.FileHeader,
 	form *multipart.Form, up *upload) (string, error) {
+
+	perComposerLimit := s.KnownAttachmentSizeLimit()
 
 	// Try to reserve global budget
 	for {
@@ -953,7 +966,7 @@ func (s *Session) putAttachment(composerID string, in *multipart.FileHeader,
 			}
 		}
 
-		if composerSize+in.Size > s.manager.maxAttachmentSize {
+		if composerSize+in.Size > perComposerLimit {
 			s.manager.globalAttachmentSize.Add(-in.Size) // rollback global reservation
 			return "", ErrAttachmentCacheSize
 		}
@@ -1259,6 +1272,7 @@ type (
 type SessionManager struct {
 	connectProviderFunc provider.AuthenticatedProviderFactory
 	dialSMTP            DialSMTPFunc
+	smtpSizeLimit       func(string) (int64, error)
 	logger              Logger
 	cacheTTL            time.Duration
 	cacheEnabled        bool
@@ -1715,7 +1729,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	// connection it signed in with. Until it was, a new session without a
 	// saved preference filed its threaded pages as unthreaded, and served one
 	// of them when threading was turned off in another browser.
-	s.noteThreadCapability(p)
+	s.noteProviderCapabilities(p)
 	s.created = time.Now()
 	s.absoluteDeadline = sm.absoluteDeadlineFrom(s.created)
 	s.lastAccess.Store(s.created.UnixNano())

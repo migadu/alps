@@ -240,8 +240,9 @@ max_sessions_per_user = 10
 # every 15 seconds (notifyPollInterval in server/imap/notify.go).
 # push_subscribed_folders = false
 
-# Max attachment size per composer in MiB (default: 32)
-# Limits the size of a single email being composed
+# Max raw attachment size per composer in MiB (default: 32)
+# Upper bound: advertised IMAP APPENDLIMIT / SMTP SIZE can lower the effective
+# limit to leave room for base64 encoding, headers and the message body.
 # max_attachment_mib = 32
 
 # Max attachment size per session in MiB (default: 128)

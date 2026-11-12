@@ -344,6 +344,7 @@ export const fr = {
     emptyMailboxSlow: 'Vidage du dossier {folder} toujours en cours. Le serveur y travaille – revenez voir dans un instant.'
   },
   composer: {
+    messageTooLarge: "Ce message dépasse la taille maximale autorisée par le serveur de messagerie. Supprimez des pièces jointes ou raccourcissez le message, puis réessayez.",
     sentNotFiled: "Message envoyé, mais aucune copie n’a pu être enregistrée dans les messages envoyés.",
     sentDraftNotRemoved: "Message envoyé, mais le brouillon n’a pas pu être supprimé. Ne le renvoyez pas.",
     sentNotFiledDraftKept: "Message envoyé, mais aucune copie n’a été enregistrée et le brouillon reste présent. Ne le renvoyez pas.",
