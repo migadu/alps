@@ -381,6 +381,9 @@ export const zhHans: TranslationDictionary = {
     emptyMailboxSlow: '仍在清空 “{folder}”。服务器正在处理，请稍后再查看该文件夹。'
   },
   composer: {
+    sentNotFiled: "邮件已发送，但无法在已发送中保存副本。",
+    sentDraftNotRemoved: "邮件已发送，但无法删除草稿。请勿再次发送。",
+    sentNotFiledDraftKept: "邮件已发送，但未保存副本且草稿仍然存在。请勿再次发送。",
     windowLoadFailed: '无法加载邮件窗口。',
     discardFailed: '无法从服务器删除该草稿，它仍保留在 “草稿” 中。',
     attachmentsTooLarge: '附件超过了允许的最大大小。',

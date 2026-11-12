@@ -434,7 +434,7 @@ export class MessageOperationsService {
   /**
    * Sends a composer instance message.
    */
-  async sendDraft(formData: FormData): Promise<boolean> {
+  async sendDraft(formData: FormData): Promise<boolean | { sent: true; warning: string; draftRemoved: boolean }> {
     try {
       const res = await fetchWithTimeout('/messages', {
         method: 'POST',
@@ -445,7 +445,18 @@ export class MessageOperationsService {
         return false;
       }
       if (res.ok) {
+        const result = await res.json().catch(() => ({}));
+        const notices: Record<string, string> = {
+          not_filed_in_sent: 'composer.sentNotFiled',
+          draft_not_removed: 'composer.sentDraftNotRemoved',
+          not_filed_in_sent_and_draft_not_removed: 'composer.sentNotFiledDraftKept',
+        };
+        const notice = notices[result.warning];
+        if (notice) window.dispatchEvent(new CustomEvent('show-toast', {
+          detail: { i18nKey: notice, type: 'warning', duration: 0 },
+        }));
         messageSync.sync();
+        if (notice) return { sent: true, warning: result.warning, draftRemoved: result.warning === 'not_filed_in_sent' };
         return true;
       }
       // Guarded: `await res.json()` on a proxy's HTML 502 threw a SyntaxError

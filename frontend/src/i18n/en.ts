@@ -390,6 +390,9 @@ export const en = {
     emptyMailboxSlow: 'Still emptying {folder}. The server is working on it — check the folder again in a moment.'
   },
   composer: {
+    sentNotFiled: "Message sent, but no copy could be saved in Sent.",
+    sentDraftNotRemoved: "Message sent, but its draft could not be removed. Do not send it again.",
+    sentNotFiledDraftKept: "Message sent, but no Sent copy was saved and its draft remains. Do not send it again.",
     windowLoadFailed: 'The message window could not be loaded.',
     discardFailed: 'The draft could not be deleted from the server and is still in Drafts.',
     attachmentsTooLarge: 'Attachments exceed the maximum allowed size.',

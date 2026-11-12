@@ -45,6 +45,20 @@ const i18nStore = {
 };
 
 describe('send', () => {
+  it('closes after delivery even when the sent draft could not be removed', async () => {
+    const instance: ComposerInstance = { id: 'warning', to: ['ada@example.com'], subject: 'Hello', text: 'Sent', format: 'text', draftUid: '8', draftMailbox: 'Drafts' };
+    const composeStore = storeFor(instance);
+    vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue({ sent: true, warning: 'draft_not_removed', draftRemoved: false });
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const discarded = record<CustomEvent>(window, 'draft-discarded');
+    const el = await mount('alps-floating-composer', { instance, composeStore, i18nStore });
+    await click(shadow(el, '.send-actions alps-button[variant="primary"]'), el);
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await waitFor(() => composeStore.closeComposer.mock.calls.length > 0, 'the delivered composer to close');
+    expect(discarded).toHaveLength(0);
+    expect(composeStore.closeComposer).toHaveBeenCalledWith('warning');
+  });
   it('sends a message that has no subject', async () => {
     const instance: ComposerInstance = { id: 'c1', to: ['ada@example.com'], subject: '', text: 'Hello', format: 'text' };
     const composeStore = storeFor(instance);

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-ical"
-	"github.com/emersion/go-webdav/caldav"
+	"github.com/migadu/go-webdav/caldav"
 )
 
 const (

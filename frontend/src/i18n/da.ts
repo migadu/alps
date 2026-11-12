@@ -392,6 +392,9 @@ export const da: TranslationDictionary = {
     emptyMailboxSlow: 'Tømmer stadig {folder}. Serveren arbejder på det – se efter igen om et øjeblik.'
   },
   composer: {
+    sentNotFiled: "Beskeden er sendt, men en kopi kunne ikke gemmes i Sendt.",
+    sentDraftNotRemoved: "Beskeden er sendt, men kladden kunne ikke fjernes. Send den ikke igen.",
+    sentNotFiledDraftKept: "Beskeden er sendt, men kopien blev ikke gemt, og kladden er der stadig. Send den ikke igen.",
     windowLoadFailed: 'Beskedvinduet kunne ikke indlæses.',
     discardFailed: 'Kladden kunne ikke slettes fra serveren og ligger stadig i Kladder.',
     attachmentsTooLarge: 'De vedhæftede filer overskrider den maksimalt tilladte størrelse.',
