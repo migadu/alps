@@ -18,9 +18,10 @@ connection independently:
 
 - Leave **Server URL** blank to use the configured server, or enter a personal
   server URL. Without a configured default, a URL is required.
-- Choose whether to use the mail credentials or enter a separate DAV username
-  and password. A personal connection starts with separate credentials; choosing
-  mail credentials sends the mail password to that server.
+- Under **Authentication**, use the mail credentials or enter a separate
+  username and password. Mail credentials are selected initially for an
+  administrator-configured server. A personal server starts with separate
+  credentials; choosing mail credentials sends the mail password to that server.
 - **Save connection** checks authentication and discovers the user's DAV home
   before saving. A failed check leaves the previous saved connection intact.
 - **Remove connection** appears after a personal connection has been saved.

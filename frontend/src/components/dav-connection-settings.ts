@@ -389,29 +389,27 @@ export class DavConnectionSettings extends LitElement implements UnsavedChanges 
               <span class="hint">${this.t('settings.dav.defaultServer')} <bdi dir="ltr">${this.saved.default_server}</bdi></span>
             ` : nothing}
           </alps-setting-group>
-          <alps-setting-group>
+          <alps-setting-group label=${this.t('settings.dav.authentication')}>
             <label class="checkbox-label">
               <input name="use_mail_credentials" type="checkbox" .checked=${this.useMailCredentials}
                 ?disabled=${this.submitting} @change=${this.onCredentialsChanged}>
               ${this.t('settings.dav.useMailCredentials')}
             </label>
             ${!this.saved.can_save ? html`<span class="hint">${this.t('settings.dav.keyRequired')}</span>` : nothing}
-          </alps-setting-group>
-          ${!this.useMailCredentials ? html`
-            <alps-setting-group label=${this.t('settings.dav.username')}>
-              <alps-input name="username" type="text" icon="at" label=${this.t('settings.dav.username')}
+            ${!this.useMailCredentials ? html`
+              <alps-input name="username" type="text" icon="user" label=${this.t('settings.dav.username')}
+                placeholder=${this.t('settings.dav.username')}
                 .value=${this.username} required ?disabled=${this.submitting} maxlength="1024"
                 autocomplete="section-${this.service} username" @input=${this.onInput}
               ></alps-input>
-            </alps-setting-group>
-            <alps-setting-group label=${this.t('settings.dav.password')}
-              description=${this.t(this.needsPassword ? 'settings.dav.enterPassword' : 'settings.dav.passwordConfigured')}>
               <alps-input name="password" type="password" icon="key" label=${this.t('settings.dav.password')}
+                placeholder=${this.t('settings.dav.password')}
                 .value=${this.password} ?required=${this.needsPassword} ?disabled=${this.submitting} maxlength="4096"
                 autocomplete="section-${this.service} current-password" @input=${this.onInput}
               ></alps-input>
-            </alps-setting-group>
-          ` : nothing}
+              <span class="hint password-hint">${this.t(this.needsPassword ? 'settings.dav.enterPassword' : 'settings.dav.passwordConfigured')}</span>
+            ` : nothing}
+          </alps-setting-group>
           <div class="actions">
             <alps-button type="submit" variant="primary" ?disabled=${this.submitting} ?spinning=${this.submitting}>
               ${this.t(this.submitting ? 'settings.dav.saving' : 'settings.dav.save')}

@@ -1,4 +1,4 @@
-import{_ as e,d as t,f as n,g as r,l as i,x as a,y as o}from"./lit-BYBpccnv.js";import{St as s,Tt as c,ut as l,yt as u}from"./index-AFoYR5IB.js";var d=class extends Error{constructor(e){super(e),this.code=e}},f=class extends r{constructor(...e){super(...e),this.service=`caldav`,this.saved=null,this.server=``,this.useMailCredentials=!0,this.username=``,this.password=``,this.loading=!0,this.submitting=!1,this.error=``,this.removal=null,this.unreadablePersonal=!1,this.generation=0,this.account=``,this.controller=null,this.mailCredentialsChosenForServer=!1,this.onLanguageChanged=()=>this.requestUpdate(),this.onAccountChanged=()=>{let e=this.currentAccount();e!==this.account&&(this.account=e,this.load())},this.onSessionCleared=()=>{this.invalidate(),this.account=``,this.clear()},this.onLogin=e=>{this.account=e.detail?.username??this.currentAccount(),this.load()},this.onInput=e=>{let t=e.target;t.name===`server`&&(this.server=t.value,this.server.trim()&&this.server.trim()!==this.saved?.server&&!this.mailCredentialsChosenForServer&&(this.useMailCredentials=!1)),t.name===`username`&&(this.username=t.value),t.name===`password`&&(this.password=t.value),this.error=``},this.onCredentialsChanged=e=>{this.useMailCredentials=e.target.checked,this.mailCredentialsChosenForServer=this.useMailCredentials,this.password=``,this.error=``},this.save=async e=>{if(e.preventDefault(),this.submitting||!this.saved)return;let t=e.currentTarget;if(!t.reportValidity())return;for(let e of t.querySelectorAll(`alps-input`))if(!e.reportValidity()){e.focus();return}if(!this.useMailCredentials&&!this.saved.can_save){this.error=`settings.dav.keyRequired`;return}let n={server:this.server.trim(),use_mail_credentials:this.useMailCredentials,username:this.useMailCredentials?``:this.username.trim(),...!this.useMailCredentials&&this.password?{password:this.password}:{}};await this.mutate(`PUT`,n)},this.askRemove=()=>{this.submitting||this.loading||!this.hasPersonalConnection||this.removal||(this.removal={generation:this.generation,account:this.account})},this.confirmRemove=async e=>{this.removal!==e||!this.current(e.generation)||e.account!==this.account||e.account!==this.currentAccount()||!this.hasPersonalConnection||this.submitting||(this.removal=null,await this.mutate(`DELETE`))}}static{this.styles=a`
+import{_ as e,d as t,f as n,g as r,l as i,x as a,y as o}from"./lit-BYBpccnv.js";import{St as s,Tt as c,ut as l,yt as u}from"./index-D9SgAg-o.js";var d=class extends Error{constructor(e){super(e),this.code=e}},f=class extends r{constructor(...e){super(...e),this.service=`caldav`,this.saved=null,this.server=``,this.useMailCredentials=!0,this.username=``,this.password=``,this.loading=!0,this.submitting=!1,this.error=``,this.removal=null,this.unreadablePersonal=!1,this.generation=0,this.account=``,this.controller=null,this.mailCredentialsChosenForServer=!1,this.onLanguageChanged=()=>this.requestUpdate(),this.onAccountChanged=()=>{let e=this.currentAccount();e!==this.account&&(this.account=e,this.load())},this.onSessionCleared=()=>{this.invalidate(),this.account=``,this.clear()},this.onLogin=e=>{this.account=e.detail?.username??this.currentAccount(),this.load()},this.onInput=e=>{let t=e.target;t.name===`server`&&(this.server=t.value,this.server.trim()&&this.server.trim()!==this.saved?.server&&!this.mailCredentialsChosenForServer&&(this.useMailCredentials=!1)),t.name===`username`&&(this.username=t.value),t.name===`password`&&(this.password=t.value),this.error=``},this.onCredentialsChanged=e=>{this.useMailCredentials=e.target.checked,this.mailCredentialsChosenForServer=this.useMailCredentials,this.password=``,this.error=``},this.save=async e=>{if(e.preventDefault(),this.submitting||!this.saved)return;let t=e.currentTarget;if(!t.reportValidity())return;for(let e of t.querySelectorAll(`alps-input`))if(!e.reportValidity()){e.focus();return}if(!this.useMailCredentials&&!this.saved.can_save){this.error=`settings.dav.keyRequired`;return}let n={server:this.server.trim(),use_mail_credentials:this.useMailCredentials,username:this.useMailCredentials?``:this.username.trim(),...!this.useMailCredentials&&this.password?{password:this.password}:{}};await this.mutate(`PUT`,n)},this.askRemove=()=>{this.submitting||this.loading||!this.hasPersonalConnection||this.removal||(this.removal={generation:this.generation,account:this.account})},this.confirmRemove=async e=>{this.removal!==e||!this.current(e.generation)||e.account!==this.account||e.account!==this.currentAccount()||!this.hasPersonalConnection||this.submitting||(this.removal=null,await this.mutate(`DELETE`))}}static{this.styles=a`
     :host { display: block; }
     .hint { color: var(--text-muted); font-size: 13px; line-height: 1.4; }
     .checkbox-label {
@@ -46,29 +46,27 @@ import{_ as e,d as t,f as n,g as r,l as i,x as a,y as o}from"./lit-BYBpccnv.js";
               <span class="hint">${this.t(`settings.dav.defaultServer`)} <bdi dir="ltr">${this.saved.default_server}</bdi></span>
             `:e}
           </alps-setting-group>
-          <alps-setting-group>
+          <alps-setting-group label=${this.t(`settings.dav.authentication`)}>
             <label class="checkbox-label">
               <input name="use_mail_credentials" type="checkbox" .checked=${this.useMailCredentials}
                 ?disabled=${this.submitting} @change=${this.onCredentialsChanged}>
               ${this.t(`settings.dav.useMailCredentials`)}
             </label>
             ${this.saved.can_save?e:o`<span class="hint">${this.t(`settings.dav.keyRequired`)}</span>`}
-          </alps-setting-group>
-          ${this.useMailCredentials?e:o`
-            <alps-setting-group label=${this.t(`settings.dav.username`)}>
-              <alps-input name="username" type="text" icon="at" label=${this.t(`settings.dav.username`)}
+            ${this.useMailCredentials?e:o`
+              <alps-input name="username" type="text" icon="user" label=${this.t(`settings.dav.username`)}
+                placeholder=${this.t(`settings.dav.username`)}
                 .value=${this.username} required ?disabled=${this.submitting} maxlength="1024"
                 autocomplete="section-${this.service} username" @input=${this.onInput}
               ></alps-input>
-            </alps-setting-group>
-            <alps-setting-group label=${this.t(`settings.dav.password`)}
-              description=${this.t(this.needsPassword?`settings.dav.enterPassword`:`settings.dav.passwordConfigured`)}>
               <alps-input name="password" type="password" icon="key" label=${this.t(`settings.dav.password`)}
+                placeholder=${this.t(`settings.dav.password`)}
                 .value=${this.password} ?required=${this.needsPassword} ?disabled=${this.submitting} maxlength="4096"
                 autocomplete="section-${this.service} current-password" @input=${this.onInput}
               ></alps-input>
-            </alps-setting-group>
-          `}
+              <span class="hint password-hint">${this.t(this.needsPassword?`settings.dav.enterPassword`:`settings.dav.passwordConfigured`)}</span>
+            `}
+          </alps-setting-group>
           <div class="actions">
             <alps-button type="submit" variant="primary" ?disabled=${this.submitting} ?spinning=${this.submitting}>
               ${this.t(this.submitting?`settings.dav.saving`:`settings.dav.save`)}

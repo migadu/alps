@@ -42,9 +42,16 @@ for (const service of ['caldav', 'carddav'] as const) {
       await form.getByLabel('Server URL').fill(`${davURL.replace('http://', 'http+insecure://')}/${service}/`);
     }
     const useMail = form.locator('input[name="use_mail_credentials"]');
+    if (personal) await expect(useMail).not.toBeChecked();
+    else await expect(useMail).toBeChecked();
     await useMail.uncheck();
-    await form.getByLabel('DAV username', { exact: true }).fill(remote.address);
-    await form.getByLabel('DAV password', { exact: true }).fill('incorrect-password');
+    const authentication = form.locator('alps-setting-group[label="Authentication"]');
+    await expect(authentication.locator('input[placeholder="Username"]')).toBeVisible();
+    await expect(authentication.locator('input[placeholder="Password"]')).toBeVisible();
+    await expect(authentication.locator('alps-input[name="username"][type="text"][icon="user"]')).toBeVisible();
+    await expect(form.locator('alps-setting-group[label="Username"], alps-setting-group[label="Password"]')).toHaveCount(0);
+    await form.getByLabel('Username', { exact: true }).fill(remote.address);
+    await form.getByLabel('Password', { exact: true }).fill('incorrect-password');
     allowConsoleErrors(page, /Failed to load resource: the server responded with a status of 400/);
     await form.getByRole('button', { name: 'Save connection', exact: true }).click();
     await expect(form.getByRole('alert')).toContainText('Could not access this DAV account.');
@@ -52,13 +59,13 @@ for (const service of ['caldav', 'carddav'] as const) {
     const rejected = await (await page.request.get(`/settings/dav/${service}`)).json();
     expect(rejected.personal_configured).toBe(false);
 
-    await form.getByLabel('DAV password', { exact: true }).fill(remote.password);
+    await form.getByLabel('Password', { exact: true }).fill(remote.password);
     // Enter inside the shared input follows the same submission path as Save.
-    await form.getByLabel('DAV password', { exact: true }).press('Enter');
+    await form.getByLabel('Password', { exact: true }).press('Enter');
     await expect(toast(page, 'Connection saved.').last()).toBeVisible();
     await expect(form.getByRole('button', { name: 'Remove connection', exact: true })).toBeVisible();
     await expect(form).not.toContainText('Connection saved.');
-    await expect(form.getByLabel('DAV password', { exact: true })).toHaveValue('');
+    await expect(form.getByLabel('Password', { exact: true })).toHaveValue('');
     await expect(tab).toBeVisible();
     await page.screenshot({ path: test.info().outputPath(`${service}-connection.png`) });
 
@@ -92,7 +99,7 @@ for (const service of ['caldav', 'carddav'] as const) {
 
     await page.goto(`/#/settings/${service}`);
     await page.reload();
-    await expect(form.getByLabel('DAV username', { exact: true })).toHaveValue(remote.address);
+    await expect(form.getByLabel('Username', { exact: true })).toHaveValue(remote.address);
     await expect(form).toContainText('Password configured. Leave blank to keep it.');
     await form.getByRole('button', { name: 'Save connection', exact: true }).click();
     await expect(toast(page, 'Connection saved.').last()).toBeVisible();

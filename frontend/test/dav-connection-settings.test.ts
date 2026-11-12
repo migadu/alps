@@ -113,6 +113,29 @@ describe('DAV settings using the shared settings controls', () => {
     expect(puts()).toEqual([]);
     expect(el.shadowRoot!.activeElement).toBe(inputHost(el, 'server'));
   });
+  it('groups custom credentials under Authentication with placeholders and native accessible names', async () => {
+    const el = await open();
+    await useMail(el);
+    const groups = shadowAll<El>(el, 'alps-setting-group');
+    expect(groups).toHaveLength(2);
+    const authentication = groups[1];
+    expect(authentication.label).toBe('settings.dav.authentication');
+    expect(authentication.description).toBe('');
+    const username = inputHost(el, 'username');
+    const password = inputHost(el, 'password');
+    expect(username.parentElement).toBe(authentication);
+    expect(password.parentElement).toBe(authentication);
+    expect(username.type).toBe('text');
+    expect(username.icon).toBe('user');
+    expect(nativeInput(el, 'username').placeholder).toBe('settings.dav.username');
+    expect(nativeInput(el, 'password').placeholder).toBe('settings.dav.password');
+    expect(nativeInput(el, 'username').getAttribute('aria-label')).toBe('settings.dav.username');
+    expect(nativeInput(el, 'password').getAttribute('aria-label')).toBe('settings.dav.password');
+    expect(password.nextElementSibling).toBe(shadow(el, '.password-hint'));
+    expect(text(el, '.password-hint')).toBe('settings.dav.enterPassword');
+    await input(el, 'username', 'radicale-account');
+    expect(nativeInput(el, 'username').checkValidity()).toBe(true);
+  });
   it('selects separate credentials for a new destination unless mail credentials are explicitly chosen', async () => {
     const el = await open();
     await input(el, 'server', 'https://personal.example.test/');
@@ -133,7 +156,7 @@ describe('DAV settings using the shared settings controls', () => {
     expect(puts()[0].body).toEqual({ server: '', use_mail_credentials: false, username: 'radicale-ada', password: 'radicale secret' });
     expect(nativeInput(el, 'password').value).toBe('');
     expect(nativeInput(el, 'password').required).toBe(false);
-    expect(inputHost(el, 'password').parentElement!.getAttribute('description')).toBe('settings.dav.passwordConfigured');
+    expect(text(el, '.password-hint')).toBe('settings.dav.passwordConfigured');
     expect(notices.at(-1)?.detail).toEqual({ service: 'caldav', configured: true });
     expect(toasts.at(-1)?.detail.message).toBe('settings.dav.saved');
     expect(el.shadowRoot!.querySelector('[role="status"]')).toBeNull();
@@ -191,7 +214,7 @@ describe('DAV settings using the shared settings controls', () => {
   });
   it('uses the shared password visibility and credential autofill controls', async () => {
     const el = await open(); await useMail(el); await input(el, 'password', 'secret');
-    expect(inputHost(el, 'username').type).toBe('text'); expect(inputHost(el, 'username').icon).toBe('at');
+    expect(inputHost(el, 'username').type).toBe('text'); expect(inputHost(el, 'username').icon).toBe('user');
     expect(inputHost(el, 'password').icon).toBe('key');
     const username = nativeInput(el, 'username');
     expect(username.autocomplete).toBe('section-caldav username');
