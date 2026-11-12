@@ -44,6 +44,17 @@ describe('the task list', () => {
     const list = (tasks: TaskData[], props: Record<string, unknown> = {}) => mount<El>('tasks-list', { i18nStore, tasks, now, ...props });
     const titles = (el: El) => shadowAll(el, '.row .title').map(row => row.textContent);
 
+    it('uses the central European Portuguese locale for due dates', async () => {
+        const portuguese = { ...i18nStore, getLanguage: () => 'pt', getIntlLanguage: () => 'pt-PT' };
+        const due = task('fevereiro', allDay('2026-02-05'));
+        const expected = new Date(2026, 1, 5).toLocaleDateString('pt-PT', { month: 'short', day: 'numeric' });
+        const el = await list([due], { i18nStore: portuguese });
+        expect(shadow(el, '.due').textContent).toBe(expected);
+        const page = document.createElement('tasks-page') as El;
+        page.i18nStore = portuguese;
+        expect(page.formatDue(due)).toBe(expected);
+    });
+
     it('groups rows by when they are due, each group in order', async () => {
         const el = await list([
             task('later', allDay('2026-10-01')),

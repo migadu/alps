@@ -17,7 +17,7 @@ import { isGone, isSessionExpiry } from '../../../frontend/src/utils/fetch-utils
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
 import { taskTellsSomeone, calendarService, getCalendarColor } from './calendar-service';
-import { formatDue, inSmartList, intlLocale, isClosed, scopeOf, tasksService } from './tasks-service';
+import { formatDue, inSmartList, isClosed, scopeOf, tasksService } from './tasks-service';
 import type { SmartList, TaskData, TaskList, TaskScope } from './tasks-service';
 import './tasks-list';
 import './task-modal';
@@ -486,7 +486,7 @@ export class TasksPage extends LitElement {
     }
 
     private formatDue(task: TaskData): string {
-        return formatDue(task, new Date(), this.i18nStore?.t('tasks.today') ?? 'Today', intlLocale(this.i18nStore?.getLanguage?.()), this.settingsStore?.getState().hourFormat);
+        return formatDue(task, new Date(), this.i18nStore?.t('tasks.today') ?? 'Today', this.i18nStore?.getIntlLanguage?.(), this.settingsStore?.getState().hourFormat);
     }
 
     /** Says an action failed, unless the session ending is why: that has its

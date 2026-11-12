@@ -165,12 +165,6 @@ export function priorityBand(priority?: number): 'high' | 'medium' | 'low' | nul
     return 'low';
 }
 
-/** The BCP 47 tag for one of the app's language codes: `rs` is Cyrillic Serbian and `sr` Latin. */
-export function intlLocale(language?: string): string | undefined {
-    if (!language) return undefined;
-    return language === 'rs' ? 'sr-Cyrl' : language === 'sr' ? 'sr-Latn' : language;
-}
-
 /**
  * A due date as a row shows it: the time for something due later today, the
  * date otherwise, with the year only when it is not this one. An all-day task
