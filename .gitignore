@@ -9,6 +9,9 @@ build/
 # `make test-coverage`
 coverage.out
 
+# `make site`
+/_site/
+
 # Running vitest from the repository root caches its results here
 node_modules/
 
