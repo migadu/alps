@@ -1895,14 +1895,11 @@ func handleLogin(ctx *alps.Context) error {
 				"reason", "rate limited",
 				"detail", reason)
 
-			// Set Retry-After header
-			if retryAfter > 0 {
-				ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
-			}
+			seconds := ctx.RetryAfter(retryAfter)
 
 			body := map[string]interface{}{
 				"error":       reason,
-				"retry_after": int(retryAfter.Seconds()),
+				"retry_after": seconds,
 			}
 			// The reason is English, for the log and for other clients. The
 			// sign-in page says what a refusal is in its own language, and
@@ -5002,10 +4999,7 @@ func handleAddAccount(ctx *alps.Context) error {
 	// budget of its own.
 	if allowed, reason, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
 		ctx.Server.Logger().Printf("Linked accounts: linking %s rate limited", username)
-		seconds := int(retryAfter.Seconds())
-		if seconds > 0 {
-			ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
-		}
+		seconds := ctx.RetryAfter(retryAfter)
 		return ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
 			"error":       reason,
 			"retry_after": seconds,

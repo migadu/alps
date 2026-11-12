@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/migadu/alps/provider"
 	"io"
 	"net/http"
@@ -104,10 +103,7 @@ func handlePasswordChange(ctx *alps.Context) error {
 	username := ctx.Session.Username()
 	if allowed, reason, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
 		ctx.Server.Logger().Printf("Password change: current password check rate limited for %s", username)
-		seconds := int(retryAfter.Seconds())
-		if seconds > 0 {
-			ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
-		}
+		seconds := ctx.RetryAfter(retryAfter)
 		return ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
 			"error":       reason,
 			"code":        "rate_limited",
