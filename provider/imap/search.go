@@ -150,6 +150,16 @@ func prepareIMAPSearch(terms string) *imap.SearchCriteria {
 					} else {
 						criteria.NotFlag = append(criteria.NotFlag, imap.FlagSeen)
 					}
+				} else if strings.ToLower(value) == "read" || strings.ToLower(value) == "seen" {
+					criteria = searchCriteriaAnd(
+						criteria, &imap.SearchCriteria{Flag: []imap.Flag{imap.FlagSeen}})
+				} else {
+					// A state this search does not know is searched for as it
+					// is written, as a word with any other prefix is. It used
+					// to add no condition, so on its own it listed the whole
+					// folder, and "select all" acted on every message in it.
+					criteria = searchCriteriaAnd(
+						criteria, &imap.SearchCriteria{Text: []string{"is:" + value}})
 				}
 			case "header":
 				hParts := strings.SplitN(value, ":", 2)
@@ -160,6 +170,11 @@ func prepareIMAPSearch(terms string) *imap.SearchCriteria {
 					}
 					criteria = searchCriteriaAnd(
 						criteria, searchCriteriaHeader(hParts[0], hVal))
+				} else {
+					// No Field:value: searched for as it is written, as an
+					// unknown is: value is.
+					criteria = searchCriteriaAnd(
+						criteria, &imap.SearchCriteria{Text: []string{"header:" + value}})
 				}
 			default:
 				continue

@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/migadu/alps/provider"
+
 	"github.com/migadu/go-imap"
 )
 
@@ -141,6 +143,82 @@ func TestUnclosedPrefixedQuotes(t *testing.T) {
 		c := prepareIMAPSearch(query)
 		if len(c.Header) != 1 || c.Header[0].Key != "Subject" || c.Header[0].Value != "weekly report" {
 			t.Errorf("%q: Header = %+v", query, c.Header)
+		}
+	}
+}
+
+// Every term of a query adds a condition. An is: value other than the ones
+// the search help lists, and a header: term without Field:value, used to add
+// none, so on its own it searched the whole folder: is:read listed every
+// message, and "select all" acted on all of them.
+func TestPrepareIMAPSearchKeepsEveryTerm(t *testing.T) {
+	seen := []imap.Flag{imap.FlagSeen}
+	tests := []struct {
+		query string
+		want  *imap.SearchCriteria
+	}{
+		{`is:read`, &imap.SearchCriteria{Flag: seen}},
+		{`is:seen`, &imap.SearchCriteria{Flag: seen}},
+		{`IS:Read`, &imap.SearchCriteria{Flag: seen}},
+		{`is:read invoice`, &imap.SearchCriteria{Text: []string{"invoice"}, Flag: seen}},
+		{`invoice is:read`, &imap.SearchCriteria{Text: []string{"invoice"}, Flag: seen}},
+		// Not a state the search knows: searched for as it is written, as a
+		// word with any other prefix is.
+		{`is:answered`, &imap.SearchCriteria{Text: []string{"is:answered"}}},
+		{`is:answered invoice`, &imap.SearchCriteria{Text: []string{"is:answered", "invoice"}}},
+		{`is:`, &imap.SearchCriteria{Text: []string{"is:"}}},
+		{`header:X-Spam`, &imap.SearchCriteria{Text: []string{"header:X-Spam"}}},
+		{`header:`, &imap.SearchCriteria{Text: []string{"header:"}}},
+		{`invoice header:X-Spam`, &imap.SearchCriteria{Text: []string{"invoice", "header:X-Spam"}}},
+	}
+	for _, tt := range tests {
+		if got := prepareIMAPSearch(tt.query); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("prepareIMAPSearch(%q) = %+v, want %+v", tt.query, got, tt.want)
+		}
+	}
+
+	// Only a query with no terms is the whole folder.
+	for _, query := range []string{"", "  ", `""`} {
+		if got := prepareIMAPSearch(query); !reflect.DeepEqual(got, &imap.SearchCriteria{}) {
+			t.Errorf("prepareIMAPSearch(%q) = %+v, want no condition", query, got)
+		}
+	}
+}
+
+// "Select all N in folder" resolves its query with SearchMessageIDs. A term the
+// search did not know used to resolve to every message in the folder.
+func TestSearchMessageIDsKeepsEveryTerm(t *testing.T) {
+	p := memIMAP(t, &memServer{},
+		"From: Ada <ada@remote.test>\r\nSubject: One\r\n\r\nFirst.\r\n",
+		"From: Ada <ada@remote.test>\r\nSubject: Two\r\n\r\nSecond.\r\n",
+		"From: Ada <ada@remote.test>\r\nSubject: Three\r\n\r\nThird.\r\n",
+	)
+	if err := p.SetMessagesFlags("INBOX", []provider.MessageID{IMAPUID(2)}, provider.FlagOperation{
+		Op: provider.FlagOpAdd, Flags: []provider.Flag{provider.FlagSeen},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	uids := func(query string) []string {
+		t.Helper()
+		ids, err := p.SearchMessageIDs("INBOX", query)
+		if err != nil {
+			t.Fatalf("%q: %v", query, err)
+		}
+		got := []string{}
+		for _, id := range ids {
+			got = append(got, id.String())
+		}
+		return got
+	}
+	for query, want := range map[string][]string{
+		"":              {"1", "2", "3"},
+		"is:read":       {"2"},
+		"is:unread":     {"1", "3"},
+		"is:answered":   {},
+		"header:X-Spam": {},
+	} {
+		if got := uids(query); !reflect.DeepEqual(got, want) {
+			t.Errorf("%q selected %q, want %q", query, got, want)
 		}
 	}
 }
