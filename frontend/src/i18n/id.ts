@@ -178,6 +178,9 @@ export const id = {
     }
   },
   linkedAccounts: {
+    relinkRequired: "Hapus akun tertaut ini di pengaturan, lalu tautkan kembali dengan kata sandi saat ini.",
+    accountNotFound: "Akun ini tidak lagi tertaut. Segarkan daftar akun.",
+    switchUnavailable: "Akun lain sementara tidak tersedia. Coba lagi nanti.",
     description: 'Hubungkan akun lain untuk beralih di antara akun dengan cepat tanpa keluar.',
     noAccounts: 'Tidak ada akun tertaut.',
     remove: 'Hapus',

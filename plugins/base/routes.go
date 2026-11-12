@@ -5128,7 +5128,7 @@ func handleSwitchAccount(ctx *alps.Context) error {
 	// Get password before switching (needed for login token and session creation)
 	password, err := ctx.Session.GetLinkedAccountCredentials(targetUsername)
 	if err != nil {
-		return fmt.Errorf("failed to get credentials: %v", err)
+		return accountSwitchFailure(ctx, err)
 	}
 
 	// Whether the session outlives the browser, as the box said at sign-in.
@@ -5139,7 +5139,7 @@ func handleSwitchAccount(ctx *alps.Context) error {
 	// Switch to the linked account (creates new session)
 	newSession, err := ctx.Server.Sessions.SwitchAccount(ctx.Session, targetUsername)
 	if err != nil {
-		return fmt.Errorf("failed to switch account: %v", err)
+		return accountSwitchFailure(ctx, err)
 	}
 
 	// Check if the target account has 2FA enabled
@@ -5285,4 +5285,22 @@ func handleProxy(ctx *alps.Context) error {
 
 	lr := io.LimitedReader{R: resp.Body, N: int64(maxSize)}
 	return ctx.Stream(http.StatusOK, mediaType, &lr)
+}
+
+// A failed target sign-in must never sign out the account the user is still in.
+func accountSwitchFailure(ctx *alps.Context, err error) error {
+	ctx.Server.Logger().Errorf("Switching linked account: %v", err)
+	status, code := http.StatusServiceUnavailable, "service_unavailable"
+	switch {
+	case errors.Is(err, alps.ErrAccountNotFound):
+		status, code = http.StatusNotFound, "account_not_found"
+	case errors.Is(err, alps.ErrRelinkRequired), errors.Is(err, alps.ErrLoginKeyRequired), errors.Is(err, alps.ErrLinkedCredentialsRefused):
+		status, code = http.StatusConflict, "relink_required"
+	case errors.Is(err, alps.ErrLinkedAccountUnavailable):
+		// This failure belongs to the target, rather than the account whose
+		// active session the browser still holds.
+	default:
+		return fmt.Errorf("failed to read the current account's linked accounts: %w", err)
+	}
+	return ctx.JSON(status, map[string]string{"error": code})
 }

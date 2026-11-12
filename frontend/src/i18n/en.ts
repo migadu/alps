@@ -179,6 +179,9 @@ export const en = {
     }
   },
   linkedAccounts: {
+    relinkRequired: "Remove this linked account in Settings, then link it again with its current password.",
+    accountNotFound: "This account is no longer linked. Refresh the account list.",
+    switchUnavailable: "The other account is temporarily unavailable. Please try again later.",
     description: 'Connect another account to quickly switch between them without logging out.',
     noAccounts: 'No linked accounts.',
     remove: 'Remove',

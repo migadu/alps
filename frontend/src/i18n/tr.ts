@@ -179,6 +179,9 @@ export const tr = {
     }
   },
   linkedAccounts: {
+    relinkRequired: "Ayarlarda bu bağlı hesabı kaldırın, ardından güncel parolasıyla yeniden bağlayın.",
+    accountNotFound: "Bu hesap artık bağlı değil. Hesap listesini yenileyin.",
+    switchUnavailable: "Diğer hesap geçici olarak kullanılamıyor. Daha sonra tekrar deneyin.",
     description: 'Oturumu kapatmadan hesaplar arasında hızlıca geçiş yapmak için başka bir hesap bağlayın.',
     noAccounts: 'Bağlı hesap yok.',
     remove: 'Kaldır',
