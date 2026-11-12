@@ -386,12 +386,7 @@ func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page,
 		}
 	}
 
-	sort.Slice(matchedMsgs, func(i, j int) bool {
-		if sortOrder == "asc" {
-			return matchedMsgs[i].Key() < matchedMsgs[j].Key()
-		}
-		return matchedMsgs[i].Key() > matchedMsgs[j].Key()
-	})
+	p.sortSearchMessages(matchedMsgs, sortOrder)
 
 	total := len(matchedMsgs)
 	start := page * pageSize
