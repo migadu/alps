@@ -1,5 +1,6 @@
 export default {
   calendar: {
+      someCalendarsFailed: "कुछ कैलेंडर पढ़े नहीं जा सके। उनके इवेंट दिखाई नहीं दे रहे हैं।",
     deleteCalendarFailed: 'कैलेंडर हटाया नहीं जा सका।',
     deleteEventFailed: 'इवेंट हटाया नहीं जा सका।',
     saveCalendarFailed: 'कैलेंडर सहेजा नहीं जा सका।',

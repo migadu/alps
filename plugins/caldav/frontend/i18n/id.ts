@@ -1,5 +1,6 @@
 export default {
   calendar: {
+      someCalendarsFailed: "Beberapa kalender tidak dapat dibaca. Acaranya tidak ditampilkan.",
     deleteCalendarFailed: 'Kalender tidak dapat dihapus.',
     deleteEventFailed: 'Acara tidak dapat dihapus.',
     saveCalendarFailed: 'Kalender tidak dapat disimpan.',

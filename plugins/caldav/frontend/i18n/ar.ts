@@ -1,5 +1,6 @@
 export default {
   calendar: {
+      someCalendarsFailed: "تعذرت قراءة بعض التقويمات. أحداث هذه التقويمات غير معروضة.",
     deleteCalendarFailed: 'تعذر حذف التقويم.',
     deleteEventFailed: 'تعذر حذف الحدث.',
     saveCalendarFailed: 'تعذر حفظ التقويم.',

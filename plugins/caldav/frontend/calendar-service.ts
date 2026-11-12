@@ -161,7 +161,7 @@ class CalendarService {
         return response.json();
     }
 
-    async fetchEvents(start: Date, end: Date, query?: string): Promise<{ events: EventData[] }> {
+    async fetchEvents(start: Date, end: Date, query?: string): Promise<{ events: EventData[]; failedCalendars?: number }> {
         const params = new URLSearchParams();
         params.append('start', start.toISOString());
         params.append('end', end.toISOString());

@@ -642,6 +642,7 @@ export class CalendarPage extends LitElement {
 
             const evRes = await calendarService.fetchEvents(start, end, this.searchQuery);
             if (seq !== this.fetchSeq) return;
+            if ((evRes.failedCalendars ?? 0) > 0) this.reportFailure('calendar.someCalendarsFailed');
             const rawEvents = evRes.events || [];
             const expandedEvents: EventData[] = [];
 
