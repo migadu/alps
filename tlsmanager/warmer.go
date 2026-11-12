@@ -269,9 +269,29 @@ func (w *certWarmer) warmDomain(domain string) {
 		// is for real handshakes. autocert manages its own timeout context;
 		// still-valid cached certs return without touching ACME, and failures
 		// are not retried until the next pass (>= warmerMinPassGap away).
-		if _, err := w.m.autocertManager.GetCertificate(f.hello); err != nil {
+		cert, err := w.m.autocertManager.GetCertificate(f.hello)
+		if err != nil {
 			w.m.logger.Error("cert warmer: failed to obtain certificate",
 				"domain", domain, "flavor", f.name, "error", err)
+			continue
+		}
+		leaf, err := certificateLeaf(cert)
+		if err != nil {
+			w.m.logger.Error("cert warmer: invalid certificate", "domain", domain, "flavor", f.name, "error", err)
+			continue
+		}
+		now := w.m.certificateTime()
+		remaining := leaf.NotAfter.Sub(now)
+		fields := []any{"domain", domain, "flavor", f.name, "not_after", leaf.NotAfter, "remaining", remaining}
+		switch {
+		case now.After(leaf.NotAfter):
+			w.m.logger.Error("cert warmer: certificate has expired", fields...)
+		case now.Before(leaf.NotBefore):
+			w.m.logger.Error("cert warmer: certificate is not yet valid", fields...)
+		case remaining <= certificateRenewalWindow(leaf, w.m.autocertManager.RenewBefore):
+			w.m.logger.Warn("cert warmer: certificate is due for renewal", fields...)
+		default:
+			w.m.logger.Info("cert warmer: certificate is valid", fields...)
 		}
 	}
 }

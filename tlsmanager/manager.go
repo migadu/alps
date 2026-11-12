@@ -286,6 +286,10 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 			m.logger.Error("TLS: failed to get certificate", "server_name", serverName, "error", err)
 			return nil, fmt.Errorf("%w for %s: %v", ErrCertificateUnavailable, serverName, err)
 		}
+		if err := m.validateCertificate(cert); err != nil {
+			m.logger.Error("TLS: cached certificate is not valid", "server_name", serverName, "error", err)
+			return nil, fmt.Errorf("%w for %s: %v", ErrCertificateUnavailable, serverName, err)
+		}
 		return cert, nil
 	}
 

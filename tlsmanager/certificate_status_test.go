@@ -128,6 +128,10 @@ func TestTLSConfigRejectsExpiredAutocertMemoryCertificate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	m.certificateClock = func() time.Time { return cert.Leaf.NotAfter.Add(-time.Hour) }
+	if valid, err := m.GetTLSConfig().GetCertificate(hello); err != nil || valid == nil {
+		t.Fatalf("certificate inside renewal window must remain usable: cert=%v err=%v", valid != nil, err)
+	}
 	m.certificateClock = func() time.Time { return cert.Leaf.NotAfter.Add(time.Minute) }
 	expired, err := m.GetTLSConfig().GetCertificate(hello)
 	if !errors.Is(err, ErrCertificateUnavailable) || expired != nil {
