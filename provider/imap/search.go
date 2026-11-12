@@ -194,3 +194,9 @@ func ValidateSearch(query string) error {
 	}
 	return nil
 }
+
+// PrepareSearch translates the webmail query grammar to criteria shared by
+// the IMAP and Maildir providers.
+func PrepareSearch(query string) *imap.SearchCriteria {
+	return prepareIMAPSearch(query)
+}

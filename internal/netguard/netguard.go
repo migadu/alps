@@ -1,4 +1,5 @@
-package alps
+// Package netguard restricts untrusted outbound connections to public addresses.
+package netguard
 
 import (
 	"errors"
@@ -6,11 +7,8 @@ import (
 	"syscall"
 )
 
-// ErrBlockedAddress is returned when an outbound request for a URL that a
-// user or a message chose (remote-content proxy, BIMI avatar, personal DAV
-// server) resolves to a non-public address. Such requests must not be usable
-// to reach loopback, private, link-local (cloud metadata), or other internal
-// ranges (SSRF).
+// ErrBlockedAddress marks a destination that an untrusted outbound URL may
+// not reach: loopback, private, link-local or another reserved address.
 var ErrBlockedAddress = errors.New("destination address is not permitted")
 
 // extraBlockedCIDRs covers ranges not classified by the net.IP helpers below
@@ -31,9 +29,8 @@ var extraBlockedCIDRs = func() []*net.IPNet {
 	return nets
 }()
 
-// IsDisallowedDialIP reports whether an IP must not be dialed on behalf of a
-// URL that was not chosen by the administrator.
-func IsDisallowedDialIP(ip net.IP) bool {
+// IsDisallowedIP reports whether an IP must not be dialed by the safe client.
+func IsDisallowedIP(ip net.IP) bool {
 	if ip == nil {
 		return true
 	}
@@ -49,11 +46,10 @@ func IsDisallowedDialIP(ip net.IP) bool {
 	return false
 }
 
-// SafeDialControl is a net.Dialer Control function. It runs after DNS
-// resolution, on the concrete address that will be connected to. Validating
-// the resolved IP here (rather than the URL host) defeats DNS rebinding and
-// redirect-to-internal-IP tricks.
-func SafeDialControl(network, address string, _ syscall.RawConn) error {
+// PublicDialControl runs after DNS resolution, on the concrete address that will
+// be connected to. Validating the resolved IP here (rather than the URL host)
+// defeats DNS rebinding and redirect-to-internal-IP tricks.
+func PublicDialControl(network, address string, _ syscall.RawConn) error {
 	if network != "tcp4" && network != "tcp6" && network != "tcp" {
 		return ErrBlockedAddress
 	}
@@ -61,7 +57,7 @@ func SafeDialControl(network, address string, _ syscall.RawConn) error {
 	if err != nil {
 		return err
 	}
-	if IsDisallowedDialIP(net.ParseIP(host)) {
+	if IsDisallowedIP(net.ParseIP(host)) {
 		return ErrBlockedAddress
 	}
 	return nil

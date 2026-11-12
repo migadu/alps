@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/migadu/alps/internal/netguard"
 	"github.com/migadu/alps/provider"
 	"github.com/migadu/alps/provider/imap"
 )
@@ -274,7 +275,7 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 
 	restrictedIPGuard := func(ip net.IP) error {
 		if isRestrictedIP(ip) {
-			return fmt.Errorf("target address %s is restricted", ip)
+			return fmt.Errorf("target address %s is restricted: %w", ip, netguard.ErrBlockedAddress)
 		}
 		return nil
 	}

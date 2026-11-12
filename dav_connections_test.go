@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"github.com/fernet/fernet-go"
+	"github.com/migadu/alps/internal/netguard"
 	"io"
 	"time"
 )
@@ -299,7 +300,7 @@ func TestDAVPersonalEndpointsCannotReachPrivateAddressesByDefault(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response, err := client.Get(internal.URL + "/dav/"); !errors.Is(err, ErrBlockedAddress) {
+	if response, err := client.Get(internal.URL + "/dav/"); !errors.Is(err, netguard.ErrBlockedAddress) {
 		if err == nil {
 			response.Body.Close()
 		}

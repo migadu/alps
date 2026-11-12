@@ -90,7 +90,7 @@ func (p *Provider) openBox(name string) (box, error) {
 // names joined by the delimiter, none of them empty, and no path separator
 // or NUL. With that, "." and its name stay one entry of the maildir.
 func folderName(name string) bool {
-	if name == "" || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") || strings.Contains(name, "..") {
+	if name == "" || name == "*" || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") || strings.Contains(name, "..") {
 		return false
 	}
 	return !strings.ContainsAny(name, "/\\\x00")
@@ -326,6 +326,10 @@ func (p *Provider) CreateMailbox(name string) error {
 // RenameMailbox renames a folder, which must be there, to a name no folder
 // has, including its Maildir++ descendants.
 func (p *Provider) RenameMailbox(oldName, newName string) error {
+	if oldName == "INBOX" {
+		return refused("cannot rename INBOX")
+	}
+
 	oldBox, newBox, err := p.openBoxes(oldName, newName)
 	if err != nil {
 		return err
@@ -383,7 +387,7 @@ func (p *Provider) RenameMailbox(oldName, newName string) error {
 // there is said to be missing, as an IMAP server says it.
 func (p *Provider) DeleteMailbox(name string) error {
 	if name == "INBOX" {
-		return fmt.Errorf("cannot delete INBOX")
+		return refused("cannot delete INBOX")
 	}
 	b, err := p.openBox(name)
 	if err != nil {

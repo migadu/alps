@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/migadu/alps/internal/netguard"
 	"github.com/migadu/alps/provider"
 	"github.com/migadu/go-webdav/caldav"
 	"github.com/migadu/go-webdav/carddav"
@@ -521,7 +522,7 @@ func sameDAVOrigin(a, b *url.URL) bool {
 var davPublicTransport = func() *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	transport.DialContext = (&net.Dialer{Timeout: davConnectionTimeout, KeepAlive: 30 * time.Second, Control: SafeDialControl}).DialContext
+	transport.DialContext = (&net.Dialer{Timeout: davConnectionTimeout, KeepAlive: 30 * time.Second, Control: netguard.PublicDialControl}).DialContext
 	return transport
 }()
 

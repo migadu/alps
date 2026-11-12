@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/migadu/alps/internal/netguard"
 )
 
 // DiscoveredServer holds the host, port, and TLS mode discovered via RFC 6186.
@@ -186,29 +188,7 @@ func (d *DNSAutodiscoverer) discover(ctx context.Context, domain string) (*Disco
 }
 
 func isRestrictedIP(ip net.IP) bool {
-	if ip == nil {
-		return true
-	}
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
-		return true
-	}
-	if ip4 := ip.To4(); ip4 != nil {
-		if ip4.IsLoopback() || ip4.IsPrivate() || ip4.IsLinkLocalUnicast() || ip4.IsLinkLocalMulticast() || ip4.IsMulticast() || ip4.IsUnspecified() {
-			return true
-		}
-		// 0.0.0.0/8 (RFC 1122: This host on this network, routed to localhost by Linux)
-		if ip4[0] == 0 {
-			return true
-		}
-		// 100.64.0.0/10 Carrier Grade NAT
-		if ip4[0] == 100 && (ip4[1]&0xc0) == 64 {
-			return true
-		}
-		if ip4.Equal(net.IPv4bcast) {
-			return true
-		}
-	}
-	return false
+	return netguard.IsDisallowedIP(ip)
 }
 
 func checkRestrictedHost(ctx context.Context, resolver *net.Resolver, host string) error {

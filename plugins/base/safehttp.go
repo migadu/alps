@@ -4,20 +4,20 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"syscall"
 	"time"
 
-	"github.com/migadu/alps"
+	"github.com/migadu/alps/internal/netguard"
 )
 
-// The dial-time guard is shared with personal DAV connections: see
-// alps.SafeDialControl. These endpoints fetch attacker-influenced URLs, so
-// they must not be usable to reach loopback, private, link-local (cloud
-// metadata), or other internal ranges (SSRF).
-var (
-	errBlockedAddress = alps.ErrBlockedAddress
-	isDisallowedIP    = alps.IsDisallowedDialIP
-	safeDialControl   = alps.SafeDialControl
-)
+// Keep the fetch helpers and error identity stable for their callers.
+var errBlockedAddress = netguard.ErrBlockedAddress
+
+func isDisallowedIP(ip net.IP) bool { return netguard.IsDisallowedIP(ip) }
+
+func safeDialControl(network, address string, conn syscall.RawConn) error {
+	return netguard.PublicDialControl(network, address, conn)
+}
 
 // newSafeHTTPClient returns an http.Client for fetching attacker-influenced
 // URLs: it blocks non-public destinations at dial time, bounds every phase
