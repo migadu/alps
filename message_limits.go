@@ -1,10 +1,14 @@
 package alps
 
-import (
-	"time"
-)
+import "time"
+
+type advertisedMessageLimit struct {
+	bytes int64
+	known bool
+}
 
 // MessageSizeLimit returns the smallest known, advertised upstream message cap.
+// A negative value means unknown; zero means APPEND is explicitly forbidden.
 // A failed or unsupported SMTP probe leaves the IMAP/configured policy usable.
 func (s *Session) MessageSizeLimit() int64 {
 	s.messageSizeLocker.Lock()
@@ -26,11 +30,13 @@ func (s *Session) KnownMessageSizeLimit() int64 {
 	return s.knownMessageSizeLimitLocked()
 }
 func (s *Session) knownMessageSizeLimitLocked() int64 {
-	var limit int64
-	if value, ok := s.GetData("appendLimitBytes"); ok {
-		limit, _ = value.(int64)
+	limit := int64(-1)
+	if value, ok := s.GetData("appendMessageLimit"); ok {
+		if saved, valid := value.(advertisedMessageLimit); valid && saved.known {
+			limit = saved.bytes
+		}
 	}
-	if s.smtpMessageLimit > 0 && (limit <= 0 || s.smtpMessageLimit < limit) {
+	if s.smtpMessageLimit > 0 && (limit < 0 || s.smtpMessageLimit < limit) {
 		limit = s.smtpMessageLimit
 	}
 	return limit
@@ -48,6 +54,9 @@ func (s *Session) KnownAttachmentSizeLimit() int64 {
 }
 func (s *Session) attachmentSizeLimit(size int64) int64 {
 	configured := s.manager.MaxAttachmentSize()
+	if size == 0 {
+		return 0
+	}
 	if size > 0 {
 		available := size - (64 << 10)
 		if available <= 0 {

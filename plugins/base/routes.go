@@ -3215,7 +3215,7 @@ func handleComposeNew(ctx *alps.Context) error {
 
 	// Check the complete encoded representation before APPEND or SMTP.
 	// In particular, avoid delivering a message whose Sent copy cannot fit.
-	if maximum := ctx.Session.KnownMessageSizeLimit(); maximum > 0 {
+	if maximum := ctx.Session.KnownMessageSizeLimit(); maximum >= 0 {
 		var encoded provider.OutgoingMessageWriter = msg
 		if saveAsDraft {
 			encoded = msg.asDraft()

@@ -14,7 +14,7 @@ type limitedMailStore struct {
 	size int64
 }
 
-func (p limitedMailStore) MessageSizeLimit() int64 { return p.size }
+func (p limitedMailStore) MessageSizeLimit() (int64, bool) { return p.size, p.size >= 0 }
 
 func listenLimitedSubmission(t *testing.T, size int64) string {
 	t.Helper()

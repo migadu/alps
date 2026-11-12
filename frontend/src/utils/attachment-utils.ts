@@ -110,7 +110,7 @@ export function uploadFiles(
     incomingBytes += file.size;
   }
 
-  if (maxBytes > 0 && (currentBytes + incomingBytes) > maxBytes) {
+  if (maxBytes >= 0 && (currentBytes + incomingBytes) > maxBytes) {
     // Translated, like every other message this app shows. This one was an
     // English string literal in a UI that ships eight locales.
     window.dispatchEvent(new CustomEvent('show-toast', {

@@ -11,6 +11,7 @@ package imap
 
 import (
 	"bufio"
+	"fmt"
 	"net"
 	"slices"
 	"strings"

@@ -9,7 +9,7 @@ func TestMessageSizeLimitReadsAdvertisedAppendLimit(t *testing.T) {
 	}{{"IMAP4rev1", 0}, {"IMAP4rev1 APPENDLIMIT", 0}, {"IMAP4rev1 APPENDLIMIT=26214400", 26214400}} {
 		t.Run(tc.caps, func(t *testing.T) {
 			p := scriptedProvider(t, &scriptedIMAP{caps: tc.caps})
-			if got := p.MessageSizeLimit(); got != tc.limit {
+			if got, known := p.MessageSizeLimit(); got != tc.limit || known != (tc.limit > 0) {
 				t.Fatalf("APPENDLIMIT read as %d, want%d", got, tc.limit)
 			}
 		})
@@ -27,8 +27,15 @@ func TestMessageSizeLimitReadsMailboxSpecificDraftsAndSent(t *testing.T) {
 		if value == "NIL" {
 			wanted = 2048
 		}
-		if got := provider.MessageSizeLimit(); got != wanted {
+		if got, known := provider.MessageSizeLimit(); got != wanted || !known {
 			t.Fatalf("mailbox-specific%s: got%d want%d", value, got, wanted)
 		}
+	}
+}
+
+func TestMessageSizeLimitPreservesExplicitZero(t *testing.T) {
+	provider := scriptedProvider(t, &scriptedIMAP{caps: "IMAP4rev1 APPENDLIMIT=0"})
+	if size, known := provider.MessageSizeLimit(); size != 0 || !known {
+		t.Fatalf("zero APPENDLIMIT became unknown: %d %t", size, known)
 	}
 }

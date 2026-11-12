@@ -1227,7 +1227,7 @@ export class AlpsFloatingComposer extends LitElement {
 
   /** What the composer's files may take in all: the server's limit. */
   private _maxAttachmentBytes(): number {
-    return (this.settingsStore?.getState()?.maxAttachmentMiB || 32) * 1024 * 1024;
+    return (this.settingsStore?.getState()?.maxAttachmentMiB ?? 32) * 1024 * 1024;
   }
 
   private _handleAttachClick() {

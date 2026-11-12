@@ -529,7 +529,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 			// page the mail server is unavailable rather than answering 500.
 			return fmt.Errorf("failed to connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, err))
 		}
-		s.noteThreadCapability(s.provider)
+		s.noteProviderCapabilities(s.provider)
 	}
 
 	// Given up on while the connection was opened for it, a request does no
@@ -573,7 +573,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 			s.closeForMailConnectError(reErr)
 			return fmt.Errorf("failed to re-connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, reErr))
 		}
-		s.noteThreadCapability(s.provider)
+		s.noteProviderCapabilities(s.provider)
 
 		err = s.runMail(ctx, f, "IMAP operation (retry)")
 	}
@@ -609,15 +609,17 @@ func (s *Session) doneWithProvider() {
 	}
 }
 
-// noteThreadCapability records whether p's server can thread. Without a saved
+// noteProviderCapabilities records advertised message limits and threading. Without a saved
 // threading preference that decides whether a listing is threaded, and the
 // listing's cached pages are named by it.
-func (s *Session) noteThreadCapability(p provider.MailProvider) {
-	if limits, ok := p.(interface{ MessageSizeLimit() int64 }); ok {
-		s.SetData("appendLimitBytes", limits.MessageSizeLimit())
+func (s *Session) noteProviderCapabilities(p provider.MailProvider) {
+	if limits, ok := p.(interface{ MessageSizeLimit() (int64, bool) }); ok {
+		size, known := limits.MessageSizeLimit()
+		s.SetData("appendMessageLimit", advertisedMessageLimit{size, known})
 	} else {
-		s.SetData("appendLimitBytes", int64(0))
+		s.SetData("appendMessageLimit", advertisedMessageLimit{})
 	}
+
 	type threadCapable interface {
 		HasThreadCapability() bool
 	}
@@ -1723,7 +1725,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	// connection it signed in with. Until it was, a new session without a
 	// saved preference filed its threaded pages as unthreaded, and served one
 	// of them when threading was turned off in another browser.
-	s.noteThreadCapability(p)
+	s.noteProviderCapabilities(p)
 	s.created = time.Now()
 	s.absoluteDeadline = sm.absoluteDeadlineFrom(s.created)
 	s.lastAccess.Store(s.created.UnixNano())
