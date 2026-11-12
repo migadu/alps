@@ -52,7 +52,7 @@ peers = ["10.0.0.2:7946", "10.0.0.3:7946"]  # The other ALPS nodes
 | `port` | Integer | `7946` | The gossip port, on TCP and UDP. 0 also means 7946. |
 | `secret_key` | String | None | Standard base64 of exactly 32 bytes. Required unless `allow_insecure = true`. `CLUSTER_SECRET_KEY` takes precedence. |
 | `allow_insecure` | Boolean | `false` | Lets the cluster run without a secret key. |
-| `peers` | Array of strings | None | The other nodes, as `"host:port"`, or `"host"` for this node's `port`. Joined at startup, and again while one of them is not a member. |
+| `peers` | Array of strings | None | The other nodes, as `"host:port"`, or `"host"` for this node's `port`. Joined at startup and every 30 seconds; a literal IP address already among this node's members is skipped. |
 
 ### `secret_key` and `CLUSTER_SECRET_KEY`
 
@@ -82,11 +82,11 @@ With a specific address, the node also advertises that address to its peers. Wit
 
 ### `peers`
 
-List the other nodes as `"host:port"`. The host may be a name or an IP address. Without a port, a peer uses this node's own `port`. A node tries to join its peers at startup. A peer that is not up yet is not an error: ALPS logs a warning and starts anyway. Once a node reaches any one member, it learns about the rest of the cluster.
+List the other nodes as `"host:port"` (`"[2001:db8::2]:7946"` for IPv6). The host may be a name or an IP address. Without a port, a peer uses this node's own `port`. A node tries to join its peers at startup. A peer that is not up yet is not an error: ALPS logs a warning and starts anyway. Once a node reaches any one member, it learns about the rest of the cluster.
 
-Every 30 seconds, a node tries again each configured peer that is not among its members. A peer given by name counts as a member when any address the name resolves to, at the peer's port, is a member's address. Until a peer answers, a node that reaches no one is its own leader. Because a node looks for every peer it does not see, two sides of a network split that each still have several nodes find each other again once the network heals. ALPS uses `peers` for nothing else. List all the other nodes, so that a node can find its way back to the cluster whichever of them is up.
+Every 30 seconds, a node tries its configured peers again, skipping a literal IP address and port already among its members. A host name is always retried through memberlist's own DNS lookup, which can discover several nodes behind one name. Finding one of those nodes in the current membership must not hide the others. Until a peer answers, a node that reaches no one is its own leader. Because a node looks for every peer it does not see, two sides of a network split that each still have several nodes find each other again once the network heals. ALPS uses `peers` for nothing else. List all the other nodes, so that a node can find its way back to the cluster whichever of them is up.
 
-A peer listed by an address that is not the one it advertises, for example a public address when the node advertises a private one, never counts as a member. A node tries such a peer again every 30 seconds, logging at debug level only. List each node by the address it advertises: the address the other nodes log for it in `node joined cluster`.
+A peer listed by an address that is not the one it advertises, for example a public address when the node advertises a private one, never counts as a member. A join that adds no members, whether through such an address or a host name, is logged at debug level only. `cluster rejoined peers` is logged at info level only when membership grows. List each node by the address it advertises: the address the other nodes log for it in `node joined cluster`.
 
 ---
 

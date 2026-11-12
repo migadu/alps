@@ -8,7 +8,6 @@
 package cluster
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -38,20 +37,13 @@ type Cluster struct {
 	msgHandler func(msg []byte)
 	msgMtx     sync.RWMutex
 
-	// Rejoin: the port memberlist gives a peer written without one (its own
-	// bind port), and the resolver that turns a peer's host name into the
-	// addresses memberlist would dial.
+	// The port memberlist gives a peer written without one: its own bind port.
 	peerPort int
-	lookupIP func(ctx context.Context, host string) ([]net.IP, error)
 
 	// Lifecycle
 	done         chan struct{}
 	shutdownOnce sync.Once
 }
-
-// peerLookupTimeout bounds one host name lookup in a rejoin attempt, so a
-// slow resolver delays the next attempt rather than stopping the loop.
-const peerLookupTimeout = 5 * time.Second
 
 // Config holds configuration for creating a cluster.
 type Config struct {
@@ -161,9 +153,6 @@ func NewCluster(cfg Config) (*Cluster, error) {
 
 	// Create has replaced a BindPort of 0 with the port it bound.
 	cluster.peerPort = mlConfig.BindPort
-	cluster.lookupIP = func(ctx context.Context, host string) ([]net.IP, error) {
-		return net.DefaultResolver.LookupIP(ctx, "ip", host)
-	}
 
 	// Join peers if provided. This is best-effort at startup (peers may not be up
 	// yet); rejoinLoop below periodically retries so a failed initial join or a
@@ -232,7 +221,7 @@ func (c *Cluster) runSafely(fn func()) {
 	fn()
 }
 
-// rejoinLoop periodically contacts configured peers missing from membership.
+// rejoinLoop periodically contacts configured discovery seeds and missing IP peers.
 // Multiple live members can still be only one side of a partition. memberlist never merges
 // two disjoint clusters on its own — someone must call Join again — so without
 // this a failed startup join or a partition heals into permanent split-brain,
@@ -250,7 +239,7 @@ func (c *Cluster) rejoinLoop(peers []string) {
 	}
 }
 
-// tryRejoin contacts configured peers absent from the current membership,
+// tryRejoin contacts configured host names and IP peers absent from membership,
 // including peers in another partition that still has multiple live nodes.
 // Recover each attempt separately so one failure cannot stop future retries.
 func (c *Cluster) tryRejoin(peers []string) {
@@ -281,13 +270,10 @@ func (c *Cluster) tryRejoin(peers []string) {
 	}
 }
 
-// missingPeers returns the configured peers that no current member answers
-// for. A member's Address is "IP:port", so each peer is first read the way
-// memberlist's Join reads it: a host name stands for every address it
-// resolves to, and a peer without a port takes this node's bind port. A peer
-// is present when any of its addresses is a member, as Join counts a peer
-// reached when any of them answers. A peer that cannot be resolved is
-// returned, so Join reports why.
+// missingPeers skips only literal IP addresses already in membership.
+// Host names remain discovery seeds: memberlist's TCP-first DNS lookup may
+// find nodes that a separate Go lookup would miss, even when some addresses
+// behind the name are already members. Leave resolution and errors to Join.
 func (c *Cluster) missingPeers(peers []string) []string {
 	known := make(map[string]bool)
 	for _, member := range c.ml.Members() {
@@ -300,25 +286,18 @@ func (c *Cluster) missingPeers(peers []string) []string {
 			continue
 		}
 		seen[peer] = true
-		present := false
-		for _, addr := range c.peerAddresses(peer) {
-			if known[addr] {
-				present = true
-				break
-			}
-		}
-		if !present {
+		addr, literal := c.literalPeerAddress(peer)
+		if !literal || !known[addr] {
 			missing = append(missing, peer)
 		}
 	}
 	return missing
 }
 
-// peerAddresses returns the "IP:port" addresses memberlist would dial for a
-// configured peer, or nil when it cannot tell. It follows memberlist's
-// resolveAddr: an optional "name/" prefix is dropped, and a peer without a
-// port gets this node's bind port.
-func (c *Cluster) peerAddresses(peer string) []string {
+// literalPeerAddress normalizes a literal IP peer to memberlist's "IP:port"
+// form. An optional "name/" prefix is dropped, and a peer without a port gets
+// this node's bind port. Host names and malformed peers are left for Join.
+func (c *Cluster) literalPeerAddress(peer string) (string, bool) {
 	if i := strings.Index(peer, "/"); i > 0 {
 		peer = peer[i+1:]
 	}
@@ -327,30 +306,16 @@ func (c *Cluster) peerAddresses(peer string) []string {
 	}
 	host, sport, err := net.SplitHostPort(peer)
 	if err != nil {
-		return nil
+		return "", false
 	}
 	port, err := strconv.ParseUint(sport, 10, 16)
 	if err != nil {
-		return nil
+		return "", false
 	}
-	portStr := strconv.FormatUint(port, 10)
 	if ip := net.ParseIP(host); ip != nil {
-		return []string{net.JoinHostPort(ip.String(), portStr)}
+		return net.JoinHostPort(ip.String(), strconv.FormatUint(port, 10)), true
 	}
-	if c.lookupIP == nil {
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), peerLookupTimeout)
-	defer cancel()
-	ips, err := c.lookupIP(ctx, host)
-	if err != nil {
-		return nil
-	}
-	addrs := make([]string, 0, len(ips))
-	for _, ip := range ips {
-		addrs = append(addrs, net.JoinHostPort(ip.String(), portStr))
-	}
-	return addrs
+	return "", false
 }
 
 // hasPort is memberlist's test for a port: after a bracketed IPv6 address, a

@@ -621,11 +621,13 @@ enabled = false
 # secret_key = "base64-encoded-32-byte-key"    # Generate: openssl rand -base64 32
 # allow_insecure = false                        # Set true to permit keyless (unencrypted) gossip
 #
-# peers: the gossip addresses (host:port) of the other nodes. They are used to
-# join the cluster at startup and, every 30 seconds, to join again any of them
-# that is not a member. A peer without a port uses this node's port. List each
-# node by the address it advertises. Client-address detection behind proxies
-# depends only on [server] trusted_proxies.
+# peers: the gossip addresses (host:port) of the other nodes. They are joined
+# at startup and every 30 seconds. A literal IP address already among this
+# node's members is skipped; host names are retried so DNS can discover missing
+# nodes. Only membership growth is logged as a rejoin at info level. A peer
+# without a port uses this node's port. List each node by the address it
+# advertises. Client-address detection behind proxies depends only on
+# [server] trusted_proxies.
 # peers = ["node2:7946", "node3:7946"]
 
 
