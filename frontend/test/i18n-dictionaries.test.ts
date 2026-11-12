@@ -14,7 +14,6 @@ import { rs } from '../src/i18n/rs';
 import { fr } from '../src/i18n/fr';
 import { pt } from '../src/i18n/pt';
 import { zhHans } from '../src/i18n/zh-Hans';
-import { zhHant } from '../src/i18n/zh-Hant';
 import { SUPPORTED_LANGUAGES } from '../src/store/i18n-store';
 
 type Dict = Record<string, unknown>;
