@@ -180,6 +180,7 @@ export class AlpsWebauthnSettings extends LitElement {
 
     /** The message for a refused change of trust, by the server's stable code. */
     private trustRefusal(status: number, code: unknown): string {
+        if (status === 503) return 'webauthn.errors.load_failed';
         switch (code) {
             case 'keys_unavailable': return 'webauthn.errors.load_failed';
             case 'wrong_password': return 'webauthn.errors.wrong_password';

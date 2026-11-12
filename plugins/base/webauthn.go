@@ -14,6 +14,7 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/migadu/alps"
+	"github.com/migadu/alps/provider"
 )
 
 // CredentialDisplay is used to display credentials in the UI
@@ -742,6 +743,10 @@ func handleLinkedAccountsTrust(ctx *alps.Context) error {
 // keySettingsUnavailable keeps transient record failures distinct from a
 // rejected ceremony and logs the wrapped cause without exposing it to the page.
 func keySettingsUnavailable(ctx *alps.Context, err error) error {
+	var authErr provider.AuthError
+	if errors.As(err, &authErr) {
+		return err
+	}
 	ctx.Server.Logger().Errorf("WebAuthn settings for %s: %v", ctx.Session.Username(), err)
 	return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
 }
