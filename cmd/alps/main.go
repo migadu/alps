@@ -270,10 +270,12 @@ func main() {
 		if sig != syscall.SIGHUP {
 			break
 		}
-		if err := logger.Reopen(); err != nil {
+		if reopened, err := logger.Reopen(); err != nil {
 			logger.Errorf("SIGHUP: %v", err)
-		} else {
+		} else if reopened {
 			logger.Info("SIGHUP: log file reopened")
+		} else {
+			logger.Info("SIGHUP: no log file to reopen")
 		}
 	}
 
