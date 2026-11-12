@@ -180,7 +180,9 @@ export class AlpsWebauthnSettings extends LitElement {
 
     /** The message for a refused change of trust, by the server's stable code. */
     private trustRefusal(status: number, code: unknown): string {
+        if (status === 503) return 'webauthn.errors.load_failed';
         switch (code) {
+            case 'keys_unavailable': return 'webauthn.errors.load_failed';
             case 'wrong_password': return 'webauthn.errors.wrong_password';
             case 'password_required': return 'webauthn.errors.password_required';
             case 'two_factor_required': return 'webauthn.errors.two_factor_required';
@@ -199,6 +201,11 @@ export class AlpsWebauthnSettings extends LitElement {
         this.error = '';
         try {
             const res = await fetch('/settings/2fa/begin', { method: 'POST' });
+            if (res.status === 503) {
+                this.error = this.i18nStore?.t('webauthn.errors.load_failed') ?? 'webauthn.errors.load_failed';
+                this.adding = false;
+                return;
+            }
             if (!res.ok) throw new Error(await res.text());
             const options = await res.json();
 
@@ -237,6 +244,10 @@ export class AlpsWebauthnSettings extends LitElement {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            if (finishRes.status === 503) {
+                this.error = this.i18nStore?.t('webauthn.errors.load_failed') ?? 'webauthn.errors.load_failed';
+                return;
+            }
             if (!finishRes.ok) throw new Error(await finishRes.text());
             // The first key comes with the recovery codes, in this answer alone.
             const finished = await finishRes.json().catch(() => ({}));
