@@ -486,8 +486,10 @@ curl -sf -X POST "http://127.0.0.1:$ADMIN_PORT/admin/accounts" \
 if [ "${E2E_CLUSTER:-}" = 1 ]; then
   # Separate processes, session managers and gossip members; only the IMAP
   # backend is shared. No in-process mutex can arbitrate. Both configurations
-  # share the fixed test login_key so cross-node sessions can be verified.
-  sed "s/addr = \"127.0.0.1:$ALPS_PORT\"/addr = \"127.0.0.1:$SECONDARY_PORT\"/" "$STATE/alps.toml" > "$STATE/alps-secondary.toml"
+  # share the fixed test login_key, while each browser node
+  # needs its own WebAuthn origin even when it uses the same public hostname.
+  sed -e "s/addr = \"127.0.0.1:$ALPS_PORT\"/addr = \"127.0.0.1:$SECONDARY_PORT\"/" \
+    -e "s|http://localhost:$ALPS_PORT|http://localhost:$SECONDARY_PORT|g" "$STATE/alps.toml" > "$STATE/alps-secondary.toml"
   cat >> "$STATE/alps.toml" <<EOF
 
 [cluster]
