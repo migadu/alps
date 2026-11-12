@@ -257,7 +257,7 @@ class PluginRegistry {
         payload: any,
     ): Promise<{ results: any[]; failed: number }> {
         const handlers = this.enabledHandlers(hookName);
-        const settled = await Promise.allSettled(handlers.map(handler => handler(payload)));
+        const settled = await Promise.allSettled(handlers.map(handler => new Promise(resolve => resolve(handler(payload)))));
         const results: any[] = [];
         let failed = 0;
         for (const outcome of settled) {
