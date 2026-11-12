@@ -39,6 +39,26 @@ func TestStartupFailureLeavesClusterBeforeExiting(t *testing.T) {
 	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
+	t.Run("invalid clustered TLS", func(t *testing.T) {
+		testStartupFailureLeavesCluster(t, binary, "127.0.0.1:0", `[tls]
+enabled=true
+provider="letsencrypt"
+[tls.letsencrypt]
+storage_provider="file"
+`, "storage_provider")
+	})
+	t.Run("listener failure", func(t *testing.T) {
+		occupied, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer occupied.Close()
+		testStartupFailureLeavesCluster(t, binary, occupied.Addr().String(), "", "address already in use")
+	})
+}
+
+func testStartupFailureLeavesCluster(t *testing.T, binary, serverAddr, tlsBlock, wantError string) {
+	t.Helper()
 	events := startupEvents{make(chan string, 10), make(chan string, 10)}
 	seedCfg := memberlist.DefaultLocalConfig()
 	seedCfg.Name = "z-seed"
@@ -61,7 +81,7 @@ func TestStartupFailureLeavesClusterBeforeExiting(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "alps.log")
 	cfg := fmt.Sprintf(`[server]
-addr="127.0.0.1:0"
+addr=%q
 [logging]
 output=%q
 [smtp]
@@ -74,12 +94,8 @@ allow_insecure=true
 node_id="a-failing-startup"
 bind=%q
 peers=[%q]
-[tls]
-enabled=true
-provider="letsencrypt"
-[tls.letsencrypt]
-storage_provider="file"
-`, filepath.ToSlash(logPath), childAddr, seed.LocalNode().Address())
+%s
+`, serverAddr, filepath.ToSlash(logPath), childAddr, seed.LocalNode().Address(), tlsBlock)
 	configPath := filepath.Join(dir, "config.toml")
 	if err := os.WriteFile(configPath, []byte(cfg), 0600); err != nil {
 		t.Fatal(err)
@@ -90,7 +106,7 @@ storage_provider="file"
 		t.Fatalf("invalid clustered TLS unexpectedly started: %s", out)
 	}
 	data, _ := os.ReadFile(logPath)
-	if !strings.Contains(string(data), "storage_provider") {
+	if !strings.Contains(string(data), wantError) {
 		t.Fatalf("did not reach intended startup failure: %s", data)
 	}
 	if !strings.Contains(string(data), "cluster started") {
