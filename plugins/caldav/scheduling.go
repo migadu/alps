@@ -147,7 +147,7 @@ func (p *plugin) scheduling(ctx *alps.Context, c *caldav.Client) *schedulingAcco
 	cacheKey := p.requestConnection(ctx).cacheKey
 	p.cacheMutex.RLock()
 	cached := p.accounts[cacheKey]
-	homeSet := p.homeSetCache[cacheKey]
+	homeSet := p.homeSetCache[cacheKey].path
 	p.cacheMutex.RUnlock()
 
 	acct := &schedulingAccount{email: strings.ToLower(ctx.Session.Address()), fetched: time.Now()}

@@ -41,12 +41,14 @@ func TestLiveButMovedHomeSetExpires(t *testing.T) {
 	h.expect(h.do("GET", "/calendar/calendars", nil), http.StatusOK)
 	moved.Store(true)
 	for i := 0; i < 2; i++ {
+		now.Add(int64(4 * time.Minute))
 		h.do("GET", "/calendar/calendars", nil)
 	}
 	if staleReads.Load() != 2 {
 		t.Fatalf("warm reads did not use the cached home: %d", staleReads.Load())
 	}
-	now.Add(int64(homeSetTTL))
+	// Expiry is measured from discovery, rather than sliding on every hit.
+	now.Add(int64(homeSetTTL - 8*time.Minute))
 	r := h.do("GET", "/calendar/calendars", nil)
 	h.expect(r, http.StatusOK)
 	var listed struct{ Calendars []CalendarData }
