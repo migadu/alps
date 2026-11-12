@@ -137,6 +137,10 @@ func prepareIMAPSearch(terms string) *imap.SearchCriteria {
 				criteria = searchCriteriaAnd(
 					criteria, &imap.SearchCriteria{Body: []string{value}})
 			case "is":
+				if lower := strings.ToLower(value); lower != "starred" && lower != "flagged" && lower != "unread" {
+					criteria = searchCriteriaAnd(criteria, &imap.SearchCriteria{Text: []string{"is:" + value}})
+					continue
+				}
 				if strings.ToLower(value) == "starred" || strings.ToLower(value) == "flagged" {
 					if criteria == nil {
 						criteria = &imap.SearchCriteria{Flag: []imap.Flag{imap.FlagFlagged}}
@@ -152,13 +156,15 @@ func prepareIMAPSearch(terms string) *imap.SearchCriteria {
 				}
 			case "header":
 				hParts := strings.SplitN(value, ":", 2)
-				if len(hParts) == 2 {
+				if len(hParts) == 2 && hParts[0] != "" {
 					hVal := hParts[1]
 					if len(hVal) >= 2 && hVal[0] == '"' && hVal[len(hVal)-1] == '"' {
 						hVal = hVal[1 : len(hVal)-1]
 					}
 					criteria = searchCriteriaAnd(
 						criteria, searchCriteriaHeader(hParts[0], hVal))
+				} else {
+					criteria = searchCriteriaAnd(criteria, &imap.SearchCriteria{Text: []string{"header:" + value}})
 				}
 			default:
 				continue
