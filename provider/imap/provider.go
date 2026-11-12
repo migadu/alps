@@ -423,16 +423,16 @@ func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provid
 		fallbackNames = []string{"Sent"}
 	case provider.MailboxTypeDrafts:
 		attr = imap.MailboxAttrDrafts
-		fallbackNames = []string{"Draft", "Drafts"}
+		fallbackNames = []string{"Drafts", "Draft"}
 	case provider.MailboxTypeTrash:
 		attr = imap.MailboxAttrTrash
-		fallbackNames = []string{"Trash", "Deleted"}
+		fallbackNames = []string{"Trash", "Deleted", "Deleted Items"}
 	case provider.MailboxTypeJunk:
 		attr = imap.MailboxAttrJunk
 		fallbackNames = []string{"Junk", "Spam"}
 	case provider.MailboxTypeArchive:
 		attr = imap.MailboxAttrArchive
-		fallbackNames = []string{"Archive"}
+		fallbackNames = []string{"Archive", "Archives"}
 	}
 
 	ns, err := p.readNamespaces()
@@ -448,6 +448,7 @@ func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provid
 
 	var attrMatched bool
 	var best *imap.ListData
+	bestRank := len(fallbackNames)
 	for {
 		mbox := list.Next()
 		if mbox == nil {
@@ -485,9 +486,10 @@ func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provid
 			}
 			name = name[longest:]
 		}
-		for _, fallback := range fallbackNames {
-			if strings.EqualFold(fallback, name) {
+		for rank, fallback := range fallbackNames {
+			if strings.EqualFold(fallback, name) && rank < bestRank {
 				best = mbox
+				bestRank = rank
 				break
 			}
 		}
