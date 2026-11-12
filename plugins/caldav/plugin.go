@@ -98,7 +98,7 @@ func parseCalDAVURL(raw string) (*url.URL, error) {
 // parseCalDAVServer maps the CalDAV schemes onto http and https and refuses
 // any other scheme, so that a value such as host:port, which parses with the
 // host as its scheme, stops here instead of failing every request. A value
-// with no scheme at all comes back as it is, for start-up to discover.
+// with no scheme comes back only when it is a bare host, for start-up discovery.
 func parseCalDAVServer(raw string) (*url.URL, error) {
 	u, err := alps.ParseServerURL(raw)
 	if err != nil {
@@ -112,6 +112,12 @@ func parseCalDAVServer(raw string) (*url.URL, error) {
 		u.Scheme = "http"
 	default:
 		return nil, fmt.Errorf("unknown scheme for CalDAV server: %q (use https://, caldavs://, http+insecure:// or caldav+insecure://)", u.Scheme)
+	}
+	if u.Hostname() == "" || u.Opaque != "" {
+		return nil, fmt.Errorf("CalDAV server requires a host in an HTTP(S) URL (https://, caldavs://, http+insecure:// or caldav+insecure://), got: %v", u)
+	}
+	if u.Scheme == "" && (u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Port() != "" || u.User != nil) {
+		return nil, fmt.Errorf("CalDAV discovery requires a bare host without a port, path or query, got: %v", u)
 	}
 	return u, nil
 }
@@ -225,7 +231,7 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 				}
 				u = nil
 			} else {
-				u, err = url.Parse(s)
+				u, err = parseCalDAVURL(s)
 				if err != nil {
 					return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
 				}

@@ -163,6 +163,9 @@ func parseCardDAVURL(raw string) (*url.URL, error) {
 	default:
 		return nil, fmt.Errorf("unknown scheme for CardDAV server: %q (use https://, carddavs://, http+insecure:// or carddav+insecure://)", u.Scheme)
 	}
+	if u.Hostname() == "" || u.Opaque != "" {
+		return nil, fmt.Errorf("CardDAV server requires a host in an HTTP(S) URL (https://, carddavs://, http+insecure:// or carddav+insecure://), got: %v", u)
+	}
 	return u, nil
 }
 
