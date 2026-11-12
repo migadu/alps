@@ -85,18 +85,33 @@ func (p *plugin) urlFor(username string) *url.URL {
 // parseCalDAVURL normalises a configured CalDAV endpoint into an http(s) URL.
 // It requires an explicit scheme; start-up handles the discovery case.
 func parseCalDAVURL(raw string) (*url.URL, error) {
+	u, err := parseCalDAVServer(raw)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme == "" {
+		return nil, fmt.Errorf("CalDAV server requires a scheme (https://, http+insecure://), got: %v", u.String())
+	}
+	return u, nil
+}
+
+// parseCalDAVServer maps the CalDAV schemes onto http and https and refuses
+// any other scheme, so that a value such as host:port, which parses with the
+// host as its scheme, stops here instead of failing every request. A value
+// with no scheme at all comes back as it is, for start-up to discover.
+func parseCalDAVServer(raw string) (*url.URL, error) {
 	u, err := alps.ParseServerURL(raw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CalDAV server: %v", err)
 	}
 	switch u.Scheme {
+	case "https", "http", "":
 	case "caldavs":
 		u.Scheme = "https"
 	case "caldav+insecure", "http+insecure":
 		u.Scheme = "http"
-	}
-	if u.Scheme == "" {
-		return nil, fmt.Errorf("CalDAV server requires a scheme (https://, http+insecure://), got: %v", u.String())
+	default:
+		return nil, fmt.Errorf("unknown scheme for CalDAV server: %q (use https://, caldavs://, http+insecure:// or caldav+insecure://)", u.Scheme)
 	}
 	return u, nil
 }
@@ -196,17 +211,11 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	var u *url.URL
 	if cfg.Server != "" {
 		var err error
-		u, err = alps.ParseServerURL(cfg.Server)
+		u, err = parseCalDAVServer(cfg.Server)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse CalDAV server: %v", err)
+			return nil, err
 		}
 
-		switch u.Scheme {
-		case "caldavs":
-			u.Scheme = "https"
-		case "caldav+insecure", "http+insecure":
-			u.Scheme = "http"
-		}
 		if u.Scheme == "" {
 			s, err := discoverCalDAVURL(context.Background(), u.Host)
 			if err != nil {
