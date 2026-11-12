@@ -34,7 +34,10 @@ var (
 	date    = "unknown"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+// run returns only after startup and runtime resources have been released.
+func run() int {
 	var (
 		options      alps.Options
 		configFile   string
@@ -52,25 +55,25 @@ func main() {
 
 	if printVersion {
 		fmt.Printf("alps %s (%s) built at %s\n", version, commit, date)
-		os.Exit(0)
+		return 0
 	}
 
 	if configFile == "" {
 		fmt.Fprintf(os.Stderr, "Error: -config flag is required\n")
 		flag.Usage()
-		os.Exit(1)
+		return 1
 	}
 
 	config, err := LoadConfig(configFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config file: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	options, err = config.ToOptions()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating options: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	// Apply config file values
@@ -103,7 +106,8 @@ func main() {
 		if secretKeyStr != "" {
 			secretKey, err = cluster.DecodeSecretKey(secretKeyStr)
 			if err != nil {
-				logger.Fatalf("failed to decode cluster secret key: %v", err)
+				logger.Errorf("failed to decode cluster secret key: %v", err)
+				return 1
 			}
 		}
 
@@ -130,7 +134,8 @@ func main() {
 			// Encrypt certificates ungated and writing to the shared cert
 			// store. A fleet-wide config error (e.g. missing secret key)
 			// would then turn EVERY node into an independent issuer.
-			logger.Fatalf("failed to initialize cluster (clustering is enabled in config, refusing to run ungated): %v", err)
+			logger.Errorf("failed to initialize cluster (clustering is enabled in config, refusing to run ungated): %v", err)
+			return 1
 		}
 		defer clusterMgr.Shutdown()
 		options.ClusterBroadcaster = clusterMgr
@@ -138,8 +143,11 @@ func main() {
 
 	s, err := alps.New(logger, &options)
 	if err != nil {
-		logger.Fatal(err)
+		logger.Error(err)
+		return 1
 	}
+
+	defer s.Close()
 
 	if clusterMgr != nil {
 		clusterMgr.SetMessageHandler(s.HandleClusterMessage)
@@ -174,7 +182,8 @@ func main() {
 		RPOrigins:     rpOrigins,
 	})
 	if err != nil {
-		logger.Fatalf("Failed to initialize WebAuthn: %v", err)
+		logger.Errorf("Failed to initialize WebAuthn: %v", err)
+		return 1
 	}
 
 	// Initialize TLS manager if configured
@@ -183,11 +192,13 @@ func main() {
 	if config.TLS.Enabled {
 		tlsCfg, err := buildTLSConfig(config.TLS)
 		if err != nil {
-			logger.Fatalf("Failed to build TLS config: %v", err)
+			logger.Errorf("Failed to build TLS config: %v", err)
+			return 1
 		}
 
 		if err := validateClusterTLS(config.Cluster.Enabled, tlsCfg); err != nil {
-			logger.Fatalf("%v", err)
+			logger.Errorf("%v", err)
+			return 1
 		}
 
 		// Create slog logger from alps logger for TLS manager
@@ -202,7 +213,8 @@ func main() {
 		}
 
 		if err != nil {
-			logger.Fatalf("Failed to initialize TLS manager: %v", err)
+			logger.Errorf("Failed to initialize TLS manager: %v", err)
+			return 1
 		}
 		defer tlsMgr.Close()
 
@@ -258,36 +270,43 @@ func main() {
 	// would wait out its deadline for them.
 	httpServer.RegisterOnShutdown(s.EndEventStreams)
 
+	listenerErrors := make(chan error, 1)
 	go func() {
 		logger.Infof("Starting server on %s", config.Server.Addr)
+		var err error
 		if tlsMgr != nil && tlsMgr.IsEnabled() {
-			// Start with TLS
-			if err := httpServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				logger.Fatal(err)
-			}
+			err = httpServer.ListenAndServeTLS("", "")
 		} else {
-			// Start without TLS
-			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				logger.Fatal(err)
-			}
+			err = httpServer.ListenAndServe()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			listenerErrors <- err
 		}
 	}()
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
-	// SIGHUP is what newsyslog sends after rotating the log file: reopen it
-	// and keep serving. Anything else shuts down.
-	for sig := range sigs {
-		if sig != syscall.SIGHUP {
-			break
-		}
-		if reopened, err := logger.Reopen(); err != nil {
-			logger.Errorf("SIGHUP: %v", err)
-		} else if reopened {
-			logger.Info("SIGHUP: log file reopened")
-		} else {
-			logger.Info("SIGHUP: no log file to reopen")
+	defer signal.Stop(sigs)
+	exitCode := 0
+waitForStop:
+	for {
+		select {
+		case err := <-listenerErrors:
+			logger.Errorf("HTTP listener failed: %v", err)
+			exitCode = 1
+			break waitForStop
+		case sig := <-sigs:
+			if sig != syscall.SIGHUP {
+				break waitForStop
+			}
+			if reopened, err := logger.Reopen(); err != nil {
+				logger.Errorf("SIGHUP: %v", err)
+			} else if reopened {
+				logger.Info("SIGHUP: log file reopened")
+			} else {
+				logger.Info("SIGHUP: no log file to reopen")
+			}
 		}
 	}
 
@@ -298,7 +317,7 @@ func main() {
 	}
 	cancel()
 
-	s.Close()
+	return exitCode
 }
 
 // validateClusterTLS rejects configurations where clustered nodes would have
