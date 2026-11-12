@@ -18,6 +18,8 @@ import (
 // A var so tests can shorten it.
 var sanityCheckTimeout = 10 * time.Second
 
+var discoverCalDAVURL = caldav.DiscoverContextURL
+
 func sanityCheckURL(u *url.URL) error {
 	req, err := http.NewRequest(http.MethodOptions, u.String(), nil)
 	if err != nil {
@@ -194,22 +196,28 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 			u.Scheme = "http"
 		}
 		if u.Scheme == "" {
-			s, err := caldav.DiscoverContextURL(context.Background(), u.Host)
+			s, err := discoverCalDAVURL(context.Background(), u.Host)
 			if err != nil {
 				srv.Logger().Printf("caldav: failed to discover CalDAV server: %v", err)
-				return nil, nil
-			}
-			u, err = url.Parse(s)
-			if err != nil {
-				return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
+				if !srv.HasServiceRouting(provider.ServiceCalDAV) {
+					return nil, nil
+				}
+				u = nil
+			} else {
+				u, err = url.Parse(s)
+				if err != nil {
+					return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
+				}
 			}
 		}
 
-		if err := sanityCheckURL(u); err != nil {
-			srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
-		}
+		if u != nil {
+			if err := sanityCheckURL(u); err != nil {
+				srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
+			}
 
-		srv.Logger().Printf("Configured CalDAV server: %v", u)
+			srv.Logger().Printf("Configured CalDAV server: %v", u)
+		}
 	}
 
 	p := &plugin{
