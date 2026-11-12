@@ -272,10 +272,13 @@ func (c *Config) ToOptions() (provider.Options, error) {
 		return nil, fmt.Errorf("multi: autodiscover requires non-empty autodiscover_domains")
 	}
 	if c.Template != "" {
+		if strings.Contains(c.Template, "%n") {
+			return nil, fmt.Errorf("multi: template does not support %%n (full login); use %%u and %%d")
+		}
 		if len(templateDomains) == 0 {
 			return nil, fmt.Errorf("multi: template requires non-empty template_domains")
 		}
-		sample := strings.NewReplacer("%d", "example.test", "%u", "sample", "%n", "sample@example.test").Replace(c.Template)
+		sample := strings.NewReplacer("%d", "example.test", "%u", "sample").Replace(c.Template)
 		if _, err := (&imap.Config{Server: sample}).ToOptions(); err != nil {
 			return nil, fmt.Errorf("multi: invalid template: %w", err)
 		}
@@ -452,7 +455,7 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 			}
 		}
 
-		// 3. URL template (%d -> domain, %u -> user, %n -> username)
+		// 3. URL template (%d -> domain, %u -> user)
 		// The template reaches servers named by the login, so it applies only
 		// to domains the administrator allowlisted. A domain outside the list
 		// is not a failure: the rule simply does not match, and routing
@@ -461,12 +464,12 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 			if !isValidDomain(domain) {
 				return nil, provider.AuthError{Cause: fmt.Errorf("invalid domain %q for template routing", domain)}
 			}
-			if strings.Contains(o.Template, "%u") || strings.Contains(o.Template, "%n") {
+			if strings.Contains(o.Template, "%u") {
 				if !isValidLocalPart(user) {
 					return nil, provider.AuthError{Cause: fmt.Errorf("invalid username local-part %q for template routing", user)}
 				}
 			}
-			replacer := strings.NewReplacer("%d", domain, "%u", user, "%n", username)
+			replacer := strings.NewReplacer("%d", domain, "%u", user)
 			serverURL := replacer.Replace(o.Template)
 
 			ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
