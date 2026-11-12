@@ -109,6 +109,7 @@ type Session struct {
 	id                 string    // names the session in the log, see sessionLogID
 	created            time.Time // when the password was accepted
 	closed             chan struct{}
+	done               chan struct{} // closed after the timeout goroutine tears down
 	pings              chan struct{}
 	durationUpdate     chan time.Duration
 	notice             string
@@ -1309,9 +1310,10 @@ type SessionManager struct {
 
 	webAuthnRecords accountRecordLocks
 
-	locker       sync.RWMutex
-	sessions     map[string]*Session // token -> Session, protected by locker
-	userSessions map[string][]string // username -> []token, protected by locker
+	locker          sync.RWMutex
+	sessions        map[string]*Session   // token -> Session, protected by locker
+	userSessions    map[string][]string   // username -> []token, protected by locker
+	runningSessions map[*Session]struct{} // includes evicted sessions until their goroutine finishes
 }
 
 func newSessionManager(connectProviderFunc provider.AuthenticatedProviderFactory, dialSMTP DialSMTPFunc, logger Logger, cacheTTL time.Duration, cacheEnabled bool, loginKey *fernet.Key, sessionDuration time.Duration, maxSessionDuration time.Duration, maxSessions int, maxSessionsPerUser int, maxAttachmentMiB int, maxSessionAttachmentMiB int, maxGlobalAttachmentMiB int) *SessionManager {
@@ -1366,14 +1368,35 @@ func (sm *SessionManager) Close() {
 	// from sm.sessions under the same lock; iterating the live map here would be
 	// a concurrent map iteration/write and crash the process during shutdown.
 	sm.locker.Lock()
-	sessions := make([]*Session, 0, len(sm.sessions))
-	for _, s := range sm.sessions {
+	sessions := make([]*Session, 0, len(sm.runningSessions))
+	for s := range sm.runningSessions {
 		sessions = append(sessions, s)
+	}
+	// Include sessions constructed without a timeout goroutine as well.
+	for _, s := range sm.sessions {
+		if _, tracked := sm.runningSessions[s]; !tracked {
+			sessions = append(sessions, s)
+		}
 	}
 	sm.locker.Unlock()
 
 	for _, s := range sessions {
 		s.CloseWithReason("shutdown")
+	}
+	// Use one deadline for the entire batch, so a stalled mail connection
+	// cannot keep the process alive indefinitely or multiply the shutdown wait.
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for _, s := range sessions {
+		if s.done == nil {
+			continue
+		}
+		select {
+		case <-s.done:
+		case <-timer.C:
+			sm.logger.Printf("Session shutdown timed out waiting for cleanup")
+			return
+		}
 	}
 }
 
@@ -1661,6 +1684,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	s := &Session{
 		manager:        sm,
 		closed:         make(chan struct{}),
+		done:           make(chan struct{}),
 		pings:          make(chan struct{}, 5),
 		durationUpdate: make(chan time.Duration, 1),
 		provider:       p,
@@ -1750,7 +1774,17 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	sm.sessions[token] = s
 	sm.userSessions[username] = append(sm.userSessions[username], token)
 
+	if sm.runningSessions == nil {
+		sm.runningSessions = make(map[*Session]struct{})
+	}
+	sm.runningSessions[s] = struct{}{}
 	go func() {
+		defer func() {
+			sm.locker.Lock()
+			delete(sm.runningSessions, s)
+			sm.locker.Unlock()
+			close(s.done)
+		}()
 		defer func() {
 			if r := recover(); r != nil {
 				sm.logger.Errorf("panic in session timeout goroutine: %v", r)
