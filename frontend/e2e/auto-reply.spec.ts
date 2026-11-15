@@ -10,8 +10,8 @@
 // What only a browser test against the real stack can prove:
 //
 //  1. Switched on here, the server really answers: the reply leaves through
-//     the server's relay and arrives in the test stack's outbox, from the
-//     account's own address, with the subject and message typed here.
+//     the server's relay and arrives in the test stack's outbox, with the
+//     account's From header and the subject and message typed here.
 //  2. Switched off, the replies stop, and what was written is kept.
 //  3. Filters go on filing beside it, and saving either page leaves the other
 //     one's part of the script alone.
@@ -150,8 +150,8 @@ test("an auto-reply switched on here answers a sender, from the account's addres
 
   await fillIn(page, { subject: `Away ${marker}`, message: "I am away until Monday.\nBack soon." });
   const sent = await save(page, "Auto-reply saved.");
-  // Asked of the script, because the delivered reply cannot tell: sora sends
-  // from the recipient's address when the script names none.
+  // Asked of the script, because the delivered reply cannot tell: sora uses
+  // the recipient's address for the From header when the script names none.
   expect(sent.content).toContain(`:from "${USER.address}" :addresses ["${USER.address}"]`);
   await expect(autoReply(page)).toContainText("Replying to senders now.");
 
@@ -159,9 +159,9 @@ test("an auto-reply switched on here answers a sender, from the account's addres
   await deliver({ from: `Bob <${sender}>`, subject: `Question ${marker}`, messageId });
   const reply = await replyTo(sender);
 
-  // From the account's address, as an automatic reply to THAT message, with
-  // the subject and the message typed above, line for line.
-  expect(reply.from).toBe(USER.address);
+  // Vacation replies use MAIL FROM:<> (RFC 5230 §5.1), so bounces do not
+  // generate more replies. The visible From header still names this account.
+  expect(reply.from).toBe("");
   expect(reply.data).toMatch(new RegExp(`^From: ${USER.address.replace(/\./g, "\\.")}\\r?$`, "m"));
   expect(reply.data).toMatch(new RegExp(`^Subject: Away ${marker}\\r?$`, "m"));
   expect(reply.data).toMatch(/^Auto-Submitted: auto-replied\r?$/m);
