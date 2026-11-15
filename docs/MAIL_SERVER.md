@@ -6,6 +6,9 @@ The configuration keys named here are described in [CONFIGURATION.md](CONFIGURAT
 
 The IMAP sections apply to the `imap` provider and to `multi` backends of type `imap`. The `maildir` provider needs no IMAP server (see [MAILDIR.md](MAILDIR.md)), but it still sends through SMTP.
 
+The IMAP client accepts extra spaces around and between attributes in server `FETCH` responses,
+including the UID-only responses QQ Mail sends when ALPS checks messages before a copy or move.
+
 ---
 
 ## 1. IMAP Connection and Sign-In
