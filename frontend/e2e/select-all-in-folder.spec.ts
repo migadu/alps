@@ -128,8 +128,9 @@ test("a row unchecked after the folder was selected is left where it is", async 
   test.setTimeout(75_000);
   folder = `Bulk-${token()}`;
   const subjects = await folderOfThree(page, folder);
-  const kept = subjects[2]; // the newest, so it is on the first page
   await open(page, folder);
+  const kept = (await page.locator("alps-message-list .message-item .message-subject").first().innerText()).trim();
+  expect(subjects).toContain(kept);
 
   await page.locator("alps-message-list input.select-all-checkbox").check();
   await selectionBanner(page).getByRole("button", { name: /Select all 3/ }).click();
@@ -148,7 +149,6 @@ test("a row unchecked after the folder was selected is left where it is", async 
   await expect.poll(() => subjectsIn(page.request, folder), { timeout: 15_000 }).toEqual([kept]);
   await fullPages(page);
   const archive = await subjectsIn(page.request, "Archive");
-  expect(archive).toContain(subjects[0]);
-  expect(archive).toContain(subjects[1]);
+  for (const subject of subjects.filter((subject) => subject !== kept)) expect(archive).toContain(subject);
   expect(archive).not.toContain(kept);
 });
