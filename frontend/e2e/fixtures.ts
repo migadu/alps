@@ -96,6 +96,7 @@ export async function deliver(opts: {
   subject: string;
   from?: string;
   to?: string;
+  date?: string;
   body?: string;
   /** Extra header lines, CRLF-separated. */
   headers?: string;
@@ -113,7 +114,7 @@ export async function deliver(opts: {
       `From: ${from}`,
       `To: ${opts.to ?? USER.address}`,
       `Subject: ${opts.subject}`,
-      `Date: ${new Date().toUTCString()}`,
+      `Date: ${opts.date ?? new Date().toUTCString()}`,
       `Message-ID: <${messageId}>`,
       "MIME-Version: 1.0",
       ...(opts.headers ? [opts.headers] : []),
