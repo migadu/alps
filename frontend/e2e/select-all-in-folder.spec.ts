@@ -45,13 +45,14 @@ async function subjectsIn(request: APIRequestContext, folder: string): Promise<s
 }
 
 /**
- * Three messages in a folder of their own, newest last in the returned list,
- * with the page size set so that only two of them are ever on screen.
+ * Three messages with tied Dates in a folder of their own, with the page size
+ * set so that only two of them are ever on screen.
  */
 async function folderOfThree(page: Page, name: string): Promise<string[]> {
   const word = token();
   const subjects = [`Whole folder A ${word}`, `Whole folder B ${word}`, `Whole folder C ${word}`];
-  for (const subject of subjects) await deliver({ subject, body: "One of a set." });
+  const date = new Date().toUTCString();
+  for (const subject of subjects) await deliver({ subject, body: "One of a set.", date });
 
   await login(page);
   await page.request.post("/mailboxes", {
