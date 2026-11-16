@@ -218,6 +218,8 @@ CalDAV shows every calendar in the home set, and an empty home is valid. Users c
 
 The UI components are Lit web components in `plugins/caldav/frontend` and `plugins/carddav/frontend`. The connection section both plugins add to Settings is `frontend/src/components/dav-connection-settings.ts`.
 
+Contact lists and searches fetch complete vCards, including photos and keys. The browser allows them 60 seconds to receive response headers and a further 60 seconds to read the body, so a large address book can finish after the usual 25-second browser timeout. Other contact reads and writes keep the 25-second timeout. Server and reverse-proxy timeouts still apply.
+
 ### Background Polling
 CalDAV and CardDAV have no push connection like IMAP IDLE, so the pages poll. There is no separate sync interval. While the Calendar, Tasks or Contacts page is open, it reloads its data every **Check mail interval** minutes, the mail setting in Settings > General (1, 5, 15 or 30 minutes; default 5).
 

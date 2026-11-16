@@ -27,7 +27,7 @@ describe('loading a large address book', () => {
     vi.useRealTimers();
   });
 
-  it.fails.each(['', 'Ada & Bob'])('loads a listing or search %j that takes 30 seconds', async query => {
+  it.each(['', 'Ada & Bob'])('loads a listing or search %j that takes 30 seconds', async query => {
     const fetchMock = answerAfter(30_000);
     // Handle rejection before advancing timers, including on the old 25s budget.
     const outcome = contactsService.fetchContacts(query).then(
@@ -42,7 +42,7 @@ describe('loading a large address book', () => {
     expect(fetchMock.mock.calls[0][1].signal!.aborted).toBe(false);
   });
 
-  it.fails('cancels a stalled listing after 60 seconds without replaying it', async () => {
+  it('cancels a stalled listing after 60 seconds without replaying it', async () => {
     const fetchMock = answerAfter(60_001);
     const outcome = contactsService.fetchContacts().catch(error => error);
     const signal = fetchMock.mock.calls[0][1].signal!;
