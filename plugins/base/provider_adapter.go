@@ -264,6 +264,19 @@ func readerPartWithProvider(p provider.MailProvider, mailbox string, uid provide
 	return msg, headerData, bodyData, nil, nil, nil
 }
 
+// downloadPartWithProvider reads a part for /raw, preserving the stored octets
+// of text/* parts where the provider supports BINARY. When stored is true, the
+// caller already knows from BodyStructure that the part must be read as stored.
+func downloadPartWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, partPath []int, limit int64, stored bool) (*provider.Message, []byte, []byte, error) {
+	type downloadPartReader interface {
+		GetMessagePartForDownload(mailbox string, id provider.MessageID, partPath []int, limit int64, stored bool) (*provider.Message, []byte, []byte, error)
+	}
+	if r, ok := p.(downloadPartReader); ok {
+		return r.GetMessagePartForDownload(mailbox, uid, partPath, limit, stored)
+	}
+	return p.GetMessagePartRaw(mailbox, uid, partPath, limit)
+}
+
 // deleteMessagesWithProvider deletes multiple messages using the provider
 func deleteMessagesWithProvider(p provider.MailProvider, mailbox string, uids []provider.MessageID) error {
 	return p.DeleteMessages(mailbox, uids)

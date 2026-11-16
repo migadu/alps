@@ -17,6 +17,10 @@ When a user attaches a file while composing an email:
 
 Parts carried from a saved draft, or from a message being replied to or forwarded, are read from the IMAP server at save or send time. They never pass through `/attachments` and do not count against the attachment budgets.
 
+Downloads undo the MIME transfer encoding while preserving the file's stored bytes, including
+text line endings and character encoding. Text downloads are read as stored over IMAP so that
+the server's BINARY text canonicalization does not change the saved file.
+
 If a send or draft save names an upload the session does not hold (it was evicted, or its session ended), the request is refused with 409, and `missing_attachments` lists every missing UUID. Nothing is sent or stored, and the composer lists those files as ones to add again.
 
 ### The Upload Endpoints

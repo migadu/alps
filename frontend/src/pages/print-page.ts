@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import type { PropertyValues } from 'lit';
 import { live } from 'lit/directives/live.js';
-import { fetchWithTimeout } from '../utils/fetch-utils';
+import { decodeResponseText, fetchWithTimeout } from '../utils/fetch-utils';
 import { encodeMailboxPath } from '../utils/folders';
 import { MessageCache, type CachedMessage } from '../utils/message-cache';
 import { customElement, state } from 'lit/decorators.js';
@@ -200,7 +200,24 @@ export class PrintPage extends LitElement {
       const data = await res.json();
       this.message = data.Message;
 
-      await this.fetchMessageBody(data.Part);
+      if (data.Part && typeof data.Body === 'string') {
+        this.mimeType = data.Part.MIMEType || data.Part.MimeType || 'text/plain';
+        if (this.mimeType.toLowerCase() === 'text/html') {
+          this.rawMessageHtml = data.Body;
+          this.hasRemoteResources = false;
+          this.content = sanitizeMessageHTML(this.rawMessageHtml, {
+            mailbox: this.mailbox,
+            messageUid: this.uid,
+            allowRemoteResources: this.allowRemoteResources,
+            messageStructure: this.message.BodyStructure,
+            onRemoteResourceBlocked: () => { this.hasRemoteResources = true; },
+          });
+        } else {
+          this.content = data.Body;
+        }
+      } else {
+        await this.fetchMessageBody(data.Part);
+      }
     } catch (e: any) {
       this.error = e.message;
     } finally {
@@ -230,7 +247,7 @@ export class PrintPage extends LitElement {
     if (!rawRes.ok) throw new Error('Failed to fetch message body');
 
     if (this.mimeType.toLowerCase() === 'text/html') {
-      this.rawMessageHtml = await rawRes.text();
+      this.rawMessageHtml = await decodeResponseText(rawRes);
       this.hasRemoteResources = false;
 
       this.content = sanitizeMessageHTML(this.rawMessageHtml, {
@@ -241,7 +258,7 @@ export class PrintPage extends LitElement {
         onRemoteResourceBlocked: () => { this.hasRemoteResources = true; }
       });
     } else {
-      this.content = await rawRes.text();
+      this.content = await decodeResponseText(rawRes);
     }
   }
 
