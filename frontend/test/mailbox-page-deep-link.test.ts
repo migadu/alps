@@ -185,7 +185,7 @@ describe('a message the address names, not on the page', () => {
     const reader = await openedFromTheLink('text');
 
     expect(readsOfTheMessage()).toEqual(['/mailboxes/INBOX/messages/42?view=text', '/mailboxes/INBOX/messages/42?view=text']);
-    expect(rawReads()).toEqual(['/mailboxes/INBOX/messages/42/raw?part=1']);
+    expect(rawReads()).toEqual(['/mailboxes/INBOX/messages/42/raw?part=1&text=1']);
     expect(reader.content).toBe('read again with /raw');
   });
 

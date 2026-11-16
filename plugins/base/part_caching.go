@@ -28,7 +28,7 @@ const rawPartCacheControl = "private, no-cache"
 // sends for a part changes (its type, its decoding, its disposition): a 304
 // refreshes only the headers it carries, so without a new ETag a browser
 // would keep the copy it was sent the old way.
-const rawPartFormat = 2
+const rawPartFormat = 3
 
 // binaryTextPart identifies a reader representation that cannot establish
 // the stored line endings of a text file for a later download.

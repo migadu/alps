@@ -4,7 +4,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon, formatSize } from '../utils/ui';
-import { decodeResponseText, fetchWithTimeout } from '../utils/fetch-utils';
+import { fetchWithTimeout } from '../utils/fetch-utils';
 import { attachmentPartUrl } from '../utils/attachment-url';
 import { getAttachmentTypeInfo, type AttachmentTypeInfo } from '../utils/attachment-type';
 import { deepActiveElement } from '../utils/active-element';
@@ -130,9 +130,9 @@ export class AttachmentPreview extends LitElement {
       if (this.sizeOf(att) > MAX_TEXT_PREVIEW_BYTES) return;
       this.textLoading = true;
       try {
-        const response = await fetchWithTimeout(url);
+        const response = await fetchWithTimeout(`${url}&text=1`);
         if (!response.ok) throw new Error(String(response.status));
-        const text = await decodeResponseText(response);
+        const text = await response.text();
         if (token !== this.loadToken) return;
         this.loadedText = text;
       } catch (err: any) {

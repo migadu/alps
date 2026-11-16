@@ -2633,16 +2633,29 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			return err
 		}
 
-		// Specific part download — decode Content-Transfer-Encoding and
-		// serve the file's bytes without converting its character encoding.
+		// Downloads undo only Content-Transfer-Encoding. Text consumers opt
+		// into the server's MIME charset decoder: browser TextDecoder does
+		// not support every mail charset or the same UTF-16 BOM semantics.
 		msgHeader := message.Header{Header: h}
+		mimeType, mimeParams, _ := msgHeader.ContentType()
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+		renderText := ctx.QueryParam("text") == "1" && strings.HasPrefix(mimeType, "text/")
 		var transferOnly textproto.Header
 		transferOnly.Set("Content-Transfer-Encoding", h.Get("Content-Transfer-Encoding"))
+		if renderText {
+			transferOnly.Set("Content-Type", h.Get("Content-Type"))
+		}
 		entity, err := message.New(message.Header{Header: transferOnly}, bytes.NewReader(bodyData))
-		// An unknown transfer encoding leaves the bytes as stored, as for
-		// the reader's fallback when its answer cannot carry the text.
-		if err != nil && !message.IsUnknownEncoding(err) {
+		// Unknown charsets or transfer encodings leave the bytes as far as
+		// they could be decoded, as for the reader's fallback.
+		if err != nil && !message.IsUnknownEncoding(err) && !message.IsUnknownCharset(err) {
 			return fmt.Errorf("failed to create message reader: %v", err)
+		}
+		charset := mimeParams["charset"]
+		if renderText && !message.IsUnknownCharset(err) {
+			charset = "utf-8"
 		}
 
 		decodedBody, err := io.ReadAll(entity.Body)
@@ -2650,12 +2663,8 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			return fmt.Errorf("failed to decode message body: %v", err)
 		}
 
-		mimeType, mimeParams, _ := msgHeader.ContentType()
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
-		}
 		responseType := mimeType
-		if charset := mimeParams["charset"]; charset != "" {
+		if charset != "" {
 			responseType = mime.FormatMediaType(mimeType, map[string]string{"charset": charset})
 		}
 		ctx.Response.Header().Set("Content-Type", responseType)
@@ -2769,7 +2778,7 @@ func bodyImagesToRead(msg *IMAPMessage, held func(path []int) bool, limit int64)
 	return paths
 }
 
-// partText is a part's body as /raw serves it: the transfer encoding undone,
+// partText is a part's body for the reader: the transfer encoding undone,
 // and a text in a charset alps knows converted to UTF-8.
 func partText(headerData, bodyData []byte) (string, error) {
 	h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerData)))

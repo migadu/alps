@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import type { PropertyValues } from 'lit';
 import { live } from 'lit/directives/live.js';
-import { decodeResponseText, fetchWithTimeout } from '../utils/fetch-utils';
+import { fetchWithTimeout } from '../utils/fetch-utils';
 import { encodeMailboxPath } from '../utils/folders';
 import { MessageCache, type CachedMessage } from '../utils/message-cache';
 import { customElement, state } from 'lit/decorators.js';
@@ -243,11 +243,11 @@ export class PrintPage extends LitElement {
     // out as "null" is refused.
     const partPath = Array.isArray(part.Path) && part.Path.length ? part.Path.join('.') : '1';
 
-    const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.uid}/raw?part=${partPath}`);
+    const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.uid}/raw?part=${partPath}&text=1`);
     if (!rawRes.ok) throw new Error('Failed to fetch message body');
 
     if (this.mimeType.toLowerCase() === 'text/html') {
-      this.rawMessageHtml = await decodeResponseText(rawRes);
+      this.rawMessageHtml = await rawRes.text();
       this.hasRemoteResources = false;
 
       this.content = sanitizeMessageHTML(this.rawMessageHtml, {
@@ -258,7 +258,7 @@ export class PrintPage extends LitElement {
         onRemoteResourceBlocked: () => { this.hasRemoteResources = true; }
       });
     } else {
-      this.content = await decodeResponseText(rawRes);
+      this.content = await rawRes.text();
     }
   }
 

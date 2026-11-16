@@ -119,7 +119,7 @@ describe('opening a message', () => {
     const el = await openMessage('text');
 
     expect(el.content).toBe('read again with /raw');
-    expect(rawReads()).toEqual(['/mailboxes/INBOX/messages/5/raw?part=1']);
+    expect(rawReads()).toEqual(['/mailboxes/INBOX/messages/5/raw?part=1&text=1']);
   });
 
   it.each([[null], [[]]])('asks for the one part of a single-part message as part 1, when the answer gives it the path %j', async (Path) => {
@@ -133,19 +133,18 @@ describe('opening a message', () => {
     const el = await openMessage('text');
 
     expect(el.content).toBe('read again with /raw');
-    expect(rawReads()).toEqual(['/mailboxes/INBOX/messages/5/raw?part=1']);
+    expect(rawReads()).toEqual(['/mailboxes/INBOX/messages/5/raw?part=1&text=1']);
   });
 
-  it('decodes a /raw fallback response in the charset its Content-Type names', async () => {
-    const cp1252 = new Uint8Array([0x43, 0x61, 0x66, 0xe9, 0x20, 0x80]);
+  it('asks for server-decoded text when falling back to /raw', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       const u = String(url);
       asked.push(u);
       if (u.includes('/thread')) return json({ Messages: [message] });
-      if (u.includes('/raw')) {
-        return new Response(cp1252, {
+      if (u === '/mailboxes/INBOX/messages/5/raw?part=1&text=1') {
+        return new Response('Café €', {
           status: 200,
-          headers: { 'Content-Type': 'text/plain; charset=windows-1252' },
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
         });
       }
       if (u.includes('?view=')) return json(answer);
@@ -158,5 +157,6 @@ describe('opening a message', () => {
     const el = await openMessage('text');
 
     expect(el.content).toBe('Café €');
+    expect(rawReads()).toEqual(['/mailboxes/INBOX/messages/5/raw?part=1&text=1']);
   });
 });

@@ -71,3 +71,28 @@ func TestHTTP_TextRenderingKeepsTheDownloadBytes(t *testing.T) {
 		}
 	}
 }
+
+// Unknown mail charsets and transfer encodings retain the reader fallback's
+// stored bytes. A non-text part is not charset-converted even for a text
+// preview selected by its filename.
+func TestHTTP_TextRenderingKeepsUndecodableAndNonTextParts(t *testing.T) {
+	for _, tc := range []struct {
+		name, contentType, encoding, body, want string
+	}{
+		{"unknown charset", "text/plain; charset=x-unknown", "base64", base64.StdEncoding.EncodeToString([]byte("Caf\xe9")), "Caf\xe9"},
+		{"unknown transfer encoding", "text/plain; charset=windows-1252", "x-unknown", "Caf\xe9", "Café\r\n"},
+		{"non-text charset", "application/json; charset=IBM850", "base64", base64.StdEncoding.EncodeToString([]byte("Caf\x82")), "Caf\x82"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := "From: sender@remote.test\r\nTo: " + testUser + "\r\nSubject: Fallback\r\nMIME-Version: 1.0\r\n" +
+				"Content-Type: " + tc.contentType + "\r\nContent-Transfer-Encoding: " + tc.encoding + "\r\n\r\n" + tc.body + "\r\n"
+			s, _ := newReaderIMAPTestServer(t, raw)
+			s.login()
+			r := s.do("GET", "/mailboxes/INBOX/messages/1/raw?part=1&text=1", nil)
+			s.expect(r, http.StatusOK)
+			if string(r.body) != tc.want {
+				t.Errorf("text fallback = %q, want %q", r.body, tc.want)
+			}
+		})
+	}
+}

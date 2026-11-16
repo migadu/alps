@@ -4,7 +4,7 @@ import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { FLAG_ANSWERED, FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
 import { ALL_MAILBOXES, FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
-import { BACKGROUND_REQUEST, decodeResponseText, fetchWithTimeout } from '../utils/fetch-utils';
+import { BACKGROUND_REQUEST, fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
 import { activeUsername, ownAddress, settingsContext, SettingsStore } from '../store/settings-store';
 import { senderForMessage } from '../utils/identities';
@@ -1950,7 +1950,7 @@ export class MessageReader extends LitElement {
           // one part is not the text the server looks for first. Its body is
           // part 1, as the print page asks for it: "part=null" is refused.
           const partPathStr = Array.isArray(part.Path) && part.Path.length ? part.Path.join('.') : '1';
-          const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`, request)
+          const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}&text=1`, request)
             .catch((e: unknown) => { Logger.error('Failed to fetch message body:', e); return null; });
           if (!current()) return;
           if (rawRes?.status === 401) {
@@ -1958,7 +1958,7 @@ export class MessageReader extends LitElement {
             return;
           }
           if (rawRes?.ok) {
-            const raw = await decodeResponseText(rawRes);
+            const raw = await rawRes.text();
             if (!current()) return;
             if ((part.MIMEType || part.MimeType || 'text/plain').toLowerCase() === 'text/html') rawHtml = raw;
             else rawText = raw;
@@ -2659,8 +2659,8 @@ export class MessageReader extends LitElement {
       const part = data.Part;
       if (!part || (part.MIMEType || part.MimeType || '').toLowerCase() !== 'text/html') return null;
       if (typeof data.Body === 'string') return data.Body;
-      const raw = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${uid}/raw?part=${Array.isArray(part.Path) ? part.Path.join('.') : part.Path}`);
-      return raw.ok ? await decodeResponseText(raw) : null;
+      const raw = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${uid}/raw?part=${Array.isArray(part.Path) ? part.Path.join('.') : part.Path}&text=1`);
+      return raw.ok ? await raw.text() : null;
     } catch (e) {
       Logger.error('Failed to read the draft\'s HTML:', e);
       return null;
