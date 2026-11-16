@@ -135,4 +135,28 @@ describe('opening a message', () => {
     expect(el.content).toBe('read again with /raw');
     expect(rawReads()).toEqual(['/mailboxes/INBOX/messages/5/raw?part=1']);
   });
+
+  it('decodes a /raw fallback response in the charset its Content-Type names', async () => {
+    const cp1252 = new Uint8Array([0x43, 0x61, 0x66, 0xe9, 0x20, 0x80]);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url);
+      asked.push(u);
+      if (u.includes('/thread')) return json({ Messages: [message] });
+      if (u.includes('/raw')) {
+        return new Response(cp1252, {
+          status: 200,
+          headers: { 'Content-Type': 'text/plain; charset=windows-1252' },
+        });
+      }
+      if (u.includes('?view=')) return json(answer);
+      return new Response('{}', { status: 404 });
+    }));
+    answer = {
+      Message: message, Part: { Path: [1], MIMEType: 'text/plain' }, Attachments: [],
+      HasHTML: false, HasText: true,
+    };
+    const el = await openMessage('text');
+
+    expect(el.content).toBe('Café €');
+  });
 });

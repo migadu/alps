@@ -128,6 +128,19 @@ describe('alps-attachment-preview', () => {
     expect(shadowAll(el, '.text-container script, .text-container b')).toHaveLength(0);
   });
 
+  it('decodes a text file in the charset its Content-Type names', async () => {
+    // /raw serves stored file bytes with the MIME charset on Content-Type;
+    // Response.text() alone always decodes as UTF-8.
+    const cp1252 = new Uint8Array([0x43, 0x61, 0x66, 0xe9, 0x20, 0x80]);
+    vi.stubGlobal('fetch', async () => new Response(cp1252, {
+      status: 200,
+      headers: { 'Content-Type': 'text/plain; charset=windows-1252' },
+    }));
+    const el = await preview({ attachments: [part({ Filename: 'notes.txt', MIMEType: 'text/plain', Size: cp1252.length, Path: [2] })] });
+    await waitFor(() => shadowAll(el, '.code-line').length === 1, 'one line');
+    expect(text(el, '.line-text')).toBe('Café €');
+  });
+
   it('offers a download instead of fetching a very large text file', async () => {
     const fetched: string[] = [];
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => { fetched.push(String(input)); return new Response('x'); });

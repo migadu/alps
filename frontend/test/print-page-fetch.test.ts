@@ -166,6 +166,21 @@ describe('the print page, for a message the cache does not hold', () => {
     expect(text(el, '.print-body pre')).toContain('BEGIN:VCALENDAR');
     expect(requests).toContain('/mailboxes/INBOX/messages/7/raw?part=1');
   });
+
+  it('decodes a /raw part in the charset its Content-Type names', async () => {
+    const cp1252Html = new Uint8Array([0x3c, 0x70, 0x3e, 0x43, 0x61, 0x66, 0xe9, 0x20, 0x80, 0x3c, 0x2f, 0x70, 0x3e]);
+    serve({
+      '/mailboxes/INBOX/messages/7?view=html': () => Response.json(answer),
+      '/mailboxes/INBOX/messages/7/raw?part=2': () => new Response(cp1252Html, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset="windows-1252"' },
+      }),
+    });
+    const el = await open();
+
+    const frame = shadow<HTMLIFrameElement>(el, '.print-body iframe');
+    expect(frame.srcdoc).toContain('Café €');
+  });
 });
 
 describe('the print page, for a message whose body the reader could not read', () => {
