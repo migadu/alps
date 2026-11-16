@@ -200,7 +200,24 @@ export class PrintPage extends LitElement {
       const data = await res.json();
       this.message = data.Message;
 
-      await this.fetchMessageBody(data.Part);
+      if (data.Part && typeof data.Body === 'string') {
+        this.mimeType = data.Part.MIMEType || data.Part.MimeType || 'text/plain';
+        if (this.mimeType.toLowerCase() === 'text/html') {
+          this.rawMessageHtml = data.Body;
+          this.hasRemoteResources = false;
+          this.content = sanitizeMessageHTML(this.rawMessageHtml, {
+            mailbox: this.mailbox,
+            messageUid: this.uid,
+            allowRemoteResources: this.allowRemoteResources,
+            messageStructure: this.message.BodyStructure,
+            onRemoteResourceBlocked: () => { this.hasRemoteResources = true; },
+          });
+        } else {
+          this.content = data.Body;
+        }
+      } else {
+        await this.fetchMessageBody(data.Part);
+      }
     } catch (e: any) {
       this.error = e.message;
     } finally {
@@ -226,7 +243,7 @@ export class PrintPage extends LitElement {
     // out as "null" is refused.
     const partPath = Array.isArray(part.Path) && part.Path.length ? part.Path.join('.') : '1';
 
-    const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.uid}/raw?part=${partPath}`);
+    const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.uid}/raw?part=${partPath}&text=1`);
     if (!rawRes.ok) throw new Error('Failed to fetch message body');
 
     if (this.mimeType.toLowerCase() === 'text/html') {

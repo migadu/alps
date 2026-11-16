@@ -130,7 +130,7 @@ export class AttachmentPreview extends LitElement {
       if (this.sizeOf(att) > MAX_TEXT_PREVIEW_BYTES) return;
       this.textLoading = true;
       try {
-        const response = await fetchWithTimeout(url);
+        const response = await fetchWithTimeout(`${url}&text=1`);
         if (!response.ok) throw new Error(String(response.status));
         const text = await response.text();
         if (token !== this.loadToken) return;

@@ -17,6 +17,15 @@ When a user attaches a file while composing an email:
 
 Parts carried from a saved draft, or from a message being replied to or forwarded, are read from the IMAP server at save or send time. They never pass through `/attachments` and do not count against the attachment budgets.
 
+Downloads undo the MIME transfer encoding while preserving the file's stored bytes, including
+text line endings and character encoding. Text downloads are read as stored over IMAP so that
+the server's BINARY text canonicalization does not change the saved file.
+
+Text previews and reader/print fallbacks request `/raw?part=…&text=1`, which converts known
+MIME charsets to UTF-8 on the server. This keeps the mail charset support (including IBM850
+and UTF-16 byte-order marks) consistent with the reader. The cached file and its download
+remain in their original encoding; an unknown charset is left as stored.
+
 If a send or draft save names an upload the session does not hold (it was evicted, or its session ended), the request is refused with 409, and `missing_attachments` lists every missing UUID. Nothing is sent or stored, and the composer lists those files as ones to add again.
 
 ### The Upload Endpoints

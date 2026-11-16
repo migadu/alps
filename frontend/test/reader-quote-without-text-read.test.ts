@@ -326,7 +326,7 @@ describe('answering an unread card still waiting its turn to be read', () => {
           HasHTML: true, HasText: true,
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
-      const raw = u.match(/\/messages\/(\d+)\/raw\?part=2$/);
+      const raw = u.match(/\/messages\/(\d+)\/raw\?part=2&text=1$/);
       if (raw) return new Response(bodyOf(raw[1]), { status: 200 });
       return new Response('{}', { status: 404 });
     }));

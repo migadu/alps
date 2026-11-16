@@ -128,6 +128,33 @@ describe('alps-attachment-preview', () => {
     expect(shadowAll(el, '.text-container script, .text-container b')).toHaveLength(0);
   });
 
+  it('asks for server-decoded text while keeping the download URL', async () => {
+    const fetched: string[] = [];
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      fetched.push(String(input));
+      // The text response is UTF-8 even when the stored file has a charset
+      // the browser does not know or different UTF-16 byte ordering.
+      return new Response('Café €', {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    });
+    const el = await preview({ attachments: [part({ Filename: 'notes.txt', MIMEType: 'text/plain', Size: 6, Path: [2] })] });
+    await waitFor(() => shadowAll(el, '.code-line').length === 1, 'one line');
+    expect(text(el, '.line-text')).toBe('Café €');
+    expect(fetched).toEqual(['/mailboxes/INBOX/messages/7/raw?part=2&text=1']);
+    const downloads: string[] = [];
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.getAttribute('href') || '');
+    });
+    try {
+      await click(shadow(el, 'button.download'), el);
+      expect(downloads).toEqual(['/mailboxes/INBOX/messages/7/raw?part=2']);
+    } finally {
+      anchorClick.mockRestore();
+    }
+  });
+
   it('offers a download instead of fetching a very large text file', async () => {
     const fetched: string[] = [];
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => { fetched.push(String(input)); return new Response('x'); });
@@ -140,7 +167,7 @@ describe('alps-attachment-preview', () => {
 
   it('keeps a slow answer off the attachment the user moved to', async () => {
     let answerFirst!: (r: Response) => void;
-    vi.stubGlobal('fetch', (input: RequestInfo | URL) => String(input).endsWith('part=2')
+    vi.stubGlobal('fetch', (input: RequestInfo | URL) => String(input).endsWith('part=2&text=1')
       ? new Promise<Response>((r) => { answerFirst = r; })
       : Promise.resolve(new Response('second file', { status: 200 })));
     const el = await preview({

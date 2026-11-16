@@ -1734,6 +1734,20 @@ func (p *IMAPProvider) GetMessagePartRaw(mailbox string, id provider.MessageID, 
 	return &converted, headerBuf, bodyBuf, nil
 }
 
+// GetMessagePartForDownload reads a part for download, preserving the stored
+// octets of text/* parts that IMAP BINARY canonicalizes to CRLF (RFC 3516 §6).
+// When stored is true, the caller already knows the part must be read as
+// stored (BODY.PEEK) without trying BINARY.PEEK first.
+func (p *IMAPProvider) GetMessagePartForDownload(mailbox string, id provider.MessageID, partPath []int, limit int64, stored bool) (*provider.Message, []byte, []byte, error) {
+	uid := id.(IMAPUID)
+	msg, headerBuf, bodyBuf, _, _, err := p.getMessagePartRawWith(mailbox, imap.UID(uid), partPath, limit, !stored, true, nil)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	converted := p.convertIMAPMessage(msg, mailbox)
+	return &converted, headerBuf, bodyBuf, nil
+}
+
 // GetMessagePartForReader reads a part of a message with what the reader
 // shows beside it, in one FETCH: the envelope, flags and structure, the
 // part's MIME header, and the Authentication-Results and References fields.
@@ -1758,7 +1772,7 @@ func (p *IMAPProvider) GetMessagePartForReaderWithParts(mailbox string, id provi
 		HeaderFields: []string{"References"},
 		Peek:         true,
 	}
-	msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, err := p.getMessagePartRawWith(mailbox, imap.UID(uid), partPath, 0, also, authResultsSection(), references)
+	msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, err := p.getMessagePartRawWith(mailbox, imap.UID(uid), partPath, 0, true, false, also, authResultsSection(), references)
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
@@ -1782,13 +1796,15 @@ func (p *IMAPProvider) GetMessagePartWithData(mailbox string, id provider.Messag
 // getMessagePartRaw fetches a part and its MIME header, and any extra
 // sections asked for beside them in the same FETCH.
 func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath []int, limit int64, extra ...*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, error) {
-	msg, headerBuf, bodyBuf, _, _, err := p.getMessagePartRawWith(mailbox, uid, partPath, limit, nil, extra...)
+	msg, headerBuf, bodyBuf, _, _, err := p.getMessagePartRawWith(mailbox, uid, partPath, limit, true, false, nil, extra...)
 	return msg, headerBuf, bodyBuf, err
 }
 
 // getMessagePartRawWith is getMessagePartRaw, reading the parts at also
 // beside the part, each with its MIME header, in the same FETCH.
-func (p *IMAPProvider) getMessagePartRawWith(mailbox string, uid imap.UID, partPath []int, limit int64, also [][]int, extra ...*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, [][]byte, [][]byte, error) {
+// preserveText keeps stored text octets for downloads; the reader can use
+// BINARY's canonical text instead.
+func (p *IMAPProvider) getMessagePartRawWith(mailbox string, uid imap.UID, partPath []int, limit int64, useBinary, preserveText bool, also [][]int, extra ...*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, [][]byte, [][]byte, error) {
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
@@ -1799,13 +1815,35 @@ func (p *IMAPProvider) getMessagePartRawWith(mailbox string, uid imap.UID, partP
 	// A server may still refuse a part, as one under a transfer encoding it
 	// does not know ([UNKNOWN-CTE]); that part is read as stored. The whole
 	// message is always read as stored: it is what a download of it gives.
-	if len(partPath) > 0 && p.client.Caps().Has(imap.CapBinary) {
+	if useBinary && len(partPath) > 0 && p.client.Caps().Has(imap.CapBinary) {
 		msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, err := p.fetchPart(uid, partPath, limit, true, also, extra)
+		// BINARY canonicalizes text line endings (RFC 3516, section 6).
+		// When a cold download discovers a text part, read it as stored
+		// through BODY so the caller can undo only its transfer encoding.
+		if err == nil && preserveText {
+			h, parseErr := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerBuf)))
+			if parseErr != nil {
+				return nil, nil, nil, nil, nil, parseErr
+			}
+			if isTextMIMEHeader(h) {
+				return p.fetchPart(uid, partPath, limit, false, also, extra)
+			}
+		}
 		if err == nil || errors.Is(err, provider.ErrMessageNotFound) {
 			return msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, err
 		}
 	}
 	return p.fetchPart(uid, partPath, limit, false, also, extra)
+}
+
+func isTextMIMEHeader(h textproto.Header) bool {
+	header := message.Header{Header: h}
+	mimeType, _, _ := header.ContentType()
+	if mimeType == "" {
+		raw, _, _ := strings.Cut(h.Get("Content-Type"), ";")
+		mimeType = strings.TrimSpace(raw)
+	}
+	return strings.HasPrefix(strings.ToLower(mimeType), "text/")
 }
 
 // fetchPart is one FETCH of a part and its MIME header, and of the parts at

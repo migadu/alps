@@ -530,6 +530,9 @@ type CachedMessagePart struct {
 	// ReaderFields says that Message carries the verdict and References the
 	// reader shows, which only a read of the part for the reader fetches.
 	ReaderFields bool
+	// BinaryText marks reader text whose line endings BINARY may have
+	// canonicalized. A download reads the stored representation instead.
+	BinaryText bool
 }
 
 // updateCachedMessageFlags updates flags for specific messages in cached message lists.
@@ -2430,10 +2433,15 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	// it (/raw) does not carry, so for the reader such a part is read again
 	// unless this request has just read them.
 	var cachedPart *CachedMessagePart
+	var prevReaderPart *CachedMessagePart
 	if cached, ok := cache.Get(msgCacheKey); ok {
-		if cp, ok := cached.(CachedMessagePart); ok && cp.Message != nil && cp.HeaderData != nil && cp.BodyData != nil &&
-			(!reading || cp.ReaderFields || tempMsg != nil) && (!raw || cp.UIDValidity == validity) {
-			cachedPart = &cp
+		if cp, ok := cached.(CachedMessagePart); ok && cp.Message != nil && cp.HeaderData != nil && cp.BodyData != nil {
+			if cp.ReaderFields {
+				prevReaderPart = &cp
+			}
+			if (!reading || cp.ReaderFields || tempMsg != nil) && (!raw || cp.UIDValidity == validity && !cp.BinaryText) {
+				cachedPart = &cp
+			}
 		}
 	}
 	// A message read before the folder was made again elsewhere is the old
@@ -2480,8 +2488,18 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			var err error
 			switch {
 			case raw:
-				// For raw mode, don't parse - just get bytes
-				providerMsg, headerData, bodyData, err = p.GetMessagePartRaw(mbox.Name(), uid, partPath, limit)
+				// For raw mode, don't parse - just get bytes. When the cached
+				// structure already shows a text/* part, read BODY.PEEK directly
+				// instead of trying BINARY.PEEK first.
+				stored := len(partPath) == 0
+				if !stored {
+					if row := cachedMessageRow(cache, mbox.Name(), uidStr, mbox.UIDValidity); row != nil {
+						if part := row.PartByPath(partPath); part != nil && part.IsText() {
+							stored = true
+						}
+					}
+				}
+				providerMsg, headerData, bodyData, err = downloadPartWithProvider(p, mbox.Name(), uid, partPath, limit, stored)
 			case reading && (tempMsg == nil || readsPartsWith(p, bodyImages)):
 				// The structure came from the cache: the verdict and the
 				// References are read with the part, in the same FETCH. So
@@ -2501,12 +2519,20 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 			partValidity = partUIDValidity(ctx, p, mbox.Name(), mbox.UIDValidity)
 
+			readerFields := reading || tempMsg != nil
 			if tempMsg != nil {
 				providerMsg.BimiPotential = tempMsg.HasBimiPotential
 				providerMsg.BimiFailed = tempMsg.HasBimiFailed
 				if len(providerMsg.References) == 0 && len(tempMsg.References) > 0 {
 					providerMsg.References = tempMsg.References
 				}
+			} else if prevReaderPart != nil && prevReaderPart.UIDValidity == partValidity {
+				providerMsg.BimiPotential = prevReaderPart.Message.BimiPotential
+				providerMsg.BimiFailed = prevReaderPart.Message.BimiFailed
+				if len(providerMsg.References) == 0 && len(prevReaderPart.Message.References) > 0 {
+					providerMsg.References = prevReaderPart.Message.References
+				}
+				readerFields = true
 			}
 
 			// Cache the raw bytes using provider type so we can recreate fresh
@@ -2517,7 +2543,8 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 					HeaderData:   headerData,
 					BodyData:     bodyData,
 					Mailbox:      mbox.Name(),
-					ReaderFields: reading,
+					ReaderFields: readerFields,
+					BinaryText:   !raw && binaryTextPart(headerData),
 					UIDValidity:  partValidity,
 				})
 				ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uidStr, partPath)
@@ -2536,6 +2563,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 					HeaderData:  imageHeaders[i],
 					BodyData:    imageBodies[i],
 					Mailbox:     mbox.Name(),
+					BinaryText:  binaryTextPart(imageHeaders[i]),
 					UIDValidity: partValidity,
 				})
 			}
@@ -2605,16 +2633,29 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			return err
 		}
 
-		// Specific part download — decode Content-Transfer-Encoding and
-		// serve only the decoded body (not the MIME headers).
+		// Downloads undo only Content-Transfer-Encoding. Text consumers opt
+		// into the server's MIME charset decoder: browser TextDecoder does
+		// not support every mail charset or the same UTF-16 BOM semantics.
 		msgHeader := message.Header{Header: h}
-		entity, err := message.New(msgHeader, bytes.NewReader(bodyData))
-		// A charset or a transfer encoding alps does not know leaves the
-		// body as far as it could be decoded, and the reader asks here for
-		// a text the message's answer could not carry: it gets those bytes,
-		// not an error.
-		if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
+		mimeType, mimeParams, _ := msgHeader.ContentType()
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+		renderText := ctx.QueryParam("text") == "1" && strings.HasPrefix(mimeType, "text/")
+		var transferOnly textproto.Header
+		transferOnly.Set("Content-Transfer-Encoding", h.Get("Content-Transfer-Encoding"))
+		if renderText {
+			transferOnly.Set("Content-Type", h.Get("Content-Type"))
+		}
+		entity, err := message.New(message.Header{Header: transferOnly}, bytes.NewReader(bodyData))
+		// Unknown charsets or transfer encodings leave the bytes as far as
+		// they could be decoded, as for the reader's fallback.
+		if err != nil && !message.IsUnknownEncoding(err) && !message.IsUnknownCharset(err) {
 			return fmt.Errorf("failed to create message reader: %v", err)
+		}
+		charset := mimeParams["charset"]
+		if renderText && !message.IsUnknownCharset(err) {
+			charset = "utf-8"
 		}
 
 		decodedBody, err := io.ReadAll(entity.Body)
@@ -2622,11 +2663,11 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			return fmt.Errorf("failed to decode message body: %v", err)
 		}
 
-		mimeType, _, _ := msgHeader.ContentType()
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
+		responseType := mimeType
+		if charset != "" {
+			responseType = mime.FormatMediaType(mimeType, map[string]string{"charset": charset})
 		}
-		ctx.Response.Header().Set("Content-Type", mimeType)
+		ctx.Response.Header().Set("Content-Type", responseType)
 		ctx.Response.Header().Set("Content-Length", fmt.Sprintf("%d", len(decodedBody)))
 		setRawPartCaching(ctx.Response.Header(), etag)
 
@@ -2737,7 +2778,7 @@ func bodyImagesToRead(msg *IMAPMessage, held func(path []int) bool, limit int64)
 	return paths
 }
 
-// partText is a part's body as /raw serves it: the transfer encoding undone,
+// partText is a part's body for the reader: the transfer encoding undone,
 // and a text in a charset alps knows converted to UTF-8.
 func partText(headerData, bodyData []byte) (string, error) {
 	h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerData)))

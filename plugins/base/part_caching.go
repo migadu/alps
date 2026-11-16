@@ -1,6 +1,8 @@
 package alpsbase
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -8,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/emersion/go-message"
+	"github.com/emersion/go-message/textproto"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
 )
@@ -24,7 +28,23 @@ const rawPartCacheControl = "private, no-cache"
 // sends for a part changes (its type, its decoding, its disposition): a 304
 // refreshes only the headers it carries, so without a new ETag a browser
 // would keep the copy it was sent the old way.
-const rawPartFormat = 1
+const rawPartFormat = 3
+
+// binaryTextPart identifies a reader representation that cannot establish
+// the stored line endings of a text file for a later download.
+func binaryTextPart(header []byte) bool {
+	h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(header)))
+	if err != nil || !strings.EqualFold(h.Get("Content-Transfer-Encoding"), "binary") {
+		return false
+	}
+	partHeader := message.Header{Header: h}
+	mimeType, _, _ := partHeader.ContentType()
+	if mimeType == "" {
+		raw, _, _ := strings.Cut(h.Get("Content-Type"), ";")
+		mimeType = strings.TrimSpace(raw)
+	}
+	return strings.HasPrefix(strings.ToLower(mimeType), "text/")
+}
 
 // rawPartETag names what a /raw request answers: this URL, for this account,
 // in its mailbox under the given UIDVALIDITY. A UID is never given to another

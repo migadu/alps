@@ -89,8 +89,8 @@ describe('the print page, for a message the cache does not hold', () => {
     serve({
       '/mailboxes/INBOX/messages/7?view=html': () => Response.json(answer),
       '/mailboxes/INBOX/messages/7': () => Response.json(answer),
-      '/mailboxes/INBOX/messages/7/raw?part=1': () => new Response('the plain alternative'),
-      '/mailboxes/INBOX/messages/7/raw?part=2': () => new Response('<p>The HTML body</p>'),
+      '/mailboxes/INBOX/messages/7/raw?part=1&text=1': () => new Response('the plain alternative'),
+      '/mailboxes/INBOX/messages/7/raw?part=2&text=1': () => new Response('<p>The HTML body</p>'),
     });
     const el = await open();
 
@@ -101,7 +101,7 @@ describe('the print page, for a message the cache does not hold', () => {
     const frame = shadow<HTMLIFrameElement>(el, '.print-body iframe');
     expect(frame.srcdoc).toContain('The HTML body');
     expect(requests).toContain('/mailboxes/INBOX/messages/7?view=html');
-    expect(requests).toContain('/mailboxes/INBOX/messages/7/raw?part=2');
+    expect(requests).toContain('/mailboxes/INBOX/messages/7/raw?part=2&text=1');
   });
 
   it('prints the text part when the message has no HTML', async () => {
@@ -114,7 +114,7 @@ describe('the print page, for a message the cache does not hold', () => {
     serve({
       '/mailboxes/INBOX/messages/7?view=html': () => Response.json(textOnly),
       '/mailboxes/INBOX/messages/7': () => Response.json(textOnly),
-      '/mailboxes/INBOX/messages/7/raw?part=1': () => new Response('Just text'),
+      '/mailboxes/INBOX/messages/7/raw?part=1&text=1': () => new Response('Just text'),
     });
     const el = await open();
 
@@ -157,14 +157,29 @@ describe('the print page, for a message the cache does not hold', () => {
     };
     serve({
       '/mailboxes/INBOX/messages/7?view=html': () => Response.json(invitation),
-      '/mailboxes/INBOX/messages/7/raw?part=1': () => new Response('BEGIN:VCALENDAR\nMETHOD:REQUEST\nEND:VCALENDAR'),
+      '/mailboxes/INBOX/messages/7/raw?part=1&text=1': () => new Response('BEGIN:VCALENDAR\nMETHOD:REQUEST\nEND:VCALENDAR'),
     });
     const el = await open();
 
     expect(el.error).toBe('');
     expect(text(el, '.print-header h2')).toBe('Quarterly report');
     expect(text(el, '.print-body pre')).toContain('BEGIN:VCALENDAR');
-    expect(requests).toContain('/mailboxes/INBOX/messages/7/raw?part=1');
+    expect(requests).toContain('/mailboxes/INBOX/messages/7/raw?part=1&text=1');
+  });
+
+  it('asks for server-decoded text when the answer has no body', async () => {
+    serve({
+      '/mailboxes/INBOX/messages/7?view=html': () => Response.json(answer),
+      '/mailboxes/INBOX/messages/7/raw?part=2&text=1': () => new Response('<p>Café €</p>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      }),
+    });
+    const el = await open();
+
+    const frame = shadow<HTMLIFrameElement>(el, '.print-body iframe');
+    expect(frame.srcdoc).toContain('Café €');
+    expect(requests).toContain('/mailboxes/INBOX/messages/7/raw?part=2&text=1');
   });
 });
 
@@ -174,7 +189,7 @@ describe('the print page, for a message whose body the reader could not read', (
   it('asks the server for the body the cached entry lacks', async () => {
     serve({
       '/mailboxes/INBOX/messages/7?view=html': () => Response.json(answer),
-      '/mailboxes/INBOX/messages/7/raw?part=2': () => new Response('<p>The HTML body</p>'),
+      '/mailboxes/INBOX/messages/7/raw?part=2&text=1': () => new Response('<p>The HTML body</p>'),
     });
     MessageCache.set('INBOX', '7', 'html', {
       Message: message,
@@ -189,7 +204,7 @@ describe('the print page, for a message whose body the reader could not read', (
     expect(text(el, '.print-header h2')).toBe('Quarterly report');
     const frame = shadow<HTMLIFrameElement>(el, '.print-body iframe');
     expect(frame.srcdoc).toContain('The HTML body');
-    expect(requests).toContain('/mailboxes/INBOX/messages/7/raw?part=2');
+    expect(requests).toContain('/mailboxes/INBOX/messages/7/raw?part=2&text=1');
   });
 });
 
