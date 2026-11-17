@@ -192,7 +192,7 @@ const QuotedMessage = TiptapNode.create<QuotedMessageOptions>({
     // editor serializes a copy into a document with no browsing context, so
     // the quote's images load nothing here either.
     const clipboardSerializer = new DOMSerializer(
-      { ...base.nodes, [this.name]: (node) => inertFragment(node.attrs.html) },
+      { ...base.nodes, [this.name]: (node) => inertElement(node.attrs.html) },
       base.marks,
     );
     return [
@@ -302,13 +302,13 @@ function fitQuoteWidth(frame: ObservedFrame, block: HTMLElement): void {
   frame._widthRo = observer;
 }
 
-/** The markup as DOM nodes of a document with no browsing context, so an
- * image in it fetches nothing. */
-function inertFragment(markup: string): DocumentFragment {
+/** The markup in a `<div>` of a document with no browsing context, so an
+ * image in it fetches nothing. A serializer takes an element, not a fragment. */
+function inertElement(markup: string): HTMLDivElement {
   const doc = new DOMParser().parseFromString(markup, 'text/html');
-  const fragment = doc.createDocumentFragment();
-  while (doc.body.firstChild) fragment.appendChild(doc.body.firstChild);
-  return fragment;
+  const wrapper = doc.createElement('div');
+  while (doc.body.firstChild) wrapper.appendChild(doc.body.firstChild);
+  return wrapper;
 }
 
 /** The markup with every quote mark removed, so its parse rule matches nothing. */
