@@ -68,6 +68,10 @@ const shifted = (uids: string[]) => Object.fromEntries(uids.map(uid => [uid, Str
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(messageSync, 'sync').mockImplementation(() => {});
+  // The tests set the rows themselves; a listing of the page's own would get
+  // the stub's 404, whose toast lands in whichever test is recording.
+  vi.spyOn(messageSync, 'fetch').mockImplementation(async () => {});
+  vi.spyOn(messageSync, 'check').mockImplementation(async () => {});
   requests = [];
   refusing = new Set();
   lastUid = 100;
@@ -86,8 +90,11 @@ beforeEach(() => {
   }));
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // A URL the test wrote queues a hashchange; let it fire now, at no page,
+  // rather than at the next test's.
+  await flush();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   history.replaceState(null, '', '/#/mailbox/INBOX');
@@ -127,6 +134,36 @@ async function act(el: El, detail: ReaderActionDetail) {
 const writes = () => requests.filter(r => r.method !== 'GET');
 const flagsOf = (el: El, mailbox: string, uid: string) =>
   el.messages.find((m: any) => m.Mailbox === mailbox && m.UID === uid).Flags;
+
+describe('the page under test', () => {
+  it('raises nothing from a listing of its own, which the tests do not serve', async () => {
+    // The tests set the rows themselves. A listing the page loaded on its own
+    // got the stub's 404, and its "folder not found" toast reached whichever
+    // test was recording toasts when it landed: see #981.
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    await search();
+    for (let tick = 0; tick < 20; tick++) await flush();
+    expect(toasts.map(t => t.detail.message)).toEqual([]);
+  });
+
+  // A pair, in this order. Opening a message writes the URL, and jsdom fires
+  // the hashchange after the test is over, at the next test's page, which
+  // followed it and dropped its checked rows: see #981.
+  it('opens a message, which writes the URL', async () => {
+    const el = await search();
+    el.currentMailbox = 'INBOX';
+    el.messages = [row('INBOX', '5')];
+    el.selectMessage(el.messages[0]);
+    expect(window.location.hash).toBe('#/mailbox/INBOX?uid=5');
+  });
+
+  it('keeps its checked rows after the test before it wrote the URL', async () => {
+    const el = await search();
+    await checked(el, ['INBOX', '5'], ['Sent', '5']);
+    for (let tick = 0; tick < 20; tick++) await flush();
+    expect(el.selectedKeys.size).toBe(2);
+  });
+});
 
 describe('checked rows from several folders', () => {
   it('are starred in their own folders, and only they are painted', async () => {
