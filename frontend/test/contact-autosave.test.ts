@@ -5,14 +5,21 @@
  * quoted string, with those escaped. The hook stripped only the outer quotes,
  * so a reply to `Jane "JJ" Doe` saved a contact named `Jane \"JJ\" Doe`.
  */
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { registry } from '../src/plugin-registry';
 import { writtenAddress } from '../src/utils/address-display';
 import { HttpStatusError } from '../src/utils/fetch-utils';
 import { contactsService } from '../../plugins/carddav/frontend/contacts-service';
 import '../../plugins/carddav/frontend/index';
 
+// The hook belongs to carddav, which runs only where the account has an
+// address book: each test says so itself, not the first one to run.
+beforeEach(() => {
+  registry.setEnabledPlugins(['carddav']);
+});
+
 afterEach(() => {
+  registry.setEnabledPlugins(null);
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -34,7 +41,6 @@ it('still logs unexpected auto-collection failures', async () => {
 });
 
 it('saves each recipient under the name as written', async () => {
-  registry.setEnabledPlugins(['carddav']);
   const created = vi.spyOn(contactsService, 'createContact').mockResolvedValue({});
 
   await registry.invokeHookAsync('composer:send', {

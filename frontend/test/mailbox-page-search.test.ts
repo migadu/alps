@@ -68,6 +68,10 @@ const shifted = (uids: string[]) => Object.fromEntries(uids.map(uid => [uid, Str
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(messageSync, 'sync').mockImplementation(() => {});
+  // The tests set the rows themselves; a listing of the page's own would get
+  // the stub's 404, whose toast lands in whichever test is recording.
+  vi.spyOn(messageSync, 'fetch').mockImplementation(async () => {});
+  vi.spyOn(messageSync, 'check').mockImplementation(async () => {});
   requests = [];
   refusing = new Set();
   lastUid = 100;
@@ -86,8 +90,11 @@ beforeEach(() => {
   }));
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // A URL the test wrote queues a hashchange; let it fire now, at no page,
+  // rather than at the next test's.
+  await flush();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   history.replaceState(null, '', '/#/mailbox/INBOX');
