@@ -2,9 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"strings"
+	"syscall"
 
 	"github.com/emersion/go-sasl"
 	"github.com/migadu/alps/plugins/managesieve"
@@ -108,12 +112,28 @@ func (c *control) withAccount(fn func(account) error) http.HandlerFunc {
 			http.Error(w, "expected {\"username\", \"password\"}", http.StatusBadRequest)
 			return
 		}
-		if err := fn(a); err != nil {
+		err := fn(a)
+		if droppedConnection(err) {
+			// sora ends every login in flight on a node whenever it ends any
+			// account's sessions, as its credential-change poll does a few
+			// seconds after a test deletes an account: the login succeeds and
+			// the connection closes before the next command. A reset is the
+			// same however often it runs, so it runs once more (#982).
+			err = fn(a)
+		}
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// droppedConnection reports whether err is the server closing the connection,
+// rather than an answer it gave.
+func droppedConnection(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)
 }
 
 // resetSettings removes every METADATA entry alps wrote, so the next
