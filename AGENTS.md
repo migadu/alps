@@ -28,7 +28,7 @@ frontend.
 
 ## Build and run
 
-Go 1.26 or later. Node.js 22.12+, 24 or 26+.
+Go 1.26 or later. Node.js 22.22.2+, 24.15+ or 26+.
 
 ```sh
 cp config.example.toml config.toml          # config.toml is git-ignored
