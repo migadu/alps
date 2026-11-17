@@ -11,6 +11,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -259,6 +260,25 @@ func (c *MSClient) readRefusal(line string) error {
 		message = "The server refused the script"
 	}
 	return &serverRefusal{code: code, message: message}
+}
+
+// Noop sends NOOP (RFC 5804 §2.14) and reads its answer. The capabilities
+// the session has gathered are kept: readResponse starts them afresh, and
+// they are read after the commands that come first.
+func (c *MSClient) Noop() error {
+	caps := c.capabilities
+	defer func() { c.capabilities = caps }()
+	if err := c.sendCommand("NOOP"); err != nil {
+		return err
+	}
+	return c.readResponse()
+}
+
+// droppedConnection reports whether err is the server closing the connection,
+// rather than an answer it gave.
+func droppedConnection(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)
 }
 
 func (c *MSClient) SetActive(name string) error {

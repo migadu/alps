@@ -21,6 +21,7 @@ const quote = (value: string) => `"${value.replace(/[\\"]/g, "\\$&")}"`;
 class SieveSession {
   private buffer = Buffer.alloc(0);
   private failure: Error | null = null;
+  private ended = false;
   private wake: () => void = () => {};
   private readonly socket: Socket;
 
@@ -31,21 +32,38 @@ class SieveSession {
       this.wake();
     });
     socket.on("error", (error) => {
-      this.failure = error;
+      // A socket error can wake readers before the close event arrives.
+      this.ended = true;
+      this.failure ??= error;
       this.wake();
     });
     socket.on("close", () => {
+      this.ended = true;
       this.failure ??= new Error("the ManageSieve server closed the connection");
       this.wake();
     });
   }
 
-  static async open(): Promise<SieveSession> {
+  /**
+   * sora ends every login in flight on a node whenever it ends any account's
+   * sessions, as its credential-change poll does a few seconds after a spec
+   * deletes an account: the login is accepted and the connection closes
+   * (#982). A NOOP finds that out before any command that changes something,
+   * and the session is opened once more.
+   */
+  static async open(retry = true): Promise<SieveSession> {
     const session = new SieveSession(connect(sieveAddress()));
-    await session.response(); // the greeting: capabilities, then OK
-    const token = Buffer.from(`\0${USER.address}\0${USER.password}`).toString("base64");
-    await session.command(`AUTHENTICATE "PLAIN" ${quote(token)}`);
-    return session;
+    try {
+      await session.response(); // the greeting: capabilities, then OK
+      const token = Buffer.from(`\0${USER.address}\0${USER.password}`).toString("base64");
+      await session.command(`AUTHENTICATE "PLAIN" ${quote(token)}`);
+      await session.command("NOOP");
+      return session;
+    } catch (error) {
+      session.socket.destroy();
+      if (retry && session.ended && error === session.failure) return SieveSession.open(false);
+      throw error;
+    }
   }
 
   close(): void {
