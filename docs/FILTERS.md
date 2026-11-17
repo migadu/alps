@@ -46,7 +46,7 @@ Use a `+insecure` scheme only for a server on the same host or a trusted local n
 
 ALPS signs in with SASL PLAIN, using the username and password of the signed-in account (see [SESSIONS.md](SESSIONS.md)). The ManageSieve server must accept the login and password the user signed in to ALPS with. There is no separate set of credentials for filters.
 
-Every request to the plugin opens a new connection and closes it when the request is done. The connection attempt times out after 15 seconds, and so does each command ALPS writes and each line it waits for from the server. A script the server sends as a literal has 30 seconds to arrive.
+Every request to the plugin opens a new connection and closes it when the request is done. After signing in, ALPS sends `NOOP` before any other command. If the server has closed the connection by then, ALPS opens a new one and signs in once more; if that fails too, the route answers `sieve_unavailable` (see [Routes](#8-routes)). sora closes every login in progress on a node whenever it ends any one account's sessions, accepting the login first and saying nothing. The connection attempt times out after 15 seconds, and so does each command ALPS writes and each line it waits for from the server. A script the server sends as a literal has 30 seconds to arrive.
 
 With `[server] debug = true`, ALPS logs the ManageSieve exchange through `[logging]`, as `protocol trace` lines at debug level (`protocol` `managesieve`), so only while `[logging] level` is debug. The `AUTHENTICATE` argument is written as `[REDACTED]`, but script contents can appear in full: a script ALPS uploads is always written out.
 

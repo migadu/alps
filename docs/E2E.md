@@ -69,12 +69,17 @@ source in `src/` or `plugins/*/frontend/` never runs.
 - `test/helpers/setup.ts` runs before every file and installs jsdom shims, each only where the API
   is missing: `scrollIntoView`, `ResizeObserver`, `<dialog>` `show`/`showModal`/`close`, the
   Popover API (`popover`, `showPopover` and `hidePopover`, which fire `toggle` with its
-  `newState`), a `matchMedia` that answers `min-width`/`max-width` queries from `innerWidth`, and
+  `newState`; jsdom never matches `:popover-open`, so a showing popover carries
+  `data-popover-open` and each `:popover-open` rule that reaches it gets a twin for that
+  attribute), a `matchMedia` that answers `min-width`/`max-width` queries from `innerWidth`, and
   `document.execCommand`.
 - Helpers: `test/helpers/dom.ts` (`mount`, `update`, `cleanup`, `shadow`, `shadowAll`, `text`,
   `record`, `flush`, `click`, `waitFor`), `sidebar.ts` (`settleSidebar`, `inSidebar`,
   `setSidebar`), `sources.ts` (`readSources`) and `styles.ts` (`rulesOf`, `ruleMatches`,
-  `backgroundOf`, `backgroundsOf`).
+  `shadowRulesOf`, `backgroundOf`, `backgroundsOf`). `shadowRulesOf` reads a shadow root's
+  adopted stylesheets, where Lit puts its styles under jsdom 31, as well as its `<style>`
+  elements, and throws when it finds no rules, so an assertion that no rule matches cannot pass
+  on rules it never read.
 - `npm run test:shuffle` runs the same typecheck and then the tests in a random order
   (`vitest run --sequence.shuffle`), to find tests that depend on the ones before them. Vitest
   prints the seed it used; `npm run test:shuffle -- --sequence.seed=<seed>` repeats that order.
@@ -308,6 +313,10 @@ The control API listens on `E2E_PORT`+7:
 | `POST /reset/dav` `{username}` | Drops the calendars the account made and empties the rest and the address book |
 | `POST /mailbox/create`, `/mailbox/subscribe`, `/mailbox/unsubscribe` `{username, password, mailbox}` | CREATE, SUBSCRIBE or UNSUBSCRIBE over IMAP as that account |
 
+The three resets run once more when the server closes their connection, as sora does to every
+login in progress on a node whenever it ends any one account's sessions; the `/mailbox/` requests
+do not.
+
 Run on its own, e2estack's flags default to 127.0.0.1 ports 9900 (`-s3`), 2525 (`-smtp`), 2526
 (`-relay`), 5232 (`-dav`), 9901 (`-control`), 1143 (`-imap`) and 4190 (`-sieve`), plus
 `-deliver-url`, `-deliver-key` and `-local-domains` (default `example.test`). `scripts/e2e.sh`
@@ -375,7 +384,8 @@ What `fixtures.ts` offers:
 account's Sieve scripts as another client would, so a test can check what the server holds rather
 than what ALPS shows. `storeSwitchedOffScript` stores the script and then switches every script
 off (`SETACTIVE ""`). All three sign in as `USER` at `SIEVE_ADDR` (default `127.0.0.1:8902`), so
-they cannot be used for a throwaway account.
+they cannot be used for a throwaway account. Like ALPS, they send `NOOP` after signing in and sign
+in once more if the server has closed the connection.
 
 `session-probe.ts` holds the rule `login()` reuses a session by. `login()` probes
 `GET /mailboxes/INBOX/status` outside the page, and only a 401 means the session is dead. Any other
