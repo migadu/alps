@@ -57,7 +57,25 @@ func activeScript(scripts []Script) string {
 	return ""
 }
 
+// connectClient signs in to the account's ManageSieve server. A session the
+// server closes as soon as it has accepted the login is not an answer: sora
+// does that to every login in flight on a node when it ends any account's
+// sessions, as its credential-change poll does after a password change or an
+// account removal elsewhere (#982). A NOOP finds that out before any command
+// that changes something is sent, and the sign-in is made once more.
 func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
+	c, err := p.signIn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.Noop(); droppedConnection(err) {
+		c.conn.Close()
+		return p.signIn(ctx)
+	}
+	return c, nil
+}
+
+func (p *plugin) signIn(ctx *alps.Context) (*MSClient, error) {
 	username := ctx.Session.Username()
 
 	ep := p.endpointFor(ctx.Session.Username())
