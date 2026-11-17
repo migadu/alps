@@ -28,7 +28,7 @@ frontend.
 
 ## Build and run
 
-Go 1.25 or later. Node.js 20.19+, 22.12+ or 24+.
+Go 1.26 or later. Node.js 20.19+, 22.12+ or 24+.
 
 ```sh
 cp config.example.toml config.toml          # config.toml is git-ignored
@@ -82,11 +82,11 @@ under `frontend/src` or `plugins/*/frontend` is finished only when the dist is r
 
 ## Dependencies
 
-- go-imap is `github.com/migadu/go-imap`, a hard fork with its own module path and tags. Bump it
-  with `go get github.com/migadu/go-imap@<tag>`.
-- go-smtp, go-message and go-webdav are imported by their `github.com/emersion/…` paths and pinned
-  in `go.mod` with `replace` to forks under `github.com/migadu/`. A change to one goes into its
-  fork first. Then repin with `go mod edit -replace …@<commit>` and `go mod tidy`.
+- go-imap, go-webdav and go-sieve are `github.com/migadu/…` modules with their own module paths
+  and tags. Bump one with `go get github.com/migadu/<module>@<tag>`.
+- go-smtp and go-message are imported by their `github.com/emersion/…` paths and pinned in
+  `go.mod` with `replace` to tagged forks under `github.com/migadu/`. A change to one goes into its
+  fork first, released as a tag. Then repin with `go mod edit -replace …@<tag>` and `go mod tidy`.
 - After a bump, run the Go tests and the browser suite (`E2E_SKIP_BUILD=1` when the frontend did
   not change).
 

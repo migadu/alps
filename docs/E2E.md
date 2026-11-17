@@ -94,7 +94,7 @@ Requirements:
 - `go`, `npm`, `psql`, `curl` and `lsof` on `PATH`. The script checks them in that order and stops
   at the first one missing. `psql` is only the client; with Postgres.app, add its `bin` directory
   to `PATH`.
-- Go 1.25.0 or later (`go.mod`, which also names `toolchain go1.26.5`; see the
+- Go 1.26.0 or later (`go.mod`, which also names `toolchain go1.26.5`; see the
   [README](../README.md#requirements)). Node.js 20 (20.19 or later), 22 (22.12 or later), or 24
   and later: the locked Vite 8.0.10 and rolldown declare `^20.19.0 || >=22.12.0`, and the locked
   Vitest 4.1.10 declares `^20.0.0 || ^22.0.0 || >=24.0.0`, so on Node.js 23 npm prints an engine
