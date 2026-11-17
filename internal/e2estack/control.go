@@ -2,15 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net"
 	"net/http"
 	"strings"
-	"syscall"
 
 	"github.com/emersion/go-sasl"
+	"github.com/migadu/alps/internal/connerr"
 	"github.com/migadu/alps/plugins/managesieve"
 	"github.com/migadu/go-imap"
 	"github.com/migadu/go-imap/imapclient"
@@ -132,8 +129,7 @@ func (c *control) withAccount(fn func(account) error) http.HandlerFunc {
 // droppedConnection reports whether err is the server closing the connection,
 // rather than an answer it gave.
 func droppedConnection(err error) bool {
-	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
-		errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)
+	return connerr.IsDropped(err)
 }
 
 // resetSettings removes every METADATA entry alps wrote, so the next
