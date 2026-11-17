@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import '../src/components/alps-tag';
 import { getTagColor } from '../src/utils/flags';
 import { cleanup, mount, shadow, update } from './helpers/dom';
-import { ruleMatches, rulesOf } from './helpers/styles';
+import { ruleMatches, shadowRulesOf } from './helpers/styles';
 
 afterEach(cleanup);
 
@@ -51,7 +51,7 @@ const sheets = new WeakMap<HTMLElement, CSSStyleRule[]>();
 function shadowRules(tag: HTMLElement): CSSStyleRule[] {
   let rules = sheets.get(tag);
   if (!rules) {
-    rules = Array.from(tag.shadowRoot!.querySelectorAll('style')).flatMap((style) => rulesOf(style.textContent ?? ''));
+    rules = shadowRulesOf(tag);
     sheets.set(tag, rules);
   }
   return rules;

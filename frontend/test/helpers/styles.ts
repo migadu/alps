@@ -49,17 +49,28 @@ export function backgroundOf(rule: CSSStyleRule): string {
 }
 
 /**
- * Every background a rule in `el`'s shadow root would give `node`.
+ * Every style rule of `el`'s shadow root.
  *
- * Read from the `<style>` elements, which is where lit puts `static styles`
- * under jsdom (it has no `adoptedStyleSheets`), one element per shared sheet.
- * Their TEXT, reparsed: jsdom builds no `.sheet` for a `<style>` inside a
- * shadow root, so reading `.sheet` finds no rules at all and every "no rule
- * paints this" assertion passes.
+ * Lit adopts its `static styles` where there is `adoptedStyleSheets`, as in
+ * jsdom 31, and appends `<style>` elements where there is not, so both are
+ * read. A `<style>` is read from its TEXT, reparsed: jsdom builds no `.sheet`
+ * for a `<style>` inside a shadow root. A shadow root with no rules at all
+ * throws, so that a "no rule paints this" assertion cannot pass because the
+ * rules were never found.
  */
+export function shadowRulesOf(el: HTMLElement): CSSStyleRule[] {
+  const root = el.shadowRoot;
+  const rules = [
+    ...(root?.adoptedStyleSheets ?? []).flatMap((sheet) => flatten(sheet.cssRules)),
+    ...Array.from(root?.querySelectorAll('style') ?? []).flatMap((style) => rulesOf(style.textContent ?? '')),
+  ];
+  if (rules.length === 0) throw new Error(`${el.localName} has no style rules in its shadow root`);
+  return rules;
+}
+
+/** Every background a rule in `el`'s shadow root would give `node`. */
 export function backgroundsOf(el: HTMLElement, node: Element): string[] {
-  return Array.from(el.shadowRoot?.querySelectorAll('style') ?? [])
-    .flatMap((style) => rulesOf(style.textContent ?? ''))
+  return shadowRulesOf(el)
     .filter((rule) => ruleMatches(node, rule))
     .map(backgroundOf)
     .filter(Boolean);

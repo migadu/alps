@@ -359,18 +359,23 @@ describe('the quote frame', () => {
     try {
       const composer = await openComposer(forward());
       const frame = composer.shadowRoot!.querySelector<HTMLIFrameElement>('.quoted-message iframe')!;
+      // jsdom 31 loads a srcdoc frame by itself, which sized it once already.
+      const before = observers.length;
       Object.defineProperty(frame, 'contentDocument', { value: parse('<p>quote</p>'), configurable: true });
 
       frame.dispatchEvent(new Event('load'));
-      expect(observers).toHaveLength(2);
+      expect(observers).toHaveLength(before + 2);
+      for (const earlier of observers.slice(0, before)) expect(earlier.disconnect).toHaveBeenCalledOnce();
+      const [height, width] = observers.slice(before);
       frame.dispatchEvent(new Event('load'));
-      expect(observers).toHaveLength(4);
-      expect(observers[0].disconnect, 'the first height observer').toHaveBeenCalledOnce();
-      expect(observers[1].disconnect, 'the first width observer').toHaveBeenCalledOnce();
+      expect(observers).toHaveLength(before + 4);
+      expect(height.disconnect, 'the first height observer').toHaveBeenCalledOnce();
+      expect(width.disconnect, 'the first width observer').toHaveBeenCalledOnce();
 
       composer.editor!.commands.clearContent();
-      expect(observers[2].disconnect, 'the height observer').toHaveBeenCalledOnce();
-      expect(observers[3].disconnect, 'the width observer').toHaveBeenCalledOnce();
+      const [lastHeight, lastWidth] = observers.slice(before + 2);
+      expect(lastHeight.disconnect, 'the height observer').toHaveBeenCalledOnce();
+      expect(lastWidth.disconnect, 'the width observer').toHaveBeenCalledOnce();
     } finally {
       globalThis.ResizeObserver = Original;
     }

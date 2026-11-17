@@ -55,8 +55,8 @@ export function shadowAll<E extends Element = HTMLElement>(el: HTMLElement, sele
 /**
  * The visible text of a shadow root (or of one node in it), whitespace collapsed.
  *
- * `<style>` is skipped: jsdom has no adoptedStyleSheets, so Lit appends real
- * style elements and raw textContent would include the whole stylesheet.
+ * `<style>` is skipped: where Lit appends real style elements rather than
+ * adopting its sheets, raw textContent would include the whole stylesheet.
  */
 export function text(el: HTMLElement, selector?: string): string {
   const node = selector ? el.shadowRoot?.querySelector(selector) : el.shadowRoot;
@@ -171,12 +171,51 @@ export function installDialogSupport(): void {
   };
 }
 
+/** Set by the Popover API stand-in while a popover shows. */
+const POPOVER_OPEN = 'data-popover-open';
+
+/** Stylesheets whose `:popover-open` rules have their twin already. */
+const mirroredSheets = new WeakSet<CSSStyleSheet>();
+
+/** Adds after each `:popover-open` rule under `rules` the same rule for
+ * `[data-popover-open]`, last to first so the indexes ahead stay put. */
+function mirrorPopoverOpen(rules: CSSStyleSheet | CSSGroupingRule): void {
+  for (let i = rules.cssRules.length - 1; i >= 0; i--) {
+    const rule = rules.cssRules[i];
+    if (rule instanceof CSSStyleRule && rule.selectorText.includes(':popover-open')) {
+      rules.insertRule(rule.cssText.replaceAll(':popover-open', `[${POPOVER_OPEN}]`), i + 1);
+    } else if ('cssRules' in rule) {
+      mirrorPopoverOpen(rule as CSSGroupingRule);
+    }
+  }
+}
+
+/**
+ * The stylesheets that reach a popover: those of its document or shadow root,
+ * adopted ones included, with each `:popover-open` rule given its twin.
+ */
+function mirrorPopoverSheets(el: HTMLElement): void {
+  const root = el.getRootNode() as Document | ShadowRoot;
+  const sheets = [...Array.from(root.styleSheets ?? []), ...(root.adoptedStyleSheets ?? [])];
+  for (const sheet of sheets) {
+    if (mirroredSheets.has(sheet)) continue;
+    mirroredSheets.add(sheet);
+    mirrorPopoverOpen(sheet);
+  }
+}
+
 /**
  * jsdom has no Popover API, and alps-popup shows its menus as popovers.
  * showPopover() and hidePopover() keep the state and fire `toggle` with its
  * `newState`, as a browser does (synchronously here), so a light dismiss can
  * be played by hiding the popover. `popover` reflects its attribute, which is
  * what alps-popup tests for.
+ *
+ * jsdom parses `:popover-open` but never matches it, so a menu styled to show
+ * by it would stay `display: none`, and jsdom focuses nothing inside an
+ * element that is not displayed. While a popover shows it carries
+ * `data-popover-open`, and every `:popover-open` rule of its stylesheets has a
+ * twin for that attribute.
  */
 export function installPopoverSupport(): void {
   const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
@@ -199,10 +238,13 @@ export function installPopoverSupport(): void {
     if (!this.hasAttribute('popover')) throw new DOMException('Not a popover', 'NotSupportedError');
     if (showing.has(this)) throw new DOMException('Already showing', 'InvalidStateError');
     showing.add(this);
+    mirrorPopoverSheets(this);
+    this.setAttribute(POPOVER_OPEN, '');
     toggle(this, 'open');
   };
   proto.hidePopover = function (this: HTMLElement) {
     if (!showing.delete(this)) return;
+    this.removeAttribute(POPOVER_OPEN);
     toggle(this, 'closed');
   };
 }
