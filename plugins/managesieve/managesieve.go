@@ -11,11 +11,11 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
 	"github.com/emersion/go-sasl"
+	"github.com/migadu/alps/internal/connerr"
 )
 
 // MSClient is a minimal ManageSieve client.
@@ -277,8 +277,7 @@ func (c *MSClient) Noop() error {
 // droppedConnection reports whether err is the server closing the connection,
 // rather than an answer it gave.
 func droppedConnection(err error) bool {
-	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
-		errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)
+	return connerr.IsDropped(err)
 }
 
 func (c *MSClient) SetActive(name string) error {
