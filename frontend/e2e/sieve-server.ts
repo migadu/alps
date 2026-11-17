@@ -32,7 +32,9 @@ class SieveSession {
       this.wake();
     });
     socket.on("error", (error) => {
-      this.failure = error;
+      // A socket error can wake readers before the close event arrives.
+      this.ended = true;
+      this.failure ??= error;
       this.wake();
     });
     socket.on("close", () => {
@@ -59,7 +61,7 @@ class SieveSession {
       return session;
     } catch (error) {
       session.socket.destroy();
-      if (retry && session.ended) return SieveSession.open(false);
+      if (retry && session.ended && error === session.failure) return SieveSession.open(false);
       throw error;
     }
   }

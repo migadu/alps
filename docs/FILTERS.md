@@ -48,6 +48,8 @@ ALPS signs in with SASL PLAIN, using the username and password of the signed-in 
 
 Every request to the plugin opens a new connection and closes it when the request is done. The connection attempt times out after 15 seconds, and so does each command ALPS writes and each line it waits for from the server. A script the server sends as a literal has 30 seconds to arrive.
 
+After sign-in, ALPS checks the connection before sending script commands. A connection the server has already closed is opened and signed in once more. Each script-changing command is sent only once.
+
 With `[server] debug = true`, ALPS logs the ManageSieve exchange through `[logging]`, as `protocol trace` lines at debug level (`protocol` `managesieve`), so only while `[logging] level` is debug. The `AUTHENTICATE` argument is written as `[REDACTED]`, but script contents can appear in full: a script ALPS uploads is always written out.
 
 ### Per-Domain Servers (multi)

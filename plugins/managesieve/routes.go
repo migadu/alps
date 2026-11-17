@@ -68,9 +68,18 @@ func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.Noop(); droppedConnection(err) {
-		c.conn.Close()
-		return p.signIn(ctx)
+	if err := c.Noop(); err != nil {
+		if droppedConnection(err) {
+			c.conn.Close()
+			return p.signIn(ctx)
+		}
+		// A fully parsed NO supports older servers without NOOP. Other
+		// errors end this connection before any script command is sent.
+		var refusal *serverRefusal
+		if !errors.As(err, &refusal) {
+			c.conn.Close()
+			return nil, err
+		}
 	}
 	return c, nil
 }
