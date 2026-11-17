@@ -22,7 +22,7 @@ import '../src/components/message-list';
 import '../src/pages/mailbox-page';
 
 // See floating-composer-send.test.ts: the picker builds its grid on connect.
-vi.mock('unicode-emoji-picker', () => ({}));
+vi.mock('unicode-emoji-picker', () => ({ defineUnicodeEmojiPicker: () => {} }));
 
 type El = HTMLElement & Record<string, any>;
 

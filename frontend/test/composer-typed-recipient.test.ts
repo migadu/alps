@@ -16,7 +16,7 @@ import { messageOperations } from '../src/services/message-operations';
 import '../src/components/alps-floating-composer';
 
 // See floating-composer-send.test.ts: the picker builds its grid on connect.
-vi.mock('unicode-emoji-picker', () => ({}));
+vi.mock('unicode-emoji-picker', () => ({ defineUnicodeEmojiPicker: () => {} }));
 
 type El = HTMLElement & Record<string, any>;
 

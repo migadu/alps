@@ -19,7 +19,7 @@ import { cleanup, mount, record } from './helpers/dom';
 
 // See floating-composer-send.test.ts: the picker's grid is slow to build and
 // nothing here opens it.
-vi.mock('unicode-emoji-picker', () => ({}));
+vi.mock('unicode-emoji-picker', () => ({ defineUnicodeEmojiPicker: () => {} }));
 
 const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html');
 const openComposer = (htmlText: string) =>

@@ -5,7 +5,7 @@ import { cleanup, flush, mount, waitFor } from './helpers/dom';
 import { messageSync } from '../src/services/message-sync';
 import { pageEntryId, settingsEntry, updateSettingsBackground } from '../src/utils/settings-history';
 import '../src/components/app-root';
-vi.mock('unicode-emoji-picker', () => ({}));
+vi.mock('unicode-emoji-picker', () => ({ defineUnicodeEmojiPicker: () => {} }));
 
 type Bag = HTMLElement & Record<string, any>;
 beforeEach(() => {

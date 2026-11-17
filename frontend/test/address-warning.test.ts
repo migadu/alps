@@ -44,7 +44,7 @@ import '../src/components/alps-floating-composer';
 
 // The emoji picker builds its whole grid when it connects, which takes jsdom
 // seconds per composer. Nothing here opens it.
-vi.mock('unicode-emoji-picker', () => ({}));
+vi.mock('unicode-emoji-picker', () => ({ defineUnicodeEmojiPicker: () => {} }));
 
 /** CYRILLIC SMALL LETTER A, which looks exactly like the Latin `a`. */
 const A = 'а';

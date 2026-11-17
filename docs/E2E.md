@@ -95,10 +95,10 @@ Requirements:
   at the first one missing. `psql` is only the client; with Postgres.app, add its `bin` directory
   to `PATH`.
 - Go 1.26.0 or later (`go.mod`, which also names `toolchain go1.26.5`; see the
-  [README](../README.md#requirements)). Node.js 20 (20.19 or later), 22 (22.12 or later), or 24
-  and later: the locked Vite 8.0.10 and rolldown declare `^20.19.0 || >=22.12.0`, and the locked
-  Vitest 4.1.10 declares `^20.0.0 || ^22.0.0 || >=24.0.0`, so on Node.js 23 npm prints an engine
-  warning.
+  [README](../README.md#requirements)). Node.js 22 (22.12 or later), 24, or 26
+  and later: the locked Vite 8.3.8 and rolldown declare `^20.19.0 || >=22.12.0`, and the locked
+  Vitest 5.1.0 declares `^22.12.0 || ^24.0.0 || >=26.0.0`, so on Node.js 23 or 25 npm prints an
+  engine warning.
 - A PostgreSQL server that the sora being built supports. sora's README asks for
   PostgreSQL 14 or later with `pg_trgm` and `btree_gin`, and its migrations create `btree_gin`, so
   both contrib extensions must be installable. The harness itself needs 13 or later, because it

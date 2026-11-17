@@ -5,7 +5,7 @@ A simple and extensible webmail.
 ## Requirements
 
 - **Go**: the module needs Go 1.26.0 or later (`go 1.26.0` in `go.mod`) and names `toolchain go1.26.5`. With the default `GOTOOLCHAIN=auto`, an older `go` command (Go 1.21 or later) downloads go1.26.5 and builds with it. go1.26.5 carries the standard-library security fixes for the mail-parsing, TLS and HTTP paths, so build releases with go1.26.5 or later. With `GOTOOLCHAIN=local`, the local toolchain builds ALPS whenever it is Go 1.26.0 or later, whether or not its standard library has those fixes.
-- **Node.js and npm**: needed only to rebuild `frontend/dist`, to run the Vite dev server, and to run the frontend unit and browser tests. Building or running ALPS itself does not need them. Use Node.js 20 (20.19 or later), 22 (22.12 or later), or 24 and later: Vite 8 and rolldown, as locked in `frontend/package-lock.json`, declare `^20.19.0 || >=22.12.0`, and Vitest 4 declares `^20.0.0 || ^22.0.0 || >=24.0.0`.
+- **Node.js and npm**: needed only to rebuild `frontend/dist`, to run the Vite dev server, and to run the frontend unit and browser tests. Building or running ALPS itself does not need them. Use Node.js 22 (22.12 or later), 24, or 26 and later: Vite 8 and rolldown, as locked in `frontend/package-lock.json`, declare `^20.19.0 || >=22.12.0`, and Vitest 5 declares `^22.12.0 || ^24.0.0 || >=26.0.0`.
 - **Platform**: ALPS builds on Linux, macOS, the BSDs and Windows. On Windows, `[logging] output = "syslog"` falls back to stderr, and the password plugin's `command` backend is refused, since it needs a Unix host.
 - **Mail store**: chosen with `[provider] type`.
   - `"imap"` (the default) uses an existing IMAP server.
