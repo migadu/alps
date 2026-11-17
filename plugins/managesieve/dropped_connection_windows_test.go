@@ -17,6 +17,7 @@ func TestDroppedConnectionWindowsErrors(t *testing.T) {
 		want  bool
 	}{
 		{"WSAECONNRESET", syscall.WSAECONNRESET, true},
+		{"WSAECONNABORTED", syscall.WSAECONNABORTED, true},
 		{"ERROR_NETNAME_DELETED", syscall.ERROR_NETNAME_DELETED, true},
 		// syscall does not export these Winsock constants. Their native
 		// values are WSAETIMEDOUT (10060) and WSAECONNREFUSED (10061).
