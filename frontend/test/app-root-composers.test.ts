@@ -7,7 +7,7 @@ import * as appUpdate from '../src/services/app-update';
 import { cleanup, mount, waitFor } from './helpers/dom';
 
 // See floating-composer-send.test.ts: the picker builds its grid on connect.
-vi.mock('unicode-emoji-picker', () => ({}));
+vi.mock('unicode-emoji-picker', () => ({ defineUnicodeEmojiPicker: () => {} }));
 
 type El = HTMLElement & Record<string, any>;
 

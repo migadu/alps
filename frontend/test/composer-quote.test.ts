@@ -300,7 +300,8 @@ describe('the quote frame', () => {
   it('is sandboxed, out of the tab order, and shows the quote with remote images blocked', async () => {
     const composer = await openComposer(forward());
     const root = composer.shadowRoot!;
-    expect(root.querySelector('.ProseMirror img, .ProseMirror table')).toBeNull();
+    // ProseMirror's own cursor helper is an <img class="ProseMirror-separator">.
+    expect(root.querySelector('.ProseMirror img:not(.ProseMirror-separator), .ProseMirror table')).toBeNull();
 
     const frame = root.querySelector<HTMLIFrameElement>('.quoted-message iframe');
     expect(frame, 'the quote frame').not.toBeNull();

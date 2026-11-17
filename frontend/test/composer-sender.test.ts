@@ -23,7 +23,7 @@ import {
 type El = HTMLElement & Record<string, any>;
 
 // The emoji picker builds its whole grid as it connects; nothing here opens it.
-vi.mock('unicode-emoji-picker', () => ({}));
+vi.mock('unicode-emoji-picker', () => ({ defineUnicodeEmojiPicker: () => {} }));
 
 const OWN = 'ada@example.com';
 const IDENTITIES: Identity[] = [

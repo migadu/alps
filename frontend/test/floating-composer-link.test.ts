@@ -10,7 +10,7 @@ import { cleanup, mount, waitFor } from './helpers/dom';
 import type { ComposerInstance } from '../src/store/compose-store';
 import '../src/components/alps-floating-composer';
 
-vi.mock('unicode-emoji-picker', () => ({}));
+vi.mock('unicode-emoji-picker', () => ({ defineUnicodeEmojiPicker: () => {} }));
 
 type El = HTMLElement & Record<string, any>;
 

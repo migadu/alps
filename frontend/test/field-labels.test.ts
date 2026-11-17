@@ -53,7 +53,7 @@ import '../../plugins/gpg/frontend/gpg-settings';
 import '../../plugins/caldav/frontend/calendar-invitation-banner';
 import { invitationService, type InvitationView } from '../../plugins/caldav/frontend/invitation-service';
 
-vi.mock('unicode-emoji-picker', () => ({}));
+vi.mock('unicode-emoji-picker', () => ({ defineUnicodeEmojiPicker: () => {} }));
 
 type El = HTMLElement & Record<string, any>;
 

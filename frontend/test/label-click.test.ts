@@ -31,7 +31,7 @@ import '../src/components/alps-floating-composer';
 import '../../plugins/caldav/frontend/calendar-event-modal';
 import '../../plugins/caldav/frontend/task-modal';
 
-vi.mock('unicode-emoji-picker', () => ({}));
+vi.mock('unicode-emoji-picker', () => ({ defineUnicodeEmojiPicker: () => {} }));
 
 type El = HTMLElement & Record<string, any>;
 

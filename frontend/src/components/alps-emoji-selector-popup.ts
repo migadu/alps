@@ -1,7 +1,9 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, query, property } from 'lit/decorators.js';
-import 'unicode-emoji-picker';
+import { defineUnicodeEmojiPicker } from 'unicode-emoji-picker';
 import './alps-popup';
+
+defineUnicodeEmojiPicker();
 
 @customElement('alps-emoji-selector-popup')
 export class AlpsEmojiSelectorPopup extends LitElement {
@@ -25,15 +27,15 @@ export class AlpsEmojiSelectorPopup extends LitElement {
       height: 100%;
       --fill-color: var(--bg-primary, #ffffff);
       --text-color: var(--text-primary, #111827);
-      --box-shadow: none;
-      --border-radius: 0;
+      box-shadow: none;
+      border-radius: 0;
       
       /* Theme mappings */
-      --filters-border-color: var(--border-color, #e5e7eb);
-      --filter-fill-color-hover: var(--hover-color, #f3f4f6);
+      --tabs-border-color: var(--border-color, #e5e7eb);
+      --tab-fill-color-hover: var(--hover-color, #f3f4f6);
       --content-scrollbar-thumb-fill-color: var(--border-color, #e5e7eb);
       --content-scrollbar-thumb-fill-color-hover: var(--text-muted, #6b7280);
-      --filter-active-marker-border-color: var(--accent-color, #005A9E);
+      --tab-active-marker-color: var(--accent-color, #005A9E);
       --title-bar-fill-color: var(--bg-primary, #ffffff);
       --search-input-border-color: var(--border-color, #e5e7eb);
       --search-input-border-color-hover: var(--accent-color, #005A9E);
@@ -65,7 +67,7 @@ export class AlpsEmojiSelectorPopup extends LitElement {
         <slot name="trigger" slot="trigger"></slot>
         <div class="selector-container" @click=${(e: Event) => e.stopPropagation()}>
           <unicode-emoji-picker
-            filters-position="top"
+            tabs-position="top"
             @emoji-pick=${this._handleEmojiPick}
           ></unicode-emoji-picker>
         </div>

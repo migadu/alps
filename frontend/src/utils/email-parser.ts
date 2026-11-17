@@ -65,14 +65,16 @@ export async function parseEmailHeaders(rawEmail: string): Promise<ParsedHeaders
   // postal-mime exposes all headers as an array of objects
   const authHeaders = email.headers?.filter(h => h.key.toLowerCase() === 'authentication-results') || [];
   if (authHeaders.length > 0) {
-    const authHeader = authHeaders[0]; // Process the top-most (most recent) header
-    const fullHeader = authHeader.value.toLowerCase();
+    // The top-most (most recent) header. A folded header keeps the tab or
+    // spaces of each fold; one space stands for each run, as between words.
+    const authValue = authHeaders[0].value.replace(/\s+/g, ' ');
+    const fullHeader = authValue.toLowerCase();
     
     let spfIp = '';
     const ipMatch = fullHeader.match(/smtp\.(?:remote|client)-ip=([0-9a-f\.:]+)/) || fullHeader.match(/designates ([0-9a-f\.:]+) as permitted sender/);
     if (ipMatch) spfIp = ipMatch[1];
 
-    const parts = authHeader.value.split(';');
+    const parts = authValue.split(';');
     for (const part of parts) {
       const p = part.trim().toLowerCase();
       if (p.startsWith('spf=')) {
