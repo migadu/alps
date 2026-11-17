@@ -94,8 +94,8 @@ github.com/migadu/go-imap v1.2.10 h1:KjGYN1pxaj2tWiABgh3UBsM8lwQIUVHYvzAGlH6n5Uk
 github.com/migadu/go-imap v1.2.10/go.mod h1:fvRvl7ajggZYKHgHokVT0O5uQsAj7ZVAhK6PoQYgga0=
 github.com/migadu/go-message v0.19.0 h1:1PhGy+aU3FxzCqi2MleOBr1NjzJiqTLptMr1nHMLCwQ=
 github.com/migadu/go-message v0.19.0/go.mod h1:XpJyL70LwRvq2a8rVbHXikPgKj8+aI0kGdHlg16ibYA=
-github.com/migadu/go-sieve v1.5.3 h1:7mMHJQJPl4ovH5sWvQwkdTvCXRrG2tV2bvSVx5r04/s=
-github.com/migadu/go-sieve v1.5.3/go.mod h1:xHAx5kMQ5hw/YJziHobNfLDpMK4jjxMJ5sZAHi3uFr8=
+github.com/migadu/go-sieve v1.5.4 h1:DXXzpo779nI3uwgLoJ9kBYXkC/BH8CLz9U4RmIWQgjE=
+github.com/migadu/go-sieve v1.5.4/go.mod h1:xHAx5kMQ5hw/YJziHobNfLDpMK4jjxMJ5sZAHi3uFr8=
 github.com/migadu/go-smtp v0.24.0-migadu.2 h1:fPGTnXY2KSlyHeZD2+q1U7GjTuf0U1mFUVh868b/C8Q=
 github.com/migadu/go-smtp v0.24.0-migadu.2/go.mod h1:3DhKoQGRMhBVSVkW1MQXML3tHhQbL6aBkscvJuak/90=
 github.com/migadu/go-webdav v1.0.0 h1:2kUy4zpTz+ax5e62NH6wOzpr+i87U1/EbeKGI35ll64=

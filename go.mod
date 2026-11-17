@@ -57,7 +57,7 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.7
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/miekg/dns v1.1.73 // indirect
-	github.com/migadu/go-sieve v1.5.3
+	github.com/migadu/go-sieve v1.5.4
 	github.com/philhofer/fwd v1.2.1 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/stretchr/objx v0.8.0 // indirect
