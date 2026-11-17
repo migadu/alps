@@ -17,6 +17,22 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it.each(['no_address_book', 'carddav_not_configured'])('stops optional collection quietly for %s', async code => {
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ error: code }), { status: 409 }));
+  vi.stubGlobal('fetch', fetch);
+  const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+  await registry.invokeHookAsync('composer:send', { recipients: ['ada@example.test', 'grace@example.test'] });
+  expect(logged).not.toHaveBeenCalled();
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('still logs unexpected auto-collection failures', async () => {
+  vi.spyOn(contactsService, 'createContact').mockRejectedValue(new HttpStatusError(503, 'unavailable'));
+  const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+  await registry.invokeHookAsync('composer:send', { recipients: ['ada@example.test'] });
+  expect(logged).toHaveBeenCalledOnce();
+});
+
 it('saves each recipient under the name as written', async () => {
   registry.setEnabledPlugins(['carddav']);
   const created = vi.spyOn(contactsService, 'createContact').mockResolvedValue({});
@@ -38,20 +54,4 @@ it('saves each recipient under the name as written', async () => {
     { name: 'Grace Hopper', email: 'grace@example.test' },
     { name: '', email: 'bob@example.test' },
   ]);
-});
-
-it.each(['no_address_book', 'carddav_not_configured'])('stops optional collection quietly for %s', async code => {
-  const fetch = vi.fn(async () => new Response(JSON.stringify({ error: code }), { status: 409 }));
-  vi.stubGlobal('fetch', fetch);
-  const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-  await registry.invokeHookAsync('composer:send', { recipients: ['ada@example.test', 'grace@example.test'] });
-  expect(logged).not.toHaveBeenCalled();
-  expect(fetch).toHaveBeenCalledTimes(1);
-});
-
-it('still logs unexpected auto-collection failures', async () => {
-  vi.spyOn(contactsService, 'createContact').mockRejectedValue(new HttpStatusError(503, 'unavailable'));
-  const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-  await registry.invokeHookAsync('composer:send', { recipients: ['ada@example.test'] });
-  expect(logged).toHaveBeenCalledOnce();
 });
