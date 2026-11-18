@@ -21,6 +21,11 @@ import (
 // A var so tests can shorten it.
 var sanityCheckTimeout = 10 * time.Second
 
+// contactsReadTimeout covers discovery, the address-book query and writing the
+// listing. The browser's contact-list timeout uses the same five-minute budget.
+// A var lets deadline tests exercise expiry without waiting five minutes.
+var contactsReadTimeout = 5 * time.Minute
+
 func sanityCheckURL(u *url.URL) error {
 	req, err := http.NewRequest(http.MethodOptions, u.String(), nil)
 	if err != nil {
@@ -121,9 +126,27 @@ func (p *plugin) connection(ctx context.Context, session *alps.Session) (*reques
 // addRoute keeps each request on its resolved account and returns expected
 // configuration states directly, without request-error logging.
 func (p *plugin) addRoute(method, path string, handler alps.HandlerFunc) {
+	listing := method == http.MethodGet && path == "/contacts"
 	p.GoPlugin.AddRoute(method, path, func(ctx *alps.Context) error {
+		if listing {
+			requestCtx, cancel := context.WithTimeout(ctx.Request.Context(), contactsReadTimeout)
+			defer cancel()
+			ctx.Request = ctx.Request.WithContext(requestCtx)
+			deadline, _ := requestCtx.Deadline()
+			// Set this before resolving the connection: its discovery can itself
+			// outlast the server's ordinary write deadline. Leave the deadline in
+			// place for net/http to flush the response after the handler returns.
+			if err := http.NewResponseController(ctx.Response).SetWriteDeadline(deadline); err != nil && !errors.Is(err, http.ErrNotSupported) {
+				return fmt.Errorf("failed to set contact listing deadline: %w", err)
+			}
+		}
 		conn, err := p.connection(ctx.Request.Context(), ctx.Session)
 		if err == nil {
+			if listing {
+				// This client belongs to this request. Keep the same deadline for
+				// personal DAV servers without changing other reads or writes.
+				conn.client.Timeout = contactsReadTimeout
+			}
 			ctx.Request = ctx.Request.WithContext(context.WithValue(ctx.Request.Context(), connectionKey{}, conn))
 			err = handler(ctx)
 		}

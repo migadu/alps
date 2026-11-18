@@ -45,7 +45,6 @@ func (c *contactsDeadlineConn) SetWriteDeadline(deadline time.Time) error {
 }
 
 func TestContactListingOutlivesOrdinaryHTTPWriteDeadline(t *testing.T) {
-	t.Skip("#992: enable with the coordinated contacts deadline")
 	for _, query := range []string{"", "?query=grace"} {
 		t.Run(query, func(t *testing.T) {
 			deadline := make(chan time.Time, 1)
@@ -83,7 +82,7 @@ func TestContactListingOutlivesOrdinaryHTTPWriteDeadline(t *testing.T) {
 			h.dav.save(testBook+"grace.vcf", card)
 
 			server := httptest.NewUnstartedServer(h.srv)
-			server.Config.WriteTimeout = 25 * time.Millisecond
+			server.Config.WriteTimeout = 100 * time.Millisecond
 			server.Listener = &contactsDeadlineListener{Listener: server.Listener, deadline: deadline}
 			server.Start()
 			t.Cleanup(server.Close)

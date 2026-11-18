@@ -137,6 +137,7 @@ read_timeout_sec = 10
 # bounded by read_timeout_sec, and its response must still be written within
 # this time, so keep it at least as long as read_timeout_sec. This example
 # sets 30, below the default.
+# Contact lists and searches use their own five-minute write deadline.
 write_timeout_sec = 30
 
 # HTTP idle timeout in seconds (default: 120)

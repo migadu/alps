@@ -114,9 +114,9 @@ export function isAddressBookUnavailable(error: unknown): boolean {
 class ContactsService {
   async fetchContacts(query: string = '') {
     const url = query ? `/contacts?query=${encodeURIComponent(query)}` : '/contacts';
-    // Full vCards, including photos and keys, can outlast the usual 25 seconds.
-    // Match the backend's 60-second limit for requests to a personal DAV server.
-    const res = await fetchWithTimeout(url, {}, 60_000);
+    // Full vCards, including photos and keys, can take minutes to load. Match
+    // the backend's five-minute discovery, DAV and HTTP response deadline.
+    const res = await fetchWithTimeout(url, {}, 300_000);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new HttpStatusError(res.status, data.error || 'contacts_unavailable');
