@@ -1361,14 +1361,27 @@ export class MessageList extends LitElement {
           }
         }
 
+        // Opening another message aligns the cursor with it. A fresh copy of
+        // the same open message, or a flag change elsewhere in the list, must
+        // leave the user's keyboard cursor where they put it.
+        const previous = changedProperties.get('selectedMessage');
         const visible = this.visibleMessages;
-        if (visible.length > 0) {
+        const openedAnother = changedProperties.has('selectedMessage') && !(previous && this.isOpen(previous));
+        // A direct opening can name its message before the listing arrives.
+        const firstCursor = this.focusedIndex < 0 && changedProperties.has('messages');
+        if ((openedAnother || firstCursor) && visible.length > 0) {
           const idx = visible.findIndex(m => this.isOpen(m));
           if (idx !== -1) {
             this.focusedIndex = idx;
           }
         }
       }
+    }
+
+    // Filing away the last row leaves the previous row under the cursor;
+    // elsewhere the next row naturally takes the vacated index.
+    if (changedProperties.has('messages') && this.focusedIndex >= this.visibleMessages.length) {
+      this.focusedIndex = this.visibleMessages.length - 1;
     }
   }
 
@@ -1495,6 +1508,12 @@ export class MessageList extends LitElement {
     if (this.visibleMessages.length === 0) return;
     this.renderRoot.querySelector<HTMLElement>('.list-content')?.focus({ preventScroll: true });
     this.moveCursor(direction);
+  }
+
+  /** The keyboard cursor's operand, with the same thread scope as its checkbox. */
+  get focusedRowKeys(): string[] {
+    const message = this.visibleMessages[this.focusedIndex];
+    return message ? this.rowKeys(message) : [];
   }
 
   private handleKeyDown(e: KeyboardEvent) {

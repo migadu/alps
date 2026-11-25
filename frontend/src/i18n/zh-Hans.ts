@@ -1,6 +1,21 @@
 import type { TranslationDictionary } from './en';
 
 export const zhHans: TranslationDictionary = {
+  shortcuts: {
+    title: "键盘快捷键",
+    enabled: "启用单字符快捷键",
+    enabledHint: "关闭此选项以禁用 q、z 和 ?。您随时可以通过帮助按钮打开此列表。",
+    mail: "邮件",
+    navigation: "导航",
+    move: "聚焦下一封或上一封邮件",
+    open: "打开已聚焦的邮件",
+    select: "选中已聚焦的邮件并向下移动",
+    space: "空格",
+    enter: "Enter",
+    escape: "Esc",
+    dismiss: "关闭对话框或菜单",
+    context: "在邮件中，q 和 z 优先作用于已勾选的邮件，其次是已聚焦的行或打开的邮件。折叠的会话包含其中的所有邮件。输入文字或使用菜单和对话框时，快捷键不会生效。",
+  },
   tags: {
     important: '重要',
     work: '工作',

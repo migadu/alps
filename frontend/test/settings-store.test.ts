@@ -122,6 +122,41 @@ describe('signing in', () => {
     expect(put).toEqual({ ui: { showSenderAvatars: true } });
   });
 
+  it('applies and saves the character shortcut choice without changing other preferences', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', ui: { keyboardShortcuts: false } } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    expect(store.getState().keyboardShortcuts).toBe(true);
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    expect(store.getState().keyboardShortcuts).toBe(false);
+    expect(readUserSettings().keyboardShortcuts).toBe(false);
+
+    await store.updateSettings({ keyboardShortcuts: true });
+    expect(calls.find(c => c.key === 'PUT /settings')!.body).toEqual({ ui: { keyboardShortcuts: true } });
+  });
+
+  it('keeps character shortcuts disabled in the cache while the account record loads', async () => {
+    localStorage.setItem('alps_settings', JSON.stringify({ keyboardShortcuts: false }));
+    clearSessionSettings();
+    expect(JSON.parse(localStorage.getItem('alps_settings')!).keyboardShortcuts).toBe(false);
+    signedIn();
+    let answer!: (response: Response) => void;
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => new Promise<Response>(resolve => { answer = resolve; }),
+    });
+    const store = new SettingsStore();
+    expect(store.getState().keyboardShortcuts).toBe(false);
+    await vi.waitFor(() => expect(answer).toBeTypeOf('function'));
+    answer(json(200, { Settings: { language: 'en', ui: { keyboardShortcuts: true } } }));
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    expect(store.getState().keyboardShortcuts).toBe(true);
+  });
+
   it('applies the account\'s folders unsubscribed here, and saves a change to them', async () => {
     signedIn();
     const calls = serve({

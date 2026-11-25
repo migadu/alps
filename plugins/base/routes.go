@@ -4549,6 +4549,7 @@ type UIPreferences struct {
 	EnableThreading    *bool    `json:"enableThreading,omitempty"`
 	ThemeIframeContent *bool    `json:"themeIframeContent,omitempty"`
 	ShowSenderAvatars  *bool    `json:"showSenderAvatars,omitempty"`
+	KeyboardShortcuts  *bool    `json:"keyboardShortcuts,omitempty"`
 	CustomMailboxOrder []string `json:"customMailboxOrder,omitempty"`
 
 	// UnsubscribedFolders names the folders the user unsubscribed from in
@@ -4909,6 +4910,9 @@ func handleSettings(ctx *alps.Context) error {
 				}
 				if req.UI.ShowSenderAvatars != nil {
 					settings.UI.ShowSenderAvatars = req.UI.ShowSenderAvatars
+				}
+				if req.UI.KeyboardShortcuts != nil {
+					settings.UI.KeyboardShortcuts = req.UI.KeyboardShortcuts
 				}
 				if req.UI.CustomMailboxOrder != nil {
 					settings.UI.CustomMailboxOrder = req.UI.CustomMailboxOrder

@@ -24,6 +24,8 @@ import { provide } from '@lit/context';
 import './toast-notification';
 import './ui-modal';
 import './settings-window';
+import './keyboard-shortcuts-dialog';
+import { characterShortcutAllowed } from '../utils/keyboard-shortcuts';
 import './alps-attachment-preview';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import type { ComposerInstance } from '../store/compose-store';
@@ -123,6 +125,7 @@ export class AppRoot extends LitElement {
   @state() private toasts: ToastItem[] = [];
   @state() private attachmentPreview: { attachments: any[]; mailbox: string; messageUid: string; index: number } | null = null;
   private toastIdCounter = 0;
+  @state() private shortcutsOpen = false;
 
   @state() private isOffline: boolean = !navigator.onLine;
   @state() private offlineCountdown: number = 0;
@@ -212,6 +215,8 @@ export class AppRoot extends LitElement {
     // Initialize language
     this.i18nStore.setLanguage(this.settingsStore.getState().language ?? 'auto');
 
+    document.addEventListener('keydown', this.handleShortcutHelp);
+    this.addEventListener('open-shortcuts', this.openShortcuts);
     window.addEventListener('auth-error', this._handleAuthError);
     window.addEventListener('session-cleared', this._handleSessionCleared);
     window.addEventListener('user-logged-in', this._handleUserLoggedIn);
@@ -343,6 +348,8 @@ export class AppRoot extends LitElement {
     clearTimeout(this.sessionDataRetry);
     this.composeStore.removeEventListener('change', this._handleComposeChange);
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
+    document.removeEventListener('keydown', this.handleShortcutHelp);
+    this.removeEventListener('open-shortcuts', this.openShortcuts);
     window.removeEventListener('auth-error', this._handleAuthError);
     window.removeEventListener('session-cleared', this._handleSessionCleared);
     window.removeEventListener('user-logged-in', this._handleUserLoggedIn);
@@ -744,6 +751,7 @@ export class AppRoot extends LitElement {
   }
 
   private _handleSessionCleared = () => {
+    this.shortcutsOpen = false;
     this.sessionDataGeneration++;
     clearTimeout(this.sessionDataRetry);
     this.mailboxPage = null;
@@ -999,6 +1007,18 @@ export class AppRoot extends LitElement {
     `;
   }
 
+  private openShortcuts = () => {
+    this.shortcutsOpen = true;
+  };
+
+  private handleShortcutHelp = (e: KeyboardEvent) => {
+    if (e.key !== '?' || this.shortcutsOpen || this.isOffline || this.attachmentPreview) return;
+    if (this.settingsStore.getState().keyboardShortcuts === false || !characterShortcutAllowed(e)) return;
+    if (routePath(window.location.hash).startsWith('/login') || isSettingsHash(window.location.hash)) return;
+    e.preventDefault();
+    this.openShortcuts();
+  };
+
   render() {
     const totalOpen = this.activeComposers.filter(c => !c.minimized).length;
     const totalMinimized = this.activeComposers.filter(c => c.minimized).length;
@@ -1015,6 +1035,9 @@ export class AppRoot extends LitElement {
     return html`
       <div class="route-view ${behind ? 'behind-window' : ''}" ?inert=${behind}>${view}</div>
       ${settings}
+      ${this.shortcutsOpen ? html`
+        <keyboard-shortcuts-dialog @cancel=${() => { this.shortcutsOpen = false; }}></keyboard-shortcuts-dialog>
+      ` : nothing}
 
       <!-- Keyed by composer: a window's element is that composer's for its
            whole life. By position, closing the first of three handed the

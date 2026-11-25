@@ -1,6 +1,21 @@
 import type { TranslationDictionary } from './en';
 
 export const da: TranslationDictionary = {
+  shortcuts: {
+    title: "Tastaturgenveje",
+    enabled: "Aktivér genveje med ét tegn",
+    enabledHint: "Slå fra for at deaktivere q, z og ?. Du kan altid åbne denne liste med hjælpeknappen.",
+    mail: "Mail",
+    navigation: "Navigation",
+    move: "Flyt fokus til den næste eller forrige besked",
+    open: "Åbn beskeden med fokus",
+    select: "Vælg beskeden med fokus, og gå ned",
+    space: "Mellemrum",
+    enter: "Enter",
+    escape: "Esc",
+    dismiss: "Luk en dialog eller menu",
+    context: "I Mail virker q og z først på afkrydsede beskeder og derefter på rækken med fokus eller den åbne besked. En sammenfoldet samtale omfatter alle dens beskeder. Genveje er inaktive, mens du skriver eller bruger menuer og dialoger.",
+  },
   tags: {
     important: 'Vigtigt',
     work: 'Arbejde',

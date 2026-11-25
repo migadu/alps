@@ -1,4 +1,19 @@
 export const es = {
+  shortcuts: {
+    title: "Atajos de teclado",
+    enabled: "Activar atajos de un solo carácter",
+    enabledHint: "Desactiva esta opción para desactivar q, z y ?. Siempre puedes abrir esta lista con el botón de ayuda.",
+    mail: "Correo",
+    navigation: "Navegación",
+    move: "Enfocar el mensaje siguiente o anterior",
+    open: "Abrir el mensaje enfocado",
+    select: "Seleccionar el mensaje enfocado y bajar",
+    space: "Espacio",
+    enter: "Intro",
+    escape: "Esc",
+    dismiss: "Cerrar un diálogo o menú",
+    context: "En el correo, q y z actúan primero sobre los mensajes marcados, después sobre la fila enfocada o el mensaje abierto. Una conversación contraída incluye todos sus mensajes. Los atajos están inactivos al escribir o al usar menús y diálogos.",
+  },
   settings: {
     saveFailed: 'No se pudo guardar ese ajuste: puede que no se conserve al cerrar sesión',
     title: 'Configuración',

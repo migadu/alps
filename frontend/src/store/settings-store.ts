@@ -66,6 +66,8 @@ export interface SettingsState {
   themeIframeContent: boolean;
   /** Pictures beside senders. A sender's verification is drawn either way. */
   showSenderAvatars: boolean;
+  /** Character shortcuts (q, z and ?); keyboard navigation is always available. */
+  keyboardShortcuts: boolean;
   hasThreadCapability?: boolean;
   hasESearchCapability?: boolean;
   /** The server pushes news of new mail to the mail page (see services/mail-push). */
@@ -89,6 +91,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   enableThreading: true,
   themeIframeContent: false,
   showSenderAvatars: true,
+  keyboardShortcuts: true,
   
   checkMailInterval: 5,
   autoLogout: 30,
@@ -142,6 +145,7 @@ const SERVER_FIELDS: { [K in keyof SettingsState]?: ServerField } = {
   enableThreading: { ui: true, name: 'enableThreading', value: s => s.enableThreading },
   themeIframeContent: { ui: true, name: 'themeIframeContent', value: s => s.themeIframeContent },
   showSenderAvatars: { ui: true, name: 'showSenderAvatars', value: s => s.showSenderAvatars },
+  keyboardShortcuts: { ui: true, name: 'keyboardShortcuts', value: s => s.keyboardShortcuts },
   customMailboxOrder: { ui: true, name: 'customMailboxOrder', value: s => s.customMailboxOrder },
   unsubscribedFolders: { ui: true, name: 'unsubscribedFolders', value: s => s.unsubscribedFolders },
   checkMailInterval: { name: 'check_mail_interval', value: s => Number(s.checkMailInterval) || 0 },
@@ -527,6 +531,7 @@ export class SettingsStore extends EventTarget {
       enableThreading: userSettings.enableThreading ?? globalSettings.enableThreading ?? DEFAULT_SETTINGS.enableThreading,
       themeIframeContent: userSettings.themeIframeContent ?? globalSettings.themeIframeContent ?? DEFAULT_SETTINGS.themeIframeContent,
       showSenderAvatars: userSettings.showSenderAvatars ?? globalSettings.showSenderAvatars ?? DEFAULT_SETTINGS.showSenderAvatars,
+      keyboardShortcuts: userSettings.keyboardShortcuts ?? globalSettings.keyboardShortcuts ?? DEFAULT_SETTINGS.keyboardShortcuts,
       customMailboxOrder: userSettings.customMailboxOrder ?? globalSettings.customMailboxOrder ?? DEFAULT_SETTINGS.customMailboxOrder,
       language: userSettings.language ?? globalSettings.language ?? DEFAULT_SETTINGS.language,
       loginUsername: username,
@@ -575,7 +580,8 @@ export class SettingsStore extends EventTarget {
       densityMode: this.state.densityMode,
       enableThreading: this.state.enableThreading,
       themeIframeContent: this.state.themeIframeContent,
-      showSenderAvatars: this.state.showSenderAvatars
+      showSenderAvatars: this.state.showSenderAvatars,
+      keyboardShortcuts: this.state.keyboardShortcuts
     };
     localStorage.setItem('alps_settings', JSON.stringify(globalSettings));
   }
@@ -701,6 +707,7 @@ export class SettingsStore extends EventTarget {
             if (ui.enableThreading !== undefined) updates.enableThreading = ui.enableThreading;
             if (ui.themeIframeContent !== undefined) updates.themeIframeContent = ui.themeIframeContent;
             if (ui.showSenderAvatars !== undefined) updates.showSenderAvatars = ui.showSenderAvatars;
+            if (ui.keyboardShortcuts !== undefined) updates.keyboardShortcuts = ui.keyboardShortcuts;
             if (ui.customMailboxOrder !== undefined) updates.customMailboxOrder = ui.customMailboxOrder;
             // Missing is empty: the server leaves an empty list out of the
             // record, and this browser's copy is older than the record.
@@ -1117,6 +1124,7 @@ export function clearSessionSettings(clearAuthCookies: boolean = true) {
       if (parsed.enableThreading !== undefined) preserved.enableThreading = parsed.enableThreading;
       if (parsed.themeIframeContent !== undefined) preserved.themeIframeContent = parsed.themeIframeContent;
       if (parsed.showSenderAvatars !== undefined) preserved.showSenderAvatars = parsed.showSenderAvatars;
+      if (parsed.keyboardShortcuts !== undefined) preserved.keyboardShortcuts = parsed.keyboardShortcuts;
       
       localStorage.setItem('alps_settings', JSON.stringify(preserved));
     } catch (e) {

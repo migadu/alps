@@ -29,6 +29,7 @@ import { canonicalRecipient, parseWrittenAddress } from '../utils/address-displa
 import { isSettingsHash } from '../utils/routes';
 import { pageHash, updateSettingsBackground } from '../utils/settings-history';
 import { motionStyles } from '../utils/motion';
+import { characterShortcutAllowed } from '../utils/keyboard-shortcuts';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -390,6 +391,7 @@ export class MailboxPage extends LitElement {
   @state() private mobileSidebarOpen = false;
 
   @state() private bulkProcessing = false;
+  private shortcutProcessing = false;
   @state() private computedMinListWidth = MESSAGE_LIST_WIDTH_MIN;
 
   private _mql = window.matchMedia('(max-width: 768px)');
@@ -705,6 +707,7 @@ export class MailboxPage extends LitElement {
     document.addEventListener('click', this.unlockAudio);
     document.addEventListener('keydown', this.unlockAudio);
     document.addEventListener('keydown', this.handleStrayArrow);
+    document.addEventListener('keydown', this.handleMessageShortcut);
 
     this._mql.addEventListener('change', this._handleMediaQuery);
     this._handleMediaQuery(this._mql);
@@ -743,6 +746,7 @@ export class MailboxPage extends LitElement {
     document.removeEventListener('click', this.unlockAudio);
     document.removeEventListener('keydown', this.unlockAudio);
     document.removeEventListener('keydown', this.handleStrayArrow);
+    document.removeEventListener('keydown', this.handleMessageShortcut);
 
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     this.settingsStore.removeEventListener('saved', this.handleSettingsSaved);
@@ -1284,6 +1288,60 @@ export class MailboxPage extends LitElement {
     if (!list) return;
     e.preventDefault();
     list.step(e.key === 'ArrowDown' ? 1 : -1);
+  };
+
+  /** Character shortcuts share the controls' operands and write/undo paths. */
+  private handleMessageShortcut = async (e: KeyboardEvent) => {
+    if ((e.key !== 'q' && e.key !== 'z') || e.shiftKey || !characterShortcutAllowed(e)) return;
+    if (this.settingsStore.getState().keyboardShortcuts === false || isSettingsHash(window.location.hash)) return;
+    if (this.shortcutProcessing || this.bulkProcessing || this.showDeleteConfirm || this.loadingMessages || this.listLoadFailed) return;
+    // A folder, page or search switch leaves the old rows up while it loads.
+    if (this.listedMailbox !== this.currentMailbox || this.listedPage !== this.currentPage || this.listedQuery !== this.filterQuery) return;
+    if (e.key === 'z' && !this.canArchiveHere) return;
+
+    const list = this.renderRoot.querySelector<MessageList>('alps-message-list');
+    const reader = this.renderRoot.querySelector<MessageReader>('alps-message-reader');
+    const isBulk = this.selectionCount > 0;
+    // A cursor left behind in the list does not override the reader the user
+    // is interacting with. Only a key from inside that list uses its cursor.
+    const fromList = !!list && e.composedPath().includes(list);
+    const focused = fromList ? list.focusedRowKeys : [];
+    const readerCurrent = !!reader?.message && !!this.selectedMessage
+      && this.keyOf(reader.message) === this.keyOf(this.selectedMessage);
+    let targets: string[];
+    if (isBulk) targets = [...this.selectedKeys];
+    else if (fromList) targets = focused;
+    else if (readerCurrent) {
+      if (e.key === 'q') targets = reader.markReadTargetKeys;
+      else targets = reader.toolbarIsConversation
+        ? reader.conversationUids.map(uid => messageKey(this.currentMailbox, uid))
+        : [this.keyOf(this.selectedMessage)];
+    } else return; // The reader has not rendered the newly opened message yet.
+    if (targets.length === 0 && !isBulk) return;
+
+    e.preventDefault();
+    this.shortcutProcessing = true;
+    try {
+      if (e.key === 'q') {
+        // Explicitly add Seen: the toolbar's markUnread verb is a toggle.
+        const result = await this.flagTargets(targets, [FLAG_SEEN], 'add');
+        if (!result.ok) this.reportFlagFailure(result);
+      } else {
+        const to = findMailboxNameByRole('archive', this.mailboxes, FOLDER_ARCHIVE);
+        if (!isBulk && focused.length > 0) {
+          const away = targets.filter(key => parseMessageKey(key).mailbox !== to);
+          if (away.length > 0) await this.fileDropped(away, to);
+        } else {
+          await this.fileAway(targets, to, isBulk, count => this.movedMessage(isBulk || targets.length > 1, count, to));
+        }
+      }
+    } catch (err) {
+      Logger.error('Keyboard message action failed', err);
+      this.reportActionFailed(e.key === 'q' ? 'toast.flagChangeFailed' : 'toast.moveFailed',
+        e.key === 'q' ? 'Could not update the messages' : 'Could not move that');
+    } finally {
+      this.shortcutProcessing = false;
+    }
   };
 
   private handleMailboxNotFound = () => {

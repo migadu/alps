@@ -81,7 +81,11 @@ export class UIModal extends LitElement {
       display: flex;
     }
 
+    .modal-dialog:modal { overscroll-behavior: contain; }
+
     .modal-dialog::backdrop {
+      overflow: hidden;
+      overscroll-behavior: contain;
       background: var(--modal-backdrop, rgba(255, 255, 255, 0.8));
     }
 
@@ -124,6 +128,11 @@ export class UIModal extends LitElement {
       dialog.showModal();
       modalOpened(dialog);
     }
+  }
+
+  /** Close natively so the browser restores focus to the invoker. */
+  close() {
+    this.shadowRoot?.querySelector('dialog')?.close();
   }
 
   /**
@@ -171,6 +180,9 @@ export class UIModal extends LitElement {
     if (this.dismissible) {
       // If clicking directly on the dialog (the backdrop), close it
       if (e.target === e.currentTarget) {
+        // Closing restores the invoker's focus; the pointer's default focus
+        // must not move it back onto the backdrop afterward.
+        e.preventDefault();
         e.stopPropagation();
         this.dispatchEvent(new CustomEvent('cancel', { bubbles: true, composed: true }));
       }
@@ -189,12 +201,12 @@ export class UIModal extends LitElement {
     // <h3> names it where it is drawn; where a header of the caller's own
     // replaces the <h3>, the heading is the dialog's label.
     return html`
-      <dialog class="modal-dialog"
+      <dialog class="modal-dialog" part="dialog"
         aria-labelledby=${this.heading && !this.ownHeader ? 'modal-title' : nothing}
         aria-label=${this.heading && this.ownHeader ? this.heading : nothing}
         aria-describedby=${this.bodyDescribes ? 'modal-body' : nothing}
         @pointerdown=${this._handleOverlayClick} @cancel=${this._handleEscape} @close=${this._handleDialogClose}>
-        <div class="modal-card" style="width: ${this.width};" @pointerdown=${(e: Event) => e.stopPropagation()}>
+        <div class="modal-card" part="card" style="width: ${this.width};" @pointerdown=${(e: Event) => e.stopPropagation()}>
           <slot name="header" @slotchange=${this._handleHeaderChange}>
             ${this.heading ? html`<h3 id="modal-title" class="modal-title ${this.isDanger ? 'danger' : ''}">${this.heading}</h3>` : ''}
           </slot>

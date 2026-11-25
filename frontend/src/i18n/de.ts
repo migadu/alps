@@ -1,6 +1,21 @@
 import type { TranslationDictionary } from './en';
 
 export const de: TranslationDictionary = {
+  shortcuts: {
+    title: "Tastenkürzel",
+    enabled: "Tastenkürzel mit einzelnen Zeichen aktivieren",
+    enabledHint: "Ausschalten, um q, z und ? zu deaktivieren. Diese Liste lässt sich jederzeit über die Hilfeschaltfläche öffnen.",
+    mail: "E-Mail",
+    navigation: "Navigation",
+    move: "Die nächste oder vorherige Nachricht fokussieren",
+    open: "Die fokussierte Nachricht öffnen",
+    select: "Die fokussierte Nachricht auswählen und nach unten wechseln",
+    space: "Leertaste",
+    enter: "Eingabetaste",
+    escape: "Esc",
+    dismiss: "Ein Dialogfeld oder Menü schließen",
+    context: "In E-Mail wirken q und z zuerst auf angekreuzte Nachrichten, dann auf die fokussierte Zeile oder die geöffnete Nachricht. Bei einer eingeklappten Unterhaltung sind alle ihre Nachrichten eingeschlossen. Beim Tippen sowie in Menüs und Dialogfeldern sind Tastenkürzel inaktiv.",
+  },
   settings: {
     saveFailed: 'Diese Einstellung konnte nicht gespeichert werden — sie überlebt das Abmelden möglicherweise nicht',
     title: 'Einstellungen',

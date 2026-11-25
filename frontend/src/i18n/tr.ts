@@ -1,4 +1,19 @@
 export const tr = {
+  shortcuts: {
+    title: "Klavye kısayolları",
+    enabled: "Tek karakterli kısayolları etkinleştir",
+    enabledHint: "q, z ve ? kısayollarını devre dışı bırakmak için kapatın. Bu listeyi yardım düğmesiyle her zaman açabilirsiniz.",
+    mail: "Posta",
+    navigation: "Gezinme",
+    move: "Sonraki veya önceki iletiye odaklan",
+    open: "Odaklanılan iletiyi aç",
+    select: "Odaklanılan iletiyi seç ve aşağı ilerle",
+    space: "Boşluk",
+    enter: "Enter",
+    escape: "Esc",
+    dismiss: "Bir iletişim kutusunu veya menüyü kapat",
+    context: "Posta’da q ve z önce işaretli iletilere, ardından odaklanılan satıra veya açık iletiye uygulanır. Daraltılmış bir konuşma tüm iletilerini kapsar. Yazarken veya menüler ve iletişim kutuları kullanılırken kısayollar devre dışıdır.",
+  },
   tags: {
     important: 'Önemli',
     work: 'İş',

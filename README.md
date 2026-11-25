@@ -117,6 +117,7 @@ Dive deeper into how ALPS works.
 - [Password Change](docs/PASSWORD_CHANGE.md): the password change plugin, through an HTTP endpoint or a command
 - [Attachment Handling](docs/ATTACHMENTS.md): attachment lifecycle, quotas, eviction and cleanup
 - [Search Syntax](docs/SEARCH.md): the search syntax
+- [Keyboard Shortcuts](docs/KEYBOARD_SHORTCUTS.md): mail actions, navigation, the shortcut list and disabling character shortcuts
 - [Localization and RTL](docs/LOCALIZATION.md): languages, adding a dictionary, how a language is picked, right-to-left layout, date and time settings
 
 ### Development

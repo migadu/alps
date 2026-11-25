@@ -1,4 +1,19 @@
 export const ptBR = {
+  shortcuts: {
+    title: "Atalhos de teclado",
+    enabled: "Ativar atalhos de um único caractere",
+    enabledHint: "Desative esta opção para desativar q, z e ?. Você sempre pode abrir esta lista com o botão de ajuda.",
+    mail: "E-mail",
+    navigation: "Navegação",
+    move: "Colocar o foco na mensagem seguinte ou anterior",
+    open: "Abrir a mensagem com foco",
+    select: "Selecionar a mensagem com foco e descer",
+    space: "Espaço",
+    enter: "Enter",
+    escape: "Esc",
+    dismiss: "Fechar uma caixa de diálogo ou um menu",
+    context: "No e-mail, q e z atuam primeiro nas mensagens marcadas e depois na linha com foco ou na mensagem aberta. Uma conversa recolhida inclui todas as suas mensagens. Os atalhos ficam inativos enquanto você digita ou usa menus e caixas de diálogo.",
+  },
   tags: {
     important: 'Importante',
     work: 'Trabalho',

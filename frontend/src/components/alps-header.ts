@@ -104,6 +104,25 @@ export class AlpsHeader extends LitElement {
       flex-shrink: 0;
     }
 
+    .shortcuts-help {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-inline-size: 28px;
+      min-block-size: 28px;
+      padding: 4px;
+      border: 1px solid var(--border-color, #e5e7eb);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-secondary, #4b5563);
+      font: inherit;
+      cursor: pointer;
+    }
+    .shortcuts-help:hover { background: var(--bg-tertiary, #f3f4f6); }
+    @media (pointer: coarse) {
+      .shortcuts-help { min-inline-size: 36px; min-block-size: 36px; }
+    }
+
     ::slotted([slot="center"]) {
       width: 100%;
     }
@@ -209,6 +228,11 @@ export class AlpsHeader extends LitElement {
         <div class="right-section">
           <slot name="right-actions"></slot>
           ${this.username ? html`
+            <button type="button" class="shortcuts-help"
+              title=${this.i18nStore?.t('shortcuts.title')}
+              aria-label=${this.i18nStore?.t('shortcuts.title')}
+              @click=${() => this.dispatchEvent(new CustomEvent('open-shortcuts', { bubbles: true, composed: true }))}
+            ><span aria-hidden="true">?</span></button>
             <user-profile-menu 
               .username=${this.username}
               .isMobile=${this.isMobile}
