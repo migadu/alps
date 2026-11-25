@@ -1,4 +1,19 @@
 export const id = {
+  shortcuts: {
+    title: "Pintasan keyboard",
+    enabled: "Aktifkan pintasan satu karakter",
+    enabledHint: "Nonaktifkan untuk menonaktifkan q, z, dan ?. Anda selalu dapat membuka daftar ini dengan tombol bantuan.",
+    mail: "Email",
+    navigation: "Navigasi",
+    move: "Fokuskan pesan berikutnya atau sebelumnya",
+    open: "Buka pesan yang difokuskan",
+    select: "Pilih pesan yang difokuskan dan pindah ke bawah",
+    space: "Spasi",
+    enter: "Enter",
+    escape: "Esc",
+    dismiss: "Tutup dialog atau menu",
+    context: "Di Email, q dan z berlaku pada pesan yang dicentang terlebih dahulu, lalu baris yang difokuskan atau pesan yang terbuka. Percakapan yang diciutkan mencakup semua pesannya. Pintasan tidak aktif saat mengetik atau menggunakan menu dan dialog.",
+  },
   tags: {
     important: 'Penting',
     work: 'Pekerjaan',

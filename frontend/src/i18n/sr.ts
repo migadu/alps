@@ -1,4 +1,19 @@
 export const sr = {
+  shortcuts: {
+    title: "Prečice na tastaturi",
+    enabled: "Omogući prečice sa jednim znakom",
+    enabledHint: "Isključite da biste onemogućili q, z i ?. Ovu listu uvek možete otvoriti dugmetom za pomoć.",
+    mail: "Pošta",
+    navigation: "Navigacija",
+    move: "Fokusiraj sledeću ili prethodnu poruku",
+    open: "Otvori fokusiranu poruku",
+    select: "Izaberi fokusiranu poruku i pomeri se naniže",
+    space: "Razmak",
+    enter: "Enter",
+    escape: "Esc",
+    dismiss: "Zatvori dijalog ili meni",
+    context: "U pošti, q i z prvo deluju na štiklirane poruke, a zatim na fokusirani red ili otvorenu poruku. Skupljeni razgovor obuhvata sve svoje poruke. Prečice su neaktivne tokom kucanja ili korišćenja menija i dijaloga.",
+  },
   settings: {
     saveFailed: 'Nije moguće sačuvati to podešavanje; možda neće preživeti odjavu',
     title: 'Podešavanja',

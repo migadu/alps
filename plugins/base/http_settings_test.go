@@ -57,6 +57,41 @@ func TestHTTP_SettingsKeepTheSenderAvatarChoice(t *testing.T) {
 	}
 }
 
+func TestHTTP_SettingsKeepTheKeyboardShortcutChoice(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+
+	saved := func() *bool {
+		t.Helper()
+		var got struct {
+			Settings struct {
+				UI struct {
+					KeyboardShortcuts *bool `json:"keyboardShortcuts"`
+				} `json:"ui"`
+			}
+		}
+		r := s.do("GET", "/settings", nil)
+		s.expect(r, http.StatusOK)
+		r.json(t, &got)
+		return got.Settings.UI.KeyboardShortcuts
+	}
+	if v := saved(); v != nil {
+		t.Fatal("a new account already has a keyboard shortcut choice")
+	}
+	s.expect(s.do("PUT", "/settings", map[string]any{"ui": map[string]any{"keyboardShortcuts": false}}), http.StatusOK)
+	if v := saved(); v == nil || *v {
+		t.Fatal("turning keyboard shortcuts off was not kept")
+	}
+	s.expect(s.do("PUT", "/settings", map[string]any{"ui": map[string]any{"themeMode": "dark"}}), http.StatusOK)
+	if v := saved(); v == nil || *v {
+		t.Fatal("saving another preference turned keyboard shortcuts on")
+	}
+	s.expect(s.do("PUT", "/settings", map[string]any{"ui": map[string]any{"keyboardShortcuts": true}}), http.StatusOK)
+	if v := saved(); v == nil || !*v {
+		t.Fatal("turning keyboard shortcuts back on was not kept")
+	}
+}
+
 // A record with a value this version reads as another type is read around
 // that value, and a save keeps the rest of the record.
 func TestHTTP_SettingsWithAValueOfAnotherTypeKeepTheRest(t *testing.T) {

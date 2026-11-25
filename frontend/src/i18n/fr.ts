@@ -1,4 +1,19 @@
 export const fr = {
+  shortcuts: {
+    title: "Raccourcis clavier",
+    enabled: "Activer les raccourcis à caractère unique",
+    enabledHint: "Désactivez cette option pour désactiver q, z et ?. Vous pouvez toujours ouvrir cette liste avec le bouton d’aide.",
+    mail: "Courrier",
+    navigation: "Navigation",
+    move: "Placer le focus sur le message suivant ou précédent",
+    open: "Ouvrir le message ayant le focus",
+    select: "Sélectionner le message ayant le focus et descendre",
+    space: "Espace",
+    enter: "Entrée",
+    escape: "Échap",
+    dismiss: "Fermer une boîte de dialogue ou un menu",
+    context: "Dans le courrier, q et z agissent d’abord sur les messages cochés, puis sur la ligne ayant le focus ou le message ouvert. Une conversation repliée inclut tous ses messages. Les raccourcis sont inactifs pendant la saisie ou dans les menus et les boîtes de dialogue.",
+  },
   settings: {
     saveFailed: 'Impossible d’enregistrer ce réglage — il pourrait ne pas survivre à la déconnexion',
     title: 'Paramètres',

@@ -1,4 +1,19 @@
 export const en = {
+  shortcuts: {
+    title: "Keyboard shortcuts",
+    enabled: "Enable character shortcuts",
+    enabledHint: "Turn off to disable q, z and ?. You can always open this list with the help button.",
+    mail: "Mail",
+    navigation: "Navigation",
+    move: "Focus the next or previous message",
+    open: "Open the focused message",
+    select: "Select the focused message and move down",
+    space: "Space",
+    enter: "Enter",
+    escape: "Esc",
+    dismiss: "Close a dialog or menu",
+    context: "In Mail, q and z act on checked messages first, then the focused row or open message. A collapsed conversation includes all its messages. Shortcuts are inactive while typing or using menus and dialogs.",
+  },
   tags: {
     important: 'Important',
     work: 'Work',

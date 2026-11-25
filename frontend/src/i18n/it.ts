@@ -1,4 +1,19 @@
 export const it = {
+  shortcuts: {
+    title: "Scorciatoie da tastiera",
+    enabled: "Abilita le scorciatoie a carattere singolo",
+    enabledHint: "Disattiva questa opzione per disabilitare q, z e ?. Puoi sempre aprire questo elenco con il pulsante di aiuto.",
+    mail: "Posta",
+    navigation: "Navigazione",
+    move: "Sposta il focus sul messaggio successivo o precedente",
+    open: "Apri il messaggio con il focus",
+    select: "Seleziona il messaggio con il focus e spostati in basso",
+    space: "Spazio",
+    enter: "Invio",
+    escape: "Esc",
+    dismiss: "Chiudi una finestra di dialogo o un menu",
+    context: "Nella posta, q e z agiscono prima sui messaggi spuntati, poi sulla riga con il focus o sul messaggio aperto. Una conversazione compressa include tutti i suoi messaggi. Le scorciatoie sono inattive durante la digitazione o mentre si usano menu e finestre di dialogo.",
+  },
   settings: {
     saveFailed: 'Impossibile salvare questa impostazione — potrebbe non sopravvivere alla disconnessione',
     title: 'Impostazioni',

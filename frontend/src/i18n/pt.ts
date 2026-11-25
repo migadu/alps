@@ -1,4 +1,19 @@
 export const pt = {
+  shortcuts: {
+    title: "Atalhos de teclado",
+    enabled: "Ativar atalhos de um só caráter",
+    enabledHint: "Desative esta opção para desativar q, z e ?. Pode sempre abrir esta lista com o botão de ajuda.",
+    mail: "Correio",
+    navigation: "Navegação",
+    move: "Colocar o foco na mensagem seguinte ou anterior",
+    open: "Abrir a mensagem com foco",
+    select: "Selecionar a mensagem com foco e descer",
+    space: "Espaço",
+    enter: "Enter",
+    escape: "Esc",
+    dismiss: "Fechar uma caixa de diálogo ou um menu",
+    context: "No correio, q e z atuam primeiro nas mensagens assinaladas e depois na linha com foco ou na mensagem aberta. Uma conversa recolhida inclui todas as suas mensagens. Os atalhos ficam inativos enquanto escreve ou utiliza menus e caixas de diálogo.",
+  },
   settings: {
     saveFailed: 'Não foi possível guardar esta definição — pode não sobreviver ao fim da sessão',
     title: 'Definições',

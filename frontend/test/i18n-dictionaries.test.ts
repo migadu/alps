@@ -439,6 +439,8 @@ const LATIN_IN_CYRILLIC = new Set([
   // The 12-hour clock's markers, which the browser prints in Latin too. A size's
   // unit is not one of these: rs writes "КБ", as formatSize prints it.
   'AM/PM',
+  // Literal keyboard characters and key labels in the shortcut reference.
+  'q', 'z', 'Enter', 'Esc',
   // A product, by its own name.
   'YubiKey',
 ]);

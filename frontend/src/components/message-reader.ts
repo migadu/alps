@@ -327,6 +327,12 @@ export class MessageReader extends LitElement {
       .map(item => this.itemKey(item));
   }
 
+  /** The explicit mark-read shortcut's operand, without the toolbar's unread toggle. */
+  get markReadTargetKeys(): string[] {
+    if (this.toolbarIsConversation) return this.unreadKeys;
+    return this.message?.UID ? [this.keyOf(this.message)] : [];
+  }
+
   /**
    * Which way the toolbar's read toggle points — true for "Mark as read" — by
    * what the toolbar is about: the checked rows, the conversation, or the open

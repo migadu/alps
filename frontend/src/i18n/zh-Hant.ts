@@ -1,4 +1,19 @@
 export const zhHant = {
+  shortcuts: {
+    title: "鍵盤快捷鍵",
+    enabled: "啟用單字元快捷鍵",
+    enabledHint: "關閉此選項以停用 q、z 和 ?。您隨時可以透過說明按鈕開啟此清單。",
+    mail: "郵件",
+    navigation: "導覽",
+    move: "將焦點移至下一封或上一封郵件",
+    open: "開啟焦點所在的郵件",
+    select: "選取焦點所在的郵件並向下移動",
+    space: "空白鍵",
+    enter: "Enter",
+    escape: "Esc",
+    dismiss: "關閉對話方塊或選單",
+    context: "在郵件中，q 和 z 優先作用於已勾選的郵件，其次是焦點所在的列或開啟的郵件。摺疊的對話包含其中的所有郵件。輸入文字或使用選單和對話方塊時，快捷鍵不會生效。",
+  },
   tags: {
     important: '重要',
     work: '工作',
