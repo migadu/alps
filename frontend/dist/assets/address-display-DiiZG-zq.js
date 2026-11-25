@@ -1,0 +1,14 @@
+import{x as e,y as t}from"./lit-Drqu7DG3.js";import{c as n}from"./alps-button-DC-ocZ2C.js";import{b as r,m as i,x as a,y as o}from"./settings-store-C_JSnBeo.js";var s=/\p{Bidi_Control}/gu;function c(e){let t=[];/\p{Bidi_Control}/u.test(e)&&t.push(`directional-control`);let n=e.lastIndexOf(`@`);if(n<0)return t;a(e.slice(0,n).replace(s,``))||t.push(`mixed-script-local`);let i=r(e.slice(n+1).replace(s,``)).warning;return i&&t.push(i),t}function l(e){let t=c(e)[0]??null,n=e.lastIndexOf(`@`);if(n<0)return{text:e,ascii:e,warning:t};let i=e.slice(0,n),a=r(e.slice(n+1));return{text:`${i}@${a.text}`,ascii:`${i}@${a.ascii}`,warning:t}}function u(e){let t=e.trim();if(t.endsWith(`>`)){let e=t.lastIndexOf(`<`);if(e!==-1){let n=t.slice(e+1,-1).trim(),r=t.slice(0,e).trim();return r=/^".*"$/s.test(r)?r.slice(1,-1).replace(/\\(.)/gs,`$1`).trim():r.replace(/^"|"$/g,``).trim(),{name:r,email:n}}}return{name:``,email:t}}var d=/[()<>[\]:;@\\,."]|=\?/;function f(e,t){return e?d.test(e)?`"${e.replace(/["\\]/g,`\\$&`)}" <${t}>`:`${e} <${t}>`:t}function p(e){let t=e.trim(),n=t.endsWith(`>`)?t.lastIndexOf(`<`):-1,r=n===-1?t:t.slice(n+1,-1).trim(),i=o(r);return i===null||i===r?t:n===-1?i:`${t.slice(0,n+1)}${i}>`}function m(e){let n=l(e),r=n.text.lastIndexOf(`@`);if(!c(e).includes(`mixed-script-local`))return i(n.text);let a=Array.from(n.text.slice(0,r),e=>/[^\x00-\x7f]/.test(e)&&!/\p{Bidi_Control}/u.test(e)?t`<mark class="mixed-script">${e}</mark>`:e);return i(t`${a}${n.text.slice(r)}`)}var h=e`
+  .address-warning {
+    unicode-bidi: isolate;
+    margin-inline-start: .35em;
+    font-size: .85em;
+    white-space: nowrap;
+  }
+  mark.mixed-script {
+    background: color-mix(in srgb, var(--warning, #f59e0b) 25%, var(--bg-primary, #ffffff));
+    color: inherit;
+    text-decoration: underline;
+  }
+`;function g(e,t){return e.replace(/\{(\w+)\}/g,(e,n)=>t[n]??e)}function _(e,t){switch(e){case`directional-control`:return{label:t?.t(`address.directionalControl`)??n.address.directionalControl,tooltip:t?.t(`address.directionalControlTooltip`)??n.address.directionalControlTooltip};case`mixed-script-local`:case`mixed-script-domain`:return{label:t?.t(`address.mixedScript`)??n.address.mixedScript,tooltip:t?.t(`address.mixedScriptTooltip`)??n.address.mixedScriptTooltip};case`unusual-domain`:return{label:t?.t(`address.unusualDomain`)??n.address.unusualDomain,tooltip:t?.t(`address.unusualDomainTooltip`)??n.address.unusualDomainTooltip}}}function v(e,i){let a=c(e);if(!a.length)return``;let o=_(a[0],i).label,l=[...new Set(a.map(e=>_(e,i).tooltip))],u=e.slice(e.lastIndexOf(`@`)+1).replace(s,``),d=r(u);if(d.warning===`mixed-script-domain`&&u.toLowerCase()!==d.ascii){let e={domain:u,ascii:d.ascii};l.push(i?.t(`address.mixedScriptAscii`,e)??g(n.address.mixedScriptAscii,e))}return t`<span class="address-warning" title=${l.join(`
+`)}>⚠ ${o}</span>`}export{h as a,l as i,v as n,u as o,p as r,f as s,m as t};
