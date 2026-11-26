@@ -12,7 +12,6 @@ test.afterEach(async ({ page }) => {
 });
 
 test("returning to Contacts reuses its recent listing", async ({ page }) => {
-  test.fail();
   const id = unique();
   const name = `Kept contact ${id}`;
   const email = `kept.${id}@example.test`;
@@ -38,7 +37,6 @@ test("returning to Contacts reuses its recent listing", async ({ page }) => {
 });
 
 test("a slow refresh keeps the loaded contacts selectable", async ({ page }) => {
-  test.fail();
   const id = unique();
   const name = `Selectable contact ${id}`;
   const email = `selectable.${id}@example.test`;

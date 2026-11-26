@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../../plugins/carddav/frontend/contacts-page';
 import { contactsService } from '../../plugins/carddav/frontend/contacts-service';
 import { endBoot } from '../src/utils/boot-splash';
+import { HttpStatusError } from '../src/utils/fetch-utils';
 import { cleanup, flush, mount, shadow, waitFor } from './helpers/dom';
 
 type Page = HTMLElement & Record<string, any>;
@@ -79,7 +80,7 @@ async function useExistingRow(page: Page): Promise<void> {
 }
 
 describe('returning to Contacts', () => {
-  it.fails('reuses a recent book for five minutes by default and follows the new address', async () => {
+  it('reuses a recent book for five minutes by default and follows the new address', async () => {
     const page = await open();
     leave(page);
     now += 4 * 60_000;
@@ -91,7 +92,7 @@ describe('returning to Contacts', () => {
     await useExistingRow(page);
   });
 
-  it.fails('uses the configured check-mail interval as the freshness window', async () => {
+  it('uses the configured check-mail interval as the freshness window', async () => {
     const page = await open(15);
     leave(page);
     now += 6 * 60_000;
@@ -101,7 +102,7 @@ describe('returning to Contacts', () => {
     expect(contactsService.fetchContacts).toHaveBeenCalledTimes(1);
   });
 
-  it.fails('also reuses a successfully empty address book', async () => {
+  it('also reuses a successfully empty address book', async () => {
     vi.mocked(contactsService.fetchContacts).mockResolvedValue({ contacts: [] });
     const page = await open();
     leave(page);
@@ -126,7 +127,7 @@ describe('returning to Contacts', () => {
     expect(contactsService.fetchContacts).toHaveBeenCalledTimes(2);
   });
 
-  it.fails('refreshes an old book without dimming or disabling its existing rows', async () => {
+  it('refreshes an old book without dimming or disabling its existing rows', async () => {
     const page = await open(1);
     leave(page);
     now += 60_001;
@@ -141,7 +142,7 @@ describe('returning to Contacts', () => {
     expect(page.selectedContact?.path).toBe(ADA.path);
   });
 
-  it.fails('settles an abandoned refresh when a recent book is reused on return', async () => {
+  it('settles an abandoned refresh when a recent book is reused on return', async () => {
     const page = await open();
     const release = holdNextRead();
     shadow<List>(page, 'alps-contacts-list').dispatchEvent(new CustomEvent('refresh'));
@@ -160,7 +161,26 @@ describe('returning to Contacts', () => {
 });
 
 describe('refreshing a loaded contact list', () => {
-  it.fails('keeps a star and its new version when an older listing arrives after the write', async () => {
+  it('accepts a refreshed card after a definitively refused star is rolled back', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(contactsService, 'updateCategories').mockRejectedValue(new HttpStatusError(403, 'refused'));
+    const page = await open();
+    const release = holdNextRead();
+    const list = shadow<List>(page, 'alps-contacts-list');
+    list.dispatchEvent(new CustomEvent('refresh'));
+    await render(page);
+
+    shadow<HTMLElement>(list, '.star-btn').click();
+    await waitFor(() => errors.mock.calls.length === 1 && !page.contacts[0].categories.includes('Favorites'), 'the refused star to roll back');
+    release([{ ...ADA, name: 'Ada changed elsewhere', etag: 'v2' }, BOB]);
+    await waitFor(() => !page.loading, 'the refreshed card');
+    await render(page);
+
+    expect(page.contacts[0]).toMatchObject({ name: 'Ada changed elsewhere', categories: ['Work'], etag: 'v2' });
+    expect(shadow<HTMLElement>(list, '.star-btn').classList.contains('starred')).toBe(false);
+  });
+
+  it('keeps a star and its new version when an older listing arrives after the write', async () => {
     const write = vi.spyOn(contactsService, 'updateCategories').mockResolvedValue({ ok: 'true', path: ADA.path, etag: 'v2' });
     const page = await open();
     const release = holdNextRead();
@@ -181,7 +201,7 @@ describe('refreshing a loaded contact list', () => {
     expect(page.contacts[1].name).toBe('Bob changed elsewhere');
   });
 
-  it.fails('keeps an optimistic star when the older listing arrives before the write finishes', async () => {
+  it('keeps an optimistic star when the older listing arrives before the write finishes', async () => {
     let finishWrite!: (value: { ok: string; path: string; etag: string }) => void;
     const writing = new Promise<{ ok: string; path: string; etag: string }>(resolve => { finishWrite = resolve; });
     const write = vi.spyOn(contactsService, 'updateCategories').mockReturnValue(writing);
@@ -221,7 +241,7 @@ describe('refreshing a loaded contact list', () => {
     await useExistingRow(page);
   });
 
-  it.fails('keeps rows usable during an explicit refresh', async () => {
+  it('keeps rows usable during an explicit refresh', async () => {
     const page = await open();
     const release = holdNextRead();
 
@@ -234,7 +254,7 @@ describe('refreshing a loaded contact list', () => {
     await waitFor(() => !page.loading, 'the manual refresh');
   });
 
-  it.fails('keeps rows usable during a scheduled refresh', async () => {
+  it('keeps rows usable during a scheduled refresh', async () => {
     const intervals = vi.spyOn(globalThis, 'setInterval');
     const page = await open(1);
     const poll = intervals.mock.calls.find(([, delay]) => delay === 60_000)?.[0];
