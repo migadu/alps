@@ -1,4 +1,4 @@
-import{i as e}from"./fetch-utils-CrnODyIe.js";import{d as t,f as n,g as r,l as i,x as a,y as o}from"./lit-Drqu7DG3.js";import{a as s,t as c}from"./alps-button-DC-ocZ2C.js";import"./index-B27Lj9Nj.js";var l=class extends r{constructor(...e){super(...e),this.passwordForm={old:``,new:``,confirm:``},this.isSubmitting=!1}static{this.styles=a`
+import{i as e}from"./fetch-utils-CrnODyIe.js";import{d as t,f as n,g as r,l as i,x as a,y as o}from"./lit-Drqu7DG3.js";import{a as s,t as c}from"./alps-button-DC-ocZ2C.js";import"./index-o54DStUh.js";var l=class extends r{constructor(...e){super(...e),this.passwordForm={old:``,new:``,confirm:``},this.isSubmitting=!1}static{this.styles=a`
 		input[type="password"] {
 			width: 100%;
 			box-sizing: border-box;
