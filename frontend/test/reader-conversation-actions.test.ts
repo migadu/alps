@@ -620,6 +620,61 @@ describe('reading a conversation', () => {
     expect(readWrites()).toHaveLength(1);
   });
 
+  it('keeps an expanded card marked unread until it is opened again', async () => {
+    const el = await openConversation({ members: [older([]), reply(), newer()] });
+    expect(readWrites()).toHaveLength(1);
+    expect(expanded(el, 'INBOX', '5')).toBe(true);
+    server.flagWrites = [];
+
+    window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
+      detail: { keys: [messageKey('INBOX', '5')], flag: SEEN, action: 'remove' },
+    }));
+    await settle();
+    await update(el, { messages: [{ ...older([]), SubMessages: [newer()] }] });
+    await settle();
+
+    expect(card(el, 'INBOX', '5').item.message.Flags).not.toContain(SEEN);
+    expect(expanded(el, 'INBOX', '5')).toBe(true);
+    expect(readWrites()).toEqual([]);
+
+    const toggle = () => {
+      const first = card(el, 'INBOX', '5');
+      first.dispatchEvent(new CustomEvent('toggle-expansion', { detail: { item: first.item } }));
+    };
+    toggle();
+    await settle();
+    toggle();
+    await settle();
+
+    expect(card(el, 'INBOX', '5').item.message.Flags).toContain(SEEN);
+    expect(readWrites()).toEqual([{ mailbox: 'INBOX', uids: ['5'], flags: [SEEN], action: 'add' }]);
+  });
+
+  it('keeps a newer unread choice after an earlier automatic read finishes', async () => {
+    let answer!: (response: Response) => void;
+    const normal = fetch;
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/mailboxes/INBOX/messages/flag') {
+        const body = JSON.parse(String(init?.body));
+        server.flagWrites.push({ mailbox: 'INBOX', ...body });
+        return new Promise<Response>(resolve => { answer = resolve; });
+      }
+      return normal(url, init);
+    }));
+    const el = await openConversation({ members: [older([]), reply(), newer()] });
+    await waitFor(() => !!answer, 'the pending automatic read');
+
+    window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
+      detail: { keys: [messageKey('INBOX', '5')], flag: SEEN, action: 'remove' },
+    }));
+    await settle();
+    answer(json({ ok: true }));
+    await settle();
+
+    expect(card(el, 'INBOX', '5').item.message.Flags).not.toContain(SEEN);
+    expect(readWrites()).toHaveLength(1);
+  });
+
   describe('a flag on a card the list does not hold', () => {
     // The reply from Sent is no row of the list, so the cards rebuilt on a
     // list change take it from the conversation the server returned, which

@@ -351,6 +351,32 @@ test("opening an unread message marks it read", async ({ page }) => {
   await expect(page.locator("alps-message-reader").getByRole("button", { name: "Mark as unread" })).toBeVisible();
 });
 
+for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+  test(`marking a message unread keeps it open at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const subject = `Keep unread ${viewport.width} ${Date.now()}`;
+    const body = "Keep these notes open for later.";
+    await deliver({
+      subject,
+      raw: rfc822(subject, ["Content-Type: text/plain; charset=utf-8"], body),
+    });
+
+    await login(page);
+    await openMessage(page, subject);
+    await expect(bodyText(page)).toContainText(body);
+    const reader = page.locator("alps-message-reader");
+    await reader.getByRole("button", { name: "Mark as unread", exact: true }).click();
+
+    await expect(row(page, subject)).toHaveClass(/\bunread\b/);
+    await expect(bodyText(page)).toContainText(body);
+    await expect(reader.getByRole("button", { name: "Mark as read", exact: true })).toBeVisible();
+
+    await reader.getByRole("button", { name: "Mark as read", exact: true }).click();
+    await expect(row(page, subject)).not.toHaveClass(/\bunread\b/);
+    await expect(bodyText(page)).toContainText(body);
+  });
+}
+
 test("reopening a message already read still renders its body", async ({ page }) => {
   // The second open of a message is served from the reader's message cache
   // rather than the server, and that is a separate render path in

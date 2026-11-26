@@ -213,15 +213,51 @@ describe('a card\'s own verbs', () => {
     expect(opened).toHaveBeenCalledWith('#/original?mailbox=Sent&uid=7', '_blank');
   });
 
-  it('mark the named message unread, and go back to the list', async () => {
+  it('mark the named message unread, and keep the conversation open', async () => {
     const el = await page();
+    const went = navigations(el);
 
     await act(el, { action: 'markUnread', uid: '5', mailbox: 'INBOX' });
 
     expect(writes()).toEqual([{
       url: '/mailboxes/INBOX/messages/flag', method: 'PUT', body: { uids: ['5'], flags: [SEEN], action: 'remove' },
     }]);
-    expect(el.selectedMessage).toBeNull();
+    expect(el.selectedMessage).toBe(open);
+    expect(el.messages[0].Flags).not.toContain(SEEN);
+    expect(went).toEqual([]);
+  });
+
+  it('mark an off-list Sent reply unread in its card, and keep the open message', async () => {
+    const el = await page();
+    const reader = el.shadowRoot!.querySelector('alps-message-reader') as El;
+    const sent = { UID: '7', Mailbox: 'Sent', Flags: [SEEN], Envelope: { Subject: 'Re: Engines' } };
+    reader._conversation = { key: messageKey('INBOX', open.UID), messages: [el.messages[0], sent, open] };
+    reader.threadItems = [...reader.threadItems, { message: sent, mailbox: 'Sent', expanded: true }];
+    await reader.updateComplete;
+    const went = navigations(el);
+
+    await act(el, { action: 'markUnread', uid: '7', mailbox: 'Sent' });
+
+    expect(writes()).toEqual([{
+      url: '/mailboxes/Sent/messages/flag', method: 'PUT', body: { uids: ['7'], flags: [SEEN], action: 'remove' },
+    }]);
+    expect(reader.threadItems.find((item: any) => item.mailbox === 'Sent' && item.message.UID === '7')?.message.Flags).toEqual([]);
+    expect(el.selectedMessage).toBe(open);
+    expect(went).toEqual([]);
+  });
+
+  it('leave a refused mark as unread read, and keep the conversation open', async () => {
+    const el = await page();
+    const went = navigations(el);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    flagStatus = 403;
+
+    await act(el, { action: 'markUnread', uid: '5', mailbox: 'INBOX' });
+
+    expect(el.messages[0].Flags).toContain(SEEN);
+    expect(el.selectedMessage).toBe(open);
+    expect(went).toEqual([]);
+    expect(toasts.map(t => t.detail.message)).toContain('toast.flagChangeFailed');
   });
 
   describe('Delete', () => {
@@ -366,6 +402,91 @@ describe('a card\'s own verbs', () => {
   });
 });
 
+describe('the open message\'s read toggle', () => {
+  it('marks the message unread in the list and reader, without navigating', async () => {
+    const el = await page();
+    const went = navigations(el);
+
+    await act(el, { action: 'markUnread' });
+
+    expect(writes()).toEqual([{
+      url: '/mailboxes/INBOX/messages/flag', method: 'PUT', body: { uids: ['9'], flags: [SEEN], action: 'remove' },
+    }]);
+    expect(el.selectedMessage?.UID).toBe(9);
+    expect(el.selectedMessage?.Flags).not.toContain(SEEN);
+    expect(el.messages[0].SubMessages[0].Flags).not.toContain(SEEN);
+    expect(went).toEqual([]);
+  });
+
+  it('keeps the message and its read state when the write is refused', async () => {
+    const el = await page();
+    const went = navigations(el);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    flagStatus = 403;
+
+    await act(el, { action: 'markUnread' });
+
+    expect(el.selectedMessage).toBe(open);
+    expect(el.selectedMessage.Flags).toContain(SEEN);
+    expect(el.messages[0].SubMessages[0].Flags).toContain(SEEN);
+    expect(went).toEqual([]);
+    expect(toasts.map(t => t.detail.message)).toContain('toast.flagChangeFailed');
+  });
+
+  it('leaves a message opened during the unread write open', async () => {
+    const el = await page();
+    const went = navigations(el);
+    let answer!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise<Response>(resolve => { answer = resolve; }));
+    const pending = el._handleReaderAction(new CustomEvent('action', { detail: { action: 'markUnread' } }));
+    const next = { UID: '12', Mailbox: 'INBOX', Flags: [SEEN], Envelope: { Subject: 'Next' } };
+    el.messages = [...el.messages, next];
+    el.selectedMessage = next;
+    await el.updateComplete;
+
+    answer(json({ ok: true }));
+    await pending;
+    await flush();
+
+    expect(el.selectedMessage).toBe(next);
+    expect(el.messages[0].SubMessages[0].Flags).not.toContain(SEEN);
+    expect(went).toEqual([]);
+  });
+
+  it('cancels a delayed automatic read after the message is marked read then unread by hand', async () => {
+    const el = await page();
+    const unread = { ...open, Flags: [] };
+    el.selectedMessage = unread;
+    el.messages = [{ ...conversationRow(), SubMessages: [unread] }];
+    el.settingsStore.getState().markReadTimeout = 1;
+    await el.updateComplete;
+    await flush();
+    requests = [];
+    vi.useFakeTimers();
+    try {
+      el._scheduleMarkAsRead(unread);
+      await el._handleReaderAction(new CustomEvent('action', { detail: { action: 'markUnread' } }));
+      expect(el.selectedMessage.Flags).toContain(SEEN);
+      let answer!: (response: Response) => void;
+      vi.mocked(fetch).mockImplementationOnce((input, init) => {
+        requests.push({ url: String(input), method: init?.method || 'GET', body: JSON.parse(String(init?.body)) });
+        return new Promise<Response>(resolve => { answer = resolve; });
+      });
+      const pending = el._handleReaderAction(new CustomEvent('action', { detail: { action: 'markUnread' } }));
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      answer(json({ ok: true }));
+      await pending;
+
+      expect(writes().map(w => w.body.action)).toEqual(['add', 'remove']);
+      expect(el.selectedMessage.Flags).not.toContain(SEEN);
+      expect(el.messages[0].SubMessages[0].Flags).not.toContain(SEEN);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('a flag change the reader reports', () => {
   it('reaches a thread\'s other rows, which the list draws on their own', async () => {
     const el = await page();
@@ -376,6 +497,27 @@ describe('a flag change the reader reports', () => {
     expect(el.messages[0].SubMessages[0].Flags).not.toContain(SEEN);
     expect(el.messages[0].Flags).toEqual([SEEN]);
     expect(told).toHaveLength(1);
+  });
+
+  it('leaves an off-list reply unread when the mark-read shortcut write is refused', async () => {
+    const el = await page();
+    const reader = el.shadowRoot!.querySelector('alps-message-reader') as El;
+    reader.settingsStore = el.settingsStore;
+    await reader.updateComplete;
+    const sent = { UID: '7', Mailbox: 'Sent', Flags: [], Envelope: { Subject: 'Re: Engines' } };
+    reader._conversation = { key: messageKey('INBOX', open.UID), messages: [el.messages[0], sent, open] };
+    reader.threadItems = [...reader.threadItems, { message: sent, mailbox: 'Sent', expanded: true }];
+    await reader.updateComplete;
+    flagStatus = 403;
+
+    const result = await el.flagTargets(reader.markReadTargetKeys, [SEEN], 'add');
+    await flush();
+
+    expect(result.ok).toBe(false);
+    expect(writes()).toEqual([{
+      url: '/mailboxes/Sent/messages/flag', method: 'PUT', body: { uids: ['7'], flags: [SEEN], action: 'add' },
+    }]);
+    expect(reader.threadItems.find((item: any) => item.mailbox === 'Sent' && item.message.UID === '7')?.message.Flags).toEqual([]);
   });
 });
 
