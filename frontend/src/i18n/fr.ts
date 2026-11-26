@@ -2,7 +2,7 @@ export const fr = {
   shortcuts: {
     title: "Raccourcis clavier",
     enabled: "Activer les raccourcis à caractère unique",
-    enabledHint: "Désactivez cette option pour désactiver q, z et ?. Vous pouvez toujours ouvrir cette liste avec le bouton d’aide.",
+    enabledHint: "Désactivez cette option pour désactiver q, z et ?. Vous pouvez toujours ouvrir cette liste depuis le menu du compte.",
     mail: "Courrier",
     navigation: "Navigation",
     move: "Placer le focus sur le message suivant ou précédent",

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/app-root';
 import { registry } from '../src/plugin-registry';
 import { characterShortcutAllowed } from '../src/utils/keyboard-shortcuts';
+import type { AlpsHeader } from '../src/components/alps-header';
 import { cleanup, flush, mount, shadow } from './helpers/dom';
 
 type El = HTMLElement & Record<string, any>;
@@ -64,7 +65,7 @@ describe('shortcut help', () => {
     expect(help(app)).toBeNull();
   });
 
-  it('saves the opt-out and keeps the clickable help entry available', async () => {
+  it('saves the opt-out and keeps help available through the account menu', async () => {
     const app = await shell();
     const save = vi.spyOn(app.settingsStore, 'updateSettings');
     const el = await openHelp(app);
@@ -77,13 +78,24 @@ describe('shortcut help', () => {
     expect(press(document.body).defaultPrevented).toBe(false);
     expect(help(app)).toBeNull();
 
-    const header = await mount<El>('alps-header', { username: 'ada@example.com', i18nStore: app.i18nStore });
-    const button = shadow<HTMLButtonElement>(header, '.shortcuts-help');
-    expect(button.getAttribute('aria-label')).toBe('Keyboard shortcuts');
-    expect(button.textContent?.trim()).toBe('?');
-    header.addEventListener('open-shortcuts', () => app.dispatchEvent(new Event('open-shortcuts')));
+    const header = document.createElement('alps-header') as AlpsHeader;
+    header.username = 'ada@example.com';
+    app.shadowRoot!.append(header);
+    await header.updateComplete;
+    expect(header.shadowRoot!.querySelector('.shortcuts-help')).toBeNull();
+    const menu = shadow<El>(header, 'user-profile-menu');
+    await menu.updateComplete;
+    const popup = shadow<El>(menu, 'alps-popup');
+    popup.open();
+    await popup.updateComplete;
+    const button = shadow<HTMLButtonElement>(menu, '.shortcut-help');
+    expect(button.querySelector('.item-text')?.textContent).toBe('Keyboard shortcuts');
+    expect(button.querySelector('kbd')?.textContent).toBe('?');
+    expect(button.querySelector('kbd')?.getAttribute('aria-hidden')).toBe('true');
     button.click();
+    await popup.updateComplete;
     await app.updateComplete;
+    expect(popup.openState).toBe(false);
     expect(help(app)).not.toBeNull();
   });
 

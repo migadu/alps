@@ -225,7 +225,7 @@ The browser allows five minutes to receive response headers and a further five m
 ### Background Polling
 CalDAV and CardDAV have no push connection like IMAP IDLE, so the pages poll. There is no separate sync interval. While the Calendar, Tasks or Contacts page is open, it reloads its data every **Check mail interval** minutes, the mail setting in Settings > General (1, 5, 15 or 30 minutes; default 5).
 
-Leaving the page stops its timer, so nothing refreshes calendars, tasks or contacts while the user is in Mail. Coming back loads fresh data.
+Leaving the page stops its timer, so nothing refreshes calendars, tasks or contacts while the user is in Mail. Coming back to Calendar or Tasks loads fresh data. Contacts reuses its last successful listing when it is newer than the **Check mail interval** (five minutes when no interval is set); an older or failed listing is refreshed on return. Refreshing the same contact list keeps its existing rows usable while the new data loads. The refresh button always requests new data.
 
 ### Address Suggestions and Saved Recipients
 With carddav on and a CardDAV server for the account, every To, Cc and Bcc recipient of a sent message is saved to the user's first address book. A recipient whose address is already in it (matched ignoring case) is left alone.

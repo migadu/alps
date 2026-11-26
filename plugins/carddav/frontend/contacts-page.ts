@@ -102,6 +102,8 @@ export class ContactsPage extends LitElement {
   private readEpoch = 0;
   /** The search `contacts` answers: '' when it holds the whole book. */
   private loadedQuery = '';
+  /** A successful listing, including an empty book, can be reused on return. */
+  private lastLoadedAt: number | null = null;
   /** The whole book as last read, beside a search or without one; see allContacts. */
   private wholeBook: any[] = [];
   /**
@@ -331,7 +333,19 @@ export class ContactsPage extends LitElement {
     this.classList.add('density-compact');
     this.loadAddedCategories();
     window.addEventListener('alps-active-user-changed', this.handleSaveOwnerChange);
-    this.fetchContacts();
+    const interval = this.settingsStore?.getState().checkMailInterval;
+    const freshFor = (interval && interval > 0 ? interval : 5) * 60_000;
+    if (this.lastLoadedAt !== null && this.loadedQuery === this.filterQuery &&
+      !this.listError && Date.now() - this.lastLoadedAt < freshFor) {
+      // A detached page invalidates its outstanding read. Do not leave that
+      // read's spinner running when the retained listing needs no refresh.
+      this.loading = false;
+      this.isSpinning = false;
+      this.restoringHash = false;
+      if (!this.isEditing || !this.selectedContact) this.readHash(pageHash() ?? '');
+    } else {
+      void this.fetchContacts();
+    }
     window.addEventListener('resize', this._handleWindowResize);
     window.addEventListener('hashchange', this._handleHashChange);
     if (this.settingsStore) {
@@ -563,6 +577,7 @@ export class ContactsPage extends LitElement {
 
   async fetchContacts() {
     const epoch = ++this.readEpoch;
+    const before = new Map(this.contacts.map(c => [c.path, c]));
     this.listError = '';
     this.loading = true;
     try {
@@ -584,10 +599,16 @@ export class ContactsPage extends LitElement {
       // A list read does not navigate away from a form opened while it waited.
       const keepEditor = this.isEditing && this.selectedContact;
       const temporary = keepEditor?.isTemporary ? keepEditor : null;
-      this.contacts = temporary ? [temporary, ...(data.contacts || [])] : data.contacts || [];
+      // Rows remain usable during a refresh. Keep edits made since this read
+      // began, including their new versions, while refreshing the other rows.
+      const changed = new Map(this.contacts.filter(c => c.path && before.has(c.path) && before.get(c.path) !== c).map(c => [c.path, c]));
+      const merge = (cards: any[]) => cards.map(c => changed.get(c.path) ?? c);
+      const contacts = merge(data.contacts || []);
+      this.contacts = temporary ? [temporary, ...contacts] : contacts;
       this.loadedQuery = query;
+      this.lastLoadedAt = Date.now();
       if (!query) this.wholeBook = this.contacts;
-      else if (whole) this.wholeBook = whole.contacts || [];
+      else if (whole) this.wholeBook = merge(whole.contacts || []);
       if (!query || whole) this.reconcileCategoryNames(this.wholeBook);
       if (this.restoringHash) {
         this.restoringHash = false;
@@ -807,7 +828,8 @@ export class ContactsPage extends LitElement {
     }
 
     // Optimistic UI update
-    this.contacts = this.contacts.map((c: any) => c.path === contact.path ? { ...c, categories } : c);
+    const optimistic = { ...contact, categories };
+    this.contacts = this.contacts.map((c: any) => c.path === contact.path ? optimistic : c);
 
     try {
       const saved = await contactsService.updateCategories(contact.path, categories);
@@ -828,12 +850,10 @@ export class ContactsPage extends LitElement {
       console.error('Failed to toggle star:', err);
       // Told apart as across a selection: see reportRefusals.
       this.reportFailure(outcomeUnknown(err) ? UNCONFIRMED.update[1] : 'contacts.starOneFailed');
-      // Revert by putting the card's own categories back into the list. This
-      // used to edit `contact`, the object the optimistic update had already
-      // replaced in `this.contacts`, so the refused star stayed painted; and for
-      // a contact with no categories the revert itself threw.
-      const original = contact.categories;
-      this.contacts = this.contacts.map((c: any) => c.path === contact.path ? { ...c, categories: original } : c);
+      // Restore the original row only if this gesture still owns it. A
+      // refresh then recognizes a refused star as unchanged, while a newer
+      // gesture or read keeps its own result.
+      this.contacts = this.contacts.map((c: any) => c === optimistic ? contact : c);
       // The rollback is the truth only for a refusal. A lost response may hide
       // a star that was written, which would otherwise show off until the next
       // read of the list.
@@ -1245,6 +1265,7 @@ export class ContactsPage extends LitElement {
   private handleSaveOwnerChange = () => {
     this.saveLifetime++;
     this.readEpoch++;
+    this.lastLoadedAt = null;
     this.goneCards.clear();
     this.queuedSaves = [];
     this.saveTargets = new WeakMap();
@@ -1925,7 +1946,7 @@ export class ContactsPage extends LitElement {
               .selectedContacts=${this.selectedContacts}
               .selectedContact=${this.selectedContact}
               .isSpinning=${this.isSpinning}
-              .loading=${this.loading}
+              .loading=${this.loading && (this.lastLoadedAt === null || this.filterQuery !== this.loadedQuery)}
               .listScrolled=${this.listScrolled}
               @select-contact=${(e: CustomEvent) => this.selectContact(e.detail.contact)}
               @toggle-star=${(e: CustomEvent) => this.handleToggleStar(new Event(''), e.detail.contact)}
