@@ -2,7 +2,7 @@ export const id = {
   shortcuts: {
     title: "Pintasan keyboard",
     enabled: "Aktifkan pintasan satu karakter",
-    enabledHint: "Nonaktifkan untuk menonaktifkan q, z, dan ?. Anda selalu dapat membuka daftar ini dengan tombol bantuan.",
+    enabledHint: "Nonaktifkan untuk menonaktifkan q, z, dan ?. Anda selalu dapat membuka daftar ini dari menu akun.",
     mail: "Email",
     navigation: "Navigasi",
     move: "Fokuskan pesan berikutnya atau sebelumnya",

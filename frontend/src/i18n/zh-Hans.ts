@@ -4,7 +4,7 @@ export const zhHans: TranslationDictionary = {
   shortcuts: {
     title: "键盘快捷键",
     enabled: "启用单字符快捷键",
-    enabledHint: "关闭此选项以禁用 q、z 和 ?。您随时可以通过帮助按钮打开此列表。",
+    enabledHint: "关闭此选项以禁用 q、z 和 ?。您随时可以通过账户菜单打开此列表。",
     mail: "邮件",
     navigation: "导航",
     move: "聚焦下一封或上一封邮件",

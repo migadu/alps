@@ -3,7 +3,19 @@ import { deliver, expect, login, test, toast } from "./fixtures";
 
 const unique = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const help = (page: Page) => page.locator("keyboard-shortcuts-dialog");
-const helpButton = (page: Page) => page.locator("alps-header button.shortcuts-help");
+const accountMenu = (page: Page) => page.locator("user-profile-menu");
+const accountTrigger = (page: Page) => accountMenu(page).locator('alps-icon-btn[slot="trigger"] button');
+const helpEntry = (page: Page) => accountMenu(page).getByRole("button", { name: "Keyboard shortcuts", exact: true });
+
+async function openFromAccountMenu(page: Page) {
+  const trigger = accountTrigger(page);
+  await trigger.click();
+  await expect(helpEntry(page)).toBeVisible();
+  await helpEntry(page).click();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await expect(help(page).getByRole("dialog", { name: "Keyboard shortcuts", exact: true })).toBeVisible();
+  return trigger;
+}
 const enabled = (page: Page) => help(page).getByRole("checkbox", { name: "Enable character shortcuts", exact: true });
 const row = (page: Page, subject: string) => page.locator("alps-message-list .message-item").filter({ hasText: subject });
 
@@ -28,8 +40,8 @@ test("question mark opens a modal reference, contains focus and returns it on Es
   await message.locator("input.message-checkbox").check();
   await expect(message).toHaveClass(/unread/);
 
-  const trigger = helpButton(page);
-  await expect(trigger).toHaveAccessibleName("Keyboard shortcuts");
+  const trigger = accountTrigger(page);
+  await expect(page.locator("alps-header button.shortcuts-help")).toHaveCount(0);
   await trigger.focus();
   await page.keyboard.press("Shift+Slash");
   const dialog = help(page).getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
@@ -72,7 +84,7 @@ test("character shortcuts can be disabled across reloads and help stays clickabl
   const settings = await page.request.get("/settings");
   const original = ((await settings.json()).Settings?.ui?.keyboardShortcuts ?? true) as boolean;
   try {
-    await helpButton(page).click();
+    await openFromAccountMenu(page);
     const saved = page.waitForResponse(response => response.request().method() === "PUT"
       && new URL(response.url()).pathname === "/settings" && response.ok());
     await enabled(page).uncheck();
@@ -93,7 +105,7 @@ test("character shortcuts can be disabled across reloads and help stays clickabl
     await expect(help(page)).toHaveCount(0);
     await expect(row(page, subject)).toHaveClass(/unread/);
 
-    await helpButton(page).click();
+    await openFromAccountMenu(page);
     await expect(enabled(page)).not.toBeChecked();
     expect(actions).toEqual([]);
     expect(await flagsIn(page, "INBOX", subject)).not.toContain("\\Seen");
@@ -109,8 +121,7 @@ test("character shortcuts can be disabled across reloads and help stays clickabl
 test("the help dialog fits a short viewport and backdrop dismissal returns focus", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 320 });
   await login(page);
-  const trigger = helpButton(page);
-  await trigger.click();
+  const trigger = await openFromAccountMenu(page);
   await expect(enabled(page)).toBeFocused();
   await expect(enabled(page)).toBeInViewport();
   await expect(help(page).getByRole("heading", { name: "Keyboard shortcuts", exact: true })).toBeInViewport();
@@ -120,6 +131,43 @@ test("the help dialog fits a short viewport and backdrop dismissal returns focus
   await expect(help(page)).toHaveCount(0);
   await expect(trigger).toBeFocused();
 });
+
+for (const { layout, width, height } of [
+  { layout: "desktop", width: 1280, height: 720 },
+  { layout: "mobile", width: 390, height: 844 },
+]) {
+  test(`the ${layout} account menu opens shortcut help with the keyboard and restores focus`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await login(page);
+    await expect(page.locator("alps-header button.shortcuts-help")).toHaveCount(0);
+    const trigger = accountTrigger(page);
+    const entry = helpEntry(page);
+    await expect(entry).toBeHidden();
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    await expect(entry).toBeVisible();
+    await expect(entry.locator("kbd")).toHaveText("?");
+    await expect(entry).toHaveAccessibleName("Keyboard shortcuts");
+    expect(await entry.evaluate(element => element.previousElementSibling?.textContent?.trim())).toBe("Settings");
+    await page.screenshot({ path: test.info().outputPath(`shortcut-account-menu-${layout}.png`) });
+
+    // Walk the actual menu with arrows; mobile also contains the app links.
+    const items = await accountMenu(page).locator(".dropdown-item").count();
+    for (let i = 0; i < items; i++) {
+      await page.keyboard.press("ArrowDown");
+      if (await entry.evaluate(element => element.matches(":focus"))) break;
+    }
+    await expect(entry).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await expect(entry).toBeHidden();
+    await expect(help(page).getByRole("dialog", { name: "Keyboard shortcuts", exact: true })).toBeVisible();
+    await expect(enabled(page)).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(help(page)).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  });
+}
 
 test("q marks every selected message read and z archives with Undo", async ({ page }) => {
   const stamp = unique();

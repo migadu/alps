@@ -4,7 +4,7 @@ export const de: TranslationDictionary = {
   shortcuts: {
     title: "Tastenkürzel",
     enabled: "Tastenkürzel mit einzelnen Zeichen aktivieren",
-    enabledHint: "Ausschalten, um q, z und ? zu deaktivieren. Diese Liste lässt sich jederzeit über die Hilfeschaltfläche öffnen.",
+    enabledHint: "Ausschalten, um q, z und ? zu deaktivieren. Diese Liste lässt sich jederzeit über das Kontomenü öffnen.",
     mail: "E-Mail",
     navigation: "Navigation",
     move: "Die nächste oder vorherige Nachricht fokussieren",
