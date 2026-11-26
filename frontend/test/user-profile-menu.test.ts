@@ -29,15 +29,17 @@ const items = (el: El) => [...el.shadowRoot!.querySelectorAll('button.dropdown-i
 
 afterEach(cleanup);
 
+const windows = [['Settings', 'open-settings', 'userMenu.settings'], ['shortcut help', 'open-shortcuts', 'shortcuts.title']] as const;
+
 describe('the account menu', () => {
-  it('offers Settings and Sign out on a desktop, not the pages its header has', async () => {
+  it('offers account actions on a desktop, not the pages its header has', async () => {
     const el = await mount<El>('user-profile-menu', { ...stores(), username: 'ada@example.com', isMobile: false });
-    expect(items(el)).toEqual(['userMenu.settings', 'userMenu.signOut']);
+    expect(items(el)).toEqual(['userMenu.settings', 'shortcuts.title', 'userMenu.signOut']);
   });
 
   it('offers the pages first on a phone, whose header has no room for them', async () => {
     const el = await mount<El>('user-profile-menu', { ...stores(), username: 'ada@example.com', isMobile: true, currentTab: 'messages' });
-    expect(items(el)).toEqual(['navigation.messages', 'nav.calendar', 'userMenu.settings', 'userMenu.signOut']);
+    expect(items(el)).toEqual(['navigation.messages', 'nav.calendar', 'userMenu.settings', 'shortcuts.title', 'userMenu.signOut']);
     const current = [...el.shadowRoot!.querySelectorAll('button.dropdown-item.active')].map((b) => b.textContent?.trim());
     expect(current).toEqual(['navigation.messages']);
   });
@@ -50,28 +52,28 @@ describe('the account menu', () => {
     expect(items(el)).not.toContain('navigation.messages');
   });
 
-  it('opens Settings', async () => {
+  it.each(windows)('opens %s', async (_name, eventName, labelKey) => {
     const el = await mount<El>('user-profile-menu', { ...stores(), username: 'ada@example.com' });
-    const opened = record(el, 'open-settings');
+    const opened = record(el, eventName);
     const settings = [...el.shadowRoot!.querySelectorAll<HTMLElement>('button.dropdown-item')]
-      .find((b) => b.textContent?.includes('userMenu.settings'))!;
+      .find((b) => b.textContent?.includes(labelKey))!;
     expect(settings.classList.contains('active')).toBe(false);
     settings.click();
     await (el.shadowRoot!.querySelector('alps-popup') as El).updateComplete;
     expect(opened).toHaveLength(1);
   });
 
-  it('opens Settings with the persistent profile button focused, after the menu has closed', async () => {
+  it.each(windows)('opens %s with the persistent profile button focused, after the menu has closed', async (_name, eventName, labelKey) => {
     const el = await mount<El>('user-profile-menu', { ...stores(), username: 'ada@example.com' });
     const popup = el.shadowRoot!.querySelector('alps-popup') as El;
     popup.open();
     await popup.updateComplete;
     const settings = [...el.shadowRoot!.querySelectorAll<HTMLButtonElement>('button.dropdown-item')]
-      .find((b) => b.textContent?.includes('userMenu.settings'))!;
+      .find((b) => b.textContent?.includes(labelKey))!;
     const trigger = el.shadowRoot!.querySelector('alps-icon-btn[slot="trigger"]')!.shadowRoot!.querySelector('button')!;
     let focusedWhenOpened: Element | null = null;
     let menuOpenWhenOpened = true;
-    el.addEventListener('open-settings', () => {
+    el.addEventListener(eventName, () => {
       focusedWhenOpened = deepActiveElement();
       menuOpenWhenOpened = popup.openState;
     });
@@ -83,12 +85,12 @@ describe('the account menu', () => {
     expect(focusedWhenOpened).toBe(trigger);
   });
 
-  it('does not open Settings if the menu is removed while its popup closes', async () => {
+  it.each(windows)('does not open %s if the menu is removed while its popup closes', async (_name, eventName, labelKey) => {
     const el = await mount<El>('user-profile-menu', { ...stores(), username: 'ada@example.com' });
     const popup = el.shadowRoot!.querySelector('alps-popup') as El;
-    const opened = record(el, 'open-settings');
+    const opened = record(el, eventName);
     const settings = [...el.shadowRoot!.querySelectorAll<HTMLButtonElement>('button.dropdown-item')]
-      .find((b) => b.textContent?.includes('userMenu.settings'))!;
+      .find((b) => b.textContent?.includes(labelKey))!;
     settings.click();
     el.remove();
     await popup.updateComplete;

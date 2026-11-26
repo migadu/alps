@@ -2,7 +2,7 @@ export const zhHant = {
   shortcuts: {
     title: "鍵盤快捷鍵",
     enabled: "啟用單字元快捷鍵",
-    enabledHint: "關閉此選項以停用 q、z 和 ?。您隨時可以透過說明按鈕開啟此清單。",
+    enabledHint: "關閉此選項以停用 q、z 和 ?。您隨時可以透過帳號選單開啟此清單。",
     mail: "郵件",
     navigation: "導覽",
     move: "將焦點移至下一封或上一封郵件",

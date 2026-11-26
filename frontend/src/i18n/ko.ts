@@ -2,7 +2,7 @@ export const ko = {
   shortcuts: {
     title: "키보드 단축키",
     enabled: "단일 문자 단축키 사용",
-    enabledHint: "q, z, ?를 사용하지 않으려면 끄세요. 도움말 버튼으로 언제든지 이 목록을 열 수 있습니다.",
+    enabledHint: "q, z, ?를 사용하지 않으려면 끄세요. 계정 메뉴에서 언제든지 이 목록을 열 수 있습니다.",
     mail: "메일",
     navigation: "탐색",
     move: "다음 또는 이전 메시지로 포커스 이동",

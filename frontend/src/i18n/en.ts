@@ -2,7 +2,7 @@ export const en = {
   shortcuts: {
     title: "Keyboard shortcuts",
     enabled: "Enable character shortcuts",
-    enabledHint: "Turn off to disable q, z and ?. You can always open this list with the help button.",
+    enabledHint: "Turn off to disable q, z and ?. You can always open this list from the account menu.",
     mail: "Mail",
     navigation: "Navigation",
     move: "Focus the next or previous message",

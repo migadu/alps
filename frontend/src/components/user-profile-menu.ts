@@ -79,6 +79,18 @@ export class UserProfileMenu extends LitElement {
       text-overflow: ellipsis;
     }
 
+    .menu-icon { display: inline-flex; flex-shrink: 0; }
+    .shortcut-hint {
+      margin-inline-start: auto;
+      flex-shrink: 0;
+      padding: 1px 5px;
+      border: 1px solid var(--border-color, #e5e7eb);
+      border-radius: 4px;
+      color: var(--text-muted, #6b7280);
+      font: inherit;
+      font-size: 12px;
+    }
+
     /* A mailbox close to its storage limit, shown while the menu is closed:
        the figures are inside it. The two states differ in size and in the
        mark, not in colour alone. */
@@ -200,18 +212,26 @@ export class UserProfileMenu extends LitElement {
     if (popup) popup.close();
   }
 
-  private async _handleSettings() {
+  private async _openWindow(eventName: 'open-settings' | 'open-shortcuts') {
     const popup = this.shadowRoot?.querySelector<AlpsPopup>('alps-popup');
     this._closePopup();
-    // Settings records where to return focus. The popup closes on its next
+    // The window records where to return focus. The popup closes on its next
     // update and blurs the trigger then; wait for that before giving the
     // window the persistent profile button as its return target, rather than
-    // the now-hidden Settings menu item (or the body).
+    // the now-hidden menu item (or the body).
     await popup?.updateComplete;
     if (!this.isConnected) return;
     this.shadowRoot?.querySelector('alps-icon-btn[slot="trigger"]')
       ?.shadowRoot?.querySelector<HTMLButtonElement>('button')?.focus();
-    this.dispatchEvent(new CustomEvent('open-settings', { bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent(eventName, { bubbles: true, composed: true }));
+  }
+
+  private _handleSettings() {
+    return this._openWindow('open-settings');
+  }
+
+  private _handleShortcuts() {
+    return this._openWindow('open-shortcuts');
   }
 
   private _handleSignOut() {
@@ -380,6 +400,11 @@ export class UserProfileMenu extends LitElement {
                the page's tab stays the current one. -->
           <button class="dropdown-item" @click="${this._handleSettings}">
             ${renderIcon('gear')} <span class="item-text">${this.i18nStore?.t('userMenu.settings')}</span>
+          </button>
+          <button type="button" class="dropdown-item shortcut-help" @click=${this._handleShortcuts}>
+            <span class="menu-icon" aria-hidden="true">${renderIcon('bookOpen')}</span>
+            <span class="item-text">${this.i18nStore?.t('shortcuts.title')}</span>
+            <kbd class="shortcut-hint" aria-hidden="true">?</kbd>
           </button>
           <div class="dropdown-divider"></div>
           <!-- Storage, above Sign out: it is the account's, and this menu is
