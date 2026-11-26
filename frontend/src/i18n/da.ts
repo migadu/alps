@@ -4,7 +4,7 @@ export const da: TranslationDictionary = {
   shortcuts: {
     title: "Tastaturgenveje",
     enabled: "Aktivér genveje med ét tegn",
-    enabledHint: "Slå fra for at deaktivere q, z og ?. Du kan altid åbne denne liste med hjælpeknappen.",
+    enabledHint: "Slå fra for at deaktivere q, z og ?. Du kan altid åbne denne liste fra kontomenuen.",
     mail: "Mail",
     navigation: "Navigation",
     move: "Flyt fokus til den næste eller forrige besked",

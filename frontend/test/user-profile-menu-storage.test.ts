@@ -64,13 +64,13 @@ afterEach(() => {
 describe('the storage section', () => {
   it('is in the menu, above Sign out, with a divider of its own', async () => {
     const el = await menu();
-    expect(layout(el)).toEqual(['Settings', '—', 'storage', '—', 'Sign Out']);
+    expect(layout(el)).toEqual(['Settings', 'Keyboard shortcuts', '—', 'storage', '—', 'Sign Out']);
   });
 
   it('withdraws with its divider when there is no limit to show', async () => {
     body = { supported: false };
     const el = await menu();
-    expect(layout(el)).toEqual(['Settings', '—', 'storage', 'Sign Out']);
+    expect(layout(el)).toEqual(['Settings', 'Keyboard shortcuts', '—', 'storage', 'Sign Out']);
   });
 
   it('reads fresh figures when the menu opens', async () => {

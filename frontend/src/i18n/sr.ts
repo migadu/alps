@@ -2,7 +2,7 @@ export const sr = {
   shortcuts: {
     title: "Prečice na tastaturi",
     enabled: "Omogući prečice sa jednim znakom",
-    enabledHint: "Isključite da biste onemogućili q, z i ?. Ovu listu uvek možete otvoriti dugmetom za pomoć.",
+    enabledHint: "Isključite da biste onemogućili q, z i ?. Ovu listu uvek možete otvoriti iz menija naloga.",
     mail: "Pošta",
     navigation: "Navigacija",
     move: "Fokusiraj sledeću ili prethodnu poruku",

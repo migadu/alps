@@ -2,7 +2,7 @@ export const es = {
   shortcuts: {
     title: "Atajos de teclado",
     enabled: "Activar atajos de un solo carácter",
-    enabledHint: "Desactiva esta opción para desactivar q, z y ?. Siempre puedes abrir esta lista con el botón de ayuda.",
+    enabledHint: "Desactiva esta opción para desactivar q, z y ?. Siempre puedes abrir esta lista desde el menú de la cuenta.",
     mail: "Correo",
     navigation: "Navegación",
     move: "Enfocar el mensaje siguiente o anterior",

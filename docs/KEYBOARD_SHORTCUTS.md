@@ -1,6 +1,6 @@
 # Keyboard shortcuts
 
-Press `?`, or choose the **?** button in the header, to open the keyboard shortcut list. The list is available from the header even when character shortcuts are disabled. Close it with **Close** or `Escape`; focus returns to where it was opened.
+Press `?`, or choose **Keyboard shortcuts** from the account menu in the header, to open the keyboard shortcut list. The menu item remains available even when character shortcuts are disabled. Close the list with **Close** or `Escape`; focus returns to the previous control, or to the account-menu button when opened from that menu.
 
 | Key | Action |
 | --- | --- |

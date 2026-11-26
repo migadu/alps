@@ -2,7 +2,7 @@ export const tr = {
   shortcuts: {
     title: "Klavye kısayolları",
     enabled: "Tek karakterli kısayolları etkinleştir",
-    enabledHint: "q, z ve ? kısayollarını devre dışı bırakmak için kapatın. Bu listeyi yardım düğmesiyle her zaman açabilirsiniz.",
+    enabledHint: "q, z ve ? kısayollarını devre dışı bırakmak için kapatın. Bu listeyi hesap menüsünden her zaman açabilirsiniz.",
     mail: "Posta",
     navigation: "Gezinme",
     move: "Sonraki veya önceki iletiye odaklan",

@@ -2,7 +2,7 @@ export const it = {
   shortcuts: {
     title: "Scorciatoie da tastiera",
     enabled: "Abilita le scorciatoie a carattere singolo",
-    enabledHint: "Disattiva questa opzione per disabilitare q, z e ?. Puoi sempre aprire questo elenco con il pulsante di aiuto.",
+    enabledHint: "Disattiva questa opzione per disabilitare q, z e ?. Puoi sempre aprire questo elenco dal menu dell’account.",
     mail: "Posta",
     navigation: "Navigazione",
     move: "Sposta il focus sul messaggio successivo o precedente",
