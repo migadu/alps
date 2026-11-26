@@ -5,7 +5,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { calendarService, taskTellsSomeone, tellsSomeone, getCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
+import { calendarService, taskTellsSomeone, tellsSomeone, calendarColors, holdsEvents, taskChips, weekStart } from './calendar-service';
 import { tasksService, type TaskData } from './tasks-service';
 import type { CalendarData, EventData } from './calendar-service';
 import { closeSidebarPeek, SIDEBAR_WIDTH_MIN, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
@@ -686,14 +686,17 @@ export class CalendarPage extends LitElement {
 
             const tasks = (await tasksLoad)?.tasks ?? [];
             if (seq !== this.fetchSeq) return;
+            // Every calendar listed, the task lists among them: a task's chip
+            // is drawn in its list's colour.
+            const colorOf = calendarColors(calRes.calendars);
             this.events = [...expandedEvents, ...taskChips(tasks)].map(ev => ({
                 ...ev,
-                color: ev.color || getCalendarColor(ev.calendarPath || ev.path)
+                color: ev.color || colorOf(ev.calendarPath || ev.path)
             }));
 
             this.calendars = calRes.calendars.filter(holdsEvents).map((c: any) => ({
                 ...c,
-                color: c.color || getCalendarColor(c.path)
+                color: colorOf(c.path)
             }));
 
             // A calendar is checked on the first read that lists it: every one

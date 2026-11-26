@@ -18,7 +18,7 @@ import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isGone, isSessionExpiry } from '../../../frontend/src/utils/fetch-utils';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
-import { taskTellsSomeone, calendarService, getCalendarColor } from './calendar-service';
+import { taskTellsSomeone, calendarService, calendarColors } from './calendar-service';
 import { formatDue, inSmartList, isClosed, scopeOf, tasksService } from './tasks-service';
 import type { SmartList, TaskData, TaskList, TaskScope } from './tasks-service';
 import './tasks-list';
@@ -79,6 +79,8 @@ export class TasksPage extends LitElement {
 
     private syncTimer: ReturnType<typeof setInterval> | null = null;
     /** Bumped by every read. Only the newest read's answer is painted. */
+    /** The colour each list is drawn in, as of the last read; see calendarColors. */
+    private colorOf = calendarColors([]);
     private readEpoch = 0;
     /** Bumped by every local write; see fetchTasks. */
     private mutationEpoch = 0;
@@ -338,8 +340,9 @@ export class TasksPage extends LitElement {
                 void this.fetchTasks();
                 return;
             }
-            this.lists = listing.calendars.map(list => ({ ...list, color: getCalendarColor(list.path) }));
-            this.tasks = listing.tasks.map(task => ({ ...task, color: getCalendarColor(task.calendarPath) }));
+            this.colorOf = calendarColors(listing.calendars);
+            this.lists = listing.calendars.map(list => ({ ...list, color: this.colorOf(list.path) }));
+            this.tasks = listing.tasks.map(task => ({ ...task, color: this.colorOf(task.calendarPath) }));
             this.loadedScope = scope;
             this.scheduling = listing.scheduling === 'server' ? 'server' : 'email';
             this.settling = new Set();
@@ -383,7 +386,7 @@ export class TasksPage extends LitElement {
 
     private replaceTask(path: string, task: TaskData) {
         this.mutationEpoch++;
-        const row = { ...task, color: getCalendarColor(task.calendarPath) };
+        const row = { ...task, color: this.colorOf(task.calendarPath) };
         this.tasks = this.tasks.map(t => (t.path === path ? row : t));
     }
 
@@ -424,7 +427,7 @@ export class TasksPage extends LitElement {
         const { task, created } = e.detail;
         this.closeModal();
         this.mutationEpoch++;
-        const row = { ...task, color: getCalendarColor(task.calendarPath) };
+        const row = { ...task, color: this.colorOf(task.calendarPath) };
         this.tasks = created ? [row, ...this.tasks] : this.tasks.map(t => (t.path === row.path ? row : t));
         if (this.shows(row)) return;
         if (created) {

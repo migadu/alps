@@ -138,9 +138,50 @@ type CalendarData struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Path        string `json:"path"`
+	// The colour the server holds for the calendar, as #rrggbb; none when it
+	// holds none. See calendarColor.
+	Color string `json:"color,omitempty"`
 	// The components the calendar accepts, as the server states them; none
 	// stated means all. Lets the calendar page leave out a task-only list.
 	Components []string `json:"components,omitempty"`
+}
+
+// calendarColor is the colour a server holds for a calendar, as #rrggbb, or
+// nothing when it holds none or one written another way.
+//
+// The property (calendar-color, in Apple's namespace) is free text. Clients
+// write #rrggbb, or #rrggbbaa as Apple's do, with an opacity the page has no
+// use for. The page writes the colour into a style, so only what is a colour
+// is passed on.
+func calendarColor(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if !strings.HasPrefix(s, "#") {
+		return ""
+	}
+	digits := s[1:]
+	for _, r := range digits {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			return ""
+		}
+	}
+	switch len(digits) {
+	case 3, 4:
+		return "#" + string([]byte{digits[0], digits[0], digits[1], digits[1], digits[2], digits[2]})
+	case 6, 8:
+		return "#" + digits[:6]
+	}
+	return ""
+}
+
+// listedCalendar is a calendar as the pages are told of it.
+func listedCalendar(calendar caldav.Calendar) CalendarData {
+	return CalendarData{
+		Name:        calendar.Name,
+		Description: calendar.Description,
+		Path:        calendar.Path,
+		Color:       calendarColor(calendar.Color),
+		Components:  calendar.SupportedComponentSet,
+	}
 }
 
 type EventData struct {
@@ -369,12 +410,7 @@ func registerRoutes(p *plugin) {
 		// An empty home is listed as [], not null, which the page cannot filter.
 		calDatas := []CalendarData{}
 		for _, calendar := range calendars {
-			calDatas = append(calDatas, CalendarData{
-				Name:        calendar.Name,
-				Description: calendar.Description,
-				Path:        calendar.Path,
-				Components:  calendar.SupportedComponentSet,
-			})
+			calDatas = append(calDatas, listedCalendar(calendar))
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]interface{}{
