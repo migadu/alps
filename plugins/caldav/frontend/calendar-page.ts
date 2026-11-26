@@ -5,7 +5,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { calendarService, taskTellsSomeone, tellsSomeone, calendarColors, holdsEvents, taskChips, weekStart } from './calendar-service';
+import { calendarService, taskTellsSomeone, tellsSomeone, calendarColors, textOnCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
 import { tasksService, type TaskData } from './tasks-service';
 import type { CalendarData, EventData } from './calendar-service';
 import { closeSidebarPeek, SIDEBAR_WIDTH_MIN, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
@@ -230,7 +230,7 @@ export class CalendarPage extends LitElement {
         .calendar-checkbox svg {
             width: 12px;
             height: 12px;
-            color: #fff;
+            color: var(--cal-text, #fff);
             fill: currentColor;
         }
 
@@ -1112,7 +1112,7 @@ export class CalendarPage extends LitElement {
                                                 aria-checked=${this.activeCalendars.has(c.path) ? 'true' : 'false'}
                                                 @keydown=${(e: KeyboardEvent) => this.handleCheckboxKeyDown(e, () => this.toggleCalendar(c.path))}
                                             >
-                                                <div class="calendar-checkbox ${this.activeCalendars.has(c.path) ? 'checked' : ''}" style="--cal-color: ${c.color}">
+                                                <div class="calendar-checkbox ${this.activeCalendars.has(c.path) ? 'checked' : ''}" style="--cal-color: ${c.color}; --cal-text: ${textOnCalendarColor(c.color)}">
                                                     ${this.activeCalendars.has(c.path) ? renderIcon('check') : ''}
                                                 </div>
                                                 <span><bdi>${c.name}</bdi></span>
