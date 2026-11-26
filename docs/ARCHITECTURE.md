@@ -161,6 +161,8 @@ The frontend is built with **TypeScript** and **Vite**: `npm run build` runs `ts
 ### State Management
 `<app-root>` creates `ComposeStore`, `SettingsStore` and `I18nStore`, and provides them, along with the module-level `LinkedAccountsStore` singleton, through `@lit/context` (`@provide`). The stores are `EventTarget` classes that dispatch a `change` event. A component gets a store with `@consume`, listens for `change`, and then calls `requestUpdate()` or updates its own reactive properties. Nothing re-renders automatically.
 
+**Mark as unread** keeps the message or conversation open and updates its read state in the list and reader together. The message stays unread while it remains open; automatic marking as read applies again when it is reopened. For another message's conversation card, collapsing and expanding that card also resumes automatic marking. In a fully read conversation, the toolbar marks the open message unread; a card's menu marks that card's message unread, including a reply in Sent.
+
 ---
 
 ## 4. Stateless Persistence (IMAP METADATA)

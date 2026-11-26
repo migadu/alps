@@ -261,8 +261,7 @@ export class MessageReader extends LitElement {
         const unread = this.unreadKeys;
         if (unread.length > 0) return void this.markMembersRead(unread);
         // All of it is read, so the toggle means "mark unread", and a
-        // conversation is marked unread on the message the list opened, which
-        // the page closes the reader behind.
+        // conversation is marked unread on the message the list opened.
       } else {
         this.dispatchEvent(new CustomEvent<ReaderActionDetail>('action', {
           detail: { action, folder, uids: this.conversationUids },
@@ -470,13 +469,12 @@ export class MessageReader extends LitElement {
   private readDueAt = new Map<string, number>();
   private readTimer: ReturnType<typeof setTimeout> | null = null;
   /**
-   * The cards whose mark-read the server refused, by key, which are not marked
-   * again on their own while they stay open. A refusal paints the card unread
-   * again, and the next render found an expanded unread card and asked again:
-   * with "at once", a write on every tick, hundreds a second. Asked again
-   * when the card is next opened, or by hand from its menu or the toolbar.
+   * Cards left unread by hand or after a refused mark-read stay unread while
+   * open. Rendering them again must not automatically undo that choice or retry
+   * the refused write. Opening the card again resumes automatic marking;
+   * its menu and the toolbar can still mark it read by hand.
    */
-  private readRefused = new Set<string>();
+  private readSuppressed = new Set<string>();
   /**
    * The messages of this conversation a card's Delete took away, by key. The
    * list holds them until it is read again, and every list change before
@@ -492,7 +490,7 @@ export class MessageReader extends LitElement {
 
   private resetReadRefusals() {
     this.readGeneration++;
-    this.readRefused.clear();
+    this.readSuppressed.clear();
     this.readRefusalSaid = false;
   }
 
@@ -651,6 +649,12 @@ export class MessageReader extends LitElement {
 
     const named = new Set<string>(keys);
     for (const key of named) this.patchConversationFlag(key, flag, action);
+    if (flag === FLAG_SEEN) {
+      for (const key of named) {
+        if (action === 'remove') this.readSuppressed.add(key);
+        else this.readSuppressed.delete(key);
+      }
+    }
     let updated = false;
     for (let i = 0; i < this.threadItems.length; i++) {
       const item = this.threadItems[i];
@@ -1238,10 +1242,9 @@ export class MessageReader extends LitElement {
     if (!this.isConnected) return;
     const delaySec = this.settingsStore?.getState()?.markReadTimeout ?? 0;
     const isBulk = this.selectedCount > 0;
-    // A refused card closed, or gone with another message opened, is asked
-    // about afresh when it is next opened.
-    for (const key of [...this.readRefused]) {
-      if (!this.threadItems.some(item => item.expanded && this.itemKey(item) === key)) this.readRefused.delete(key);
+    // A card left unread is asked about afresh when it is next opened.
+    for (const key of [...this.readSuppressed]) {
+      if (!this.threadItems.some(item => item.expanded && this.itemKey(item) === key)) this.readSuppressed.delete(key);
     }
     const wanted = new Set<string>();
     // `< 0` is the setting's "never mark as read automatically".
@@ -1249,7 +1252,7 @@ export class MessageReader extends LitElement {
       for (const item of this.threadItems) {
         if (!item.message || !item.expanded || this.isOpenItem(item)) continue;
         if (item.message.Flags?.includes(FLAG_SEEN) || isUnsent(item.message)) continue;
-        if (this.readRefused.has(this.itemKey(item))) continue;
+        if (this.readSuppressed.has(this.itemKey(item))) continue;
         wanted.add(this.itemKey(item));
       }
     }
@@ -1287,7 +1290,7 @@ export class MessageReader extends LitElement {
     // the meantime, or have left the conversation.
     const keys = due.filter((key) => {
       const item = this.threadItems.find((i) => this.itemKey(i) === key);
-      return !!item && item.expanded && !item.message?.Flags?.includes(FLAG_SEEN);
+      return !!item && item.expanded && !item.message?.Flags?.includes(FLAG_SEEN) && !this.readSuppressed.has(key);
     });
     if (keys.length > 0) void this.markMembersRead(keys, false);
     this.armReadTimer();
@@ -1400,6 +1403,7 @@ export class MessageReader extends LitElement {
 
     let refused = false;
     await Promise.all([...byMailbox].map(async ([mailbox, uids]) => {
+      for (const uid of uids) this.readSuppressed.delete(messageKey(mailbox, uid));
       paint(mailbox, uids, 'add');
       let result: FlagResult = { ok: false };
       try {
@@ -1409,11 +1413,9 @@ export class MessageReader extends LitElement {
       }
       // A response from a previous opening still rolls its own flags back,
       // but must not suppress this opening's attempts or failure notice.
-      if (generation === this.readGeneration) {
+      if (!result.ok && generation === this.readGeneration) {
         for (const uid of uids) {
-          const key = messageKey(mailbox, uid);
-          if (result.ok) this.readRefused.delete(key);
-          else this.readRefused.add(key);
+          this.readSuppressed.add(messageKey(mailbox, uid));
         }
       }
       if (result.ok) return;
@@ -2446,9 +2448,8 @@ export class MessageReader extends LitElement {
       });
       return;
     }
-    // The card's read toggle. Marking read is this component's own write.
-    // Marking UNREAD is the page's: it ends by closing the reader — back to the
-    // list, where the row is bold again — and the selection is the page's.
+    // The card's read toggle. Marking read is this component's own write;
+    // marking unread goes through the page to update the list as well.
     if (action === 'markRead') return void this.markMembersRead([this.itemKey(item)]);
     // These are the page's to carry out, and they name the card's message: the
     // page would otherwise act on the open one, which is how they worked while

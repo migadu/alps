@@ -1616,6 +1616,12 @@ export class MailboxPage extends LitElement {
     this.openKeyInUrl(this.currentMailbox, this.currentPage, this.keyOf(msg));
   }
 
+  private cancelMarkAsRead(key: string) {
+    if (!this.selectedMessage || this.keyOf(this.selectedMessage) !== key || !this.markReadTimer) return;
+    clearTimeout(this.markReadTimer);
+    this.markReadTimer = null;
+  }
+
   private _scheduleMarkAsRead(msg: any) {
     if (this.markReadTimer) {
       clearTimeout(this.markReadTimer);
@@ -1645,7 +1651,7 @@ export class MailboxPage extends LitElement {
    * Reverting the whole set with the opposite operation marks messages that
    * were already read unread, on a write that never touched them.
    */
-  private updateLocalMessageFlags(keys: string[], flag: string, action: 'add' | 'remove'): string[] {
+  private updateLocalMessageFlags(keys: string[], flag: string, action: 'add' | 'remove', includeUnlisted = false): string[] {
     const named = new Set(keys);
     const changed: string[] = [];
     const newMessages = [...this.messages];
@@ -1680,32 +1686,25 @@ export class MailboxPage extends LitElement {
     }
     if (changed.length > 0) {
       this.messages = newMessages;
-      if (this.selectedMessage && named.has(this.keyOf(this.selectedMessage))) {
-        const hasFlag = this.selectedMessage.Flags && this.selectedMessage.Flags.includes(flag);
-        if (action === 'add' && !hasFlag) {
-          this.selectedMessage.Flags = [...(this.selectedMessage.Flags || []), flag];
-        } else if (action === 'remove' && hasFlag) {
-          this.selectedMessage.Flags = this.selectedMessage.Flags.filter((f: string) => f !== flag);
-        }
-        this.selectedMessage = { ...this.selectedMessage };
-      }
-
-      // Tell the reader, which keeps its OWN copy of each message in
-      // `threadItems` and cannot see this one.
-      //
-      // message-reader has carried a complete handler for this event since
-      // before the fork — it patches every thread item's flags and the open
-      // message with it — and nothing has ever dispatched it. So the
-      // reader→list direction worked (the reader bubbles
-      // `message-flags-changed` to its parent) while list→reader did not:
-      // starring or marking read from the message list left the open
-      // conversation's cards showing the previous state until something forced
-      // a re-fetch. The detail shape below is exactly this method's parameters,
-      // which is how the handler was written to be called.
-      window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
-        detail: { keys, flag, action }
-      }));
+    } else if (!includeUnlisted) {
+      return changed;
     }
+    if (this.selectedMessage && named.has(this.keyOf(this.selectedMessage))) {
+      if (flag === FLAG_SEEN && action === 'remove') this.cancelMarkAsRead(this.keyOf(this.selectedMessage));
+      const hasFlag = this.selectedMessage.Flags && this.selectedMessage.Flags.includes(flag);
+      if (action === 'add' && !hasFlag) {
+        this.selectedMessage.Flags = [...(this.selectedMessage.Flags || []), flag];
+      } else if (action === 'remove' && hasFlag) {
+        this.selectedMessage.Flags = this.selectedMessage.Flags.filter((f: string) => f !== flag);
+      }
+      this.selectedMessage = { ...this.selectedMessage };
+    }
+
+    // A confirmed unread write can name a reply from Sent or another page.
+    // Optimistic callers track only changed list keys for their rollback.
+    window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
+      detail: { keys, flag, action }
+    }));
     return changed;
   }
 
@@ -1795,16 +1794,14 @@ export class MailboxPage extends LitElement {
     }
     if (detail.action === 'markUnread') {
       // Never a toggle: the card offers "Mark as unread" only on a message that
-      // is read, and marks read by itself. It ends where the toolbar's does —
-      // back on the list, where the row is bold again.
+      // is read, and marks read by itself. Keep the conversation on screen.
+      this.cancelMarkAsRead(key);
       const seen = await messageOperations.setFlag(mailbox, [uid], [FLAG_SEEN], 'remove');
       if (!seen.ok) {
         this.reportFlagFailure(seen);
         return;
       }
-      this.updateLocalMessageFlags([key], FLAG_SEEN, 'remove');
-      this.selectedMessage = null;
-      this.updateUrl(this.currentMailbox, this.currentPage, null);
+      this.updateLocalMessageFlags([key], FLAG_SEEN, 'remove', true);
       return;
     }
     if (detail.action !== 'delete') return;
@@ -2339,6 +2336,7 @@ export class MailboxPage extends LitElement {
           // branch painted the row read even when the write failed, and the unread
           // branch said nothing when it did. The bulk branch above already did this.
           const isUnread = !currentMsg.Flags || !currentMsg.Flags.includes(FLAG_SEEN);
+          if (!isUnread) this.cancelMarkAsRead(this.keyOf(currentMsg));
           const seen = await messageOperations.setFlag(this.mailboxOf(currentMsg), [String(currentMsg.UID)], [FLAG_SEEN], isUnread ? 'add' : 'remove');
           if (!seen.ok) {
             this.reportFlagFailure(seen);
@@ -2346,9 +2344,7 @@ export class MailboxPage extends LitElement {
             this.selectedMessage = { ...currentMsg, Flags: [...(currentMsg.Flags || []), FLAG_SEEN] };
             this.updateLocalMessageFlags(open, FLAG_SEEN, 'add');
           } else {
-            this.updateLocalMessageFlags(open, FLAG_SEEN, 'remove');
-            this.selectedMessage = null;
-            this.updateUrl(this.currentMailbox, this.currentPage, null);
+            this.updateLocalMessageFlags(open, FLAG_SEEN, 'remove', true);
           }
         }
       } else if (action === 'delete' || action === 'archive' || action === 'reportSpam' || action === 'notSpam') {

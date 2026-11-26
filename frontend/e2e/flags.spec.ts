@@ -180,9 +180,10 @@ test("marking a read message unread puts the row back to unread", async ({ page 
   await reader(page).getByRole("button", { name: "Mark as unread", exact: true }).click();
   await expect(message).toHaveClass(/unread/);
 
-  // This action closes the reader (mailbox-page drops the uid from the URL),
-  // so the reload cannot re-read the message behind the assertion.
-  await expect(page).not.toHaveURL(/uid=/);
+  await expect(page).toHaveURL(/uid=/);
+  await expect(reader(page).getByRole("button", { name: "Mark as read", exact: true })).toBeVisible();
+  // Leave the message before reloading, so opening it does not mark it read.
+  await page.goto("/#/mailbox/INBOX");
   await page.reload();
   await expect(message).toHaveClass(/unread/);
 });
