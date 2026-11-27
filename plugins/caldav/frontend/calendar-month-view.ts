@@ -2,7 +2,7 @@ import { renderIcon } from '../../../frontend/src/utils/ui';
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { EventData } from './calendar-service';
-import { isAllDayEvent } from './calendar-service';
+import { isAllDayEvent, textOnCalendarColor } from './calendar-service';
 import '../../../frontend/src/components/alps-popup';
 import '../../../frontend/src/components/alps-icon-btn';
 import './calendar-event-preview';
@@ -236,7 +236,7 @@ export class CalendarMonthView extends LitElement {
                                     <alps-popup align="start" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
                                         <div slot="trigger"
                                             class="event-chip ${isAllDayEvent(e) ? 'all-day' : ''} ${e.task ? 'task' : ''} ${e.status === 'declined' ? 'declined' : ''}" 
-                                            style=${e.task ? `border-color: ${e.color}` : e.color ? `background-color: ${e.color}` : ''}
+                                            style=${e.task ? `border-color: ${e.color}` : e.color ? `background-color: ${e.color}; color: ${textOnCalendarColor(e.color)}` : ''}
                                             title="${e.summary || (this.i18nStore?.t('calendar.noTitle'))}">
                                             ${e.task ? renderIcon('checkCircle') : ''}<bdi>${e.summary || (this.i18nStore?.t('calendar.noTitle'))}</bdi>
                                         </div>

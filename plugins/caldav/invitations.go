@@ -639,7 +639,7 @@ func (p *plugin) invitationView(ctx *alps.Context, inv *invitation) InvitationVi
 
 	for _, calendar := range inv.calendars {
 		if holdsComponent(calendar, inv.item.Name) {
-			view.Calendars = append(view.Calendars, CalendarData{Name: calendar.Name, Description: calendar.Description, Path: calendar.Path})
+			view.Calendars = append(view.Calendars, CalendarData{Name: calendar.Name, Description: calendar.Description, Path: calendar.Path, Color: calendarColor(calendar.Color)})
 		}
 	}
 	if inv.method == itip.MethodRequest && !inv.ended && (inv.state == invAnswer || inv.state == invUpdate) {

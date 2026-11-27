@@ -1,6 +1,7 @@
 import { davReadError } from './dav-state';
 import { encodePathParam, fetchWithTimeout, HttpStatusError } from '../../../frontend/src/utils/fetch-utils';
 import { parseWrittenAddress } from '../../../frontend/src/utils/address-display';
+import { getTagTextColor } from '../../../frontend/src/utils/flags';
 import { dueOf, isClosed, type TaskData } from './tasks-service';
 import type { InvitationPerson, SavedInvitation } from './invitation-service';
 
@@ -8,6 +9,7 @@ export interface CalendarData {
     name: string;
     description: string;
     path: string;
+    /** The colour the server holds for the calendar, as #rrggbb; none when it holds none. */
     color?: string;
     /** The components the calendar takes, as its server states them; none stated means all. */
     components?: string[];
@@ -137,6 +139,29 @@ export function getCalendarColor(identifier: string): string {
     }
     const index = Math.abs(hash) % CALENDAR_COLORS.length;
     return CALENDAR_COLORS[index];
+}
+
+/**
+ * The colour each calendar is drawn in, by the calendar's path: the one its
+ * server holds, where every other client reads it too, and one worked out
+ * from the path for a calendar that has none.
+ */
+export function calendarColors(calendars: Pick<CalendarData, 'path' | 'color'>[]): (path: string) => string {
+    const held = new Map<string, string>();
+    for (const calendar of calendars) {
+        if (calendar.color) held.set(calendar.path, calendar.color);
+    }
+    return path => held.get(path) ?? getCalendarColor(path);
+}
+
+/**
+ * The colour to write in on a calendar's colour: black or white, whichever
+ * contrasts more, as a tag's name is written on its colour. White alone
+ * suited the colours worked out here; one from the server can be anything,
+ * and a title in white on a pale one could not be read.
+ */
+export function textOnCalendarColor(color: string | undefined): string {
+    return getTagTextColor(color ?? '');
 }
 
 /**

@@ -636,7 +636,7 @@ func registerTaskRoutes(p *plugin) {
 			if !holdsComponent(calendar, ical.CompToDo) {
 				continue
 			}
-			lists = append(lists, CalendarData{Name: calendar.Name, Description: calendar.Description, Path: calendar.Path})
+			lists = append(lists, CalendarData{Name: calendar.Name, Description: calendar.Description, Path: calendar.Path, Color: calendarColor(calendar.Color)})
 			objects, err := c.QueryCalendar(ctx.Request.Context(), calendar.Path, &query)
 			if err != nil {
 				// Counted rather than skipped in silence, so the page can say
