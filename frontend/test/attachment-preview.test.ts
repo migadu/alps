@@ -29,6 +29,14 @@ const part = (over: Record<string, unknown> = {}) => ({ Filename: 'invoice.pdf',
 const preview = (props: Record<string, unknown> = {}) =>
   mount('alps-attachment-preview', { attachments: [part()], mailbox: 'INBOX', messageUid: '7', activeIndex: 0, ...props });
 
+/**
+ * A PDF part as the server answers it. The body is bytes, not a Blob: this
+ * file's Blob is jsdom's, which has no stream(), and Node's Response reads a
+ * Blob body through stream() and throws without it.
+ */
+const pdfResponse = (type = 'application/octet-stream') =>
+  new Response(new TextEncoder().encode('%PDF-1.4'), { status: 200, headers: { 'Content-Type': type } });
+
 /** Stands in for URL's blob methods, which jsdom lacks. */
 function stubBlobUrls() {
   const created: Blob[] = [];
@@ -58,7 +66,7 @@ describe('alps-attachment-preview', () => {
     const fetched: string[] = [];
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
       fetched.push(String(input));
-      return new Response(new Blob(['%PDF-1.4'], { type: 'application/octet-stream' }), { status: 200 });
+      return pdfResponse();
     });
     const blobs = stubBlobUrls();
     try {
@@ -76,7 +84,7 @@ describe('alps-attachment-preview', () => {
   });
 
   it('gives the blob: URL back when the preview closes', async () => {
-    vi.stubGlobal('fetch', async () => new Response(new Blob(['%PDF-1.4']), { status: 200 }));
+    vi.stubGlobal('fetch', async () => pdfResponse());
     const blobs = stubBlobUrls();
     try {
       const el = await preview();
